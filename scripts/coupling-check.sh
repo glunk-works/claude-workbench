@@ -20,7 +20,26 @@ TIER1='hatch run|migration_roadmap|architect-review|loop-orchestrator|Seuss27'
 # these is the same defect as tier 1, caught before it ships rather than after.
 TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works'
 
-PATTERN="${TIER1}|${TIER2}"
+# Tier 3 -- structural literal SHAPES, not exact strings. SW Task 5 found that tiers 1-2
+# match repo/org names and a curated string list but were blind to a hardcoded *path* that
+# is not a repo name: the v0.1.0 skeleton carried `docs/migration_roadmap.md` and three
+# `.ai/context/*.md` files, and "zero hits" proved only that no repo NAME leaked, not that
+# the skills were portable. These patterns catch the shape of the two path literals that
+# always have a schema-key home: a roadmap path is `{roadmap}`; a specific
+# `.ai/context/<file>` either moved into this plugin's own reference/ or is the consuming
+# repo's local truth, which a skill references as the bare directory, never a named file.
+# A bare `.ai/context/` with no filename is a legitimate generic reference and is
+# deliberately NOT matched.
+#
+# Check *names* are intentionally absent here. They appear legitimately in illustrative
+# example output (see pr-checks' "Report shape" block, whose own prose says the real names
+# come from {ruleset.required_checks}), so grepping them would false-positive on the
+# examples. Check-name coupling is caught by a different mechanism instead: /resume and
+# /pr-checks read {ruleset.required_checks} and report *inconclusive* on a mismatch rather
+# than trusting a hardcoded list.
+TIER3='docs/[A-Za-z_]+roadmap\.md|\.ai/context/[A-Za-z_]+\.(md|json)'
+
+PATTERN="${TIER1}|${TIER2}|${TIER3}"
 
 fail=0
 shopt -s nullglob

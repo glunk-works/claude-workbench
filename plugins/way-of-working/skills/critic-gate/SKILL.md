@@ -38,7 +38,10 @@ green gate and before `/handoff`.
 
 1. **Scope the diff.** `git diff --stat {pr_base}...HEAD` (and the full diff for content).
    Note which trees it touches — anything in `{code_paths}`, anything in
-   `{load_bearing_docs}`, tests, other docs.
+   `{load_bearing_docs}`, tests, other docs — and which files are **newly added** versus
+   edited (`git diff --diff-filter=A --stat {pr_base}...HEAD`). A brand-new doc cannot
+   already be in `{load_bearing_docs}`, so the added/edited split matters for the last row
+   of the table below.
 
 2. **Propose the applicable critics — spawn NOTHING yet.** This gate does not auto-fan-out.
    Work out which critics *apply* and **present that list to the human with a one-line
@@ -51,6 +54,19 @@ green gate and before `/handoff`.
    |---|---|
    | anything in `{code_paths}` | **`security-critic`** (taint / trust-boundary) and/or **`architect`** (correctness pre-review) |
    | anything in `{load_bearing_docs}` | **`docs-consistency`** (prose-vs-code drift) |
+   | a **newly-added** doc that is not under `{code_paths}` and not already in `{load_bearing_docs}` | **`docs-consistency`** (does the new prose match the code/system it describes?), **plus `security-critic`** if it documents a security, credential, or operational procedure — and flag that the file should be added to `{load_bearing_docs}` so its later *edits* are covered by the row above |
+
+   **Why the third row exists.** `{load_bearing_docs}` is a fixed drift-audit set, and a
+   brand-new file cannot already be in it — so keying the docs critic *only* off that set
+   silently skips a doc on the one commit where it is most worth a look: its first version,
+   before any reviewer or drift audit has ever seen it. A new operational or security-relevant
+   doc (an upload runbook, a credential-handling procedure) that lands with no critic pass is
+   exactly the gap this row closes. It stays a **proposal**, like every other row — the human
+   confirms whether the new doc is load-bearing enough to warrant `security-critic`, or trims
+   it to `docs-consistency` alone, or skips it for a trivial addition (a changelog stub, a
+   README typo). Detection is mechanical (`--diff-filter=A` from step 1), the judgment stays
+   with the human, and adding the file to `{load_bearing_docs}` is the durable fix that moves
+   it into the second row for next time.
 
    A repo may also enable agents defined locally in its own `.claude/agents/` — a
    guard-surface auditor, a test-validity triager, a live-verification runner. Those are

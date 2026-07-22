@@ -71,9 +71,66 @@ take effect. Full reasoning and the task breakdown that implements them:
   irrelevant parts — an agent asserting a boundary the repo does not have produces confident
   false findings, the most trust-destroying output a critic can emit.)
 
+- **WB-D6 — the pilot's Task-5 real-work exercise, dispositioned.** The bounty-infra pilot
+  ran a genuine piece of work end-to-end through the plugin loop (SW Task 5, sessions 6–7)
+  and logged six findings. Their disposition, per the *Overriding is a bug report* rule
+  (two outcomes only — a schema seam, or not-portable — never a local override):
+
+  - **F1–F4 were already fixed and did not reproduce against the pinned tag.** The four
+    "hardcoded loop-orchestrator value" findings (a stale required-check list, a
+    `docs/migration_roadmap.md` path, three `.ai/context/*.md` references) all describe the
+    **`v0.1.0` skeleton**, whose skills were copied *as-is, still coupled on purpose* (WB-D3
+    /Task 2). The generalization that fixes every one of them landed in `v0.2.0`
+    (`{roadmap}`, `{ruleset.required_checks}`, `{models}`, `reference/workflow.md`).
+    Session 6 reproduced them only because the harness served a **stale `v0.1.0` local
+    checkout** despite the consuming repo pinning `v0.2.0` — a plugin-cache staleness
+    problem, not a portability defect. **Disposition: already-fixed-upstream via existing
+    schema keys; no skill change.** The two real actions are (a) the consuming repo bumps
+    its pin and clears the stale checkout to force a re-fetch, and (b) a regression guard so
+    the same *class* of leak is caught mechanically next time (below). This is the plan's own
+    "tag-pinning ⇒ updates are opt-in ⇒ never" risk in a sharper form: even an explicit pin
+    bump was not honored by the local cache, so a pin change must be paired with a cache
+    clear until the mechanism is understood.
+
+  - **The coupling gate was blind to path-shaped literals, now less so.** F1–F4's shared
+    root cause: the `coupling` grep matched repo/org **names** and a curated string list, so
+    a hardcoded *path* that is not a repo name ("zero hits") proved only that no name leaked.
+    `scripts/coupling-check.sh` gains a **Tier 3** of structural literal *shapes* —
+    `docs/<...>roadmap.md` (always `{roadmap}`) and `.ai/context/<file>.md` (either moved
+    into this plugin's `reference/` or the consuming repo's local truth, referenced as the
+    bare directory, never a named file). A bare `.ai/context/` with no filename stays
+    legitimate and unmatched. Check **names** are deliberately *not* added: they appear in
+    illustrative example output (`/pr-checks`' report shape), so grepping them false-positives;
+    check-name coupling is caught instead by `/resume` and `/pr-checks` reading
+    `{ruleset.required_checks}` and reporting *inconclusive* on a mismatch. A grep cannot
+    prove portability — it catches how portability actually rots — and Tier 3 narrows the
+    blind spot without pretending to close it.
+
+  - **F5 — `/critic-gate` gained a third proposal row: a newly-added doc.** A brand-new
+    load-bearing doc cannot already be in `{load_bearing_docs}`, so keying the docs critic
+    only off that set silently skipped a doc on the commit where it is most worth a look —
+    its first version. **Disposition: a portable behavior fix, no new schema key** — the
+    added/edited split is derivable from git (`--diff-filter=A`), so it derives from existing
+    keys rather than growing the schema (the "a schema that grows a key per repo has failed"
+    corollary). The row proposes `docs-consistency` (plus `security-critic` for a
+    security/credential/operational procedure) and flags adding the file to
+    `{load_bearing_docs}`; it remains a proposal the human confirms or trims.
+
+  - **F6 — `/handoff` step 5's branch rule clarified, not exempted.** The finding argued that
+    a "stacked" handoff (a second session syncing the cursor while the first session's PR is
+    still open) needs to commit the sync onto the code branch, because `{pr_base}` lacks that
+    PR's content. **Disposition: the finding's rationale is wrong and the rule is right** —
+    `.ai/next-steps.md` is *regenerated wholesale* (step 4), not patched, so it carries no
+    code context and a fresh `{pr_base}`-cut branch always applies. Step 5 now says so
+    explicitly, closing the ambiguity that led the pilot's own history to deviate (`cb6d698`)
+    toward the default (separate docs-only PR), rather than adding a permissive exception that
+    would license bundling cursor churn into code-PR reviews.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
 `v0.1.0`. `WB-D2`'s schema (`reference/project-schema.md`), the full skill and agent
 generalization against it, `WB-D5`, and the grep-based `coupling` CI job that enforces
-`WB-D2` mechanically all land in `v0.2.0`.
+`WB-D2` mechanically all land in `v0.2.0`. `WB-D6`'s dispositions — the Tier-3 coupling
+patterns, the `/critic-gate` new-doc row, and the `/handoff` step-5 clarification — land in
+the next tag; F1–F4 needed no plugin change (already fixed in `v0.2.0`).
