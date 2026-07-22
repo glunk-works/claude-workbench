@@ -22,3 +22,17 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Validate plugin manifests and skill frontmatter
         run: bash scripts/lint.sh
+
+  # Deliberately its own job, not a step in `lint`: this gate answers a different
+  # question (is the plugin still portable?) and needs no toolchain, so it reports a
+  # verdict even when the CLI install fails. Job id == check-run name, so this name is
+  # what a required-checks list would have to carry.
+  coupling:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: No repo-specific literals in skills/ or agents/
+        run: bash scripts/coupling-check.sh

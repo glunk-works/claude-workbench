@@ -18,6 +18,12 @@ Skill and agent bodies write schema keys in braces — `{ruleset.required_checks
 **Read `.ai/project.yml` once at the start of a skill**, then use it. It is small and
 always-on by design; a skill that needs three keys reads the file, not three files.
 
+**An agent reads it too, and must read it explicitly.** A subagent starts in a fresh context
+with none of the spawning session's state, so every agent in this plugin opens by loading
+`.ai/project.yml` and the local truth it points at (`CLAUDE.md`, `{roadmap}`,
+`{threat_model}`) before looking at the diff. That first step is not boilerplate — it is what
+stops an agent reviewing repo B against the invariants it remembers from repo A.
+
 ### When it is missing or unreadable
 
 **Fail closed and say so.** A skill that cannot read `.ai/project.yml` reports
@@ -233,6 +239,17 @@ whole-file shadowing hazard above applies to same-named components.)
 
 `models` maps a role to the model it should run as. `/resume` compares the running model
 against the role the cursor assigns; `/handoff` writes the next session's model from it.
+
+**`models` governs *sessions*, not subagent spawns.** A plugin agent's runtime model comes
+from the `model:` field in its own frontmatter, which is upstream data a consuming repo
+cannot parameterize — agent frontmatter is read by the harness before any skill runs, so
+there is nothing to substitute a schema value into. The two are kept deliberately in
+agreement (`architect: opus`, `coder: sonnet`), and `models` exists so the *session*-routing
+skills can state the rule without hardcoding it. A repo that sets `models.architect: sonnet`
+is describing which model its own sessions should use for architecture work; it does **not**
+change what the `architect` subagent runs as. If a repo genuinely needs a different agent
+model, that is the not-portable case from *Overriding is a bug report* — a repo-local agent
+under a different name, not a schema key.
 
 ---
 
