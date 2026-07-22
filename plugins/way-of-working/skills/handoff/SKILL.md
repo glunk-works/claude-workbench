@@ -69,6 +69,16 @@ and `{review.ci_gate}`.
      branch (e.g. `docs/sync-cursor-<slug>`), and commit `.ai/next-steps.md` there. If a
      `/handoff` runs directly on `{pr_base}` with nothing else in flight, cutting a fresh
      branch from it is still correct — never commit straight to `{pr_base}`.
+   - **This holds even when the cursor describes work that currently lives only on an
+     unmerged code branch** — a second session handing off before the first session's PR has
+     merged (a "stacked" handoff). There is **no exception** for that case, because
+     `.ai/next-steps.md` is *regenerated wholesale* (step 4), not patched: the sync carries
+     no code context, so a fresh `{pr_base}`-cut branch always applies cleanly even though
+     `{pr_base}` lacks the code being described. A cursor that names an open PR is doing its
+     job — it points forward and does not wait for that PR to merge; the docs sync merging
+     before the code PR is fine and expected. Committing the sync onto the code branch
+     instead only bundles cursor churn into the code PR's review, which is the muddle this
+     whole step exists to prevent.
    - `git add .ai/next-steps.md` (only that file — this step never bundles unrelated
      dirty state; if other files are also dirty, surface that separately and let the
      human decide).
