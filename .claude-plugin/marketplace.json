@@ -1,0 +1,15 @@
+{
+  "name": "claude-workbench",
+  "description": "The way-of-working plugin: a portable Claude Code session-handoff protocol, review agents, hooks, and Global Conventions, parameterized per repo by .ai/project.yml.",
+  "owner": {
+    "name": "glunk-works",
+    "email": "jgroves27@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "way-of-working",
+      "source": "./plugins/way-of-working",
+      "description": "Session handoff protocol (/resume, /handoff, /critic-gate, /ship, /pr-checks, /archive-sprint, /retro), the architect/coder/security-critic/docs-consistency agents, and the Global Conventions — parameterized by each repo's .ai/project.yml."
+    }
+  ]
+}
