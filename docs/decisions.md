@@ -48,8 +48,32 @@ take effect. Full reasoning and the task breakdown that implements them:
   (Rejected: migrating the source repo first — touches the repo everything else depends on
   before the schema has been proven anywhere.)
 
+- **WB-D5 — a shared agent ships the taxonomy, never the instances.** Found while
+  generalizing the 4 agents (`v0.2.0`), and it is a different problem from the skills. The
+  skills' coupling was **values** — check names, commands, paths — each of which became a
+  schema key cleanly. The agents' coupling is **knowledge**: the source repo's module
+  boundaries, its named subprocess surfaces, its specific trust boundaries, its specific
+  high-value doc claims. None of that is expressible as a schema key, and paraphrasing it
+  into generic advice would have shipped an agent that reviews every repo against one repo's
+  invariants. So each agent now carries the *shapes* that reliably hold invariants (import
+  layering, I/O ownership, subprocess surfaces, credential holders, taint source and sink
+  classes, the claim shapes that drift in prose) and **builds the instance list at spawn
+  time** by reading `.ai/project.yml`, the consuming repo's `CLAUDE.md`, `{threat_model}`,
+  and the guarding tests. An agent that cannot read the contract reviews only what needs no
+  contract value and says so — it never substitutes a threat model it remembers.
+  Consequence, accepted: the agents are **thinner** than the originals and start colder, and
+  that is the correct trade — a warm start against the wrong repo's map is worse than a cold
+  start against the right one. The source repo's specific invariants are not lost; they live
+  in that repo's own `CLAUDE.md` and threat model, which is where the agent now reads them.
+  (Rejected: schema keys enumerating a repo's invariants — that is the repo's `CLAUDE.md`
+  restated in YAML, a second copy of exactly the kind WB-D2 exists to eliminate. Rejected:
+  keeping the rich source-repo agents in the plugin and letting other repos ignore the
+  irrelevant parts — an agent asserting a boundary the repo does not have produces confident
+  false findings, the most trust-destroying output a critic can emit.)
+
 ## Status
 
-All four decisions are implemented by this repo's existence and structure as of `v0.1.0`.
-`WB-D2`'s schema (`reference/project-schema.md`) and the full skill/agent generalization
-against it land in `v0.2.0`.
+All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
+`v0.1.0`. `WB-D2`'s schema (`reference/project-schema.md`), the full skill and agent
+generalization against it, `WB-D5`, and the grep-based `coupling` CI job that enforces
+`WB-D2` mechanically all land in `v0.2.0`.
