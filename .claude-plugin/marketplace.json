@@ -1,5 +1,6 @@
 {
   "name": "claude-workbench",
+  "description": "The way-of-working plugin: a portable Claude Code session-handoff protocol, review agents, hooks, and Global Conventions, parameterized per repo by .ai/project.yml.",
   "owner": {
     "name": "glunk-works",
     "email": "jgroves27@gmail.com"

@@ -2,6 +2,12 @@
 # Validates every marketplace.json / plugin.json against the schema confirmed in
 # bounty-infra SW Task 1 (see plugins/way-of-working/reference/ for the source docs
 # cited there), and every SKILL.md for the required frontmatter fields.
+#
+# Runs the real `claude plugin validate --strict` first -- it parses frontmatter as
+# actual YAML and catches shapes a hand-rolled grep/jq check can't (e.g. an unquoted
+# ": " inside a description breaks the whole frontmatter block silently). It does NOT
+# check that a SKILL.md's frontmatter is present/complete, so the manual checks below
+# still matter -- the two are complementary, not redundant.
 set -euo pipefail
 
 fail=0
@@ -10,6 +16,17 @@ fail_with() {
   echo "LINT FAIL: $1" >&2
   fail=1
 }
+
+# --- real plugin/marketplace validation ---
+if command -v claude >/dev/null 2>&1; then
+  claude plugin validate --strict . || fail_with "claude plugin validate --strict . (marketplace)"
+  shopt -s nullglob
+  for plugin_dir in plugins/*/; do
+    claude plugin validate --strict "$plugin_dir" || fail_with "claude plugin validate --strict $plugin_dir"
+  done
+else
+  fail_with "claude CLI not found -- cannot run the real plugin/marketplace validator"
+fi
 
 # --- marketplace.json ---
 MARKETPLACE=".claude-plugin/marketplace.json"

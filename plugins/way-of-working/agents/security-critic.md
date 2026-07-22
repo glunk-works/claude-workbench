@@ -1,6 +1,15 @@
 ---
 name: security-critic
-description: Opus read-only SAST/taint-flow reviewer keyed to loop-orchestrator's OWN threat model (docs/architecture_definition.md) — the repo-specific violations generic bandit can't see. Reviews a diff for untrusted-input taint (GitHub issue/webhook body, model-generated code and tool inputs, cross-stage State) reaching a dangerous sink (a gh/shell arg, a filesystem path, a credential path, a State field), and for breaks in the named trust boundaries (keyring single-importer + the double-gated CI exception, persona isolation, zero-trust-between-stages, the five subprocess surfaces, implicit-repo gh resolution = the R8 bug, no-merge-verb). Read-only: returns a ranked findings list, never edits. Complements `architect` (structural invariants) by going deep on taint flow and trust boundaries.
+description: >-
+  Opus read-only SAST/taint-flow reviewer keyed to loop-orchestrator's OWN threat model
+  (docs/architecture_definition.md) — the repo-specific violations generic bandit can't
+  see. Reviews a diff for untrusted-input taint (GitHub issue/webhook body, model-generated
+  code and tool inputs, cross-stage State) reaching a dangerous sink (a gh/shell arg, a
+  filesystem path, a credential path, a State field), and for breaks in the named trust
+  boundaries (keyring single-importer + the double-gated CI exception, persona isolation,
+  zero-trust-between-stages, the five subprocess surfaces, implicit-repo gh resolution = the
+  R8 bug, no-merge-verb). Read-only: returns a ranked findings list, never edits. Complements
+  `architect` (structural invariants) by going deep on taint flow and trust boundaries.
 model: opus
 tools: Read, Bash, Grep, Glob
 ---
