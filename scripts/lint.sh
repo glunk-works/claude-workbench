@@ -40,9 +40,22 @@ else
 fi
 
 # --- plugin.json (one per plugins/*/.claude-plugin/plugin.json) ---
+#
+# `version` is checked for PRESENCE and SHAPE here, never for having been bumped. Requiring
+# a bump per PR would be the wrong invariant: it forces a version decision per commit,
+# collides on one line between concurrent PRs, and misstates the model -- a version belongs
+# to a release, not to a commit. The invariant that matters (tag == this field) is enforced
+# by .github/workflows/release.yml, which DERIVES the tag from this value, so the two cannot
+# disagree. This check exists so that workflow always has something valid to read.
 shopt -s nullglob
 for pj in plugins/*/.claude-plugin/plugin.json; do
   jq -e '.name' "$pj" >/dev/null || fail_with "$pj missing required field: name"
+  ver=$(jq -r '.version // empty' "$pj")
+  if [ -z "$ver" ]; then
+    fail_with "$pj missing required field: version"
+  elif ! printf '%s' "$ver" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    fail_with "$pj version '$ver' is not bare semver MAJOR.MINOR.PATCH (no leading 'v', no suffix)"
+  fi
 done
 
 # --- SKILL.md frontmatter ---
