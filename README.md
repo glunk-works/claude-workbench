@@ -2,8 +2,8 @@
 
 A [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces.md)
 holding `way-of-working`: a portable Claude Code session-handoff protocol
-(`/resume` → `/handoff` → `/critic-gate` → `/ship` → `/pr-checks` → `/archive-sprint`,
-plus `/retro`), four general-purpose review/implementation agents (`architect`, `coder`,
+(`/way-of-working:resume` → `/way-of-working:handoff` → `/way-of-working:critic-gate` → `/way-of-working:ship` → `/way-of-working:pr-checks` → `/way-of-working:archive-sprint`,
+plus `/way-of-working:retro`), four general-purpose review/implementation agents (`architect`, `coder`,
 `security-critic`, `docs-consistency`), a `SessionStart` cursor-banner hook, and the
 Global Conventions (Python, OpenTofu/IaC, Conventional Commits, branch names, the
 squash-merge policy, label taxonomy, Definition of Done).

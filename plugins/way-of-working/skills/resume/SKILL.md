@@ -9,10 +9,10 @@ description: >-
   session working on this repo.
 ---
 
-# /resume — rehydrate a fresh session from externalized state
+# /way-of-working:resume — rehydrate a fresh session from externalized state
 
 Goal: start a new (lean) session already knowing exactly where the last one left off,
-without re-reading the whole repo. This is the counterpart to `/handoff`.
+without re-reading the whole repo. This is the counterpart to `/way-of-working:handoff`.
 
 **Read `.ai/project.yml` first.** Keys below in braces — `{roadmap}`, `{ruleset.name}` — are
 read from it, never typed as literals. If it is missing or unreadable, say so and skip only
@@ -21,7 +21,7 @@ See `reference/project-schema.md`.
 
 ## Same-conversation shortcut
 
-If this `/resume` is invoked **within the same live conversation** as an earlier one in
+If this `/way-of-working:resume` is invoked **within the same live conversation** as an earlier one in
 this repo (no `/clear` in between — e.g. a `/model` switch mid-session, not a fresh
 session), steps 3 (branch prune) and 4 (ruleset check) may cite their **already-known
 result** instead of re-running — but only when you can positively rule out an invalidating
@@ -41,17 +41,17 @@ event, run the check.
 ## Steps
 
 1. **Read the cursor** (in this order, stop reading once you have enough):
-   - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`). If it is missing, fall back to `.ai/next-steps.md` alone — and note that a `/resume` running on `next-steps.md` alone can never auto-start (step 6): no cursor, no unattended work.
+   - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`). If it is missing, fall back to `.ai/next-steps.md` alone — and note that a `/way-of-working:resume` running on `next-steps.md` alone can never auto-start (step 6): no cursor, no unattended work.
    - `.ai/next-steps.md` — the human ledger: what was just done, what's next, which model to use, HITL Gate status.
    - The `pointers.sprint_plan` file (the active `{sprints_dir}/*/sprint_plan.md`) — the task list for the current sprint.
    - `{roadmap}` — read only its **status table** + its **next action** line, not the whole file, unless the next action needs the decisions log (`{decisions.log}`).
 
-2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`. Confirm `last_commit` matches HEAD (or note the drift). If the tree is dirty, surface that — a previous session may not have finished a `/handoff`.
+2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`. Confirm `last_commit` matches HEAD (or note the drift). If the tree is dirty, surface that — a previous session may not have finished a `/way-of-working:handoff`.
 
    > **The cursor-sync commit is NOT drift** — and recognising it is required, not optional,
-   > because otherwise auto-start can never fire in the intended flow. `/handoff` sets
+   > because otherwise auto-start can never fire in the intended flow. `/way-of-working:handoff` sets
    > `last_commit` to HEAD **before** committing `.ai/next-steps.md`, then opens that commit
-   > as a docs-only PR for the human to merge. So the moment the human does what `/handoff`
+   > as a docs-only PR for the human to merge. So the moment the human does what `/way-of-working:handoff`
    > told them to, HEAD is one commit ahead of `last_commit` — by the cursor sync itself.
    > `.ai/state.json` is git-ignored, so nothing corrects `last_commit` afterwards.
    >
@@ -133,12 +133,12 @@ event, run the check.
    so the choice is visible and you can stop it.
 
    **Why auto-start is not a lost approval:** the `next_action` was written by the
-   previous session's `/handoff` — which the human reviewed and approved *then*.
+   previous session's `/way-of-working:handoff` — which the human reviewed and approved *then*.
    Re-approving it at the start of the next session approves the same decision twice, and
    in practice that second approval is a content-free "go" the overwhelming majority of the
    time. The approval that carries real signal is the **`hitl_gate`**, and it is still
    absolutely enforced. Auto-start removes a rubber stamp, not a gate. It also never
-   crosses a merge or review boundary: `/critic-gate` still proposes and the human still
+   crosses a merge or review boundary: `/way-of-working:critic-gate` still proposes and the human still
    picks, the human still merges, and nothing here posts a review.
 
    > **If `{review.ci_gate}` is set and the next action is posting that review:** the review
@@ -155,5 +155,5 @@ event, run the check.
 
 ## Load-on-demand
 Only read the plugin's `reference/conventions.md`, `reference/workflow.md`, or this repo's
-own `.ai/context/` if the next action actually needs them. The point of `/resume` is a
+own `.ai/context/` if the next action actually needs them. The point of `/way-of-working:resume` is a
 cheap, targeted rehydrate — not reloading everything.

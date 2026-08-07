@@ -19,7 +19,7 @@ jq '{
     additionalContext: (
       "[.ai cursor] Assigned: \(.assigned_persona)/\(.assigned_model) for \(.current_sprint_id) (sprint_status: \(.sprint_status)).\n"
       + "Next action: \((.next_action // "unset") | split(". ")[0]).\n"
-      + "If THIS session is not running \(.assigned_model), it is the wrong session for planning/review/architecture work: /handoff -> new session -> /model \(.assigned_model) -> /resume (CLAUDE.md model-routing rule). Mechanical/coder tasks are fine on any model."
+      + "If THIS session is not running \(.assigned_model), it is the wrong session for planning/review/architecture work: /way-of-working:handoff -> new session -> /model \(.assigned_model) -> /way-of-working:resume (CLAUDE.md model-routing rule). Mechanical/coder tasks are fine on any model."
     )
   }
 }' "$state" 2>/dev/null || exit 0

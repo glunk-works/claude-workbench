@@ -3,10 +3,10 @@ name: archive-sprint
 description: >-
   Retire a COMPLETED sprint that has passed its HITL Gate and is committed — snapshot its
   .ai/next-steps.md into .ai/archive/, advance .ai/state.json to the next sprint, and seed a
-  fresh next-steps.md. Run ONLY on sprint completion; /handoff and /resume never archive.
+  fresh next-steps.md. Run ONLY on sprint completion; /way-of-working:handoff and /way-of-working:resume never archive.
 ---
 
-# /archive-sprint — retire a completed sprint and bootstrap the next
+# /way-of-working:archive-sprint — retire a completed sprint and bootstrap the next
 
 Goal: close out a finished sprint cleanly and set up the next one, keeping the live
 cursor small and moving completed detail out of routine context. This is the ONLY
@@ -61,7 +61,7 @@ If any precondition fails, STOP and report why — do not archive.
 
    Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
 
-5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + `{roadmap}`) if they want it durable. If this same session did the sprint's work (so its friction is in context), offer a **`/retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
+5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + `{roadmap}`) if they want it durable. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
 6. **Consider bumping the plugin pin.** A sprint close is the one ritual that reliably
    recurs, which makes it the right moment to check whether `.claude/settings.json` points

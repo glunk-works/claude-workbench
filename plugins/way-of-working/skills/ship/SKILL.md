@@ -7,7 +7,7 @@ description: >-
   force-pushes. Run when work is done and you want it on a PR.
 ---
 
-# /ship — commit, push, and open the PR (then stop)
+# /way-of-working:ship — commit, push, and open the PR (then stop)
 
 Goal: turn a finished working tree into an open PR against `{pr_base}`, with every repo
 convention applied by construction — so the recurring slips (over-length PR title,
@@ -74,14 +74,14 @@ approval.
 7. **If a review gate applies, flag it — do not satisfy it here.**
    - **`{review.ci_gate}` is set and the diff touches `{code_paths}`:** the
      `{review.ci_gate.check}` check stays red until a **fresh-session** review is posted
-     against the PR's current head commit. `/ship` does **not** post that review — switching
-     model mid-session is not a review session. Tell the user the PR needs the `/handoff` →
-     new session → `/resume` → review → post sequence.
+     against the PR's current head commit. `/way-of-working:ship` does **not** post that review — switching
+     model mid-session is not a review session. Tell the user the PR needs the `/way-of-working:handoff` →
+     new session → `/way-of-working:resume` → review → post sequence.
    - **`{review.ci_gate}` is `null`:** this repo has no review CI gate. Say nothing about
      one — do not invent a review step, and do not describe the PR as exempt from a gate
      that does not exist. The PR is complete at step 8.
 
-8. **Stop at the open PR.** Report the PR URL and, if you want, hand off to `/pr-checks <N>`
+8. **Stop at the open PR.** Report the PR URL and, if you want, hand off to `/way-of-working:pr-checks <N>`
    to watch the required checks. **No `gh pr merge`, no `gh pr review --approve`, no
    `git push --force`** — the merge is the human's.
 

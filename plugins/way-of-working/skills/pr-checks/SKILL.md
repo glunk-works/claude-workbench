@@ -7,13 +7,13 @@ description: >-
   skipped/BLOCKED/conflict traps, and never merges — the human's merge is the approval.
 ---
 
-# /pr-checks — report required-check status and merge-readiness (never merge)
+# /way-of-working:pr-checks — report required-check status and merge-readiness (never merge)
 
 Goal: answer "is PR #N ready to merge?" with a trustworthy, complete verdict — every
 required check named and classified — and stop there. **Never** merge, `--approve`, or
 force-push. The human's merge is the approval. This is a read-only status skill.
 
-Argument: a PR number (e.g. `/pr-checks 94`). If none is given, resolve it from the
+Argument: a PR number (e.g. `/way-of-working:pr-checks 94`). If none is given, resolve it from the
 current branch with `gh pr view --json number`.
 
 ## The required checks

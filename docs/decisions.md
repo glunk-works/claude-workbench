@@ -100,13 +100,13 @@ take effect. Full reasoning and the task breakdown that implements them:
     into this plugin's `reference/` or the consuming repo's local truth, referenced as the
     bare directory, never a named file). A bare `.ai/context/` with no filename stays
     legitimate and unmatched. Check **names** are deliberately *not* added: they appear in
-    illustrative example output (`/pr-checks`' report shape), so grepping them false-positives;
-    check-name coupling is caught instead by `/resume` and `/pr-checks` reading
+    illustrative example output (`/way-of-working:pr-checks`' report shape), so grepping them false-positives;
+    check-name coupling is caught instead by `/way-of-working:resume` and `/way-of-working:pr-checks` reading
     `{ruleset.required_checks}` and reporting *inconclusive* on a mismatch. A grep cannot
     prove portability — it catches how portability actually rots — and Tier 3 narrows the
     blind spot without pretending to close it.
 
-  - **F5 — `/critic-gate` gained a third proposal row: a newly-added doc.** A brand-new
+  - **F5 — `/way-of-working:critic-gate` gained a third proposal row: a newly-added doc.** A brand-new
     load-bearing doc cannot already be in `{load_bearing_docs}`, so keying the docs critic
     only off that set silently skipped a doc on the commit where it is most worth a look —
     its first version. **Disposition: a portable behavior fix, no new schema key** — the
@@ -116,7 +116,7 @@ take effect. Full reasoning and the task breakdown that implements them:
     security/credential/operational procedure) and flags adding the file to
     `{load_bearing_docs}`; it remains a proposal the human confirms or trims.
 
-  - **F6 — `/handoff` step 5's branch rule clarified, not exempted.** The finding argued that
+  - **F6 — `/way-of-working:handoff` step 5's branch rule clarified, not exempted.** The finding argued that
     a "stacked" handoff (a second session syncing the cursor while the first session's PR is
     still open) needs to commit the sync onto the code branch, because `{pr_base}` lacks that
     PR's content. **Disposition: the finding's rationale is wrong and the rule is right** —
@@ -132,5 +132,5 @@ All four of `WB-D1..D4` are implemented by this repo's existence and structure a
 `v0.1.0`. `WB-D2`'s schema (`reference/project-schema.md`), the full skill and agent
 generalization against it, `WB-D5`, and the grep-based `coupling` CI job that enforces
 `WB-D2` mechanically all land in `v0.2.0`. `WB-D6`'s dispositions — the Tier-3 coupling
-patterns, the `/critic-gate` new-doc row, and the `/handoff` step-5 clarification — land in
+patterns, the `/way-of-working:critic-gate` new-doc row, and the `/way-of-working:handoff` step-5 clarification — land in
 the next tag; F1–F4 needed no plugin change (already fixed in `v0.2.0`).

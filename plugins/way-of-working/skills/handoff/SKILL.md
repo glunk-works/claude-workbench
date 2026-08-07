@@ -2,17 +2,17 @@
 name: handoff
 description: >-
   Serialize the current dev-session state into .ai/ before switching model or session —
-  check the /critic-gate pass ran on any code diff, update .ai/state.json (including
+  check the /way-of-working:critic-gate pass ran on any code diff, update .ai/state.json (including
   hitl_gate, always), regenerate .ai/next-steps.md, and commit/push it as its own docs-only
   PR (never merged — the human merges). Run this at the END of a session. Does NOT archive a
   sprint.
 ---
 
-# /handoff — externalize state before switching model/session
+# /way-of-working:handoff — externalize state before switching model/session
 
 Goal: leave a clean, self-contained cursor so the next (fresh, lean) session can
-`/resume` without inheriting this session's bloated context. This is the token-saving
-handoff point. It does **not** archive — that is `/archive-sprint`, only on completion.
+`/way-of-working:resume` without inheriting this session's bloated context. This is the token-saving
+handoff point. It does **not** archive — that is `/way-of-working:archive-sprint`, only on completion.
 
 **Read `.ai/project.yml` first** for `{pr_base}`, `{roadmap}`, `{code_paths}`, `{models}`,
 and `{review.ci_gate}`.
@@ -21,15 +21,15 @@ and `{review.ci_gate}`.
 
 1. **Check the QA-critic pass ran** (skip if this session wrote no code — a planning
    session has no diff to critique). Run `git diff {pr_base}...HEAD --stat`. If it touches
-   `{code_paths}` and **no `/critic-gate` pass ran on that diff in this session**, say so
+   `{code_paths}` and **no `/way-of-working:critic-gate` pass ran on that diff in this session**, say so
    plainly and offer to run it before handing off. The critic pass belongs to the
-   implementation session — once you `/handoff`, the diff moves on with no critic having
+   implementation session — once you `/way-of-working:handoff`, the diff moves on with no critic having
    looked, which is the failure mode that justifies a standing critic pass at all.
 
    This is a **prompt, not a block**: the human may decline and hand off anyway (say
    "handing off without a critic pass" in the report so the choice is on the record). It
-   exists because nothing else in the pipeline points at `/critic-gate` — the skill said
-   "before `/handoff`" while `/handoff` never mentioned it, so the human was the only
+   exists because nothing else in the pipeline points at `/way-of-working:critic-gate` — the skill said
+   "before `/way-of-working:handoff`" while `/way-of-working:handoff` never mentioned it, so the human was the only
    trigger. The gate still **proposes and the human still picks** which critics run; this
    step only stops the pass from being forgotten.
 
@@ -37,7 +37,7 @@ and `{review.ci_gate}`.
    - `current_phase`, `current_sprint_id`, and `sprint_status` — one of `planning` |
      `implementing` | `awaiting_review` | `blocked` | `done`. Before writing `done` (or any
      "complete"/"landed" claim into `next_action`), apply the **verification-ledger** check
-     (`/archive-sprint` precondition 4): if a surface has a **live** side the hermetic suite
+     (`/way-of-working:archive-sprint` precondition 4): if a surface has a **live** side the hermetic suite
      cannot reach, say "hermetically verified; live smoke deferred → <tracked item>," never
      "done/working end-to-end." Claim only what the evidence covers.
    - `assigned_model` / `assigned_persona` for the **next** session, per `{models}` (see
@@ -45,7 +45,7 @@ and `{review.ci_gate}`.
    - `last_commit` = current `git rev-parse --short HEAD`.
    - `next_action` = the single most important next step, phrased as an imperative.
    - `hitl_gate` — **always write this field**, even when nothing is open (`"NONE OPEN"` +
-     what the next gate will be). It is load-bearing: `/resume` reads it to decide whether
+     what the next gate will be). It is load-bearing: `/way-of-working:resume` reads it to decide whether
      it may start the next action unattended, and treats a missing or unparseable value as
      an open gate. Dropping it doesn't fail loudly — it silently costs the next session its
      auto-start.
@@ -67,7 +67,7 @@ and `{review.ci_gate}`.
      feature branch), do **not** commit the cursor sync there — switch to `{pr_base}`
      (`git fetch origin {pr_base} && git checkout {pr_base} && git pull`), cut a fresh small
      branch (e.g. `docs/sync-cursor-<slug>`), and commit `.ai/next-steps.md` there. If a
-     `/handoff` runs directly on `{pr_base}` with nothing else in flight, cutting a fresh
+     `/way-of-working:handoff` runs directly on `{pr_base}` with nothing else in flight, cutting a fresh
      branch from it is still correct — never commit straight to `{pr_base}`.
    - **This holds even when the cursor describes work that currently lives only on an
      unmerged code branch** — a second session handing off before the first session's PR has
@@ -92,25 +92,25 @@ and `{review.ci_gate}`.
      working tree for this machine.
    - If something *else* is dirty beyond `.ai/next-steps.md` (leftover from this
      session's work), don't fold it into the docs PR — surface it and let the human
-     decide; a `/resume` still expects `last_commit` to match HEAD and a clean tree, and
+     decide; a `/way-of-working:resume` still expects `last_commit` to match HEAD and a clean tree, and
      unrelated dirty state costs the next session its auto-start.
    - **Keep this PR touching `.ai/next-steps.md` and nothing else — that is load-bearing.**
      `last_commit` is set (step 4) *before* this commit exists, so once the human merges,
-     the next `/resume` sees HEAD one commit ahead of the cursor. `/resume` step 2 forgives
+     the next `/way-of-working:resume` sees HEAD one commit ahead of the cursor. `/way-of-working:resume` step 2 forgives
      exactly that — one commit, and `git diff --name-only` returning **only**
      `.ai/next-steps.md`. Fold anything else into this PR and the next session loses its
      auto-start and waits for a human "go" instead. This is also why the fix lives on the
      read side: `last_commit` means *the commit whose work this cursor describes*, and a
      squash merge mints a different SHA than the local branch tip anyway, so no value
-     written here could match what `/resume` later reads.
+     written here could match what `/way-of-working:resume` later reads.
 
-6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (step 1), say so here. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
+6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (step 1), say so here. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/way-of-working:resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
 
    ```
    Next session:
      <new window>            # required if this crosses the review gate; otherwise /clear is fine
      /model <model>          # per assigned_model
-     /resume
+     /way-of-working:resume
    ```
 
    **A review boundary needs a genuinely new session, not `/clear`.** If `{review.ci_gate}`
@@ -118,11 +118,11 @@ and `{review.ci_gate}`.
    **new window/session** explicitly: `/clear` resets context but does not make the reviewer
    a *separate invocation*, and the fresh-session review is an **integrity property**, not
    just context hygiene. For a same-person non-review switch (e.g. planning→coding),
-   `/clear` → `/model` → `/resume` **in place** is acceptable for context — a new session is
+   `/clear` → `/model` → `/way-of-working:resume` **in place** is acceptable for context — a new session is
    what the docs specify, but the integrity concern doesn't apply. Fill in the actual model
    from `assigned_model` so it's paste-ready.
 
 ## Guardrails
 - Never write secrets into `.ai/next-steps.md` or `.ai/state.json`.
 - `.ai/next-steps.md` points into `{roadmap}` and the sprint files; it must not become a second copy of them.
-- `/handoff` writes the `next_action` that `/resume` may execute **without a further prompt** (see `/resume` step 6). Phrase it as a precise, bounded imperative that you would be content to see carried out unattended — not a vague direction that needs a human to interpret it. If the next step genuinely needs a decision, that is what `hitl_gate` is for: open one.
+- `/way-of-working:handoff` writes the `next_action` that `/way-of-working:resume` may execute **without a further prompt** (see `/way-of-working:resume` step 6). Phrase it as a precise, bounded imperative that you would be content to see carried out unattended — not a vague direction that needs a human to interpret it. If the next step genuinely needs a decision, that is what `hitl_gate` is for: open one.
