@@ -48,6 +48,27 @@ event, run the check.
 
 2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`. Confirm `last_commit` matches HEAD (or note the drift). If the tree is dirty, surface that — a previous session may not have finished a `/handoff`.
 
+   > **The cursor-sync commit is NOT drift** — and recognising it is required, not optional,
+   > because otherwise auto-start can never fire in the intended flow. `/handoff` sets
+   > `last_commit` to HEAD **before** committing `.ai/next-steps.md`, then opens that commit
+   > as a docs-only PR for the human to merge. So the moment the human does what `/handoff`
+   > told them to, HEAD is one commit ahead of `last_commit` — by the cursor sync itself.
+   > `.ai/state.json` is git-ignored, so nothing corrects `last_commit` afterwards.
+   >
+   > Treat the delta as **not drift** when *both* hold:
+   > ```bash
+   > git rev-list --count <last_commit>..HEAD      # is exactly 1
+   > git diff --name-only <last_commit>..HEAD      # is exactly .ai/next-steps.md
+   > ```
+   > **The file list is what makes this safe, not the count** — check it, never infer it from
+   > the count alone. A single commit that touches anything else is ordinary drift and still
+   > waits. Note the SHA will not match even in the clean case: the branch is squash-merged,
+   > so `{pr_base}` carries a *different* commit than the local branch tip ever had. Any
+   > check keyed on SHA equality alone is wrong for the same reason step 3's prune is.
+   >
+   > Say which case you found in one line, e.g. `HEAD is one ahead of last_commit — the
+   > merged cursor-sync PR, not drift.` Anything you cannot classify is drift.
+
 3. **Prune squash-merged local branches** (standard practice — squash-merge is the default here, and `git branch --merged {pr_base}` **cannot** see a squash-merged branch because the squash makes a new commit the branch never became an ancestor of; so ask GitHub which PRs merged). One read-only `gh` call, then a safe `-D` on **only** the branches whose PR GitHub reports `merged` — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
    ```bash
    base=$(yq -r .pr_base .ai/project.yml)      # or read it however you like
@@ -88,7 +109,8 @@ event, run the check.
    - `hitl_gate` is present and reads `NONE OPEN`;
    - `sprint_status` is `implementing`;
    - the running model matches `assigned_model` (step 5);
-   - step 2 found no drift — `last_commit` matches HEAD **and** the tree is clean.
+   - step 2 found no drift — `last_commit` matches HEAD, **or** the only delta is the merged
+     cursor-sync commit that step 2 defines — **and** the tree is clean.
 
    Otherwise **state the pick-up point and wait.** In particular: always wait on
    `planning` (the planning pass is one question at a time — that dialogue *is* the
@@ -98,6 +120,13 @@ event, run the check.
    > won't parse, or a `sprint_status` you can't classify all mean **wait** — never
    > proceed. "I couldn't tell whether a gate was open" is not "no gate is open"; that
    > conflation is the same defect as an inconclusive ruleset check reported as healthy.
+   >
+   > **The cursor-sync carve-out above does not soften this**, and must not be read as
+   > licence to wave through a delta that merely *looks* routine. It is narrow on purpose:
+   > one commit, one named file, both **verified by command**. A commit you did not diff, a
+   > delta of two or more, or a cursor commit carrying anything besides
+   > `.ai/next-steps.md` is **drift, and waits.** If you find yourself reasoning about why
+   > some *other* delta is probably harmless, that is the failure this block exists to stop.
 
    Say which branch you took and why in one line (`Auto-starting: gate NONE OPEN,
    status implementing, cursor clean.` / `Waiting: HITL Gate open on the sprint 41 plan.`)
