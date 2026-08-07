@@ -53,7 +53,12 @@ for pj in plugins/*/.claude-plugin/plugin.json; do
   ver=$(jq -r '.version // empty' "$pj")
   if [ -z "$ver" ]; then
     fail_with "$pj missing required field: version"
-  elif ! printf '%s' "$ver" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  elif [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    # `[[ =~ ]]`, NOT `grep -qE`. `grep` is line-oriented and `-q` succeeds if ANY line
+    # matches, so $'1.2.3\nanything' passes a `^...$` pattern. release.yml builds a git ref
+    # from this value, so a multi-line version there writes a second line into
+    # $GITHUB_OUTPUT and the tag stops matching plugin.json -- defeating the invariant the
+    # release workflow exists to guarantee. bash `=~` anchors against the whole string.
     fail_with "$pj version '$ver' is not bare semver MAJOR.MINOR.PATCH (no leading 'v', no suffix)"
   fi
 done
