@@ -94,6 +94,15 @@ and `{review.ci_gate}`.
      session's work), don't fold it into the docs PR — surface it and let the human
      decide; a `/resume` still expects `last_commit` to match HEAD and a clean tree, and
      unrelated dirty state costs the next session its auto-start.
+   - **Keep this PR touching `.ai/next-steps.md` and nothing else — that is load-bearing.**
+     `last_commit` is set (step 4) *before* this commit exists, so once the human merges,
+     the next `/resume` sees HEAD one commit ahead of the cursor. `/resume` step 2 forgives
+     exactly that — one commit, and `git diff --name-only` returning **only**
+     `.ai/next-steps.md`. Fold anything else into this PR and the next session loses its
+     auto-start and waits for a human "go" instead. This is also why the fix lives on the
+     read side: `last_commit` means *the commit whose work this cursor describes*, and a
+     squash merge mints a different SHA than the local branch tip anyway, so no value
+     written here could match what `/resume` later reads.
 
 6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (step 1), say so here. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
 
