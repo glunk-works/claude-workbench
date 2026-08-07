@@ -1,0 +1,165 @@
+name: release
+
+# Cutting a release is a deliberate act, so this is manual. It is NOT `on: push: tags:` --
+# that shape can only *check* that a pushed tag matches `plugin.json`, and by then the tag
+# exists and consumers may already have fetched it. This workflow DERIVES the tag from
+# `plugin.json`, which makes the two structurally incapable of disagreeing rather than
+# merely audited. Bump the version in a normal PR; release from `main` afterwards.
+#
+# Background: `plugin.json` read `0.1.0` while tags were at `v0.3.0`. Nothing was broken by
+# it -- the plugin cache tracks the pinned git ref, not this field -- but the cache DIRECTORY
+# is named from it, so the one place a human or agent looks to confirm which version is
+# installed reported `0.1.0` forever. An illegible install, not a wrong one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Verify and report the release plan without creating the tag or release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Re-run the PR gates against the exact commit being tagged. A tag can point at any
+  # commit, and `ci.yml` only runs `on: pull_request` -- so "it was green on the PR" is not
+  # the same claim as "it is green at the ref being released".
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Install the claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate plugin manifests and skill frontmatter
+        run: bash scripts/lint.sh
+      - name: No repo-specific literals in skills/ or agents/
+        run: bash scripts/coupling-check.sh
+
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag ref and the GitHub Release; nothing else
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0 # release notes are derived from the log since the previous tag
+          persist-credentials: false # the tag is created through the API, not `git push`
+
+      - name: Resolve the version from plugin.json
+        id: resolve
+        run: |
+          set -euo pipefail
+          version=$(jq -r '.version' plugins/way-of-working/.claude-plugin/plugin.json)
+          # lint.sh already enforces this shape; re-assert because this job creates a ref
+          # from the value and a malformed one would mint a permanent bad tag.
+          printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "::error::plugin.json version '$version' is not bare semver"; exit 1; }
+          echo "version=$version"   >> "$GITHUB_OUTPUT"
+          echo "tag=v$version"      >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to overwrite an existing tag
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Re-tagging is how a consumer that pinned this version silently gets different
+          # code. Bump plugin.json instead.
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG already exists. Bump the version in plugins/way-of-working/.claude-plugin/plugin.json."
+            exit 1
+          fi
+
+      - name: Build the release notes
+        id: notes
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          prev=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          {
+            echo "## Changes"
+            echo
+            if [ -n "$prev" ]; then
+              git log --no-merges --pretty='- %s' "$prev..HEAD"
+            else
+              git log --no-merges --pretty='- %s'
+            fi
+            echo
+            echo "## Consumer pin bumps — staged, not a flat list"
+            echo
+            echo "Consuming repos pin an exact ref, so **this release changes nothing until each one bumps**"
+            echo "\`.claude/settings.json\` → \`extraKnownMarketplaces.claude-workbench.source.ref\` to \`$TAG\`."
+            echo "Tracked here as a checklist rather than automated: opening PRs across repos needs a"
+            echo "cross-repo write credential in a workflow, which is a bigger decision than this"
+            echo "release is worth. An unbumped consumer is at least visible this way."
+            echo
+            echo "**Do these in order.** Exact pinning already means a new tag reaches nobody until a"
+            echo "human bumps it — so every tag is effectively a release candidate and an \`-rc\` suffix"
+            echo "would only re-create, with ceremony, what pinning gives for free. What pinning does"
+            echo "*not* give you is a tester: this plugin's real risk is a skill edit that changes agent"
+            echo "behaviour in a way \`lint\` and \`coupling\` structurally cannot catch, and the only thing"
+            echo "that catches it is running a session. So bump the canary, **use it**, then fan out."
+            echo
+            echo "### 1. Canary — bump, then run a real session before going further"
+            echo
+            echo "- [ ] glunk-works/bedrock-serverless-rag"
+            echo "- [ ] Ran a real session against it (\`/way-of-working:resume\` through"
+            echo "      \`/way-of-working:ship\` at minimum) with no"
+            echo "      surprises — this is the step that does the actual verifying; skipping it makes"
+            echo "      the staging pointless and the list flat again"
+            echo
+            echo "### 2. The rest — only after the canary is clean"
+            echo
+            echo "- [ ] glunk-works/bounty-infra"
+            echo "- [ ] 603-Identity/infrastructure-core"
+            echo "- [ ] 603-Identity/terraform-cloudflare-dns"
+            echo "- [ ] 603-Identity/603identity-site"
+            echo
+            echo "If the canary turns up a defect: fix it, cut the next version, and leave the repos in"
+            echo "stage 2 where they are. **Do not re-tag \`$TAG\`** — a consumer that already bumped"
+            echo "would silently get different code, which is the failure this workflow refuses by"
+            echo "construction."
+          } > release-notes.md
+          if [ -n "$prev" ]; then echo "previous=$prev" >> "$GITHUB_OUTPUT"; fi
+          echo "--- release notes ---"
+          cat release-notes.md
+
+      - name: Report the plan (dry run only)
+        if: inputs.dry_run
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          PREVIOUS: ${{ steps.notes.outputs.previous }}
+        run: |
+          set -euo pipefail
+          echo "DRY RUN -- nothing was created."
+          echo "Would tag $GITHUB_SHA as $TAG (previous: ${PREVIOUS:-none})."
+
+      - name: Create the tag and the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Created through the API so no credential is persisted on disk for a later step.
+          gh api "repos/$REPO/git/refs" \
+            -f "ref=refs/tags/$TAG" \
+            -f "sha=$SHA" >/dev/null
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --title "$TAG" \
+            --notes-file release-notes.md
+          echo "Released $TAG at $SHA"
