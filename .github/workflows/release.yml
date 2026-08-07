@@ -96,19 +96,40 @@ jobs:
               git log --no-merges --pretty='- %s'
             fi
             echo
-            echo "## Consumer pin bumps"
+            echo "## Consumer pin bumps — staged, not a flat list"
             echo
-            echo "Consuming repos pin a tag, so **this release changes nothing until each one bumps**"
+            echo "Consuming repos pin an exact ref, so **this release changes nothing until each one bumps**"
             echo "\`.claude/settings.json\` → \`extraKnownMarketplaces.claude-workbench.source.ref\` to \`$TAG\`."
             echo "Tracked here as a checklist rather than automated: opening PRs across repos needs a"
             echo "cross-repo write credential in a workflow, which is a bigger decision than this"
             echo "release is worth. An unbumped consumer is at least visible this way."
             echo
+            echo "**Do these in order.** Exact pinning already means a new tag reaches nobody until a"
+            echo "human bumps it — so every tag is effectively a release candidate and an \`-rc\` suffix"
+            echo "would only re-create, with ceremony, what pinning gives for free. What pinning does"
+            echo "*not* give you is a tester: this plugin's real risk is a skill edit that changes agent"
+            echo "behaviour in a way \`lint\` and \`coupling\` structurally cannot catch, and the only thing"
+            echo "that catches it is running a session. So bump the canary, **use it**, then fan out."
+            echo
+            echo "### 1. Canary — bump, then run a real session before going further"
+            echo
             echo "- [ ] glunk-works/bedrock-serverless-rag"
+            echo "- [ ] Ran a real session against it (\`/way-of-working:resume\` through"
+            echo "      \`/way-of-working:ship\` at minimum) with no"
+            echo "      surprises — this is the step that does the actual verifying; skipping it makes"
+            echo "      the staging pointless and the list flat again"
+            echo
+            echo "### 2. The rest — only after the canary is clean"
+            echo
             echo "- [ ] glunk-works/bounty-infra"
             echo "- [ ] 603-Identity/infrastructure-core"
             echo "- [ ] 603-Identity/terraform-cloudflare-dns"
             echo "- [ ] 603-Identity/603identity-site"
+            echo
+            echo "If the canary turns up a defect: fix it, cut the next version, and leave the repos in"
+            echo "stage 2 where they are. **Do not re-tag \`$TAG\`** — a consumer that already bumped"
+            echo "would silently get different code, which is the failure this workflow refuses by"
+            echo "construction."
           } > release-notes.md
           if [ -n "$prev" ]; then echo "previous=$prev" >> "$GITHUB_OUTPUT"; fi
           echo "--- release notes ---"
