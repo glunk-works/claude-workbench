@@ -17,18 +17,52 @@ on:
       dry_run:
         description: "Verify and report the release plan without creating the tag or release"
         type: boolean
-        default: false
+        # Defaults to the SAFE action: the irreversible path costs one extra click.
+        default: true
 
 permissions:
   contents: read
 
+# Two dispatches racing would both clear the local tag guard; the loser then gets a 422
+# from the create-only refs API and fails loudly. Serialising is cheaper than reasoning
+# about that. Never cancel in progress -- a cancelled release can leave a tag behind.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   # Re-run the PR gates against the exact commit being tagged. A tag can point at any
-  # commit, and `ci.yml` only runs `on: pull_request` -- so "it was green on the PR" is not
-  # the same claim as "it is green at the ref being released".
+  # commit, and `ci.yml` only runs `on: pull_request` -- which tests the MERGE commit
+  # (`refs/pull/N/merge`), not the branch tip -- so "it was green on the PR" is genuinely
+  # not the same claim as "it is green at the ref being released".
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
+      # FIRST, before any checkout or any repo script runs.
+      #
+      # `workflow_dispatch` lets the dispatcher choose ANY ref, and everything downstream --
+      # the gate scripts, `plugin.json`, and the commit the tag points at -- comes from that
+      # ref. Without this, pushing a branch is equivalent to publishing a release: the
+      # branch ruleset protects `main` only, so an unreviewed commit could be tagged, and
+      # consumers pin tags exactly. That would route around the one control the repo has.
+      #
+      # This is a failing assert rather than a job-level `if:` on purpose -- a skipped job
+      # reads as a pass in the run summary, and this must be impossible to misread.
+      - name: Release only from the default branch
+        env:
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEFAULT_BRANCH" ]; then
+            echo "::error::could not resolve the default branch; refusing to release"
+            exit 1
+          fi
+          if [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::release must be dispatched from $DEFAULT_BRANCH, got $REF"
+            exit 1
+          fi
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -37,8 +71,10 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
+      # Pinned so a release is reproducible: unpinned, `verify` runs whatever the registry
+      # serves that minute rather than the validator that passed on the PR.
       - name: Install the claude CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.224
       - name: Validate plugin manifests and skill frontmatter
         run: bash scripts/lint.sh
       - name: No repo-specific literals in skills/ or agents/
@@ -47,6 +83,7 @@ jobs:
   release:
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write # create the tag ref and the GitHub Release; nothing else
     steps:
@@ -61,32 +98,65 @@ jobs:
         run: |
           set -euo pipefail
           version=$(jq -r '.version' plugins/way-of-working/.claude-plugin/plugin.json)
-          # lint.sh already enforces this shape; re-assert because this job creates a ref
-          # from the value and a malformed one would mint a permanent bad tag.
-          printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' \
-            || { echo "::error::plugin.json version '$version' is not bare semver"; exit 1; }
+          # `[[ =~ ]]`, NOT `grep -qE`. `grep` is LINE-oriented: `grep -q` succeeds if ANY
+          # line matches, so a version of $'1.2.3\ntag=v9.9.9' passes a `^...$` pattern and
+          # then writes a second, attacker-chosen line into $GITHUB_OUTPUT -- last write
+          # wins, and the tag stops matching plugin.json. That defeats the one invariant
+          # this workflow exists to make structurally impossible. bash `=~` anchors against
+          # the whole string, newlines included. `scripts/lint.sh` had the identical bug and
+          # is fixed in the same change, so the "two independent layers" is actually true.
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::plugin.json version '$version' is not bare semver"
+            exit 1
+          fi
           echo "version=$version"   >> "$GITHUB_OUTPUT"
           echo "tag=v$version"      >> "$GITHUB_OUTPUT"
+        shell: bash
 
-      - name: Refuse to overwrite an existing tag
+      - name: Refuse to overwrite an existing tag, or to move backwards
+        id: prev
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
+          VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           set -euo pipefail
           # Re-tagging is how a consumer that pinned this version silently gets different
           # code. Bump plugin.json instead.
+          #
+          # Note what actually makes re-tagging impossible: `POST /git/refs` is CREATE-ONLY
+          # and returns 422 on an existing ref -- moving one needs `PATCH`, which this
+          # workflow never calls. This local check exists to fail fast with a useful
+          # message, not to be the guarantee.
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             echo "::error::$TAG already exists. Bump the version in plugins/way-of-working/.claude-plugin/plugin.json."
             exit 1
           fi
+          # `--merged HEAD` is load-bearing: without it this is the highest tag ANYWHERE,
+          # so a tag on a divergent branch becomes the notes baseline and `git log
+          # "$prev..HEAD"` silently yields an empty or arbitrary changelog on a permanent
+          # release.
+          prev=$(git tag --list 'v*' --merged HEAD --sort=-v:refname | head -n1)
+          if [ -n "$prev" ]; then
+            prev_ver="${prev#v}"
+            # Tag-uniqueness alone does not imply forward progress: with v0.3.0 present, a
+            # plugin.json of 0.2.5 mints v0.2.5 pointing at newer code than v0.3.0. A human
+            # reading a version number relies on ordering, not just uniqueness.
+            newest=$(printf '%s\n%s\n' "$prev_ver" "$VERSION" | sort -V | tail -n1)
+            if [ "$prev_ver" = "$VERSION" ] || [ "$newest" != "$VERSION" ]; then
+              echo "::error::version $VERSION does not move forward from $prev"
+              exit 1
+            fi
+          fi
+          echo "previous=$prev" >> "$GITHUB_OUTPUT"
 
       - name: Build the release notes
-        id: notes
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
+          # Ancestry-aware, computed and validated in the previous step -- do not recompute
+          # it here with a plain `git tag --list`.
+          prev: ${{ steps.prev.outputs.previous }}
         run: |
           set -euo pipefail
-          prev=$(git tag --list 'v*' --sort=-v:refname | head -n1)
           {
             echo "## Changes"
             echo
@@ -131,15 +201,18 @@ jobs:
             echo "would silently get different code, which is the failure this workflow refuses by"
             echo "construction."
           } > release-notes.md
-          if [ -n "$prev" ]; then echo "previous=$prev" >> "$GITHUB_OUTPUT"; fi
           echo "--- release notes ---"
           cat release-notes.md
 
+      # `inputs.dry_run` -- NOT `github.event.inputs.dry_run`. The `inputs` context preserves
+      # a `type: boolean` input as a real boolean; `github.event.inputs.*` is always a STRING,
+      # and the string "false" is truthy, so that spelling would make these two steps both
+      # take the dry-run branch and the release would never be created. Do not "simplify".
       - name: Report the plan (dry run only)
         if: inputs.dry_run
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
-          PREVIOUS: ${{ steps.notes.outputs.previous }}
+          PREVIOUS: ${{ steps.prev.outputs.previous }}
         run: |
           set -euo pipefail
           echo "DRY RUN -- nothing was created."
@@ -154,12 +227,18 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          # Created through the API so no credential is persisted on disk for a later step.
-          gh api "repos/$REPO/git/refs" \
-            -f "ref=refs/tags/$TAG" \
-            -f "sha=$SHA" >/dev/null
+          # ONE call, deliberately. This was two -- `gh api .../git/refs` to create the tag,
+          # then `gh release create` -- which is not atomic: a transient failure between them
+          # leaves the tag created and the release missing, and the "refuse to overwrite"
+          # guard then blocks the retry while telling you to bump the version. That burns a
+          # version number over a network blip, on a workflow whose whole cost model is that
+          # tags are permanent.
+          #
+          # `--target` creates the tag as part of creating the release. Still no credential
+          # on disk: `gh` uses GH_TOKEN from the environment, not the git remote.
           gh release create "$TAG" \
             --repo "$REPO" \
+            --target "$SHA" \
             --title "$TAG" \
             --notes-file release-notes.md
           echo "Released $TAG at $SHA"
