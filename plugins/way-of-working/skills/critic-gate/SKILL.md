@@ -1,19 +1,19 @@
 ---
 name: critic-gate
 description: >-
-  Run the QA-critic pass on a coding diff — after the local green gate, before /handoff.
+  Run the QA-critic pass on a coding diff — after the local green gate, before /way-of-working:handoff.
   PROPOSES which read-only critic subagents apply by what the diff touches, and waits for
   the human to confirm or trim before spawning any — it never auto-fans-out. Aggregates
   findings for the coder to fix, iterates to clean. Defense-in-depth that runs EARLIER — it
   is explicitly NOT the repo's review CI gate and never satisfies it.
 ---
 
-# /critic-gate — the QA-critic pass (coder-side, before the review)
+# /way-of-working:critic-gate — the QA-critic pass (coder-side, before the review)
 
 Goal: catch the cheap, mechanical, boundary-shaped defects on the implementation side, so
 the expensive fresh-session review spends its attention on judgment — and so nothing ships
 green with no critic having looked. This runs in the **implementation session** after the
-green gate and before `/handoff`.
+green gate and before `/way-of-working:handoff`.
 
 **Read `.ai/project.yml` first** for `{gates.green}`, `{code_paths}`, `{agents.enabled}`,
 `{load_bearing_docs}`, and `{review.ci_gate}`.
@@ -21,7 +21,7 @@ green gate and before `/handoff`.
 > **This pass is defense-in-depth that runs EARLIER.** Where `{review.ci_gate}` is set, it
 > is **not** that gate and must never be presented as satisfying it — that gate wants a
 > *fresh-session*, human-triggered review with an attestation, and it still happens after
-> `/handoff`, unchanged.
+> `/way-of-working:handoff`, unchanged.
 >
 > Where `{review.ci_gate}` is `null`, this repo has no review CI gate, so **this pass is the
 > only standing critic look the diff gets before the human's merge.** That is not a reason
@@ -73,7 +73,7 @@ green gate and before `/handoff`.
    repo-local by definition: if one is in `{agents.enabled}` and its angle fits the diff,
    propose it the same way, reading its own definition for when it applies.
 
-   If the caller named critics explicitly (`/critic-gate security-critic architect`), skip
+   If the caller named critics explicitly (`/way-of-working:critic-gate security-critic architect`), skip
    the proposal and run exactly those. If the diff touches nothing a critic covers, say so
    and stop — don't manufacture a reason to spawn one. Note the `architect`/`security-critic`
    overlap so the human can pick one rather than both when a light look is enough.
@@ -94,8 +94,8 @@ green gate and before `/handoff`.
 
 6. **Report and stop.** Summarize: which critics ran, what they found, what was fixed, what
    was accepted-with-reason.
-   - If `{review.ci_gate}` is set, the next step is `/handoff` → fresh session → `/resume` →
-     review the diff → post it. `/critic-gate` never posts that review.
+   - If `{review.ci_gate}` is set, the next step is `/way-of-working:handoff` → fresh session → `/way-of-working:resume` →
+     review the diff → post it. `/way-of-working:critic-gate` never posts that review.
    - If `{review.ci_gate}` is `null`, say explicitly that this pass is the only critic look
      the diff has had and that the human's merge is the sole remaining gate.
 

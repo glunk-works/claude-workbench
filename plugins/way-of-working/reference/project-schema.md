@@ -29,7 +29,7 @@ stops an agent reviewing repo B against the invariants it remembers from repo A.
 **Fail closed and say so.** A skill that cannot read `.ai/project.yml` reports
 `no .ai/project.yml — this repo has not adopted the plugin contract` and then does only the
 part of its job that needs no schema value. It **never** guesses a check name, a ruleset
-name, a branch, or a gate. Guessing is worse than stopping: a `/pr-checks` that invents a
+name, a branch, or a gate. Guessing is worse than stopping: a `/way-of-working:pr-checks` that invents a
 required-check list reports a confident verdict on the wrong set, which is precisely the
 failure the skill exists to prevent.
 
@@ -142,15 +142,15 @@ The repo's deep record, which the plugin points into and never duplicates.
 `decisions.prefix` lets a skill say "record this as a `{decisions.prefix}` entry" without
 knowing whether that reads `BI-D`, `WB-D`, or something else.
 
-`backlog.kind` is the one genuinely bimodal key here, and it is load-bearing for `/retro`
-and `/archive-sprint`, both of which route findings into a backlog and cite items by id:
+`backlog.kind` is the one genuinely bimodal key here, and it is load-bearing for `/way-of-working:retro`
+and `/way-of-working:archive-sprint`, both of which route findings into a backlog and cite items by id:
 
 - `github_issues` — findings become GitHub issues, cited as `#N`. There is no backlog file
   to read; the equivalent of "read what's already decided" is `gh issue list`.
 - `file` — findings become items in `{backlog.path}`, cited as `{backlog.item_prefix}N`.
 
 A skill must branch on `kind` and never assume a file exists. This key was **not** in the
-original sprint plan; it was found while generalizing `/retro`, which the plan's inventory
+original sprint plan; it was found while generalizing `/way-of-working:retro`, which the plan's inventory
 recorded as having no coupling at all. It has three (`docs/backlog.md`, `BL-` ids, and a
 named repo-local memory), and the first two are structural.
 
@@ -160,8 +160,8 @@ named repo-local memory), and the first two are structural.
 audit target, and what makes a docs change worth a critic pass.
 
 `code_paths` is the single definition of "this diff changes behavior." It drives
-`/critic-gate`'s proposal (a diff touching none of these warrants no code critic), the
-docs-only classification in `/pr-checks` and `/ship`, and — unless overridden — what trips
+`/way-of-working:critic-gate`'s proposal (a diff touching none of these warrants no code critic), the
+docs-only classification in `/way-of-working:pr-checks` and `/way-of-working:ship`, and — unless overridden — what trips
 the review gate. One key, because two definitions of "is this docs-only" that can disagree
 will eventually disagree.
 
@@ -171,14 +171,14 @@ An ordered list of `{cwd, run}`. `cwd` is relative to the repo root; `run` is a 
 command that must exit 0. Skills execute these in order and stop at the first failure.
 
 This is a **local pre-check, not the gate of record** — CI on the PR is. It exists so a
-coder finds the cheap failures before spending a CI run, and so `/critic-gate` never spends
+coder finds the cheap failures before spending a CI run, and so `/way-of-working:critic-gate` never spends
 critics on a diff that does not build.
 
 ### `ruleset`
 
 `name` is the branch-protection ruleset's name, `rule_types` the rule types it must carry,
-`required_checks` every check it requires. `/resume` verifies the live ruleset against all
-three; `/pr-checks` reports every name in `required_checks` and only those.
+`required_checks` every check it requires. `/way-of-working:resume` verifies the live ruleset against all
+three; `/way-of-working:pr-checks` reports every name in `required_checks` and only those.
 
 Keep `required_checks` in sync with the **live** ruleset, not with a plan or a wish. The
 list here is what skills report as authoritative, so a stale entry produces a confident
@@ -228,7 +228,7 @@ prose.
 
 ### `agents`, `models`
 
-`agents.enabled` is which of the plugin's agents this repo uses. `/critic-gate` proposes
+`agents.enabled` is which of the plugin's agents this repo uses. `/way-of-working:critic-gate` proposes
 from this list only — it never offers an agent the repo has not enabled, and never one that
 is not in the plugin at all.
 
@@ -237,8 +237,8 @@ by definition and out of the plugin's scope; adding one to `agents.enabled` does
 shared. (Unlike skills, a local agent with a new name adds rather than shadows — the
 whole-file shadowing hazard above applies to same-named components.)
 
-`models` maps a role to the model it should run as. `/resume` compares the running model
-against the role the cursor assigns; `/handoff` writes the next session's model from it.
+`models` maps a role to the model it should run as. `/way-of-working:resume` compares the running model
+against the role the cursor assigns; `/way-of-working:handoff` writes the next session's model from it.
 
 **`models` governs *sessions*, not subagent spawns.** A plugin agent's runtime model comes
 from the `model:` field in its own frontmatter, which is upstream data a consuming repo

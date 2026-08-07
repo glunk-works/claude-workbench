@@ -29,21 +29,21 @@ thresholds are proven.
 ## Switch points across a sprint
 
 ```
-OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /handoff
+OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /way-of-working:handoff
    |                                                                          |
    v   (fresh session, /model sonnet)                                         |
-SONNET (code)  /resume -> branch sprint/NN-slug -> implement + tests -> green
-   |           gate -> /critic-gate (QA-critic pass) -> commit -> push        |
-   |           -> /handoff                                                    |
+SONNET (code)  /way-of-working:resume -> branch sprint/NN-slug -> implement + tests -> green
+   |           gate -> /way-of-working:critic-gate (QA-critic pass) -> commit -> push        |
+   |           -> /way-of-working:handoff                                                    |
    |                                                                          |
    v   *** NEW SESSION (context empty), then /model opus ***                  |
    |   /model alone does NOT clear context — a reviewer holding the authoring |
    |   context proofreads its own reasoning instead of re-deriving it.        |
-OPUS (review)  /resume -> /code-review the diff -> HITL Gate -> update roadmap
+OPUS (review)  /way-of-working:resume -> /code-review the diff -> HITL Gate -> update roadmap
    |           -> open PR (base: main) -> STOP                                |
    |                                                                          |
    v                                                                          |
-HUMAN          review the PR -> merge = approval -> /archive-sprint, plan next
+HUMAN          review the PR -> merge = approval -> /way-of-working:archive-sprint, plan next
 ```
 
 Each box is its own **short, single-model session**. The expensive planning context
@@ -89,9 +89,9 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
   checks after a minute, check `mergeable` before assuming CI is slow:
   `gh api repos/<owner>/<repo>/pulls/<N> -q '.mergeable_state'`.
 
-### The QA-critic pass runs Coder-side, before the Architect review (`/critic-gate`)
+### The QA-critic pass runs Coder-side, before the Architect review (`/way-of-working:critic-gate`)
 
-After the green gate and before `/handoff`, the implementation session runs **`/critic-gate`**:
+After the green gate and before `/way-of-working:handoff`, the implementation session runs **`/way-of-working:critic-gate`**:
 a read-only critic pass over the diff that catches the cheap, mechanical, boundary-shaped
 defects Sonnet-side, so the fresh-session Opus review spends its attention on judgment — and
 so nothing ships with *no* critic having looked — a fully green PR with an incomplete fix
@@ -100,14 +100,14 @@ and no review having caught it is exactly the gap one standing critic pass exist
 subagent cannot spawn subagents, so the **session** spawns coder and critics as siblings.
 
 **The gate proposes; the human picks — it does not auto-fan-out.** Each critic is real spend
-(mostly Opus subagents) and `architect`/`security-critic` overlap, so `/critic-gate` works out
+(mostly Opus subagents) and `architect`/`security-critic` overlap, so `/way-of-working:critic-gate` works out
 which critics a diff *warrants* from the table below, presents that list with a reason each,
 and spawns **only** what the human confirms (or the critics named explicitly in the call). A
 light change may want one critic; a trust-boundary change may want the full set.
 
-> **`/critic-gate` is defense-in-depth that runs EARLIER — it is NOT the `architect-review`
+> **`/way-of-working:critic-gate` is defense-in-depth that runs EARLIER — it is NOT the `architect-review`
 > CI gate and never satisfies it.** The fresh-session Architect review still happens after
-> `/handoff`, unchanged (next section). Two properties keep the pass honest: the critics are
+> `/way-of-working:handoff`, unchanged (next section). Two properties keep the pass honest: the critics are
 > **separate subagents** (fresh context — not `/model`-switching and self-reviewing), and
 > they are **read-only** (they *find*; the coder *fixes* — so a critic can't wave its own
 > problem through).
@@ -124,12 +124,12 @@ Propose by what the diff touches — don't offer critics that have nothing to lo
 #### The agent catalog (spawn via the Agent tool by `subagent_type`)
 
 All live in `.claude/agents/`. A definition loads at session start; name it here so a
-`/resume`'d session knows to reach for it (the same pattern that puts `coder` in the loop).
+`/way-of-working:resume`'d session knows to reach for it (the same pattern that puts `coder` in the loop).
 
 - **`coder`** (Sonnet, read/write) — implement one defined sprint task; the secondary
   in-session path when a full handoff is overkill.
 - **`architect`** (Opus, read-only) — correctness + structural-invariant review; the
-  `/critic-gate` pre-review and a `/code-review` fan-out target. **Not** the CI gate.
+  `/way-of-working:critic-gate` pre-review and a `/code-review` fan-out target. **Not** the CI gate.
 - **`security-critic`** (Opus, read-only) — threat-model SAST / taint-flow on a `src/` diff.
 - **`guard-adversary`** (Opus, worktree) — BL-32: adversarial invariant-injection audit of
   the static structural guards; run when a diff touches a guard surface, or as its own beat.
@@ -173,17 +173,17 @@ requirement that isn't wired up.
 > context. The reviewer still holds every assumption the author made, so it re-reads its own
 > reasoning and agrees with it. That is not a review; it is a proofread.
 
-The required sequence — the same `/handoff` boundary the model split already uses:
+The required sequence — the same `/way-of-working:handoff` boundary the model split already uses:
 
 ```
-SONNET (code)   implement -> green gate -> /critic-gate -> push -> open PR -> /handoff
+SONNET (code)   implement -> green gate -> /way-of-working:critic-gate -> push -> open PR -> /way-of-working:handoff
                                    ↓
                         *** NEW SESSION. Context empty. ***
                                    ↓
-OPUS (review)   /resume -> /code-review the diff -> post review -> HITL Gate
+OPUS (review)   /way-of-working:resume -> /code-review the diff -> post review -> HITL Gate
 ```
 
-`/resume` rehydrates from `.ai/` — the externalized cursor — **not** from a memory of having
+`/way-of-working:resume` rehydrates from `.ai/` — the externalized cursor — **not** from a memory of having
 written the code. That is exactly what makes the review adversarial: the reviewer must
 re-derive intent from the sprint plan and the diff, the way a stranger would, and a claim the
 author found obvious has to survive being read cold.
@@ -249,12 +249,12 @@ gate still runs locally before the push.
 
 ## The skills
 
-- **`/critic-gate`** — run in the implementation session **after the green gate, before
-  `/handoff`**. Proposes which read-only critics the diff warrants (the table above) and
+- **`/way-of-working:critic-gate`** — run in the implementation session **after the green gate, before
+  `/way-of-working:handoff`**. Proposes which read-only critics the diff warrants (the table above) and
   spawns only what you confirm — no auto-fan-out — then aggregates findings for the coder to
   fix and iterates to clean. Defense-in-depth that runs *earlier* — **not** the
   `architect-review` CI gate, which still runs fresh after handoff.
-- **`/resume`** — run at the **start** of a session. Reads `.ai/state.json` +
+- **`/way-of-working:resume`** — run at the **start** of a session. Reads `.ai/state.json` +
   `.ai/next-steps.md` + the pointed sprint_plan + roadmap NEXT ACTION, states the exact
   pick-up point, and adopts the assigned persona/model. (Distinct from the
   `loop-orchestrator resume` CLI subcommand — different namespace.)
@@ -265,16 +265,16 @@ gate still runs locally before the push.
   pick-up point and waits. The rule **fails closed**: not being able to tell whether a
   gate is open counts as open. The approval that carries signal is the `hitl_gate`, which
   is unchanged and still enforced; what auto-start removes is the content-free "go" that
-  re-approved a `next_action` the human already approved at `/handoff` time.
-- **`/handoff`** — run **before** switching model/session. Checks the QA-critic pass ran
+  re-approved a `next_action` the human already approved at `/way-of-working:handoff` time.
+- **`/way-of-working:handoff`** — run **before** switching model/session. Checks the QA-critic pass ran
   on any `src/` diff (a prompt, not a block — nothing else in the pipeline points at
-  `/critic-gate`, so `/handoff` is where a forgotten pass gets caught). Serializes the
+  `/way-of-working:critic-gate`, so `/way-of-working:handoff` is where a forgotten pass gets caught). Serializes the
   current cursor to `.ai/state.json` — **including `hitl_gate`, always, even when nothing
-  is open**, since `/resume`'s auto-start reads it — regenerates `.ai/next-steps.md` (what
+  is open**, since `/way-of-working:resume`'s auto-start reads it — regenerates `.ai/next-steps.md` (what
   was done, what's next, which model next), and reminds you to commit if the tree is
-  dirty. Does **not** archive. Because `/resume` may execute the `next_action` unattended,
+  dirty. Does **not** archive. Because `/way-of-working:resume` may execute the `next_action` unattended,
   write it as a bounded imperative you would be content to see carried out without you; if
   it genuinely needs a decision, open a `hitl_gate` instead.
-- **`/archive-sprint`** — run **only** when a sprint has passed its HITL Gate **and** is committed.
+- **`/way-of-working:archive-sprint`** — run **only** when a sprint has passed its HITL Gate **and** is committed.
   Moves its `next-steps.md` snapshot into `.ai/archive/`, advances `.ai/state.json` to
   the next sprint, and seeds a fresh `.ai/next-steps.md`.

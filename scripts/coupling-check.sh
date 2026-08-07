@@ -34,8 +34,8 @@ TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works'
 # Check *names* are intentionally absent here. They appear legitimately in illustrative
 # example output (see pr-checks' "Report shape" block, whose own prose says the real names
 # come from {ruleset.required_checks}), so grepping them would false-positive on the
-# examples. Check-name coupling is caught by a different mechanism instead: /resume and
-# /pr-checks read {ruleset.required_checks} and report *inconclusive* on a mismatch rather
+# examples. Check-name coupling is caught by a different mechanism instead: /way-of-working:resume and
+# /way-of-working:pr-checks read {ruleset.required_checks} and report *inconclusive* on a mismatch rather
 # than trusting a hardcoded list.
 TIER3='docs/[A-Za-z_]+roadmap\.md|\.ai/context/[A-Za-z_]+\.(md|json)'
 
