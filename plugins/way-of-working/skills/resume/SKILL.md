@@ -26,7 +26,8 @@ this repo (no `/clear` in between — e.g. a `/model` switch mid-session, not a 
 session), steps 3 (branch prune) and 4 (ruleset check) may cite their **already-known
 result** instead of re-running — but only when you can positively rule out an invalidating
 event since the last check: for step 3, no PR has merged since the last prune scan; for
-step 4, no permissions/ruleset-touching action has occurred since. Say which you're
+step 4, no permissions/ruleset-touching action **and no identity change** has occurred
+since — an account switch invalidates the reach check that step now opens with. Say which you're
 reusing and why (`Ruleset check: still healthy, confirmed earlier this conversation — no
 ruleset-touching action since.`). Step 2 (`git log`/`git status`) should still run — git
 state changes routinely mid-session (commits, pushes, merges) — but skip a redundant
@@ -97,7 +98,35 @@ event, run the check.
 
 4. **Check the branch-protection ruleset for drift.** A scheduled drift job catches drift
    between sessions; this catches it at the moment work resumes, which in a solo repo is
-   when nearly every change begins. One read-only call, no new token scope:
+   when nearly every change begins.
+
+   **First, establish that this session can actually reach the repo.** One read-only call,
+   before the ruleset call:
+   ```bash
+   gh api repos/{repo} --jq .permissions     # e.g. {"admin":true,"push":true,…}
+   ```
+   If it errors, or returns neither `admin` nor `push`, **stop here** — do not make the
+   ruleset call, whose answer could not mean anything. Report, naming the identity
+   (`gh api user --jq .login`):
+   `Ruleset check: could not run — authenticated as <login>, which lacks access to {repo}.`
+
+   This is not belt-and-braces. **"Couldn't look" has two causes that need opposite
+   responses** — the ruleset is genuinely weakened (a security finding, act on it), or this
+   session is the wrong identity (nothing is wrong with the ruleset and the whole preflight
+   is meaningless) — and GitHub answers an unreachable resource with **`404 Not Found`, not
+   `403`**. So without this call the failure reads as *"that ruleset does not exist"*:
+   indistinguishable from the finding this step exists to raise, and pointing the wrong way.
+
+   > **Never infer reach from `gh auth status`.** It reports token **scope**, and scope is
+   > not reach. The two come apart exactly when it matters: an account with no membership in
+   > the owning org can advertise a *broader* scope list than the one that actually works, so
+   > the operator reads more capability and gets none — green checkmarks, zero access.
+   > (`gh auth switch` with no argument is the same trap: with one account authenticated it
+   > prints a success line for a no-op, which reads as confirmation that an identity change
+   > took effect.) Ask the **repo** what this token can do; never ask the token what it
+   > claims, and never parse that output.
+
+   Then the ruleset itself. One read-only call, no new token scope:
    ```bash
    gh api repos/{repo}/rules/branches/{pr_base}
    ```
@@ -106,10 +135,15 @@ event, run the check.
    `required_status_checks` is one of them — that its contexts cover **every** name in
    `{ruleset.required_checks}`. Report in the pick-up summary, **at most one line**:
    - Healthy → e.g. `Ruleset check: healthy ({N} rule types, {M} required checks).`
-   - Weakened or missing → impossible to miss; name exactly what is absent.
+   - Weakened or missing → impossible to miss; name exactly what is absent. The reach check
+     above is what earns this verdict the right to be stated as a finding rather than a
+     maybe.
    - The call itself failed (network/auth), or `.ai/project.yml` did not supply the
-     expected shape → report **inconclusive**, never healthy. A preflight that cannot tell
-     "healthy" from "couldn't look" is the whole defect it exists to catch, in miniature.
+     expected shape → report **inconclusive**, never healthy, and say **which** of the two
+     it was — an unreachable identity and a failed lookup are different reports. A preflight
+     that cannot tell "healthy" from "couldn't look" is the whole defect it exists to catch,
+     in miniature; one that cannot tell "couldn't look" from "isn't there" is that same
+     defect one layer down.
 
    This is a report, not a gate — never block or fail the session on its result.
 
