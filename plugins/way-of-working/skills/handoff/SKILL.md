@@ -96,8 +96,8 @@ and `{review.ci_gate}`.
      unrelated dirty state costs the next session its auto-start.
    - **Keep this PR touching `.ai/next-steps.md` and nothing else — that is load-bearing.**
      `last_commit` is set (step 4) *before* this commit exists, so once the human merges,
-     the next `/way-of-working:resume` sees HEAD one commit ahead of the cursor. `/way-of-working:resume` step 2 forgives
-     exactly that — one commit, and `git diff --name-only` returning **only**
+     HEAD has moved past the cursor. `/way-of-working:resume` step 2 forgives exactly that,
+     and only that: a `git diff --name-only <last_commit> HEAD` whose path list is **only**
      `.ai/next-steps.md`. Fold anything else into this PR and the next session loses its
      auto-start and waits for a human "go" instead. This is also why the fix lives on the
      read side: `last_commit` means *the commit whose work this cursor describes*, and a
