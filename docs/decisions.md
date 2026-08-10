@@ -225,5 +225,17 @@ All four of `WB-D1..D4` are implemented by this repo's existence and structure a
 generalization against it, `WB-D5`, and the grep-based `coupling` CI job that enforces
 `WB-D2` mechanically all land in `v0.2.0`. `WB-D6`'s dispositions — the Tier-3 coupling
 patterns, the `/way-of-working:critic-gate` new-doc row, and the `/way-of-working:handoff` step-5 clarification — land in
-`v0.4.0`; F1–F4 needed no plugin change (already fixed in `v0.2.0`). `WB-D7` supersedes the
-`v0.4.0` range-based drift carve-out and lands in `v0.5.0`, alongside `WB-D8`.
+`v0.4.0`; F1–F4 needed no plugin change (already fixed in `v0.2.0`).
+
+`v0.5.0` lands `WB-D7` (superseding the `v0.4.0` range-based drift carve-out), `WB-D8`, and
+`WB-D9`, plus the `invariants` CI job and `CHANGELOG.md`. It is **non-breaking** — every
+existing `.ai/project.yml` stays valid untouched.
+
+That last part was not the plan. `WB-D8` was scoped as a breaking change — `roadmap` and
+`threat_model` converted to mappings behind a new required `schema_version` — until a review
+pass observed that `backlog` was *already* a mapping, so the half that adopting repos were
+actually blocked on needed no break at all. The breaking half is deferred until a consuming
+repo demonstrates it needs one, which is also what supplies the evidence to design it
+against. Worth recording because the cheaper answer was available from the start and was
+found by asking "what does this actually cost the people adopting it," not by a new
+requirement arriving.

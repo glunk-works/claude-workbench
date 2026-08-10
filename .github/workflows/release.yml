@@ -166,6 +166,9 @@ jobs:
               git log --no-merges --pretty='- %s'
             fi
             echo
+            echo "See [\`CHANGELOG.md\`](../blob/$TAG/CHANGELOG.md) for what this tag changes and"
+            echo "whether it needs a migration — the commit list above is the record, not the summary."
+            echo
             echo "## Consumer pin bumps — staged, not a flat list"
             echo
             echo "Consuming repos pin an exact ref, so **this release changes nothing until each one bumps**"
