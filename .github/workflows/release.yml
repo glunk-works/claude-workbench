@@ -79,6 +79,11 @@ jobs:
         run: bash scripts/lint.sh
       - name: No repo-specific literals in skills/ or agents/
         run: bash scripts/coupling-check.sh
+      # Every gate in ci.yml runs here too -- that is this job's whole contract. A gate
+      # added to ci.yml and not added here silently stops applying at the one moment it
+      # matters most: the commit consumers actually fetch.
+      - name: No known-wrong form has returned
+        run: bash scripts/invariants-check.sh
 
   release:
     needs: verify
@@ -165,6 +170,9 @@ jobs:
             else
               git log --no-merges --pretty='- %s'
             fi
+            echo
+            echo "See [\`CHANGELOG.md\`](../blob/$TAG/CHANGELOG.md) for what this tag changes and"
+            echo "whether it needs a migration — the commit list above is the record, not the summary."
             echo
             echo "## Consumer pin bumps — staged, not a flat list"
             echo

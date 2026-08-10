@@ -15,6 +15,17 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] — 2026-08-10
+
+**No migration required.** Every existing `.ai/project.yml` stays valid untouched;
+`backlog.repo` is optional and defaults to the current behavior. Bump the pin, clear the
+plugin cache, confirm the version rotated.
+
+Closes five issues raised upstream by `/way-of-working:retro` in consuming repos: #5
+(partially), #6, #7, #12, #13.
+
 ### Added
 
 - **`backlog.repo`** — a `kind: github_issues` backlog may name the repo that holds it, for
