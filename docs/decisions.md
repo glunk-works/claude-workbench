@@ -151,6 +151,39 @@ take effect. Full reasoning and the task breakdown that implements them:
   the path list and `/resume` waits. That is a true report — the cursor describes work
   `{pr_base}` does not have — not a false alarm.
 
+- **WB-D8 — a backlog may name its owning repo; a backlog *file* may not.** Three adopting
+  repos hit the same seam at once: the record-pointing keys are all repo-relative, so a
+  satellite repo whose findings are tracked in a **hub** repo — one repo carrying the roadmap
+  and backlog for a family of sibling module repos — cannot say so. The three available moves
+  were all bad: a relative path escaping the repo (works on one checkout, breaks in CI), a
+  `kind` that is factually wrong (findings route into a channel nobody reads), or `null`
+  (honest, but the skills then have nowhere to route a finding in a repo that demonstrably
+  has somewhere). Per the *Adding a key* corollary this is a **shape**, not a per-repo key —
+  one seam three repos hit, not a bespoke value for one of them — so it earns a key.
+
+  **The key is `backlog.repo`, and it is supported only with `kind: github_issues`.** That
+  asymmetry is the whole design, not a limitation to fix later. With issues, cross-repo is
+  free in **both** directions — `gh issue list --repo X` and `gh issue create --repo X`, no
+  clone, no branch, no PR, no second review surface, no cross-repo push identity. With a
+  backlog *file*, reads need an API and **writes need a PR opened against a repo whose owner
+  did not ask for it**, which is a genuinely expensive and differently-governed act. The
+  cheap half is therefore shipped whole rather than shipping both halves crippled: a
+  `github_issues` backlog works completely, and a `file` backlog stays repo-local.
+  (Rejected: cross-repo file reads with writes reporting-and-stopping — the write case is the
+  one the reporting repos were actually blocked on, and a read-only file pointer leaves it
+  exactly as broken as the `null` workaround while charging a schema change for it. Rejected:
+  declining the seam entirely — hub-and-spoke is an ordinary shape for an org with a
+  monorepo-ish hub and satellite module repos, and this project is arguably that shape too.)
+
+  **Every cross-repo call establishes reach before believing its answer**, per `WB-D7`'s
+  sibling lesson: GitHub answers an unreachable resource with `404`, not `403`, so an
+  unreachable backlog is indistinguishable from an *empty* one — and "nothing is tracked"
+  is exactly the wrong conclusion to hand a retro whose first step is reading what has
+  already been decided. `gh api repos/{backlog.repo} --jq .permissions` disambiguates it in
+  one call. Deliberately not extended to `roadmap`, `threat_model`, or `decisions.log`: those
+  are strings today, mappings only in a breaking change, and nothing has yet demonstrated it
+  needs them.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
@@ -159,4 +192,4 @@ generalization against it, `WB-D5`, and the grep-based `coupling` CI job that en
 `WB-D2` mechanically all land in `v0.2.0`. `WB-D6`'s dispositions — the Tier-3 coupling
 patterns, the `/way-of-working:critic-gate` new-doc row, and the `/way-of-working:handoff` step-5 clarification — land in
 `v0.4.0`; F1–F4 needed no plugin change (already fixed in `v0.2.0`). `WB-D7` supersedes the
-`v0.4.0` range-based drift carve-out and lands in the next tag.
+`v0.4.0` range-based drift carve-out and lands in `v0.5.0`, alongside `WB-D8`.
