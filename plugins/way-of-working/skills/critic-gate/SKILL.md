@@ -174,3 +174,11 @@ out two or three of them on every sprint spends and distracts without the human 
 Proposing keeps the routing's smarts — *which* critics a diff warrants — while leaving the
 spawn decision (and the spend) with the human. A light change may only want one critic; a
 trust-boundary change may want the full set. The gate advises; the human picks.
+
+**What the human is approving is a bounded pass, not each individual spawn.** Step 2's
+confirmation covers the initial spawns *and* the re-runs the stopping rule allows — up to the
+cap. That is deliberate: asking again after every fix round would put the confirmation where
+it carries least information (mid-loop, on a diff whose density is now known) rather than
+where it carries most. The **cap** is what keeps the spend bounded, and crossing it returns
+the decision to the human with the numbers in front of them. So: the human picks the critics
+and the ceiling; the gate spends up to it and then stops.

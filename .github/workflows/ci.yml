@@ -36,3 +36,16 @@ jobs:
           persist-credentials: false
       - name: No repo-specific literals in skills/ or agents/
         run: bash scripts/coupling-check.sh
+
+  # Also its own job, for the same reason `coupling` is: it answers a third question --
+  # has a specific already-shipped defect come back? -- needs no toolchain, and should
+  # report a verdict independently of the other two.
+  invariants:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: No known-wrong form has returned
+        run: bash scripts/invariants-check.sh

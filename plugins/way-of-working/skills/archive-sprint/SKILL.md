@@ -105,6 +105,13 @@ If any precondition fails, STOP and report why — do not archive.
    without a trigger means never. Mention the current pin and whether a newer tag exists;
    bumping it is a one-line PR the human decides on — do not bump it silently.
 
+   **Say what the bump would bring, not just that one exists.** Read the plugin's
+   `CHANGELOG.md` for the entries between the pinned tag and the newest one, and surface any
+   marked as needing a migration — "a newer tag exists" is not a decidable prompt, and a
+   breaking change discovered *after* the bump is discovered in the worst place. Pair a bump
+   with a plugin-cache clear and confirm the version actually rotated: a pin bump has been
+   observed not to be honored by the local cache.
+
 ## Guardrails
 - Never delete `{roadmap}` history or the sprint_plan files — archival only moves the `.ai/` cursor snapshot; the deep record stays in the repo's docs and in git.
 - Never archive an un-approved or uncommitted sprint.
