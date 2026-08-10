@@ -55,6 +55,8 @@ plugins/way-of-working/
   skills/     resume/ handoff/ critic-gate/ ship/ pr-checks/ archive-sprint/ retro/
   agents/     architect.md coder.md security-critic.md docs-consistency.md
   hooks/      hooks.json + ai-cursor-banner.sh
-  reference/  conventions.md  workflow.md  project-schema.md (v0.2.0)
+  reference/  conventions.md  workflow.md  project-schema.md
 docs/decisions.md   # the WB-D* log
+CHANGELOG.md        # what each tag changes — read before bumping a pin
+scripts/            # the CI gates: lint, coupling, invariants
 ```
