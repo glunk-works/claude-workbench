@@ -82,10 +82,15 @@ Prose drifts in a small number of recognizable shapes. Find the instances of eac
   pinning ↔ the live ruleset and the workflow files. Where a repo has a drift guard for its
   ruleset, that guard's taxonomy is also a doc-shaped claim and drifts the same way.
 - **Status claims.** "Done", "merged", "closed", "open" ↔ the actual PR, issue, or commit.
-  Where `{backlog.kind}` is `github_issues`, verify against `gh issue list` / `gh pr view`;
-  where it is `file`, verify against `{backlog.path}` and its `{backlog.item_prefix}` ids.
-  A decision recorded as locked should exist in `{decisions.log}` under
-  `{decisions.prefix}`.
+  Where `{backlog.kind}` is `github_issues`, verify against `gh issue list` / `gh pr view`
+  (adding `--repo {backlog.repo}` when that key is set — the backlog may live in a sibling
+  repo); where it is `file`, verify against `{backlog.path}` and its `{backlog.item_prefix}`
+  ids. A decision recorded as locked should exist in `{decisions.log}` under
+  `{decisions.prefix}`. **A backlog you could not reach is not a backlog that is empty** —
+  a cross-repo `gh` call answers `404` when this identity cannot see the repo, so confirm
+  reach (`gh api repos/{backlog.repo} --jq .permissions`) before reporting any status claim
+  as unverified. Reporting "no such issue" when the truth is "could not look" is a false
+  finding, which is the most trust-destroying output a critic can emit.
 - **Cross-doc agreement.** Where two documents in `{load_bearing_docs}` state the *same*
   fact, confirm they still agree with each other **and** with the code. Drift usually lands
   in one copy, which is why the fact was worth checking at all.

@@ -25,11 +25,37 @@ relationship.) It exists to **reduce** friction — so it must not become a fric
 Routing a finding means writing it somewhere real, and that somewhere differs per repo.
 Branch on `{backlog.kind}` and never assume a backlog file exists:
 
-- **`github_issues`** — findings become GitHub issues on `{repo}`, cited as `#N`. Read
-  what's already decided with `gh issue list --state open` (plus `--state closed` when
-  checking whether something was already considered and rejected).
+- **`github_issues`** — findings become GitHub issues, cited as `#N`. Read what's already
+  decided with `gh issue list --state open` (plus `--state closed` when checking whether
+  something was already considered and rejected).
 - **`file`** — findings become items in `{backlog.path}`, cited as `{backlog.item_prefix}N`.
   Read that file's index directly.
+
+**The backlog may not live in this repo.** `{backlog.repo}` — absent or `null` means
+`{repo}`, the common case — names the repo that actually holds the findings, for the
+hub-and-spoke shape where one repo carries the record for a family of sibling repos. When it
+is set, pass `--repo {backlog.repo}` to **every** `gh issue` call, read and write alike:
+
+```bash
+gh issue list   --repo {backlog.repo} --state open
+gh issue create --repo {backlog.repo} --title "…" --body "…"
+```
+
+> **Establish reach first, or step 1 lies to you.** A `gh` call against a repo this identity
+> cannot see returns **`404`, not `403`** — so an unreachable backlog reads as an *empty*
+> one, and step 1's whole purpose is reading what's already decided. A retro that believes
+> an empty list re-proposes everything the hub already rejected. Confirm reach before
+> trusting the result:
+> ```bash
+> gh api repos/{backlog.repo} --jq .permissions
+> ```
+> No `pull` → **stop and report the identity** (`gh api user --jq .login`); do not run the
+> retro against a backlog you could not read. Same failure class as `/way-of-working:resume`
+> step 4's ruleset preflight, on a different surface.
+
+`{backlog.repo}` is supported only with `kind: github_issues`. If it is set alongside
+`kind: file`, that is a misconfiguration, not a cross-repo file — report it and take the
+no-backlog branch rather than guessing a path. See `reference/project-schema.md`.
 
 ## When to run
 - At the end of a working session, before `/way-of-working:handoff` or `/way-of-working:archive-sprint` (optional, never a gate).

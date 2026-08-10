@@ -78,6 +78,8 @@ decisions:
 
 backlog:
   kind: github_issues              # github_issues | file
+  repo: null                       # optional; defaults to `repo` above. See below —
+                                   # only supported with kind: github_issues.
   path: null                       # required when kind: file (e.g. docs/backlog.md)
   item_prefix: null                # required when kind: file (e.g. BL-)
 
@@ -153,6 +155,57 @@ A skill must branch on `kind` and never assume a file exists. This key was **not
 original sprint plan; it was found while generalizing `/way-of-working:retro`, which the plan's inventory
 recorded as having no coupling at all. It has three (`docs/backlog.md`, `BL-` ids, and a
 named repo-local memory), and the first two are structural.
+
+#### `backlog.repo` — when the backlog lives in a sibling repo
+
+Optional. Absent or `null` means *this repo* — `{repo}` above — which is the common case and
+needs no thought. Set it to an `owner/name` when the findings for this repo are tracked
+somewhere else.
+
+That shape is real and not exotic: a **hub** repo holding the roadmap and backlog for a small
+family of satellite module repos, where a finding about a satellite is filed against the hub
+because that is where the record of record lives. Without this key a satellite has three bad
+options — a relative path escaping the repo (works on one machine, breaks in CI), a `kind`
+that is factually wrong (findings route into a channel nobody reads), or `null` (honest, but
+the skills then have nowhere to route a finding in a repo that demonstrably has somewhere).
+
+**Only `kind: github_issues` supports it.** With issues, cross-repo is genuinely free — both
+directions are one `gh` call with a `--repo` flag, no clone, no branch, no PR, no second
+review surface:
+
+```bash
+gh issue list   --repo {backlog.repo} --state open      # read what's already decided
+gh issue create --repo {backlog.repo} --title … --body … # route a finding
+```
+
+A satellite repo pointing at its hub:
+
+```yaml
+repo: <owner>/<satellite>        # this repo
+backlog:
+  kind: github_issues
+  repo: <owner>/<hub>            # findings about this repo are filed there
+  path: null
+  item_prefix: null
+```
+
+With `kind: file`, a cross-repo pointer is **not supported** — a skill would have to read
+through an API and *write* by opening a PR against a repo whose owner did not ask for it.
+A repo in that position sets `backlog.repo` only if it can move to issues; otherwise it
+leaves the backlog `null` and states the real location in a comment, which is lossy but
+honest. Do not invent a path that escapes the repo.
+
+> **Always establish reach before believing an answer.** Any `gh` call against a repo that
+> is not `{repo}` can fail for two reasons that look identical and demand opposite
+> responses: the thing is not there, or **this identity cannot see it** — GitHub answers an
+> unreachable resource with `404`, not `403`. Before trusting a cross-repo read, confirm
+> reach the same way `/way-of-working:resume` step 4 does:
+> ```bash
+> gh api repos/{backlog.repo} --jq .permissions
+> ```
+> No `pull` means **stop and report the identity** (`gh api user --jq .login`) — never
+> report the backlog as empty or missing. An empty backlog and an unreachable one are
+> different facts, and only one of them means "nothing has been decided yet."
 
 ### `load_bearing_docs`, `code_paths`
 

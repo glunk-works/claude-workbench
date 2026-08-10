@@ -33,6 +33,14 @@ and `{backlog}`.
    `{backlog.item_prefix}N` when it is `file`. **If you cannot point to where the live check
    is tracked, that tracking is the missing step** — create it before archiving.
 
+   If `{backlog.repo}` is set, that backlog lives in a **sibling repo** and every `gh issue`
+   call takes `--repo {backlog.repo}` (`gh issue create --repo {backlog.repo} …`). Confirm
+   reach first — `gh api repos/{backlog.repo} --jq .permissions`, no `pull` means stop and
+   report the identity from `gh api user --jq .login` — because an unreachable repo answers
+   `404`, not `403`, and a precondition that cannot tell "not tracked" from "could not look"
+   is the same defect this one exists to catch. **Never archive against a backlog you could
+   not read.** See `reference/project-schema.md`.
+
    This is a real, recurring failure mode: a surface whose whole external side had only ever
    run against fakes is easy to stamp "passes live," and a human has to catch it. Its
    sibling is `docs-consistency` for prose-vs-code drift; this one is claim-vs-evidence.
