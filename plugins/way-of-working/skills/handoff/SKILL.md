@@ -26,6 +26,12 @@ and `{review.ci_gate}`.
    implementation session — once you `/way-of-working:handoff`, the diff moves on with no critic having
    looked, which is the failure mode that justifies a standing critic pass at all.
 
+   If a pass **did** run, carry its outcome into the report (step 6), not just its
+   existence: the round count and which stopping condition fired — converged, cap reached,
+   or the human called it. *"A critic pass ran"* and *"the critic pass converged"* are
+   different claims, and a cursor that records only the first leaves the next session unable
+   to tell them apart.
+
    This is a **prompt, not a block**: the human may decline and hand off anyway (say
    "handing off without a critic pass" in the report so the choice is on the record). It
    exists because nothing else in the pipeline points at `/way-of-working:critic-gate` — the skill said

@@ -4,8 +4,9 @@ description: >-
   Run the QA-critic pass on a coding diff — after the local green gate, before /way-of-working:handoff.
   PROPOSES which read-only critic subagents apply by what the diff touches, and waits for
   the human to confirm or trim before spawning any — it never auto-fans-out. Aggregates
-  findings for the coder to fix, iterates to clean. Defense-in-depth that runs EARLIER — it
-  is explicitly NOT the repo's review CI gate and never satisfies it.
+  findings for the coder to fix, then re-runs the critics on the fixed tree and iterates to
+  convergence under a bounded stopping rule. Defense-in-depth that runs EARLIER — it is
+  explicitly NOT the repo's review CI gate and never satisfies it.
 ---
 
 # /way-of-working:critic-gate — the QA-critic pass (coder-side, before the review)
@@ -88,18 +89,84 @@ green gate and before `/way-of-working:handoff`.
 
 5. **Fix and re-gate (find/fix separation).** The critics are read-only — **the coder
    applies the fixes** (directly or via the `coder` subagent), then re-runs `{gates.green}`.
-   If a fix touched a critic's area, re-spawn that critic (again on confirmation) on the new
-   diff. Iterate until the critics are clean or the only remainders are consciously-accepted,
-   documented judgment calls.
+
+   **Then re-spawn the critics on the FIXED tree. This is not optional.** The old rule here
+   was "if a fix touched a critic's area" — too weak, because it let whoever just made the
+   fixes decide, after the fact, that none of them warranted a second look, and the fix round
+   is itself the highest-risk moment (see *Convergence* below). **Every critic whose findings
+   were acted on gets re-run**, along with any whose area the fixes touched. Scope each to
+   **what changed since its last report**, not the whole diff again — a re-run costs a
+   fraction of the first pass when it is told what to grade.
+
+   Iterate under the stopping rule below — **not** "until the critics are clean," which on a
+   dense diff may never happen and is what turns this gate into an unbounded spend.
 
 6. **Report and stop.** Summarize: which critics ran, what they found, what was fixed, what
-   was accepted-with-reason.
+   was accepted-with-reason. **State the round count and which stopping condition fired**
+   (converged / cap reached / human called it) — a reader deciding how much to trust the diff
+   needs to know whether the loop ended because it was done or because it ran out of rope.
    - If `{review.ci_gate}` is set, the next step is `/way-of-working:handoff` → fresh session → `/way-of-working:resume` →
      review the diff → post it. `/way-of-working:critic-gate` never posts that review.
    - If `{review.ci_gate}` is `null`, say explicitly that this pass is the only critic look
      the diff has had and that the human's merge is the sole remaining gate.
 
    Either way: never `--approve`, never merge.
+
+## Convergence — when to stop iterating
+
+**Count is not the signal. Severity and provenance are.** A round that returns twelve wording
+tightenings is converged; a round that returns two false statements is not.
+
+**Stop when a full round returns nothing that would change what a reader or operator does.**
+Concretely, no finding that is:
+- a **false statement** — a claim the source contradicts;
+- a **contradiction** with another part of the diff or the repo;
+- **operationally wrong** — a command, flag, order of steps, or expected value that would
+  mislead someone executing it;
+- a **newly-introduced** defect the previous round's fixes created.
+
+Wording, emphasis, phrasing-could-be-tighter, and "consider also mentioning" are **tightenings**.
+A round of only tightenings means converged — land it. Chasing prose to a fixed point is not
+what this gate is for.
+
+**Never stop on the round that applied fixes.** At minimum one re-run must come back
+tightenings-only. Skipping it is the single most expensive shortcut available here, because the
+correction sweep is where defects are born, not where they die.
+
+**Hard cap: 2 fix-and-re-run rounds after the initial pass. Then stop and hand the decision to
+the human** — with what is still open, what it would cost, and your recommendation. Do not
+silently continue; every round is real spend, and the human authorized a *pass*, not a loop.
+Going past the cap is a decision they make with the numbers in front of them, and it is often
+the right one — the cap exists to make it **their** call, not to end the review.
+
+**Non-convergence is its own finding.** If round N+1's severity is not lower than round N's, the
+loop is not converging and another round will not fix it. That is a signal about the **diff** —
+too large, too entangled, or built on a wrong assumption — not a reason to spawn again. Say so
+and stop.
+
+**Track findings across rounds, not round-by-round.** Carry a list. Watch for two things a
+per-round view misses:
+- **Regressions** — a finding that was fixed and came back.
+- **Retractions** — a critic refuting *its own* earlier finding. This happens, and if the
+  earlier finding was already written into the work, the retraction arriving a round late means
+  a defect is sitting in the tree with a critic's endorsement on it. **Verify a critic's claim
+  against the source before acting on it**, exactly as you would your own.
+
+### Why a stopping rule at all
+Without one, "iterate until clean" is unbounded, and the round count gets decided ad hoc,
+mid-session, by whoever is tired first. Observed on a single docs-only diff (two critics, four
+rounds): roughly **21 → 12 → 13 → 2** findings. **Round 3 returned more than round 2 and was the
+more converged of the two** — its findings were overwhelmingly tightenings, while round 2's were
+false statements the round-1 fixes had just introduced. A count-based rule misreads that in both
+directions: it would have stopped at round 2 and continued past round 3. The severity rule above
+reads it correctly.
+
+The cap matters just as much. That session ran **four** rounds; the human had approved **one**,
+and the escalation to rounds 3 and 4 was made unilaterally, mid-session, on the reviewer's own
+judgment. Round 4 was worth running — it caught an inverted instruction for a destructive command
+against a live account — but that is an argument for *asking*, not for proceeding. Under this
+rule the cap fires after round 3 and round 4 happens with explicit sign-off, which is the same
+review at a fraction of the surprise.
 
 ## Why propose instead of auto-spawning
 Every critic is real cost and noise, and `architect`/`security-critic` overlap. Auto-fanning
