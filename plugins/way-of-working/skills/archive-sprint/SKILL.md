@@ -45,6 +45,34 @@ and `{backlog}`.
    run against fakes is easy to stamp "passes live," and a human has to catch it. Its
    sibling is `docs-consistency` for prose-vs-code drift; this one is claim-vs-evidence.
 
+5. **Blocking preconditions — every one is marked met, with a pointer to its evidence.**
+   Precondition 4 asks whether a *deliverable's* completion claim is backed by evidence. This
+   asks the same question one layer down, about the sprint's **preconditions**: the criteria
+   that gated a specific step rather than describing an outcome.
+
+   Read the sprint plan (`pointers.sprint_plan`) for criteria marked **`BLOCKING:`** — the
+   convention in `reference/conventions.md` § *Blocking preconditions*. For each one, confirm
+   it is marked met **and** that you can point to where its satisfaction is recorded: the PR
+   that relied on it, a command output, or a tracked backlog item per `{backlog}`.
+
+   - **Cannot find the evidence → that is the finding.** Ask the human directly whether the
+     criterion was satisfied. If yes, get it recorded before archiving (a line on the
+     relevant PR, or a backlog item saying what remains attested-but-unproven). If no, the
+     sprint is not archivable.
+   - **A sprint plan with no `BLOCKING:` markers** is a normal and common answer — say so in
+     one line and move on. Do not manufacture preconditions, and do not retroactively
+     reinterpret ordinary acceptance criteria as blocking ones.
+
+   **Why this is not covered by precondition 1.** A HITL Gate can be genuinely passed while
+   the criterion underneath it was never evidenced — the gate approves the *plan or the
+   outcome*, not the precondition's satisfaction. Observed live: a criterion gating two
+   applies against the only state file recording an org-shared federation endpoint was in
+   fact satisfied, but the roadmap still read "outstanding," neither PR mentioned it, and
+   `/way-of-working:critic-gate`, `/way-of-working:ship`, and `/way-of-working:handoff` all
+   passed over it. It surfaced only because a human was asked. A criterion whose satisfaction
+   is recorded nowhere is **indistinguishable from one that was skipped**, and that is the
+   whole defect.
+
 If any precondition fails, STOP and report why — do not archive.
 
 ## Steps

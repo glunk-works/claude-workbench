@@ -17,7 +17,8 @@ approval.
 
 **Read `.ai/project.yml` first** for `{pr_base}`, `{repo}`, `{code_paths}`, and
 `{review.ci_gate}`. Commit and PR-title grammar is not repo-specific — it lives in
-`reference/conventions.md`; read it rather than restating it here.
+`reference/conventions.md`; read it rather than restating it here. Step 5 also reads
+`pointers.sprint_plan` from `.ai/state.json` when a cursor exists.
 
 ## Steps
 
@@ -65,6 +66,20 @@ approval.
    `gh pr create --base {pr_base} --title "$TITLE" --body "…"`. Body: a `## What` / `## Why`
    summary, and the scope (which boundary changed). If `{review.ci_gate}` is set and this
    diff touches none of `{code_paths}`, note that the review gate is exempt for this PR.
+
+   **If this change relies on a blocking precondition, record its satisfaction here.** Read
+   `pointers.sprint_plan` from `.ai/state.json` (skip this if there is no cursor or no sprint
+   plan — a one-off change has no plan to consult) and check it for criteria marked
+   **`BLOCKING:`** per `reference/conventions.md` § *Blocking preconditions*. If one of them
+   gates the step this PR performs, add a line to the body naming **what was done, when, and
+   how it was verified** — not the criterion restated, and not the criterion cited as
+   *rationale*, which reads like coverage and is not.
+
+   Read the plan rather than answering from memory: a precondition satisfied "as far as this
+   session recalls" is the exact failure this exists to close — evidence that lives in
+   someone's memory has already failed for the next reader. If a criterion gates this change
+   and you cannot confirm it was met, **say so in the PR body and tell the human** rather
+   than opening quietly; that is a question for them, not a blocker this skill resolves.
 
 6. **Label on the three axes** if labels are being used: type (`bug`/`feature`/`docs`/
    `chore`), `area/*` (mirrors the scope), `status/*` — see `reference/conventions.md`

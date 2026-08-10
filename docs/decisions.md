@@ -184,6 +184,40 @@ take effect. Full reasoning and the task breakdown that implements them:
   are strings today, mappings only in a breaking change, and nothing has yet demonstrated it
   needs them.
 
+- **WB-D9 — a blocking precondition is marked, and records its satisfaction where the work
+  that relies on it lands.** `/way-of-working:archive-sprint`'s verification ledger was the
+  only place in the plugin asking *"is this claim backed by evidence?"*, and it is scoped to
+  one shape: a **deliverable** marked complete that was only hermetically verified. Nothing
+  covered the other shape — a **precondition** gating a specific irreversible act, whose
+  satisfaction is recorded nowhere. Such a criterion can be fully satisfied and remain
+  **indistinguishable from one that was skipped**, which is the same thing as not having it.
+
+  The fix lands in three places because the gap has three moments, and only the first two
+  were ever proposed as sufficient on their own:
+
+  - **`reference/conventions.md` defines the marker** (`BLOCKING:` + the step it gates) and
+    extends the Definition of Done to enumerate preconditions, not only deliverables. This is
+    **load-bearing, not framing**: the plugin owns no sprint-plan *format* — `sprints_dir` and
+    `pointers.sprint_plan` are locations — so without a marker convention a skill has nothing
+    to key on and degrades to "read the plan and use judgment," which is exactly what failed.
+    `conventions.md` is the right home because it is the plugin's own shipped convention set,
+    already dictating commit grammar, branch names, and the label taxonomy.
+  - **`/way-of-working:ship` records satisfaction in the PR that relies on it** — the moment
+    of truth, and the only one that catches the gap *in time*. It reads `pointers.sprint_plan`
+    from the cursor rather than prompting from memory: a prompt answered from recall is a
+    weaker instance of the defect it is meant to close.
+  - **`/way-of-working:archive-sprint` precondition 5 catches what got through** — mechanical,
+    at close, keyed on the marker. Late is where it is most expensive to discover, but
+    late-and-mechanical beats a human happening to ask.
+
+  (Rejected: the `architect` agent checking it in `/way-of-working:critic-gate` — this is a
+  documentation-of-evidence question, not a diff question, and a diff reviewer has no way to
+  see it. Rejected: guidance alone, on the reasoning that plans should not use unverifiable
+  blocking criteria — true and now stated, but nothing would enforce it, and the observed case
+  had a criterion that *was* satisfied and still left no trace. Rejected: giving
+  `/way-of-working:ship` the whole sprint plan to reason about — it reads one cursor field for
+  one marker, which is a bounded read, not a scope increase.)
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
