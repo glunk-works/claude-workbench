@@ -52,22 +52,36 @@ event, run the check.
    > because otherwise auto-start can never fire in the intended flow. `/way-of-working:handoff` sets
    > `last_commit` to HEAD **before** committing `.ai/next-steps.md`, then opens that commit
    > as a docs-only PR for the human to merge. So the moment the human does what `/way-of-working:handoff`
-   > told them to, HEAD is one commit ahead of `last_commit` — by the cursor sync itself.
+   > told them to, HEAD has moved past `last_commit` — by the cursor sync itself.
    > `.ai/state.json` is git-ignored, so nothing corrects `last_commit` afterwards.
    >
-   > Treat the delta as **not drift** when *both* hold:
+   > **Ask a content question, not an ancestry one.** Compare the two trees directly:
    > ```bash
-   > git rev-list --count <last_commit>..HEAD      # is exactly 1
-   > git diff --name-only <last_commit>..HEAD      # is exactly .ai/next-steps.md
+   > git cat-file -e <last_commit>^{commit}     # the object still exists at all
+   > git diff --name-only <last_commit> HEAD    # TWO arguments — never <last_commit>..HEAD
    > ```
-   > **The file list is what makes this safe, not the count** — check it, never infer it from
-   > the count alone. A single commit that touches anything else is ordinary drift and still
-   > waits. Note the SHA will not match even in the clean case: the branch is squash-merged,
-   > so `{pr_base}` carries a *different* commit than the local branch tip ever had. Any
-   > check keyed on SHA equality alone is wrong for the same reason step 3's prune is.
+   > Treat the delta as **not drift** only when that path list is exactly
+   > `.ai/next-steps.md`. **The path list is the whole check** — nothing else, and never a
+   > commit count. Anything else, including a `last_commit` git cannot read, is drift and waits.
    >
-   > Say which case you found in one line, e.g. `HEAD is one ahead of last_commit — the
-   > merged cursor-sync PR, not drift.` Anything you cannot classify is drift.
+   > **The two-argument form is load-bearing, and `..` is the bug it replaces.** `A..HEAD` is
+   > a commit *range*, and a range only means what you want when `A` is an ancestor of HEAD.
+   > `last_commit` routinely is not: when a `/way-of-working:handoff` runs while a code PR is still open —
+   > ordinary in a one-task-per-PR flow — `last_commit` is that branch's tip, and squash-merge
+   > replays the branch as a **new** commit object the original tip never becomes an ancestor
+   > of. `git merge-base --is-ancestor <last_commit> HEAD` then exits non-zero *forever*, even
+   > after everything has merged, so a range-based check silently fails closed every session.
+   > A two-argument `git diff` compares trees and does not care: once the work is in
+   > `{pr_base}`, the only difference left is the cursor file. Same property as step 3's
+   > prune — squash-merge makes SHA ancestry an unusable identity.
+   >
+   > If the work branch has **not** merged yet, its files show up in the path list and this
+   > correctly reports drift: the cursor describes work `{pr_base}` does not have. That is a
+   > true answer, not a false alarm — wait.
+   >
+   > Say which case you found in one line, e.g. `HEAD differs from last_commit only in
+   > .ai/next-steps.md — the merged cursor-sync PR, not drift.` Anything you cannot classify
+   > is drift.
 
 3. **Prune squash-merged local branches** (standard practice — squash-merge is the default here, and `git branch --merged {pr_base}` **cannot** see a squash-merged branch because the squash makes a new commit the branch never became an ancestor of; so ask GitHub which PRs merged). One read-only `gh` call, then a safe `-D` on **only** the branches whose PR GitHub reports `merged` — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
    ```bash
@@ -109,8 +123,8 @@ event, run the check.
    - `hitl_gate` is present and reads `NONE OPEN`;
    - `sprint_status` is `implementing`;
    - the running model matches `assigned_model` (step 5);
-   - step 2 found no drift — `last_commit` matches HEAD, **or** the only delta is the merged
-     cursor-sync commit that step 2 defines — **and** the tree is clean.
+   - step 2 found no drift — `last_commit` matches HEAD, **or** the only path in step 2's
+     content diff is `.ai/next-steps.md` — **and** the tree is clean.
 
    Otherwise **state the pick-up point and wait.** In particular: always wait on
    `planning` (the planning pass is one question at a time — that dialogue *is* the
@@ -123,10 +137,12 @@ event, run the check.
    >
    > **The cursor-sync carve-out above does not soften this**, and must not be read as
    > licence to wave through a delta that merely *looks* routine. It is narrow on purpose:
-   > one commit, one named file, both **verified by command**. A commit you did not diff, a
-   > delta of two or more, or a cursor commit carrying anything besides
-   > `.ai/next-steps.md` is **drift, and waits.** If you find yourself reasoning about why
-   > some *other* delta is probably harmless, that is the failure this block exists to stop.
+   > **one named file, verified by command.** A delta you did not diff, or one carrying any
+   > path besides `.ai/next-steps.md`, is **drift, and waits** — however routine its story
+   > sounds. Widening it to "docs-shaped paths" would be a real loosening, not a
+   > clarification: a roadmap or sprint-plan edit between sessions can invalidate the very
+   > `next_action` about to run unattended. If you find yourself reasoning about why some
+   > *other* delta is probably harmless, that is the failure this block exists to stop.
 
    Say which branch you took and why in one line (`Auto-starting: gate NONE OPEN,
    status implementing, cursor clean.` / `Waiting: HITL Gate open on the sprint 41 plan.`)

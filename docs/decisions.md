@@ -126,6 +126,31 @@ take effect. Full reasoning and the task breakdown that implements them:
     toward the default (separate docs-only PR), rather than adding a permissive exception that
     would license bundling cursor churn into code-PR reviews.
 
+- **WB-D7 — cursor freshness is a content question, never an ancestry one.** `/resume`'s
+  drift check decides whether the tree still matches what the cursor describes, and it must
+  answer that under **squash-merge**, which is this project's default merge method. Squash
+  replays a branch as a brand-new commit object, so the branch tip a cursor recorded never
+  becomes an ancestor of `{pr_base}` — not when the PR merges, not ever. Any check keyed on
+  SHA equality or on commit *ancestry* is therefore structurally wrong here, and both of the
+  first two attempts were: `v0.3.0` compared `last_commit` to HEAD by SHA, and `v0.4.0`
+  replaced that with a commit-*range* carve-out (`git rev-list --count <last_commit>..HEAD`
+  is 1, `git diff --name-only <last_commit>..HEAD` is the cursor file). The range form works
+  only while `last_commit` is an ancestor of HEAD, which it is not whenever a
+  `/way-of-working:handoff` runs with a code PR still open — an ordinary occurrence in a
+  one-task-per-PR flow, not an edge case, and it was reproduced live within one tag of the
+  fix landing. The check is now a **two-argument `git diff <last_commit> HEAD`**: it compares
+  trees, is indifferent to ancestry, and reports exactly the cursor file once the work has
+  squash-merged. The allowlist stays at `.ai/next-steps.md` alone. (Rejected: widening it to
+  "docs-shaped paths," which would survive squash equally well but is a genuine loosening —
+  a roadmap or sprint-plan edit between sessions can invalidate the very `next_action` that
+  auto-start is about to run unattended, which is the one thing the drift check exists to
+  catch. Rejected: having `/way-of-working:handoff` record `last_commit` *after* its own
+  commit — the same squash property mints a different SHA on `{pr_base}`, so the mismatch
+  returns, and `last_commit` would stop meaning "the commit whose work this cursor
+  describes.") Consequence, accepted: while a code PR is still unmerged, its files appear in
+  the path list and `/resume` waits. That is a true report — the cursor describes work
+  `{pr_base}` does not have — not a false alarm.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
@@ -133,4 +158,5 @@ All four of `WB-D1..D4` are implemented by this repo's existence and structure a
 generalization against it, `WB-D5`, and the grep-based `coupling` CI job that enforces
 `WB-D2` mechanically all land in `v0.2.0`. `WB-D6`'s dispositions — the Tier-3 coupling
 patterns, the `/way-of-working:critic-gate` new-doc row, and the `/way-of-working:handoff` step-5 clarification — land in
-the next tag; F1–F4 needed no plugin change (already fixed in `v0.2.0`).
+`v0.4.0`; F1–F4 needed no plugin change (already fixed in `v0.2.0`). `WB-D7` supersedes the
+`v0.4.0` range-based drift carve-out and lands in the next tag.
