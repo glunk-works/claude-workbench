@@ -112,3 +112,39 @@ The prefix matches the commit `type` the branch will land as.
 
 ## Definition of Done
 A unit of work is done only when: formatting + lint + the full test suite pass; new validated boundaries have negative-input tests; dependencies are pinned and CVE-clean with the SBOM regenerated; no unjustified `# noqa`; and no secrets in any committed file. For managed repos the repo's own `sprints/GLOBAL_DEFINITION_OF_DONE.md` (if present) extends, never relaxes, this bar.
+
+**A Definition of Done enumerates the unit's blocking preconditions, not only its
+deliverables.** A DoD listing outcomes alone is how a precondition reaches a completion
+review unaudited: the deliverables are all visibly shipped, so the unit reads as done while
+the thing that was supposed to gate it was never checked.
+
+### Blocking preconditions
+
+A **blocking precondition** is something that must be true *before* a specific step may run
+— a backup taken and verified restorable before a destructive migration, a snapshot copied
+off-host before an irreversible transfer, a rollback path exercised before a one-way change.
+It is not a deliverable. It gates one.
+
+Two rules, and they are cheap:
+
+- **Mark it.** In a sprint plan, prefix the criterion with the literal word **`BLOCKING:`**
+  and name the step it gates. A convention that can be recognised mechanically is what lets a
+  later check find every one of them without re-reading the plan for intent — and "read the
+  plan and use judgment" is precisely what fails, because a satisfied criterion and a skipped
+  one look identical in hindsight.
+
+  ```markdown
+  - BLOCKING: <state is copied out-of-band and verified restorable>
+    — gates: <the first apply of this sprint, and again before Task 3>
+  ```
+
+- **Record its satisfaction where the work that relies on it lands.** A blocking precondition
+  records its satisfaction **in the PR that relies on it** — one line naming what was done,
+  when, and how it was verified. Evidence that lives in someone's memory has already failed
+  for the next reader; six weeks later, "we definitely did that" is indistinguishable from
+  "we definitely meant to."
+
+**Prefer a precondition that can be evidenced.** A criterion whose satisfaction leaves no
+artifact — no command output, no PR line, no tracked item — cannot be audited by anyone,
+including its author. If it genuinely cannot be evidenced, say so in the plan and treat it as
+a risk the human is accepting, not as a gate that was met.
