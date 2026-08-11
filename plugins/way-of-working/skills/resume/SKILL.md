@@ -47,42 +47,34 @@ event, run the check.
    - The `pointers.sprint_plan` file (the active `{sprints_dir}/*/sprint_plan.md`) — the task list for the current sprint.
    - `{roadmap}` — read only its **status table** + its **next action** line, not the whole file, unless the next action needs the decisions log (`{decisions.log}`).
 
-2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`. Confirm `last_commit` matches HEAD (or note the drift). If the tree is dirty, surface that — a previous session may not have finished a `/way-of-working:handoff`.
+2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`.
+   Then classify `last_commit` against HEAD with the plugin's own script — this is a
+   deterministic predicate (issue #21), not a judgment call, and prose already got it wrong
+   twice (v0.3.0 SHA equality, v0.4.0 a commit-*range* form — see `docs/decisions.md` WB-D7
+   and `tests/cursor-drift.test.sh`). `bin/` is on the Bash tool's `PATH` while the plugin is
+   enabled, so call it by bare name, no `${CLAUDE_PLUGIN_ROOT}` needed:
+   ```bash
+   cursor-drift.sh <last_commit>
+   ```
+   It prints exactly one of `clean | cursor-sync | drift | unreadable`. The **policy** —
+   what a session does with each answer — stays here, not in the script:
 
-   > **The cursor-sync commit is NOT drift** — and recognising it is required, not optional,
-   > because otherwise auto-start can never fire in the intended flow. `/way-of-working:handoff` sets
-   > `last_commit` to HEAD **before** committing `.ai/next-steps.md`, then opens that commit
-   > as a docs-only PR for the human to merge. So the moment the human does what `/way-of-working:handoff`
-   > told them to, HEAD has moved past `last_commit` — by the cursor sync itself.
-   > `.ai/state.json` is git-ignored, so nothing corrects `last_commit` afterwards.
-   >
-   > **Ask a content question, not an ancestry one.** Compare the two trees directly:
-   > ```bash
-   > git cat-file -e <last_commit>^{commit}     # the object still exists at all
-   > git diff --name-only <last_commit> HEAD    # TWO arguments — never <last_commit>..HEAD
-   > ```
-   > Treat the delta as **not drift** only when that path list is exactly
-   > `.ai/next-steps.md`. **The path list is the whole check** — nothing else, and never a
-   > commit count. Anything else, including a `last_commit` git cannot read, is drift and waits.
-   >
-   > **The two-argument form is load-bearing, and `..` is the bug it replaces.** `A..HEAD` is
-   > a commit *range*, and a range only means what you want when `A` is an ancestor of HEAD.
-   > `last_commit` routinely is not: when a `/way-of-working:handoff` runs while a code PR is still open —
-   > ordinary in a one-task-per-PR flow — `last_commit` is that branch's tip, and squash-merge
-   > replays the branch as a **new** commit object the original tip never becomes an ancestor
-   > of. `git merge-base --is-ancestor <last_commit> HEAD` then exits non-zero *forever*, even
-   > after everything has merged, so a range-based check silently fails closed every session.
-   > A two-argument `git diff` compares trees and does not care: once the work is in
-   > `{pr_base}`, the only difference left is the cursor file. Same property as step 3's
-   > prune — squash-merge makes SHA ancestry an unusable identity.
-   >
-   > If the work branch has **not** merged yet, its files show up in the path list and this
-   > correctly reports drift: the cursor describes work `{pr_base}` does not have. That is a
-   > true answer, not a false alarm — wait.
-   >
-   > Say which case you found in one line, e.g. `HEAD differs from last_commit only in
-   > .ai/next-steps.md — the merged cursor-sync PR, not drift.` Anything you cannot classify
-   > is drift.
+   - **`clean`** — `last_commit` is HEAD. Not drift.
+   - **`cursor-sync`** — HEAD differs from `last_commit` only in `.ai/next-steps.md`. **Not
+     drift.** This is the expected shape of a merged `/way-of-working:handoff`: it sets
+     `last_commit` to HEAD *before* committing `.ai/next-steps.md` and opening that commit as
+     a docs-only PR, so the moment the human merges it, HEAD has moved past `last_commit` by
+     exactly the cursor-sync commit. `.ai/state.json` is git-ignored, so nothing corrects
+     `last_commit` afterwards — recognising this case is required, not optional, or auto-start
+     can never fire in the intended flow.
+   - **`drift`** — anything else differs too. If the work branch named by `last_commit`
+     simply hasn't merged yet, this is the **correct** answer, not a false alarm: the cursor
+     describes work `{pr_base}` does not have yet. Wait.
+   - **`unreadable`** — git cannot read `last_commit` at all. Wait.
+
+   Say which case you found in one line, e.g. `HEAD differs from last_commit only in
+   .ai/next-steps.md — the merged cursor-sync PR, not drift.` Anything the script cannot
+   classify as `clean` or `cursor-sync` is drift.
 
 3. **Prune squash-merged local branches** (standard practice — squash-merge is the default here, and `git branch --merged {pr_base}` **cannot** see a squash-merged branch because the squash makes a new commit the branch never became an ancestor of; so ask GitHub which PRs merged). One read-only `gh` call, then a safe `-D` on **only** the branches whose PR GitHub reports `merged` — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
    ```bash
@@ -157,8 +149,8 @@ event, run the check.
    - `hitl_gate` is present and reads `NONE OPEN`;
    - `sprint_status` is `implementing`;
    - the running model matches `assigned_model` (step 5);
-   - step 2 found no drift — `last_commit` matches HEAD, **or** the only path in step 2's
-     content diff is `.ai/next-steps.md` — **and** the tree is clean.
+   - step 2's `cursor-drift.sh` reported `clean` or `cursor-sync` (either is "no drift")
+     **and** the tree is clean.
 
    Otherwise **state the pick-up point and wait.** In particular: always wait on
    `planning` (the planning pass is one question at a time — that dialogue *is* the
@@ -169,14 +161,15 @@ event, run the check.
    > proceed. "I couldn't tell whether a gate was open" is not "no gate is open"; that
    > conflation is the same defect as an inconclusive ruleset check reported as healthy.
    >
-   > **The cursor-sync carve-out above does not soften this**, and must not be read as
+   > **The `cursor-sync` carve-out above does not soften this**, and must not be read as
    > licence to wave through a delta that merely *looks* routine. It is narrow on purpose:
-   > **one named file, verified by command.** A delta you did not diff, or one carrying any
-   > path besides `.ai/next-steps.md`, is **drift, and waits** — however routine its story
-   > sounds. Widening it to "docs-shaped paths" would be a real loosening, not a
-   > clarification: a roadmap or sprint-plan edit between sessions can invalidate the very
-   > `next_action` about to run unattended. If you find yourself reasoning about why some
-   > *other* delta is probably harmless, that is the failure this block exists to stop.
+   > **one named file, verified by the script.** A delta you did not run `cursor-drift.sh`
+   > against, or one it classified as `drift` because it carries any path besides
+   > `.ai/next-steps.md`, **waits** — however routine its story sounds. Treating some *other*
+   > `drift` result as probably harmless would be a real loosening, not a clarification: a
+   > roadmap or sprint-plan edit between sessions can invalidate the very `next_action` about
+   > to run unattended. If you find yourself reasoning about why a `drift` result is probably
+   > fine, that is the failure this block exists to stop.
 
    Say which branch you took and why in one line (`Auto-starting: gate NONE OPEN,
    status implementing, cursor clean.` / `Waiting: HITL Gate open on the sprint 41 plan.`)

@@ -7,9 +7,11 @@
 # but it catches the way portability actually rots: someone pastes a working command,
 # a check name, or a repo name in from the repo they happen to be sitting in.
 #
-# Scope is skills/ and agents/ ONLY. reference/ is documentation about the contract and
-# necessarily quotes concrete values -- project-schema.md's worked examples are the
+# Scope is skills/, agents/, and bin/. reference/ is documentation about the contract
+# and necessarily quotes concrete values -- project-schema.md's worked examples are the
 # whole point of it. Widening this to reference/ would make the schema doc unwritable.
+# bin/ carries shared, executed plugin code exactly like skills/ and agents/ do (see
+# issue #21) -- the same portability rule applies to it.
 set -euo pipefail
 
 # Tier 1 -- the sprint's acceptance pattern (SW Task 3). These are the specific literals
@@ -44,7 +46,7 @@ PATTERN="${TIER1}|${TIER2}|${TIER3}"
 fail=0
 shopt -s nullglob
 for plugin_dir in plugins/*/; do
-  for component in skills agents; do
+  for component in skills agents bin; do
     target="${plugin_dir}${component}"
     [ -d "$target" ] || continue
     if hits=$(grep -rnE "$PATTERN" "$target"); then
@@ -68,4 +70,4 @@ EOF
   exit 1
 fi
 
-echo "Coupling check passed: no repo-specific literals in any skills/ or agents/ tree."
+echo "Coupling check passed: no repo-specific literals in any skills/, agents/, or bin/ tree."

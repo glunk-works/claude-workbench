@@ -49,3 +49,16 @@ jobs:
           persist-credentials: false
       - name: No known-wrong form has returned
         run: bash scripts/invariants-check.sh
+
+  # Also its own job: fixture tests for the plugin's bin/ scripts (see issue #21 --
+  # deterministic predicates extracted from skill prose belong in tested scripts).
+  # Not yet in {ruleset.required_checks} -- see the PR that added this job.
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: cursor-drift.sh fixtures
+        run: sh tests/cursor-drift.test.sh
