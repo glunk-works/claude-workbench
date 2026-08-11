@@ -92,7 +92,10 @@ and `{review.ci_gate}`.
      title first (`printf '%s' "$TITLE" | wc -c`, ≤72) and expect every check in
      `{ruleset.required_checks}` to run. If `{review.ci_gate}` is set, a docs-only PR
      touching none of `{code_paths}` is exempt from it; if `{review.ci_gate}` is `null`,
-     there is no review gate to be exempt from — say nothing about one.
+     there is no review gate to be exempt from — say nothing about one. This push has no
+     reach preflight of its own and carries the same push-identity exposure as
+     `/way-of-working:ship` step 1 — a 403 here is diagnosed the same way
+     (`reference/conventions.md` § *Push identity*).
    - **Never merge it.** The human's merge is the approval. Report the PR URL and stop.
    - `.ai/state.json` is git-ignored and needs no commit; it already travels with the
      working tree for this machine.

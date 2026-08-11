@@ -92,6 +92,52 @@ The prefix matches the commit `type` the branch will land as.
   conflict). Auto-deletion makes that structural rather than remembered — you cannot push
   to a branch that no longer exists.
 
+### Push identity: `git` and `gh` can silently disagree
+
+On some machines, `git push` and `gh` resolve GitHub identity through **different**
+mechanisms and can disagree without either tool reporting it. `gh` prefers a `GH_TOKEN` /
+`GITHUB_TOKEN` environment variable when one is set (the common case in CI, devcontainers,
+and Codespaces) and otherwise falls back to its keyring's active account; `git push` uses
+whatever credential helper is configured (`credential.helper=manager` on Windows, for
+example), which can hold a stored credential for a different account — one with no write
+access to the repo being pushed to.
+
+**Symptom:** `git push` fails with
+`remote: Permission to OWNER/REPO.git denied to <account>` /
+`fatal: … 403`, while every `gh` command in the same session — `gh pr create`,
+`gh issue create`, `gh api repos/OWNER/REPO --jq .permissions` — succeeds, and
+`gh auth status` shows green checkmarks. This is the trap: `gh auth status` reports token
+*scope*, never push *reach*, and says nothing about which identity `git` itself will use.
+A clean `gh auth status` does not mean the next `git push` will succeed.
+
+**Diagnosis:** compare the identity `gh` is using against the identity `git`'s credential
+helper will hand over. `git credential fill` prints the **full** credential record,
+including a live token as `password=…` — never run it unfiltered where the output is
+logged or captured; only the `username=` line is needed here. Its behavior also varies by
+helper and, with no stored credential for the host, some helpers prompt interactively
+(`GIT_TERMINAL_PROMPT=0` makes that fail fast instead of hanging):
+
+```bash
+gh api user --jq .login
+GIT_TERMINAL_PROMPT=0 git credential fill <<< $'protocol=https\nhost=github.com\n' | grep '^username='
+```
+
+A mismatch is the defect. This is also why a reach preflight (`gh api repos/OWNER/REPO
+--jq .permissions`, or `.permissions.push` to check write access specifically) is not
+sufficient on its own: it only verifies `gh`'s identity, and reports healthy even when
+this split is present, because it never touches the credential helper `git push` actually
+uses.
+
+**Per-push workaround** (no global config change, safe to run every time):
+
+```bash
+git -c credential.helper= -c credential.helper='!gh auth git-credential' push …
+```
+
+**Durable fix** (changes global git config — offer it, don't do it unasked): either
+`gh auth setup-git`, or clear the stale credential-manager entry for `github.com` so it
+stops resolving to the wrong account.
+
 ## Issue + label taxonomy
 
 - **No title prefixes.** `[BUG] thing is broken` is noise — the label already says `bug`,
