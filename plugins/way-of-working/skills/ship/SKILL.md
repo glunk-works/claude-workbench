@@ -32,6 +32,29 @@ approval.
    - Never rebase/force-push a pushed branch. To refresh a stale branch, merge `{pr_base}`
      **into** it. A conflict in an append-only ledger file (a backlog, a changelog) is
      usually *two additions* — keep **both** sides.
+   - **Push-reach preflight, before any commit:**
+     ```bash
+     gh api repos/{repo} --jq .permissions.push   # substitute {repo}'s real owner/name —
+                                                   # gh expands {repo} itself, and a literal
+                                                   # brace produces an indistinguishable 404
+     ```
+     - Errors (repo unreachable / wrong identity entirely) → stop, before committing
+       anything, and tell the human, naming the identity (`gh api user --jq .login`). If
+       `{repo}` was left unsubstituted, the error is this same 404 — check that first,
+       since it means "not run correctly" rather than "no access."
+     - Returns `false` → stop the same way — this identity can see the repo but cannot
+       push to it.
+     - Only `true` clears this check. (Don't "fix" a 404 by widening the call to
+       `repos/{owner}/{repo}` — `gh` resolves those from the local git remote, not from
+       `.ai/project.yml`'s `repo`, so on a fork or a mismatched remote it silently
+       preflights the wrong repo.)
+
+     This only verifies **`gh`'s** identity — `git push` can still resolve a different,
+     write-less account through its own credential helper and fail later regardless of a
+     healthy result here (see `reference/conventions.md` § *Push identity*). If the push in
+     step 3 403s despite this check passing, that mismatch is the first thing to check —
+     use the workaround documented there — though a 403 can also mean SSO authorization,
+     an IP allow-list, or a credential that expired between this check and the push.
 
 2. **Review the diff, then compose the commit.** `git status --short` + `git diff --staged`
    (stage with `git add` as needed). Write the message per `reference/conventions.md`

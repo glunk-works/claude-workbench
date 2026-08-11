@@ -30,7 +30,22 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-Nothing yet.
+**No migration required.**
+
+### Added
+
+- **`/way-of-working:ship` step 1 gains a push-reach preflight** (`gh api repos/{repo}
+  --jq .permissions.push`), so a wrong-identity push is caught before anything is
+  committed rather than at `git push`. It only verifies `gh`'s identity, not `git`'s — see
+  the new Global Conventions section below for the case it can't catch.
+- **Global Conventions documents the `git`-vs-`gh` push-identity split**
+  (`reference/conventions.md` § *Push identity*): `git push` and `gh` can resolve
+  different GitHub accounts on the same machine, so a healthy `gh` preflight does not
+  guarantee the next `git push` succeeds. Includes the diagnosis, a per-push workaround,
+  and the durable fix.
+- **`/way-of-working:handoff`'s own push (step 5) gets a pointer to the same section** —
+  it has the identical exposure but, per #23's own preferred shape, no preflight of its
+  own; only `ship` does. Closes #23.
 
 ## [0.5.1] — 2026-08-10
 
