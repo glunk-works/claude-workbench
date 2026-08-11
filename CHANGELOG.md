@@ -30,6 +30,13 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.1] — 2026-08-10
+
+**No migration required.** Docs-only. Worth taking before a fan-out, though: it corrects the
+pin-bump instructions themselves, which a repo reads from the version it already has.
+
 ### Fixed
 
 - **The pin-bump instructions named no command.** Every mention of the plugin cache said
@@ -37,6 +44,12 @@ the GitHub release notes.
   test was wrong — the cache keeps the old version's directory alongside the new one. Now
   states the three steps (edit the ref, `claude plugin update`, **restart**) and verification
   via `claude plugin list`. `WB-D6` updated: the mechanism it left open is now understood.
+
+### Changed
+
+- `WB-D8` records that the reporting repos confirmed their hubs can expose findings as
+  issues, so the breaking file-based cross-repo backlog is **not scheduled** rather than
+  deferred. See #5.
 
 ## [0.5.0] — 2026-08-10
 

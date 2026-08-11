@@ -196,6 +196,16 @@ take effect. Full reasoning and the task breakdown that implements them:
   are strings today, mappings only in a breaking change, and nothing has yet demonstrated it
   needs them.
 
+  **Confirmed by the reporting repos (2026-08-10): the hubs can expose findings as issues**,
+  so the `github_issues` path is a complete answer for the half they were blocked on, and the
+  breaking file-based half is **not scheduled** — not merely deferred. What that leaves open
+  is narrower than the original report: a satellite still cannot *read* a hub's `roadmap`,
+  `threat_model`, or `decisions.log`, because a document is not a finding and cannot be
+  routed to an issue. No repo has yet reported that gap costing anything, and until one does,
+  the honest position is that a required `schema_version` and two converted keys are a real
+  cost paid against a hypothetical benefit. Reopen this if a consuming repo hits the read
+  half; the evidence to design against will arrive with it.
+
 - **WB-D9 — a blocking precondition is marked, and records its satisfaction where the work
   that relies on it lands.** `/way-of-working:archive-sprint`'s verification ledger was the
   only place in the plugin asking *"is this claim backed by evidence?"*, and it is scoped to
