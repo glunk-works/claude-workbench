@@ -14,6 +14,7 @@ set -euo pipefail
 fail=0
 SKILLS=(plugins/*/skills/*/SKILL.md)
 AGENTS=(plugins/*/agents/*.md)
+BIN_SCRIPTS=(plugins/*/bin/*.sh)
 
 report() {
   echo "INVARIANT FAIL: $1" >&2
@@ -30,13 +31,19 @@ report() {
 # of the base branch at all, so a range-based check fails closed forever. Shipped wrong
 # in v0.3.0 (SHA equality) and again in v0.4.0 (the range form); see WB-D7.
 #
-# Comments are stripped first ON PURPOSE: /resume's own code block carries
+# The classifier itself now lives in plugins/*/bin/cursor-drift.sh (issue #21) rather
+# than in skill prose, so this scans that script too -- it is where the bug would
+# actually regress. tests/cursor-drift.test.sh is the authoritative behavioral guard
+# (a fixture, not a regex, catches a wrong answer the regex's shape doesn't cover);
+# this stays as a cheap, independent static check on top of it.
+#
+# Comments are stripped first ON PURPOSE: cursor-drift.sh's own comment carries
 # `# TWO arguments -- never <last_commit>..HEAD`, which is the warning against this
 # exact mistake and must not trip the gate that enforces it. Same reasoning as the
 # coupling check's note about check names in illustrative output.
 # Per file, not over a concatenated stream, so a hit names the file it is in.
 range_hits=""
-for f in "${SKILLS[@]}" "${AGENTS[@]}"; do
+for f in "${SKILLS[@]}" "${AGENTS[@]}" "${BIN_SCRIPTS[@]}"; do
   h=$(sed 's/#.*//' "$f" | grep -nE 'git (diff|rev-list).*last_commit[^ ]*\.\.' || true)
   [ -n "$h" ] && range_hits+="  $f:$h"$'\n'
 done

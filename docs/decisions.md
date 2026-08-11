@@ -240,6 +240,48 @@ take effect. Full reasoning and the task breakdown that implements them:
   `/way-of-working:ship` the whole sprint plan to reason about — it reads one cursor field for
   one marker, which is a bounded read, not a scope increase.)
 
+- **WB-D10 — a deterministic predicate moves to a tested script; `bin/` is how a plugin ships
+  one.** Filed as issue #21 after `v0.5.0`: three of five findings that `/way-of-working:retro`
+  raised upstream were mechanical procedures whose *English* was subtly wrong (`WB-D7`'s own
+  drift check shipped wrong twice). The narrower claim, not "prose is bad": where a skill
+  describes a computation with one correct answer given its inputs, prose buys nothing and
+  costs the ability to test it — that passage should be a script the skill *invokes*, keeping
+  only the policy (what to do with each answer) in prose.
+
+  The proposal's own step 1 was to verify its precondition before extracting anything:
+  `${CLAUDE_PLUGIN_ROOT}` is set for a `hooks.json`-invoked hook (the harness spawns it
+  directly) but **confirmed empty** in the shell a skill's own Bash tool calls run in — a
+  skill cannot reliably build `"${CLAUDE_PLUGIN_ROOT}"/scripts/foo.sh` paths. That would have
+  stopped the effort at step 1, except a second mechanism is already documented and stable: a
+  plugin's `bin/` directory is added to the Bash tool's `PATH` while the plugin is enabled, so
+  a script placed there is callable by **bare name** — no path-building, no missing-variable
+  failure mode, and arguably better ergonomics than the interpolated form the issue proposed.
+
+  Landed this pass: `plugins/way-of-working/bin/cursor-drift.sh`, the `WB-D7` classifier,
+  called from `/way-of-working:resume` step 2 as `cursor-drift.sh <last_commit>` and proven by
+  `tests/cursor-drift.test.sh` — real throwaway git repos exercising the squash-merge case
+  `WB-D7` names, not a mock of git's behavior. A fixture catches a **wrong answer**; the
+  `invariants` regex only ever caught one **wrong shape** of answer (the range form
+  literally reappearing), so both stay: the fixture is authoritative, the regex is a cheap
+  independent check that now also scans `bin/` scripts, not just prose. `coupling-check.sh`'s
+  scope widened to include `bin/` alongside `skills/` and `agents/` — it is shared, executed
+  plugin code under the same no-repo-specific-literal rule. A new `tests` CI job runs the
+  fixtures on every PR but was deliberately **not** added to `{ruleset.required_checks}` in
+  this pass — that is a live branch-protection change, and this repo's own convention (see
+  `WB-D2`) is that a schema/infra change is a decision made with evidence, not a side effect.
+
+  Deliberately **not** done in this pass, per the issue's own staging: the `/way-of-working:
+  resume` step 3 / `/way-of-working:archive-sprint` step 4 branch-prune block, byte-identical
+  in both skills today, is a stronger duplication case but the issue's own order asks for one
+  extraction to run through a real `/way-of-working:resume` session before a second one
+  starts — this repo consuming its own plugin (`WB-D1`) makes that the very next tag-pinned
+  session, not a hypothetical one. (Rejected: reaching for `${CLAUDE_PLUGIN_ROOT}` with a
+  documented workaround, e.g. having the *hook* export it somewhere a skill could read it —
+  no such channel exists between a hook process and the agent's own Bash tool shell; they are
+  different processes. Rejected: shipping the script under `scripts/` like the repo's own
+  gates — those run in CI and this repo's own shell, never inside a consuming repo's session,
+  so they cannot be what a plugin skill invokes portably.)
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
@@ -261,3 +303,6 @@ repo demonstrates it needs one, which is also what supplies the evidence to desi
 against. Worth recording because the cheaper answer was available from the start and was
 found by asking "what does this actually cost the people adopting it," not by a new
 requirement arriving.
+
+`WB-D10` lands unreleased, alongside #23's push-identity fix (`CHANGELOG.md`'s
+`[Unreleased]` section) — it does not yet have a tag.
