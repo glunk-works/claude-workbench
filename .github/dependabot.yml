@@ -1,0 +1,55 @@
+# Keeps the SHA-pinned GitHub Actions current.
+#
+# SCOPE, stated because it is easy to assume this covers more than it does: this repo has
+# NO package manifests -- no package.json, no requirements.txt, no go.mod, no Dockerfile.
+# The whole dependency surface is the two actions used by `ci.yml` and `release.yml`, so
+# `github-actions` is the only ecosystem that applies. Adding another entry here would
+# silently do nothing, which is worse than no entry: it reads as coverage.
+#
+# NOT COVERED, named deliberately: `release.yml` installs the Claude CLI with
+# `npm install -g @anthropic-ai/claude-code@2.1.224`. A version pinned inside a `run:`
+# step is invisible to Dependabot -- it reads manifests and workflow `uses:` values, not
+# shell commands. **That pin is bumped by hand.** (`ci.yml` installs the same package
+# unpinned on purpose; only the release path needs reproducibility, and `release.yml` says
+# so at the step.) If that hand-bump is ever missed often enough to matter, the fix is a
+# real manifest for Dependabot to read, not another entry below.
+
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: "/" # covers .github/workflows/**
+    schedule:
+      interval: weekly
+      day: monday
+
+    # The actions are pinned by full commit SHA with a trailing `# v5` comment. That is
+    # the supply-chain-safe form -- a tag is mutable, a SHA is not -- and Dependabot
+    # updates BOTH the SHA and the version comment together, so the pin style survives
+    # and stays legible. This is the setup Dependabot handles best, not a workaround.
+    #
+    # These PRs are reviewed and merged by a human like any other. No auto-merge:
+    # reference/conventions.md is explicit that nothing auto-merges, and an action bump is
+    # a change to the code that runs every gate in this repo.
+
+    # One PR for all action bumps rather than one per action. With two actions the noise
+    # saving is small; the reason that matters is the PR TITLE. A squash merge makes the
+    # title the commit subject on the base branch, so it is the enforced surface
+    # (reference/conventions.md, "PR titles use the same grammar", <= 72 chars), and a
+    # grouped update keeps it short and stable instead of naming each action.
+    groups:
+      actions:
+        patterns: ["*"]
+
+    # Dependabot's default subject is "Bump X from Y to Z" -- not Conventional Commits,
+    # and it would land on the base branch as a non-conforming subject. `ci` is the right
+    # type: this is the build surface, nothing a consumer of the plugin ever sees.
+    # Produces `ci(deps): ...`.
+    commit-message:
+      prefix: ci
+      include: scope
+
+    labels:
+      - dependencies
+
+    open-pull-requests-limit: 3
