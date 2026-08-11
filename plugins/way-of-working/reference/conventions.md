@@ -101,14 +101,25 @@ The prefix matches the commit `type` the branch will land as.
   from each axis answers a different question, and mashing them together (the common
   failure) makes filtering useless:
   - **type** — `bug`, `feature`, `chore`, `docs`: what kind of work.
-  - **`area/*`** — `area/core`, `area/personas`, `area/tools`, `area/flows`, `area/ci`:
-    *the same vocabulary as the commit scopes*, so an issue and the commit that closes it
-    are filterable by the same word.
+  - **`area/*`** — one per module boundary in *this* repo, using **the same vocabulary as
+    its commit scopes**, so an issue and the commit that closes it are filterable by the
+    same word. **Derive the list, never copy one.** In the engine these read `area/core`,
+    `area/personas`, `area/tools`, `area/flows`, `area/ci`; in another repo they read
+    whatever that repo's scopes read. `git log --format=%s | grep -oE '^[a-z]+\(([a-z-]+)\)'`
+    is usually the whole answer. Copying a list from elsewhere creates labels for modules
+    the repo does not have — which is worse than no area axis, because a label nobody can
+    correctly apply gets applied incorrectly.
   - **`status/*`** — `status/blocked`, `status/needs-human`: where it is.
 - **Machine-emitted labels stay namespaced under the emitting system**
   (`loop-orchestrator/needs-human`). This is the load-bearing rule: a namespace makes "did a
   human or a robot put this here?" answerable at a glance, without a separate identity
   for the machine. Never let an automated writer apply an un-namespaced label.
+
+  **The exception is exactly where that rationale does not apply:** a bot that *has* its own
+  identity — Dependabot posting as `dependabot[bot]`, applying the ecosystem-standard
+  `dependencies` — already answers the question the namespace exists to answer. Namespacing
+  those is churn that breaks the tooling's own conventions. The rule targets automation
+  writing labels *as you*, which is the case a reader cannot otherwise detect.
 
 ## Definition of Done
 A unit of work is done only when: formatting + lint + the full test suite pass; new validated boundaries have negative-input tests; dependencies are pinned and CVE-clean with the SBOM regenerated; no unjustified `# noqa`; and no secrets in any committed file. For managed repos the repo's own `sprints/GLOBAL_DEFINITION_OF_DONE.md` (if present) extends, never relaxes, this bar.
