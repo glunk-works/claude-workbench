@@ -5,9 +5,24 @@ Consuming repos **pin a tag**, so nothing here reaches a repo until it bumps its
 view — `/way-of-working:archive-sprint` step 6 prompts for a pin bump at every sprint close,
 and a prompt that cannot say *"this one needs a migration"* is a trap.
 
-**Read the `⚠️ Migration` line, if a release has one, before bumping.** Per `WB-D6`, a pin
-bump has been observed **not** to be honored by the local plugin cache — so pair a bump with
-a cache clear, and confirm the version actually rotated before relying on new behavior.
+**Read the `⚠️ Migration` line, if a release has one, before bumping.**
+
+**Bumping the pin is three steps, and skipping either of the last two fails silently.**
+Editing `.claude/settings.json` changes what is *pinned*; it does not change what is *loaded*.
+
+```bash
+# 1. edit the ref in .claude/settings.json, then:
+claude plugin update <plugin>@<marketplace>   # 2. fetch the newly pinned tag
+# 3. restart the session — `update` reports "restart required to apply", and a
+#    running session keeps executing the copy it started with
+claude plugin list                            # verify: does it report the new version?
+```
+
+**Verify with `claude plugin list`, never by looking for a new cache directory.** The cache
+keeps one directory per version and does **not** remove the old one, so "a new directory
+appeared" is true even while the session still runs the old code. Observed three times now —
+twice in `WB-D6`, and again during the `v0.5.0` release, where a session was served skills
+from a `0.1.0` cache directory while `claude plugin list` correctly reported `0.5.0`.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases before
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
@@ -15,7 +30,13 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The pin-bump instructions named no command.** Every mention of the plugin cache said
+  "clear it" and "confirm the version rotated" without saying how, and the directory-rotation
+  test was wrong — the cache keeps the old version's directory alongside the new one. Now
+  states the three steps (edit the ref, `claude plugin update`, **restart**) and verification
+  via `claude plugin list`. `WB-D6` updated: the mechanism it left open is now understood.
 
 ## [0.5.0] — 2026-08-10
 

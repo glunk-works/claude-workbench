@@ -108,9 +108,23 @@ If any precondition fails, STOP and report why — do not archive.
    **Say what the bump would bring, not just that one exists.** Read the plugin's
    `CHANGELOG.md` for the entries between the pinned tag and the newest one, and surface any
    marked as needing a migration — "a newer tag exists" is not a decidable prompt, and a
-   breaking change discovered *after* the bump is discovered in the worst place. Pair a bump
-   with a plugin-cache clear and confirm the version actually rotated: a pin bump has been
-   observed not to be honored by the local cache.
+   breaking change discovered *after* the bump is discovered in the worst place.
+
+   **Bumping the pin is three steps, and skipping either of the last two is silent.** Editing
+   the pin changes what is *pinned*; it does not change what is *loaded*.
+
+   ```bash
+   # 1. edit the ref in .claude/settings.json, then:
+   claude plugin update <plugin>@<marketplace>   # 2. fetch the newly pinned tag
+   # 3. restart the session — the CLI says "restart required to apply", and a
+   #    running session keeps executing the copy it started with
+   claude plugin list                            # verify: does it report the new version?
+   ```
+
+   **Verify with `claude plugin list`, never by looking for a new cache directory.** The old
+   version's directory is **not** removed — the cache holds one directory per version, so
+   "a new directory appeared" is true even when the session is still running the old code.
+   That is precisely how this hides.
 
 ## Guardrails
 - Never delete `{roadmap}` history or the sprint_plan files — archival only moves the `.ai/` cursor snapshot; the deep record stays in the repo's docs and in git.
