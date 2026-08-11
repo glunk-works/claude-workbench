@@ -1,0 +1,63 @@
+# ── identity ─────────────────────────────────────────────────────────────────
+repo: glunk-works/claude-workbench
+pr_base: main
+
+# ── the deep record ──────────────────────────────────────────────────────────
+# This repo has no separate roadmap-with-status-table and no sprint cadence — it
+# ships as small, single-task PRs (#22, #24-27), and docs/decisions.md's own
+# "Status" section is the closest thing to a live status + next-action record.
+# sprints_dir is declared per the schema's expectation but starts empty: used
+# only if/when a task is genuinely sprint-sized, not as the default unit of work.
+roadmap: docs/decisions.md
+sprints_dir: sprints
+threat_model: docs/decisions.md
+
+decisions:
+  log: docs/decisions.md
+  prefix: WB-D
+
+backlog:
+  kind: github_issues
+  repo: null
+  path: null
+  item_prefix: null
+
+load_bearing_docs:
+  - README.md
+  - docs/decisions.md
+  - CHANGELOG.md
+  - plugins/way-of-working/reference/project-schema.md
+  - plugins/way-of-working/reference/conventions.md
+  - plugins/way-of-working/reference/workflow.md
+  - .ai/next-steps.md
+
+# ── what counts as a behavior change ─────────────────────────────────────────
+code_paths:
+  - plugins/
+  - scripts/
+  - .github/workflows/
+  - .claude-plugin/
+
+# ── the local green gate ─────────────────────────────────────────────────────
+gates:
+  green:
+    - { run: bash scripts/lint.sh }
+    - { run: bash scripts/coupling-check.sh }
+    - { run: bash scripts/invariants-check.sh }
+
+# ── branch protection ────────────────────────────────────────────────────────
+ruleset:
+  name: protected-integration-branches
+  rule_types: [deletion, non_fast_forward, pull_request, required_status_checks]
+  required_checks: [lint, coupling, invariants]
+
+# ── the fresh-session review gate ────────────────────────────────────────────
+review:
+  ci_gate: null   # no hitl-review.yml in this repo — not adopted here (yet).
+
+# ── agents ───────────────────────────────────────────────────────────────────
+agents:
+  enabled: [architect, coder, security-critic, docs-consistency]
+models:
+  architect: opus
+  coder: sonnet
