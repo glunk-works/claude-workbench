@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "claude-workbench": {
+      "source": { "source": "github", "repo": "glunk-works/claude-workbench", "ref": "v0.5.1" }
+    }
+  },
+  "enabledPlugins": {
+    "way-of-working@claude-workbench": true
+  }
+}
