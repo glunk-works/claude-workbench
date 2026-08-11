@@ -92,6 +92,18 @@ take effect. Full reasoning and the task breakdown that implements them:
     bump was not honored by the local cache, so a pin change must be paired with a cache
     clear until the mechanism is understood.
 
+    **Resolved during the `v0.5.0` release — the mechanism is now understood, and the
+    guidance above was imprecise.** A pin bump is **three** steps: edit the ref, run
+    `claude plugin update <plugin>@<marketplace>`, and **restart the session** — `update`
+    itself reports *"restart required to apply"*, and a running session keeps executing the
+    copy it started with. Verification is `claude plugin list`, **not** an inspection of the
+    cache directory: the cache keeps one directory per version and does not remove the old
+    one, so a `0.1.0` directory sitting beside a `0.5.0` directory is normal and proves
+    nothing. Confirmed live — a session mid-release was served skills from the `0.1.0`
+    directory (recognisable by pre-`v0.4.0` bare command names) while `claude plugin list`
+    correctly reported `0.5.0`. This is why the failure reads as "the fix did not work"
+    rather than "the plugin did not reload."
+
   - **The coupling gate was blind to path-shaped literals, now less so.** F1–F4's shared
     root cause: the `coupling` grep matched repo/org **names** and a curated string list, so
     a hardcoded *path* that is not a repo name ("zero hits") proved only that no name leaked.
