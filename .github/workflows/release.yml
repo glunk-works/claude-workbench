@@ -77,13 +77,15 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code@2.1.224
       - name: Validate plugin manifests and skill frontmatter
         run: bash scripts/lint.sh
-      - name: No repo-specific literals in skills/ or agents/
+      - name: No repo-specific literals in skills/, agents/, or bin/
         run: bash scripts/coupling-check.sh
       # Every gate in ci.yml runs here too -- that is this job's whole contract. A gate
       # added to ci.yml and not added here silently stops applying at the one moment it
       # matters most: the commit consumers actually fetch.
       - name: No known-wrong form has returned
         run: bash scripts/invariants-check.sh
+      - name: cursor-drift.sh fixtures
+        run: sh tests/cursor-drift.test.sh
 
   release:
     needs: verify

@@ -1,11 +1,14 @@
 #!/bin/sh
 # Classify .ai/state.json's `last_commit` against the current HEAD.
 #
-# Extracted from /way-of-working:resume step 2 (see issue #21): that step is a
-# deterministic predicate with a correctness argument, not a judgment call, so it
-# belongs in a tested script rather than in skill prose -- prose already shipped
-# the wrong answer here twice (v0.3.0 SHA equality, v0.4.0 the commit-*range* form).
-# See tests/cursor-drift.test.sh and docs/decisions.md WB-D7.
+# This is a deterministic predicate with a correctness argument, not a judgment
+# call, so it is a tested script that /way-of-working:resume step 2 invokes
+# rather than a computation described in skill prose -- prose shipped the wrong
+# answer here twice: first by comparing `last_commit` to HEAD with plain SHA
+# equality, then by replacing that with a commit-*range* form that only means
+# what it looks like when `last_commit` is an ancestor of HEAD. Squash-merge
+# routinely makes it not one, since it replays a branch as a brand-new commit
+# object the original tip never becomes an ancestor of.
 #
 # Usage: cursor-drift.sh <last_commit>
 # Prints exactly one of, to stdout, and always exits 0 (the caller decides policy):
@@ -37,10 +40,12 @@ if [ "$head_sha" = "$last_sha" ]; then
   exit 0
 fi
 
-# TWO arguments -- never <last_commit>..HEAD. A range only means what you want
-# when last_commit is an ancestor of HEAD, and squash-merge routinely makes it
-# not one: see docs/decisions.md WB-D7. This compares trees, not history.
-paths="$(git diff --name-only "$last_commit" HEAD)"
+# TWO arguments -- never <last_commit>..HEAD (see the top-of-file note). This
+# compares trees, not history, and does not care whether last_commit is an
+# ancestor of HEAD. diff.relative is pinned off: a caller with that set in
+# their git config would otherwise get paths relative to cwd, not repo root,
+# silently breaking the .ai/next-steps.md comparison below.
+paths="$(git -c diff.relative=false diff --name-only "$last_commit" HEAD)"
 
 if [ "$paths" = ".ai/next-steps.md" ]; then
   echo cursor-sync
