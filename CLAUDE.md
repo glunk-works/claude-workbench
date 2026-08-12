@@ -27,8 +27,9 @@ Definition of Done) — they apply to this repo's own PRs too.
 
 ```
 bash scripts/lint.sh            # marketplace.json / plugin.json / SKILL.md frontmatter
-bash scripts/coupling-check.sh  # no repo-specific literals in skills/ or agents/
+bash scripts/coupling-check.sh  # no repo-specific literals in skills/, agents/, or bin/
 bash scripts/invariants-check.sh  # known-wrong forms haven't come back
+sh tests/cursor-drift.test.sh   # bin/ script fixtures (not yet a required check)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH.

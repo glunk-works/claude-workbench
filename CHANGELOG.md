@@ -46,9 +46,9 @@ the GitHub release notes.
 - **`/way-of-working:handoff`'s own push (step 5) gets a pointer to the same section** —
   it has the identical exposure but, per #23's own preferred shape, no preflight of its
   own; only `ship` does. Closes #23.
-- **`plugins/way-of-working/bin/cursor-drift.sh`**, a tested extraction of `/way-of-working
-  :resume` step 2's cursor-freshness classifier (`clean | cursor-sync | drift |
-  unreadable`), proven by `tests/cursor-drift.test.sh` against real throwaway git repos —
+- **`plugins/way-of-working/bin/cursor-drift.sh`**, a tested extraction of
+  `/way-of-working:resume` step 2's cursor-freshness classifier (`clean | cursor-sync |
+  drift | unreadable`), proven by `tests/cursor-drift.test.sh` against real throwaway git repos —
   including the squash-merge case `WB-D7` names. `bin/` is on the Bash tool's `PATH` while
   the plugin is enabled, so the skill calls it by bare name; `${CLAUDE_PLUGIN_ROOT}` was
   confirmed **not** set in that context first (issue #21 step 1), which is what made `bin/`
