@@ -206,10 +206,16 @@ failure this section exists for, and it is silent in every other surface.
     the repo does not have — which is worse than no area axis, because a label nobody can
     correctly apply gets applied incorrectly.
   - **`status/*`** — `status/blocked`, `status/needs-human`: where it is.
-- **Machine-emitted labels stay namespaced under the emitting system**
-  (`loop-orchestrator/needs-human`). This is the load-bearing rule: a namespace makes "did a
-  human or a robot put this here?" answerable at a glance, without a separate identity
-  for the machine. Never let an automated writer apply an un-namespaced label.
+- **Machine-emitted labels stay namespaced under the emitting system** — the automation that
+  writes the label, which is **not** reliably the repo it writes in. A repo that runs an
+  engine of its own namespaces under the engine (`loop-engine/needs-human`, in a repo not
+  called `loop-engine`); a repo whose only emitter *is* its own automation namespaces under
+  itself (`bedrock-serverless-rag/needs-human`). "Namespace by repo" reproduces the second
+  case correctly and the first case wrongly, which is why it survives as a mental model —
+  and why this bullet states the rule as *the emitter*, twice, rather than trusting one
+  example to carry it. This is the load-bearing rule: a namespace makes "did a human or a
+  robot put this here?" answerable at a glance, without a separate identity for the machine.
+  Never let an automated writer apply an un-namespaced label.
 
   **The exception is exactly where that rationale does not apply:** a bot that *has* its own
   identity — Dependabot posting as `dependabot[bot]`, applying the ecosystem-standard
