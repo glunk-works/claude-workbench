@@ -34,6 +34,15 @@ the GitHub release notes.
 
 ### Fixed
 
+- **`coupling-check.sh`'s TIER2 covered 4 of the org's 8 repos.** Added the remaining five
+  literals (`claude-workbench`, `bedrock-serverless-rag`, `pm-agent-loop`,
+  `appsec-triage-agent`, `loop-engine`) and restated the tier's comment as a membership rule
+  instead of an ad-hoc list. `claude-workbench` is the repo a contributor is most likely to
+  be sitting in while editing the plugin, and was the highest-risk gap. Two pre-existing,
+  legitimate self-references to `claude-workbench` in `archive-sprint`/`retro`'s own prose
+  (describing the plugin's distribution source, not a leaked local-repo literal) were
+  reworded to name the concept instead of the repo. See #43.
+
 - **The pin-bump procedure was wrong for a second time, and this release changes where it
   lives rather than only what it says.** `claude plugin update` resolves against the ref
   registered in `~/.claude/plugins/known_marketplaces.json`, not the ref just edited into

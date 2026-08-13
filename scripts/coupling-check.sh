@@ -20,9 +20,12 @@ TIER1='hatch run|migration_roadmap|architect-review|loop-orchestrator|Seuss27'
 
 # Tier 2 -- every repo in the org, plus any emitter name the reference docs use as a worked
 # example. A skill that names one of these is the same defect as tier 1, caught before it
-# ships rather than after. Hand-maintained today (see #43 for the derive-vs-hand-maintain
-# call, deliberately left open); keep this list in sync with `gh repo list glunk-works`.
-TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works|claude-workbench|bedrock-serverless-rag|pm-agent-loop|appsec-triage-agent|loop-engine'
+# ships rather than after. `loop-orchestrator` is also matched by TIER1 (it predates this
+# tier), but is listed here too so this tier's own membership rule is literally true on its
+# own and doesn't silently depend on TIER1 never being pruned. Hand-maintained today (see
+# #48 for the derive-vs-hand-maintain call); keep this list in sync with
+# `gh repo list glunk-works`.
+TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works|claude-workbench|bedrock-serverless-rag|pm-agent-loop|appsec-triage-agent|loop-engine|loop-orchestrator'
 
 # Tier 3 -- structural literal SHAPES, not exact strings. SW Task 5 found that tiers 1-2
 # match repo/org names and a curated string list but were blind to a hardcoded *path* that
@@ -62,12 +65,14 @@ done
 if [ "$fail" -ne 0 ]; then
   cat >&2 <<'EOF'
 
-A skill or agent names a repo-specific value. Two correct fixes, per
+A skill or agent names a repo-specific value. Three correct fixes, per
 project-schema.md:
   1. Add a schema key and read it from .ai/project.yml (usually this one).
   2. The behavior was never portable -- move it back to being repo-local, out
      of the plugin.
-"Override it locally in the consuming repo" is not a third option.
+  3. The sentence is portable without the value at all -- say the concept
+     (e.g. "the plugin's source repo"), not the name.
+"Override it locally in the consuming repo" is not a fourth option.
 EOF
   exit 1
 fi
