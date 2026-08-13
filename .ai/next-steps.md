@@ -1,35 +1,37 @@
 # Cursor — claude-workbench
 
 **Now:** No sprint in flight (this repo runs issue-driven, single-task PRs, not sprints).
-**#23** implemented — status: awaiting_review (PR open, not yet merged).
+Nothing in implementation — status: planning, on **#28**'s split.
 
-**Just done (2026-08-11):**
-- Implemented #23's preferred fix — **(3) + (1)**: documented the `gh`-vs-`git`
-  push-identity failure signature in `reference/conventions.md` § *Push identity*, and
-  added a `gh`-side push-reach preflight to `/way-of-working:ship` step 1
-  (`gh api repos/{repo} --jq .permissions.push`, explicit about only covering `gh`'s
-  identity). `/way-of-working:handoff` got a pointer to the same section.
-- Two rounds of `/way-of-working:critic-gate` (architect + docs-consistency, each run
-  twice) — first pass found a real credential-disclosure risk (`git credential fill`
-  printing a live token) and a functional bug (an untestable "no `push` in the result"
-  string check); second pass found a residual `{repo}`-substitution trap and a structural
-  regression from the first round's fix. Both rounds fixed; green gate clean throughout.
-- Shipped as PR **#31** (`232c002`, branch `fix/gh-git-push-identity-preflight`), labeled
-  `feature` + `area/way-of-working`. **Confirmed the documented failure live**: the actual
-  `git push` for this PR hit the exact `403 denied to <account>` split described in the
-  doc, and the documented workaround fixed it on the first try.
+**Just done (2026-08-13):**
+- **Cursor repair.** This handoff's main job: the cursor had gone five merged PRs stale
+  (`last_commit` still pointed at #31's branch tip while `main` was at #36), because #33–#36
+  and #38 each landed without a `/way-of-working:handoff`. `/way-of-working:resume` correctly
+  reported `drift` and waited. `last_commit` is now `979000a` = `main`.
+- **#37 closed** by PR **#38** (`979000a`): the documented pin-bump procedure no longer
+  silently no-ops for a project-scoped install, and `conventions.md` now names the channel a
+  pin bump actually ships on. All four checks green; merged by the human.
+- Landed earlier without a cursor sync, recorded here for the record: **#21 closed**
+  (`cursor-drift.sh` extracted from skill prose into a tested script — #33, corrected in
+  #34), and **plugin 0.6.0 released** with this repo's own pin bumped to match (#35, #36).
+- Pruned 2 squash-merged local branches. Ruleset `protected-integration-branches` healthy:
+  4 rule types, 3 required checks.
+- No `/way-of-working:critic-gate` pass this session and none needed — this session wrote no
+  code (`git diff main...HEAD` empty).
 
-**Next:** Confirm PR #31 merged (closes #23), then start **#21**: extract the
-deterministic predicates from skill prose into testable scripts (explicitly "not urgent" —
-picked up here only because #23 is now done).
+**Next:** Split **#28** and start its **security half only** (decision 8 — private
+vulnerability reporting, secret scanning, push protection, Dependabot alerts across the 8
+org repos), per the issue's own recommended next action. Apply review items 2 and 6:
+snapshot each repo's posture before changing anything, and treat
+`bedrock-serverless-rag`'s secret-scanning enablement as an incident-shaped step — it is the
+only repo in the org with Dependabot alerts off and may surface live historical credentials.
+Leave the taxonomy half (decisions 1–7) alone pending review item 15. Architect/opus.
 
-No HITL gate open. Next gate is the human's merge of PR #31 — no `review.ci_gate` in this
-repo, so that critic-gate pass was the only review this diff had.
-
-**Also open:** #28's taxonomy half (decisions 1–7) remains decided-not-started.
+**HITL Gate: OPEN.** #28's security baseline mutates settings on 8 repos outside this one.
+The human approves the rollout scope and order before any setting is flipped — nothing in
+#28 runs unattended. No `review.ci_gate` in this repo.
 
 **Pointers:** [`docs/decisions.md`](docs/decisions.md) (roadmap/decisions of record) ·
-[#31](https://github.com/glunk-works/claude-workbench/pull/31) (this session's PR) ·
-[#23](https://github.com/glunk-works/claude-workbench/issues/23) ·
-[#21](https://github.com/glunk-works/claude-workbench/issues/21) ·
-[#28](https://github.com/glunk-works/claude-workbench/issues/28)
+[#28](https://github.com/glunk-works/claude-workbench/issues/28) (the only open issue) ·
+[#38](https://github.com/glunk-works/claude-workbench/pull/38) ·
+[#37](https://github.com/glunk-works/claude-workbench/issues/37)
