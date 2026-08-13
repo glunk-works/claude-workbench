@@ -1,37 +1,43 @@
 # Cursor — claude-workbench
 
 **Now:** No sprint in flight (this repo runs issue-driven, single-task PRs, not sprints).
-Nothing in implementation — status: planning, on **#28**'s split.
+Status: **planning**, on the go/no-go for **#28**'s taxonomy half.
 
 **Just done (2026-08-13):**
-- **Cursor repair.** This handoff's main job: the cursor had gone five merged PRs stale
-  (`last_commit` still pointed at #31's branch tip while `main` was at #36), because #33–#36
-  and #38 each landed without a `/way-of-working:handoff`. `/way-of-working:resume` correctly
-  reported `drift` and waited. `last_commit` is now `979000a` = `main`.
-- **#37 closed** by PR **#38** (`979000a`): the documented pin-bump procedure no longer
-  silently no-ops for a project-scoped install, and `conventions.md` now names the channel a
-  pin bump actually ships on. All four checks green; merged by the human.
-- Landed earlier without a cursor sync, recorded here for the record: **#21 closed**
-  (`cursor-drift.sh` extracted from skill prose into a tested script — #33, corrected in
-  #34), and **plugin 0.6.0 released** with this repo's own pin bumped to match (#35, #36).
-- Pruned 2 squash-merged local branches. Ruleset `protected-integration-branches` healthy:
-  4 rule types, 3 required checks.
-- No `/way-of-working:critic-gate` pass this session and none needed — this session wrote no
-  code (`git diff main...HEAD` empty).
+- **#28's security half (decision 8) executed and closed out** — PR **#40** (`e696090`).
+  Private vulnerability reporting is now on for all 8 `glunk-works` repos; secret scanning,
+  push protection, and Dependabot alerts were already on everywhere. Evidence in
+  [`.ai/context/security-posture-2026-08-13.md`](context/security-posture-2026-08-13.md).
+- **The snapshot invalidated the plan's premise, which is the point of taking one.** #28's
+  survey (2026-08-11) was materially wrong two days later about its own headline repo:
+  `bedrock-serverless-rag` had all three controls on, not off, and has **zero
+  secret-scanning alerts in any state** — history already scanned clean. Review item 2's
+  credential-rotation risk never materialised, and the four-control rollout across 8 repos
+  reduced to one setting on four. Cause unestablishable — the org audit-log API 404s on this
+  plan.
+- **#28 commented and re-scoped** to the taxonomy half only; it remains the sole open issue.
+- Pruned 2 squash-merged local branches (#39, #40). Ruleset `protected-integration-branches`
+  healthy: 4 rule types, 3 required checks.
+- No `/way-of-working:critic-gate` pass and none needed — `git diff main...HEAD` is empty and
+  the session's landed diff touched no `code_paths` (one file under `.ai/`).
+- Note for the next session: the four `PUT` calls had to be run by the human directly. The
+  harness's auto-mode classifier declined `gh api -X PUT` against org repos. Expect the same
+  block on any future org-wide setting change.
 
-**Next:** Split **#28** and start its **security half only** (decision 8 — private
-vulnerability reporting, secret scanning, push protection, Dependabot alerts across the 8
-org repos), per the issue's own recommended next action. Apply review items 2 and 6:
-snapshot each repo's posture before changing anything, and treat
-`bedrock-serverless-rag`'s secret-scanning enablement as an incident-shaped step — it is the
-only repo in the org with Dependabot alerts off and may surface live historical credentials.
-Leave the taxonomy half (decisions 1–7) alone pending review item 15. Architect/opus.
+**Next:** Decide **#28**'s taxonomy half (decisions 1–7) against the issue's own **review
+item 15** — does eight decisions of label hygiene remove more friction than it adds? Either
+scope it into an executable plan (applying review items 1, 5, 7, 8, 10, 11, 13) or decline it
+and close #28. The security half is done, so nothing is waiting on this. Architect/opus.
 
-**HITL Gate: OPEN.** #28's security baseline mutates settings on 8 repos outside this one.
-The human approves the rollout scope and order before any setting is flipped — nothing in
-#28 runs unattended. No `review.ci_gate` in this repo.
+**Also unfiled, deliberately:** secret-scanning **validity checks** are off on all 8 repos and
+7 of 8 have no code scanning. Both are outside decision 8's scope and were recorded rather
+than acted on — worth their own issue if the human wants them.
 
-**Pointers:** [`docs/decisions.md`](docs/decisions.md) (roadmap/decisions of record) ·
+**HITL Gate: OPEN.** The taxonomy half is a go/no-go the human makes, not a task to start —
+#28 flags it as unsettled itself, and review items 1 and 10 say parts of the plan as written
+are wrong. Nothing in decisions 1–7 runs before that call. No `review.ci_gate` in this repo.
+
+**Pointers:** [`docs/decisions.md`](../docs/decisions.md) (roadmap/decisions of record) ·
+[`.ai/context/security-posture-2026-08-13.md`](context/security-posture-2026-08-13.md) ·
 [#28](https://github.com/glunk-works/claude-workbench/issues/28) (the only open issue) ·
-[#38](https://github.com/glunk-works/claude-workbench/pull/38) ·
-[#37](https://github.com/glunk-works/claude-workbench/issues/37)
+[#40](https://github.com/glunk-works/claude-workbench/pull/40)
