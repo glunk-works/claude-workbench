@@ -267,11 +267,13 @@ take effect. Full reasoning and the task breakdown that implements them:
   scope widened to include `bin/` alongside `skills/` and `agents/` — it is shared, executed
   plugin code under the same no-repo-specific-literal rule. A new `tests` CI job runs the
   fixtures on every PR but was deliberately **not** added to `{ruleset.required_checks}` in
-  this pass — that is a live branch-protection change, and this repo's own convention (see
-  `WB-D2`) is that a schema/infra change is a decision made with evidence, not a side effect.
+  this pass — that is a live branch-protection change, made against a running repo rather
+  than reviewed in a diff, and `WB-D8`'s own precedent is to defer exactly that kind of
+  change until there is a concrete reason to make it, not as a side effect of an unrelated
+  pass.
 
-  Deliberately **not** done in this pass, per the issue's own staging: the `/way-of-working:
-  resume` step 3 / `/way-of-working:archive-sprint` step 4 branch-prune block, byte-identical
+  Deliberately **not** done in this pass, per the issue's own staging: the
+  `/way-of-working:resume` step 3 / `/way-of-working:archive-sprint` step 4 branch-prune block, byte-identical
   in both skills today, is a stronger duplication case but the issue's own order asks for one
   extraction to run through a real `/way-of-working:resume` session before a second one
   starts — this repo consuming its own plugin (`WB-D1`) makes that the very next tag-pinned

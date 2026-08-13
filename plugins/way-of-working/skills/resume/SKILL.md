@@ -47,17 +47,23 @@ event, run the check.
    - The `pointers.sprint_plan` file (the active `{sprints_dir}/*/sprint_plan.md`) — the task list for the current sprint.
    - `{roadmap}` — read only its **status table** + its **next action** line, not the whole file, unless the next action needs the decisions log (`{decisions.log}`).
 
-2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`.
+2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`. If
+   the tree is dirty, surface that — a previous session may not have finished a
+   `/way-of-working:handoff`.
+
    Then classify `last_commit` against HEAD with the plugin's own script — this is a
-   deterministic predicate (issue #21), not a judgment call, and prose already got it wrong
-   twice (v0.3.0 SHA equality, v0.4.0 a commit-*range* form — see `docs/decisions.md` WB-D7
-   and `tests/cursor-drift.test.sh`). `bin/` is on the Bash tool's `PATH` while the plugin is
-   enabled, so call it by bare name, no `${CLAUDE_PLUGIN_ROOT}` needed:
+   deterministic predicate, not a judgment call, and prose already got it wrong twice (plain
+   SHA equality, then a commit-*range* form that only means what it looks like when
+   `last_commit` is an ancestor of HEAD — squash-merge routinely makes it not one). `bin/` is
+   on the Bash tool's `PATH` while the plugin is enabled, so call it by bare name, no
+   `${CLAUDE_PLUGIN_ROOT}` needed:
    ```bash
    cursor-drift.sh <last_commit>
    ```
-   It prints exactly one of `clean | cursor-sync | drift | unreadable`. The **policy** —
-   what a session does with each answer — stays here, not in the script:
+   It prints exactly one of `clean | cursor-sync | drift | unreadable`, always from a
+   two-argument tree diff — **never** a commit range, and never a commit count, both of
+   which silently break under squash-merge. The **policy** — what a session does with each
+   answer — stays here, not in the script:
 
    - **`clean`** — `last_commit` is HEAD. Not drift.
    - **`cursor-sync`** — HEAD differs from `last_commit` only in `.ai/next-steps.md`. **Not
@@ -69,7 +75,10 @@ event, run the check.
      can never fire in the intended flow.
    - **`drift`** — anything else differs too. If the work branch named by `last_commit`
      simply hasn't merged yet, this is the **correct** answer, not a false alarm: the cursor
-     describes work `{pr_base}` does not have yet. Wait.
+     describes work `{pr_base}` does not have yet. Wait. (Rejected: widening the allowlist to
+     "docs-shaped paths" generally — a roadmap or sprint-plan edit between sessions can
+     invalidate the very `next_action` auto-start is about to run unattended, which is the
+     one thing this check exists to catch.)
    - **`unreadable`** — git cannot read `last_commit` at all. Wait.
 
    Say which case you found in one line, e.g. `HEAD differs from last_commit only in
