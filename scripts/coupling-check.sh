@@ -18,9 +18,11 @@ set -euo pipefail
 # the 7 skills and 4 agents actually carried before they were generalized.
 TIER1='hatch run|migration_roadmap|architect-review|loop-orchestrator|Seuss27'
 
-# Tier 2 -- the repos this plugin is being adopted into next. A skill that names one of
-# these is the same defect as tier 1, caught before it ships rather than after.
-TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works'
+# Tier 2 -- every repo in the org, plus any emitter name the reference docs use as a worked
+# example. A skill that names one of these is the same defect as tier 1, caught before it
+# ships rather than after. Hand-maintained today (see #43 for the derive-vs-hand-maintain
+# call, deliberately left open); keep this list in sync with `gh repo list glunk-works`.
+TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works|claude-workbench|bedrock-serverless-rag|pm-agent-loop|appsec-triage-agent|loop-engine'
 
 # Tier 3 -- structural literal SHAPES, not exact strings. SW Task 5 found that tiers 1-2
 # match repo/org names and a curated string list but were blind to a hardcoded *path* that
