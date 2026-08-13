@@ -1,43 +1,49 @@
 # Cursor — claude-workbench
 
 **Now:** No sprint in flight (this repo runs issue-driven, single-task PRs, not sprints).
-Status: **planning**, on the go/no-go for **#28**'s taxonomy half.
+Status: **awaiting_review** — [#43](https://github.com/glunk-works/claude-workbench/issues/43)'s
+fix is done and open as [PR #47](https://github.com/glunk-works/claude-workbench/pull/47).
 
 **Just done (2026-08-13):**
-- **#28's security half (decision 8) executed and closed out** — PR **#40** (`e696090`).
-  Private vulnerability reporting is now on for all 8 `glunk-works` repos; secret scanning,
-  push protection, and Dependabot alerts were already on everywhere. Evidence in
-  [`.ai/context/security-posture-2026-08-13.md`](context/security-posture-2026-08-13.md).
-- **The snapshot invalidated the plan's premise, which is the point of taking one.** #28's
-  survey (2026-08-11) was materially wrong two days later about its own headline repo:
-  `bedrock-serverless-rag` had all three controls on, not off, and has **zero
-  secret-scanning alerts in any state** — history already scanned clean. Review item 2's
-  credential-rotation risk never materialised, and the four-control rollout across 8 repos
-  reduced to one setting on four. Cause unestablishable — the org audit-log API 404s on this
-  plan.
-- **#28 commented and re-scoped** to the taxonomy half only; it remains the sole open issue.
-- Pruned 2 squash-merged local branches (#39, #40). Ruleset `protected-integration-branches`
-  healthy: 4 rule types, 3 required checks.
-- No `/way-of-working:critic-gate` pass and none needed — `git diff main...HEAD` is empty and
-  the session's landed diff touched no `code_paths` (one file under `.ai/`).
-- Note for the next session: the four `PUT` calls had to be run by the human directly. The
-  harness's auto-mode classifier declined `gh api -X PUT` against org repos. Expect the same
-  block on any future org-wide setting change.
+- **#43 closed** via PR #47 — `scripts/coupling-check.sh`'s TIER2 covered 4 of 8 org repos;
+  now covers all 8 plus the `loop-engine` worked-example emitter name. Verified by deliberate
+  regression (planted each new literal, confirmed the gate caught and named it, reverted).
+- **Two pre-existing, legitimate `claude-workbench` self-references** in
+  `archive-sprint/SKILL.md` and `retro/SKILL.md` (describing the plugin's own distribution
+  source, not a leaked local-repo literal) were reworded to name the concept instead of the
+  repo — adding the bare name to TIER2 would otherwise have broken the gate on them.
+- **`/way-of-working:critic-gate` ran** (`architect`, human picked it over `security-critic` for this
+  diff). **Two spawned rounds, converged; a third round of two trivial text corrections
+  (a doc miscitation, a changelog arithmetic slip) was applied without a third spawn** given
+  their severity — noting the deviation from the strict re-run-every-round rule rather than
+  silently calling it a clean 2-round pass.
+  - Round 1 (7 findings): 2 medium fixed (TIER2's "every repo in the org" comment silently
+    depended on TIER1 covering `loop-orchestrator` — folded it into TIER2 directly; the
+    comment pointed at #43 for a question this PR closes — refiled as **#48**), 1 pre-existing
+    gap filed as **#49** (`plugins/*/hooks/` isn't scanned by this gate at all, and already
+    has a live hit), 1 low-priority message improvement applied, PR title/body corrected.
+  - Round 2: 2 low findings (message misquoted `project-schema.md`'s fix count; CHANGELOG
+    conflated TIER1/TIER2 coverage) — both fixed directly.
+- **PR #47 is green**: lint, coupling, invariants, tests all pass. Not yet merged.
+- **Filed #48** (TIER2 derive-vs-hand-maintain — opus call) and **#49** (`hooks/` scanning
+  gap, with a confirmed live hit in `ai-cursor-banner.sh`) as follow-ups, deliberately not
+  folded into #43's PR.
 
-**Next:** Decide **#28**'s taxonomy half (decisions 1–7) against the issue's own **review
-item 15** — does eight decisions of label hygiene remove more friction than it adds? Either
-scope it into an executable plan (applying review items 1, 5, 7, 8, 10, 11, 13) or decline it
-and close #28. The security half is done, so nothing is waiting on this. Architect/opus.
+**Next:** Once **PR #47** merges, pick the next backlog item — **#44** (secret-scanning
+validity checks; cheap, but the human must run the `PATCH` calls, since the harness
+classifier declines `gh api` writes to org repos), **#45** (which repos CodeQL can actually
+analyse — a decision, not a task), **#48** (TIER2 derive-vs-hand-maintain — opus), or **#49**
+(add `hooks/` to the scanned set and fix its one live hit — mechanical, coder-doable, the
+only one of the four that's a pure pick-up-and-go). **Architect/opus** is assigned next
+because the live choice among these is itself the kind of call #43's own scope note said
+belongs to opus, not because #49 specifically needs opus.
 
-**Also unfiled, deliberately:** secret-scanning **validity checks** are off on all 8 repos and
-7 of 8 have no code scanning. Both are outside decision 8's scope and were recorded rather
-than acted on — worth their own issue if the human wants them.
-
-**HITL Gate: OPEN.** The taxonomy half is a go/no-go the human makes, not a task to start —
-#28 flags it as unsettled itself, and review items 1 and 10 say parts of the plan as written
-are wrong. Nothing in decisions 1–7 runs before that call. No `review.ci_gate` in this repo.
+**HITL Gate: OPEN.** Two things gate: PR #47 awaiting the human's merge, and which of
+#44/#45/#48/#49 comes next (not yet ratified — #49 is the only purely mechanical pick).
 
 **Pointers:** [`docs/decisions.md`](../docs/decisions.md) (roadmap/decisions of record) ·
-[`.ai/context/security-posture-2026-08-13.md`](context/security-posture-2026-08-13.md) ·
-[#28](https://github.com/glunk-works/claude-workbench/issues/28) (the only open issue) ·
-[#40](https://github.com/glunk-works/claude-workbench/pull/40)
+[PR #47](https://github.com/glunk-works/claude-workbench/pull/47) (open, closes #43) ·
+[#44](https://github.com/glunk-works/claude-workbench/issues/44) ·
+[#45](https://github.com/glunk-works/claude-workbench/issues/45) ·
+[#48](https://github.com/glunk-works/claude-workbench/issues/48) ·
+[#49](https://github.com/glunk-works/claude-workbench/issues/49)
