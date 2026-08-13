@@ -65,14 +65,16 @@ done
 if [ "$fail" -ne 0 ]; then
   cat >&2 <<'EOF'
 
-A skill or agent names a repo-specific value. Three correct fixes, per
+A skill or agent names a repo-specific value. Two correct fixes, per
 project-schema.md:
   1. Add a schema key and read it from .ai/project.yml (usually this one).
   2. The behavior was never portable -- move it back to being repo-local, out
      of the plugin.
-  3. The sentence is portable without the value at all -- say the concept
-     (e.g. "the plugin's source repo"), not the name.
-"Override it locally in the consuming repo" is not a fourth option.
+"Override it locally in the consuming repo" is not a third option.
+
+A third case is narrower than either: the sentence didn't need the value at
+all. If it's descriptive prose rather than a behavior that varies per repo,
+say the concept (e.g. "the plugin's source repo"), not the name.
 EOF
   exit 1
 fi

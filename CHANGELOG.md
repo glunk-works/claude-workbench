@@ -34,9 +34,12 @@ the GitHub release notes.
 
 ### Fixed
 
-- **`coupling-check.sh`'s TIER2 covered 4 of the org's 8 repos.** Added the remaining five
-  literals (`claude-workbench`, `bedrock-serverless-rag`, `pm-agent-loop`,
-  `appsec-triage-agent`, `loop-engine`) and restated the tier's comment as a membership rule
+- **`coupling-check.sh` guarded only 4 of the org's 8 repos.** `TIER2` itself listed 3
+  (`bounty-infra`, `global-bootstrap`, `scope-core`); the 4th (`loop-orchestrator`) was
+  covered only via `TIER1`, and the check's other four org repos had no coverage anywhere.
+  Added the missing four (`claude-workbench`, `bedrock-serverless-rag`, `pm-agent-loop`,
+  `appsec-triage-agent`), plus the `loop-engine` worked-example emitter name and
+  `loop-orchestrator` itself, to `TIER2`, and restated its comment as a membership rule
   instead of an ad-hoc list. `claude-workbench` is the repo a contributor is most likely to
   be sitting in while editing the plugin, and was the highest-risk gap. Two pre-existing,
   legitimate self-references to `claude-workbench` in `archive-sprint`/`retro`'s own prose
