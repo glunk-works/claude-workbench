@@ -138,6 +138,56 @@ git -c credential.helper= -c credential.helper='!gh auth git-credential' push �
 `gh auth setup-git`, or clear the stale credential-manager entry for `github.com` so it
 stops resolving to the wrong account.
 
+## Bumping a pinned plugin: the pin is not the registration
+
+A repo that pins a plugin marketplace to an exact ref has **two** pieces of state, and only
+one of them lives in the repo:
+
+- the **pin** — `extraKnownMarketplaces.<marketplace>.source.ref` in `.claude/settings.json`,
+  which is versioned and reviewed; and
+- the **registration** — the same marketplace's entry in
+  `~/.claude/plugins/known_marketplaces.json`, which is per-*user*, not per-project, and is
+  what actually resolves at load time.
+
+Editing the pin changes what is *declared*. It does not change what is *registered*, and
+nothing reconciles the two on its own.
+
+**Symptom:** `claude plugin update <plugin>@<marketplace> --scope project` reports
+`already at the latest version (<old>)` right after the ref was edited to a newer tag —
+success, no error, no change. `claude plugin marketplace update <marketplace>` likewise
+reports `Successfully updated` and leaves the registered ref alone. The session goes on
+loading the old tag while every surface reports an enabled, healthy, correctly-pinned
+plugin. Two further traps sit next to it: `claude plugin update` defaults to
+`--scope user`, so on a project-scoped install it fails outright with *not installed at
+scope user*; and if the marketplace was **first** registered without a `ref` at all — a
+bare `/plugin marketplace add`, or a user-level `extraKnownMarketplaces` entry — that
+registration wins permanently and a project-level pin has never once taken effect.
+
+**What actually rotates the pin** — re-register the marketplace, then re-resolve the
+install:
+
+```bash
+# 1. edit .claude/settings.json → extraKnownMarketplaces.<marketplace>.source.ref
+claude plugin marketplace add <owner>/<repo>@<ref> --scope project
+# the uninstall is load-bearing: a plain install short-circuits on "already installed"
+claude plugin uninstall <plugin>@<marketplace> --scope project
+claude plugin install   <plugin>@<marketplace> --scope project
+# then restart — a running session keeps executing the copy it started with
+```
+
+**Verify by commit, never by version string.** The version is read from the plugin's
+`plugin.json`, so it reports whatever that file said at the commit installed — which is
+exactly right when the wrong commit is installed, and therefore proves nothing:
+
+```bash
+jq -r '.plugins["<plugin>@<marketplace>"][] | "\(.projectPath) \(.version) \(.gitCommitSha)"' \
+  ~/.claude/plugins/installed_plugins.json
+git ls-remote --tags <marketplace-repo-url> <ref>
+```
+
+The two shas must be equal. A version string that matches while the shas differ is the
+failure this section exists for, and it is silent in every other surface.
+
 ## Issue + label taxonomy
 
 - **No title prefixes.** `[BUG] thing is broken` is noise — the label already says `bug`,
