@@ -184,6 +184,40 @@ jobs:
             echo "cross-repo write credential in a workflow, which is a bigger decision than this"
             echo "release is worth. An unbumped consumer is at least visible this way."
             echo
+            echo "### How to bump — \`claude plugin update\` does **not** do it"
+            echo
+            echo "Editing the ref in \`.claude/settings.json\` changes what is *pinned*; it does not change"
+            echo "what is *registered*, and the registration in \`~/.claude/plugins/known_marketplaces.json\`"
+            echo "is what resolves. So \`claude plugin update\` reads the OLD ref and reports **\"already at"
+            echo "the latest version\"** while the session goes on loading the old tag — a silent no-op that"
+            echo "reports success. It also defaults to \`--scope user\`, which fails outright on the"
+            echo "project-scoped install these repos use. Re-registering the marketplace is what actually"
+            echo "rotates the pin:"
+            echo
+            echo '```bash'
+            echo "# 1. edit .claude/settings.json:"
+            echo "#    extraKnownMarketplaces.claude-workbench.source.ref = $TAG"
+            echo "# 2. re-register the marketplace at the new ref — this is the step that does the work"
+            echo "claude plugin marketplace add glunk-works/claude-workbench@$TAG --scope project"
+            echo "# 3. the uninstall is load-bearing: a plain install short-circuits on \"already installed\""
+            echo "claude plugin uninstall way-of-working@claude-workbench --scope project"
+            echo "claude plugin install   way-of-working@claude-workbench --scope project"
+            echo "# 4. restart the session — a running one keeps executing the copy it started with"
+            echo '```'
+            echo
+            echo "**Verify by commit, not by version string.** The version comes from \`plugin.json\` and can"
+            echo "read \`$TAG\` while the installed commit is something else entirely:"
+            echo
+            echo '```bash'
+            echo "jq -r '.plugins[\"way-of-working@claude-workbench\"][] | \"\\(.projectPath) \\(.version) \\(.gitCommitSha)\"' \\"
+            echo "  ~/.claude/plugins/installed_plugins.json"
+            echo "git ls-remote --tags https://github.com/glunk-works/claude-workbench.git $TAG"
+            echo '```'
+            echo
+            echo "The shas must match. And if \`known_marketplaces.json\` shows **no \`ref\` key at all** for"
+            echo "\`claude-workbench\`, the pin has never taken effect on that machine and the repo has been"
+            echo "tracking the default branch — check before assuming the previous tag was ever exercised."
+            echo
             echo "**Do these in order.** Exact pinning already means a new tag reaches nobody until a"
             echo "human bumps it — so every tag is effectively a release candidate and an \`-rc\` suffix"
             echo "would only re-create, with ceremony, what pinning gives for free. What pinning does"

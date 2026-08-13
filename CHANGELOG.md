@@ -30,7 +30,28 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-Nothing yet.
+**No migration required.**
+
+### Fixed
+
+- **The pin-bump procedure was wrong for a second time, and this release changes where it
+  lives rather than only what it says.** `claude plugin update` resolves against the ref
+  registered in `~/.claude/plugins/known_marketplaces.json`, not the ref just edited into
+  `.claude/settings.json`, so it reported *"already at the latest version"* and loaded the
+  old tag — a silent no-op reporting success. Corrected in
+  `reference/conventions.md` § *Bumping a pinned plugin*, which also covers the two
+  adjacent traps: `update` defaulting to `--scope user` on a project-scoped install, and a
+  first registration made **without** a `ref` shadowing a project pin permanently. See #37.
+- **The corrected steps now ship in the generated release notes** (`release.yml`), because
+  `CHANGELOG.md` is the wrong channel for this by construction: a consuming repo reads the
+  pin-bump instructions from the version it *already has*, so a fix here is only readable
+  after the bump it describes. Release notes are read at bump time and stay editable after
+  the tag is cut. `WB-D6`'s lesson, applied to the delivery mechanism instead of the prose.
+- **Verification is now by commit, not by version string.** `claude plugin list` reports the
+  `version` field from the installed `plugin.json`, which is self-consistent at the wrong
+  commit and therefore proves nothing; the check compares `gitCommitSha` in
+  `installed_plugins.json` against the tag. Found live: a consuming repo reporting `0.5.1`
+  while running a `main` commit two merges past that tag.
 
 ## [0.6.0] — 2026-08-13
 
