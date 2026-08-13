@@ -106,8 +106,12 @@ approval.
 
 6. **Label on the three axes** if labels are being used: type (`bug`/`feature`/`docs`/
    `chore`), `area/*` (mirrors the scope), `status/*` — see `reference/conventions.md`
-   § *Issue + label taxonomy*. Machine-emitted labels stay namespaced under this repo's own
-   name, derived from `{repo}`.
+   § *Issue + label taxonomy*. Machine-emitted labels stay namespaced under **the emitting
+   system**; for a label this skill emits, that emitter is the repo's own automation, so the
+   namespace is **the repo's own name** — the bare name from `{repo}`, never the `owner/name`
+   pair. That is the general rule applied, not a second rule. The other case, where a repo's
+   emitter is a separately-named engine, is real and is covered in `conventions.md` — but it
+   is never what *this* skill emits, so it never changes the answer here.
 
 7. **If a review gate applies, flag it — do not satisfy it here.**
    - **`{review.ci_gate}` is set and the diff touches `{code_paths}`:** the

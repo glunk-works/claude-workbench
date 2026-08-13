@@ -52,6 +52,21 @@ the GitHub release notes.
   commit and therefore proves nothing; the check compares `gitCommitSha` in
   `installed_plugins.json` against the tag. Found live: a consuming repo reporting `0.5.1`
   while running a `main` commit two merges past that tag.
+- **The machine-namespace rule shipped with an example that contradicted it — and a second
+  doc that contradicted the rule outright.** Global Conventions § *Issue + label taxonomy*
+  stated the namespace as *the emitting system*, then illustrated it with the **repo** name,
+  which is only coincidentally the same thing: in the repo the example was drawn from the
+  emitter is `loop-engine`, so the label reads `loop-engine/needs-human`, and the one
+  instance a reader had to generalize from taught the wrong rule. `project-schema.md` then
+  stated that wrong rule flatly, in three places, as a plain property of the `repo` key.
+  Fixed together — the conventions bullet now names the emitter and gives both cases (the
+  one where the namespace matches the repo and the one where it does not), while
+  `project-schema.md` and `/way-of-working:ship` step 6 still derive a skill's namespace
+  from `{repo}` but now say **why** that is correct: a skill's emitter *is* the repo's own
+  automation, so it is the general rule applied, not an exception to it. **No emitted label
+  changes and no key moved** — every namespace any skill produced was already right; what
+  was wrong was the reason given for it, which is what a reader generalizes from. Closes
+  #28's decision 1.
 
 ## [0.6.0] — 2026-08-13
 

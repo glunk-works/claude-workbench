@@ -64,7 +64,7 @@ a smaller plugin, not a bigger schema.
 
 ```yaml
 # ── identity ─────────────────────────────────────────────────────────────────
-repo: glunk-works/bounty-infra   # owner/name. Also the machine-label namespace.
+repo: glunk-works/bounty-infra   # owner/name. Also the namespace for labels a skill emits.
 pr_base: main                    # branch every PR is cut from and based on.
 
 # ── the deep record ──────────────────────────────────────────────────────────
@@ -129,7 +129,11 @@ models:
 ### `repo`, `pr_base`
 
 `repo` is `owner/name`. Skills use it for `gh api repos/{repo}/…` calls and as the namespace
-for machine-emitted labels (`{repo-name}/*`).
+for the machine-emitted labels **they themselves** apply (`{repo-name}/*`) — correct because
+a skill's emitter *is* the repo's own automation. The general rule is *namespace by the
+emitting system*, which is not always the repo: a repo running a separately-named engine
+namespaces under the engine. Deriving a skill's own namespace from `repo` is that rule
+applied, not an exception to it. See `reference/conventions.md` § *Issue + label taxonomy*.
 
 `pr_base` is the branch work is cut **from** and based **on**. Normally the repo's default
 branch — the key exists because it does not have to be. A repo mid a large multi-sprint
@@ -372,9 +376,9 @@ must be a clean path through every skill, or the seam is in the wrong place.
 
 A new key is justified when a skill would otherwise name a repo-specific value. Before
 adding one, check the two cheaper answers first: the value may already be derivable from an
-existing key (label namespaces come from `repo`; the review gate's trigger paths default to
-`code_paths`), or the behavior may not be portable at all, in which case it leaves the
-plugin instead of growing the schema.
+existing key (a skill's own label namespace comes from `repo`; the review gate's trigger
+paths default to `code_paths`), or the behavior may not be portable at all, in which case
+it leaves the plugin instead of growing the schema.
 
 When you do add one: define it here with its type and its default, state what happens when
 it is absent, and update every skill that reads it in the same change. A key documented but
