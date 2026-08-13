@@ -30,7 +30,16 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-**No migration required.**
+Nothing yet.
+
+## [0.6.0] — 2026-08-13
+
+**No migration required.** No `.ai/project.yml` key changed and no skill contract moved.
+Two things behave differently after the bump, though, and neither is visible in a diff of
+your own repo: `/way-of-working:ship` step 1 now runs a preflight that can **stop** a ship
+before anything is committed, and the plugin ships its first executable — `bin/` is on the
+Bash tool's `PATH` while the plugin is enabled, so a name collision with a script of your
+own on `PATH` is possible in principle. Only `cursor-drift.sh` is claimed today.
 
 ### Added
 
