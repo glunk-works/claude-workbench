@@ -18,9 +18,14 @@ set -euo pipefail
 # the 7 skills and 4 agents actually carried before they were generalized.
 TIER1='hatch run|migration_roadmap|architect-review|loop-orchestrator|Seuss27'
 
-# Tier 2 -- the repos this plugin is being adopted into next. A skill that names one of
-# these is the same defect as tier 1, caught before it ships rather than after.
-TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works'
+# Tier 2 -- every repo in the org, plus any emitter name the reference docs use as a worked
+# example. A skill that names one of these is the same defect as tier 1, caught before it
+# ships rather than after. `loop-orchestrator` is also matched by TIER1 (it predates this
+# tier), but is listed here too so this tier's own membership rule is literally true on its
+# own and doesn't silently depend on TIER1 never being pruned. Hand-maintained today (see
+# #48 for the derive-vs-hand-maintain call); keep this list in sync with
+# `gh repo list glunk-works`.
+TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works|claude-workbench|bedrock-serverless-rag|pm-agent-loop|appsec-triage-agent|loop-engine|loop-orchestrator'
 
 # Tier 3 -- structural literal SHAPES, not exact strings. SW Task 5 found that tiers 1-2
 # match repo/org names and a curated string list but were blind to a hardcoded *path* that
@@ -66,6 +71,10 @@ project-schema.md:
   2. The behavior was never portable -- move it back to being repo-local, out
      of the plugin.
 "Override it locally in the consuming repo" is not a third option.
+
+A third case is narrower than either: the sentence didn't need the value at
+all. If it's descriptive prose rather than a behavior that varies per repo,
+say the concept (e.g. "the plugin's source repo"), not the name.
 EOF
   exit 1
 fi
