@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# The DRY gate: a shared skill or agent may never name a repo-specific value.
+# The DRY gate: shared plugin code may never name a repo-specific value.
 #
-# Every literal a skill or agent needs is either a key in .ai/project.yml (see
+# Every literal shared plugin code needs is either a key in .ai/project.yml (see
 # plugins/*/reference/project-schema.md) or it does not belong in the plugin at all.
 # This check is the mechanical half of that rule -- it cannot prove a body is portable,
 # but it catches the way portability actually rots: someone pastes a working command,
 # a check name, or a repo name in from the repo they happen to be sitting in.
 #
-# Scope is skills/, agents/, and bin/. reference/ is documentation about the contract
-# and necessarily quotes concrete values -- project-schema.md's worked examples are the
-# whole point of it. Widening this to reference/ would make the schema doc unwritable.
-# bin/ carries shared, executed plugin code exactly like skills/ and agents/ do (see
-# issue #21) -- the same portability rule applies to it.
+# Scope is skills/, agents/, bin/, and hooks/. reference/ is documentation about the
+# contract and necessarily quotes concrete values -- project-schema.md's worked examples
+# are the whole point of it. Widening this to reference/ would make the schema doc
+# unwritable. bin/ carries shared, executed plugin code exactly like skills/ and agents/
+# do (see issue #21) -- the same portability rule applies to it, and to hooks/ (see issue
+# #49), whose scripts are registered in hooks.json and run in every consuming repo.
+# .claude-plugin/ is excluded for a different reason than reference/: it is plugin
+# *metadata*, not executed code, and plugin.json's author field legitimately carries the
+# org name that TIER2 matches -- scanning it would false-positive on correct content.
 set -euo pipefail
 
 # Tier 1 -- the sprint's acceptance pattern (SW Task 3). These are the specific literals
@@ -51,7 +55,7 @@ PATTERN="${TIER1}|${TIER2}|${TIER3}"
 fail=0
 shopt -s nullglob
 for plugin_dir in plugins/*/; do
-  for component in skills agents bin; do
+  for component in skills agents bin hooks; do
     target="${plugin_dir}${component}"
     [ -d "$target" ] || continue
     if hits=$(grep -rnE "$PATTERN" "$target"); then
@@ -65,7 +69,7 @@ done
 if [ "$fail" -ne 0 ]; then
   cat >&2 <<'EOF'
 
-A skill or agent names a repo-specific value. Two correct fixes, per
+Shared plugin code names a repo-specific value. Two correct fixes, per
 project-schema.md:
   1. Add a schema key and read it from .ai/project.yml (usually this one).
   2. The behavior was never portable -- move it back to being repo-local, out
@@ -79,4 +83,4 @@ EOF
   exit 1
 fi
 
-echo "Coupling check passed: no repo-specific literals in any skills/, agents/, or bin/ tree."
+echo "Coupling check passed: no repo-specific literals in any skills/, agents/, bin/, or hooks/ tree."

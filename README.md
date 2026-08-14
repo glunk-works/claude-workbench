@@ -19,9 +19,9 @@ the full reasoning, and `glunk-works/bounty-infra`'s
 
 ## The parameterization rule
 
-A shared skill or agent in `plugins/way-of-working/` may **never name a repo-specific
-value** (a check name, a roadmap path, a review-gate header string, an identity). If it
-needs one, it reads the consuming repo's `.ai/project.yml`
+Shared plugin code in `plugins/way-of-working/` — skills, agents, `bin/`, `hooks/` — may
+**never name a repo-specific value** (a check name, a roadmap path, a review-gate header
+string, an identity). If it needs one, it reads the consuming repo's `.ai/project.yml`
 (`plugins/way-of-working/reference/project-schema.md`). If a value can't be expressed
 there, the skill isn't portable and belongs local to that repo instead. A repo-local
 override of a shared skill is a **bug report against the schema, not a fork** — plugin

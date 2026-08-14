@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # SessionStart hook: surface the .ai/ dev-workflow cursor at the top of every
 # session so the ASSIGNED model/persona for the next action can't be missed.
-# Automates the manual "you're on the wrong model for this" reminder — see
-# CLAUDE.md "Working here: personas & model routing" and .ai/context/workflow.md.
+# Automates the manual "you're on the wrong model for this" reminder — see the
+# consuming repo's own model-routing rule in its CLAUDE.md, and this plugin's
+# reference/workflow.md for the role->model mapping the cursor's fields carry.
 #
 # Reads .ai/state.json (relative to the session cwd = project root). Emits a
 # SessionStart additionalContext block. No-ops silently outside the repo root

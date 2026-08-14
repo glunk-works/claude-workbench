@@ -34,6 +34,24 @@ the GitHub release notes.
 
 ### Fixed
 
+- **The coupling gate never scanned `plugins/*/hooks/`, and a stale literal was sitting in
+  the blind spot.** The scanned set was `skills/`, `agents/`, and `bin/`. `hooks/` carries
+  shipped, executed plugin code by exactly the argument that added `bin/` in #21:
+  `hooks/ai-cursor-banner.sh` is a `SessionStart` hook registered in `hooks.json` and runs in
+  every consuming repo. Adding `hooks` to the scanned set immediately caught the one live hit
+  it had been blind to — the hook's header comment pointed at `.ai/context/workflow.md` and a
+  CLAUDE.md section heading, **neither of which exists here**: that workflow content moved
+  into the plugin's own `reference/workflow.md`. Reworded to name the concept rather than the
+  path. The two CI workflow step names that enumerated the old three-tree set
+  (`ci.yml`, `release.yml`) were corrected with it — the `coupling` **job id**, which is what
+  `ruleset.required_checks` matches, is deliberately untouched. The gate's rule sentence and
+  failure banner now say "shared plugin code" rather than "a skill or agent", which had
+  under-described the scanned set since `bin/` joined it — as did the same sentence in
+  `CLAUDE.md`, `README.md`, and `reference/project-schema.md`, all widened to match. The
+  last of those matters most: it is where the failure banner sends a reader for the fix.
+  Found by the architect critic during #43's `/way-of-working:critic-gate` pass and filed
+  separately. See #49.
+
 - **`coupling-check.sh` guarded only 4 of the org's 8 repos.** `TIER2` itself listed 3
   (`bounty-infra`, `global-bootstrap`, `scope-core`); the 4th (`loop-orchestrator`) was
   covered only via `TIER1`, and the check's other four org repos had no coverage anywhere.
