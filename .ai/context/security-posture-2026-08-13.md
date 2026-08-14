@@ -83,3 +83,44 @@ on everywhere, so no new history scan was triggered and no alert surfaced.
 
 This re-read *is* review item 5's missing verification step: the survey that opened the work
 is the check that closes it.
+
+## Validity checks — attempted 2026-08-14, declined (#44)
+
+[#44](https://github.com/glunk-works/claude-workbench/issues/44) proposed enabling
+secret-scanning **validity checks** on all 8 repos — the item recorded above as outside
+decision 8's scope. It was attempted and **declined: the feature is not available on this
+org's plan.**
+
+`PATCH /repos/{owner}/{repo}` with
+`security_and_analysis.secret_scanning_validity_checks.status=enabled` returns **200 and
+changes nothing.** Re-reading all 8 repos afterwards showed `disabled`, unchanged. Two further
+reads explain why:
+
+- `GET /orgs/glunk-works` reports
+  `secret_scanning_validity_checks_enabled_for_new_repositories: null` — not `false`. The org
+  plan (`free`) cannot express the setting at all.
+- The only code security configuration offering it, GitHub's built-in `GitHub recommended`
+  preset, pairs `secret_scanning_validity_checks: enabled` with `advanced_security: enabled`.
+
+Validity checks require **GitHub Secret Protection** ($19/committer/month), which requires
+GitHub Team ($4/user/month) or Enterprise. For a solo maintainer that is ~$276/year, bought to
+prioritise a secret-scanning alert queue this snapshot recorded as **empty on all 8 repos, in
+every state**. Declined on that basis; reversible if the org's plan or alert volume changes.
+
+**The operative lesson is that a 200 is not a confirmation.** The write was accepted, reported
+success, and did nothing. Only the re-read caught it — the snapshot-change-re-read discipline
+review item 6 imposed for *destructive* changes turns out to matter just as much for a change
+that silently never happens.
+
+Two corrections to #44 as filed, recorded so the next reader does not repeat them:
+
+- Its cost claim ("One setting per repo… no per-repo judgment") was wrong. The true cost is a
+  plan upgrade, not a setting.
+- Its `gh api -f 'security_and_analysis[secret_scanning_validity_checks][status]=enabled'`
+  form does not nest: `-f` does not expand bracket notation into a nested object, so it sends
+  a flat key the endpoint ignores. A nested JSON body via `--input` is required. This was
+  **not** the cause of the no-op — the corrected form was run and no-ops identically — but it
+  would have masked the licensing finding as a syntax error.
+
+This does **not** extend to code scanning: CodeQL is free for public repositories, so
+[#45](https://github.com/glunk-works/claude-workbench/issues/45) is unaffected by this gate.
