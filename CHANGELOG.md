@@ -34,6 +34,18 @@ the GitHub release notes.
 
 ### Fixed
 
+- **`coupling-check.sh` guarded only 4 of the org's 8 repos.** `TIER2` itself listed 3
+  (`bounty-infra`, `global-bootstrap`, `scope-core`); the 4th (`loop-orchestrator`) was
+  covered only via `TIER1`, and the check's other four org repos had no coverage anywhere.
+  Added the missing four (`claude-workbench`, `bedrock-serverless-rag`, `pm-agent-loop`,
+  `appsec-triage-agent`), plus the `loop-engine` worked-example emitter name and
+  `loop-orchestrator` itself, to `TIER2`, and restated its comment as a membership rule
+  instead of an ad-hoc list. `claude-workbench` is the repo a contributor is most likely to
+  be sitting in while editing the plugin, and was the highest-risk gap. Two pre-existing,
+  legitimate self-references to `claude-workbench` in `archive-sprint`/`retro`'s own prose
+  (describing the plugin's distribution source, not a leaked local-repo literal) were
+  reworded to name the concept instead of the repo. See #43.
+
 - **The pin-bump procedure was wrong for a second time, and this release changes where it
   lives rather than only what it says.** `claude plugin update` resolves against the ref
   registered in `~/.claude/plugins/known_marketplaces.json`, not the ref just edited into

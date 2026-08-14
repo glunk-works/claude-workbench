@@ -101,9 +101,9 @@ If any precondition fails, STOP and report why — do not archive.
 
 6. **Consider bumping the plugin pin.** A sprint close is the one ritual that reliably
    recurs, which makes it the right moment to check whether `.claude/settings.json` points
-   at the newest `claude-workbench` tag. Tag-pinning makes upgrades opt-in, and opt-in
-   without a trigger means never. Mention the current pin and whether a newer tag exists;
-   bumping it is a one-line PR the human decides on — do not bump it silently.
+   at the newest tag of this plugin's source repo. Tag-pinning makes upgrades opt-in, and
+   opt-in without a trigger means never. Mention the current pin and whether a newer tag
+   exists; bumping it is a one-line PR the human decides on — do not bump it silently.
 
    **Say what the bump would bring, not just that one exists.** Read the plugin's
    `CHANGELOG.md` for the entries between the pinned tag and the newest one, and surface any

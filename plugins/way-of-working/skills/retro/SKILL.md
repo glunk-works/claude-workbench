@@ -101,9 +101,9 @@ Explicitly reject:
      rather than duplicate it, and add its index entry.
    - **A friction point in a plugin skill or agent** → this is an **upstream** fix, not a
      local one. Plugin skills cannot be partially overridden — a repo-local copy shadows the
-     whole skill and silently stops receiving upstream fixes — so the resolution is a
-     `claude-workbench` PR: either a new schema key, or the skill leaving the plugin as
-     not-portable. See `reference/project-schema.md` § *Overriding is a bug report*.
+     whole skill and silently stops receiving upstream fixes — so the resolution is a PR
+     against the plugin's source repo: either a new schema key, or the skill leaving the
+     plugin as not-portable. See `reference/project-schema.md` § *Overriding is a bug report*.
    - **A small mechanical fix** in *this* repo (a doc line, a local config) → **do it** on a
      branch → PR, if cheap and unambiguous; otherwise file it.
    - **A genuine judgment call for the owner** → **surface it, don't resolve it.**
