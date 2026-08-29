@@ -1,50 +1,45 @@
 # Cursor — claude-workbench
 
 **Now:** No sprint in flight (this repo runs issue-driven, single-task PRs, not sprints).
-Status: **implementing** — [#43](https://github.com/glunk-works/claude-workbench/issues/43)
-is closed, its fix merged as [PR #47](https://github.com/glunk-works/claude-workbench/pull/47)
-(`360ed74`). Picking the next backlog item is what's left.
+Status: **implementing** — two issues closed this session, both merged; the next pick-up is
+[#53](https://github.com/glunk-works/claude-workbench/issues/53).
 
-**Just done (2026-08-13):**
-- **#43 closed** via PR #47 — `scripts/coupling-check.sh`'s TIER2 covered 4 of 8 org repos;
-  now covers all 8 plus the `loop-engine` worked-example emitter name. Verified by deliberate
-  regression (planted each new literal, confirmed the gate caught and named it, reverted).
-- **Two pre-existing, legitimate `claude-workbench` self-references** in
-  `archive-sprint/SKILL.md` and `retro/SKILL.md` (describing the plugin's own distribution
-  source, not a leaked local-repo literal) were reworded to name the concept instead of the
-  repo — adding the bare name to TIER2 would otherwise have broken the gate on them.
-- **`/way-of-working:critic-gate` ran** (`architect`, human picked it over `security-critic` for this
-  diff). **Two spawned rounds, converged; a third round of two trivial text corrections
-  (a doc miscitation, a changelog arithmetic slip) was applied without a third spawn** given
-  their severity — noting the deviation from the strict re-run-every-round rule rather than
-  silently calling it a clean 2-round pass.
-  - Round 1 (7 findings): 2 medium fixed (TIER2's "every repo in the org" comment silently
-    depended on TIER1 covering `loop-orchestrator` — folded it into TIER2 directly; the
-    comment pointed at #43 for a question this PR closes — refiled as **#48**), 1 pre-existing
-    gap filed as **#49** (`plugins/*/hooks/` isn't scanned by this gate at all, and already
-    has a live hit), 1 low-priority message improvement applied, PR title/body corrected.
-  - Round 2: 2 low findings (message misquoted `project-schema.md`'s fix count; CHANGELOG
-    conflated TIER1/TIER2 coverage) — both fixed directly.
-- **PR #47 merged** (`360ed74`): lint, coupling, invariants, tests all passed.
-- **Filed #48** (TIER2 derive-vs-hand-maintain — opus call) and **#49** (`hooks/` scanning
-  gap, with a confirmed live hit in `ai-cursor-banner.sh`) as follow-ups, deliberately not
-  folded into #43's PR.
+**Just done (2026-08-14):**
+- **#44 declined and closed** via [PR #51](https://github.com/glunk-works/claude-workbench/pull/51)
+  (`e5afdee`). Secret-scanning validity checks require **GitHub Secret Protection**
+  ($19/committer/mo, Team or Enterprise); `glunk-works` is on **free**, so all 8 `PATCH` calls
+  returned **200 and changed nothing**. Declined at ~$276/yr against an alert queue #28 recorded
+  as empty on all 8 repos. Recorded in
+  [`.ai/context/security-posture-2026-08-13.md`](context/security-posture-2026-08-13.md).
+  **The operative lesson: a 200 is not a confirmation** — only the re-read caught it.
+- **#49 closed** via [PR #55](https://github.com/glunk-works/claude-workbench/pull/55)
+  (`9e6c191`). `coupling-check.sh` never scanned `plugins/*/hooks/`, and a stale literal was
+  sitting in the blind spot. Widened the scanned set; fixed the hit; corrected both CI workflow
+  step names (the `coupling` **job id** deliberately untouched — it is what
+  `ruleset.required_checks` matches); widened the rule sentence in the gate's header + banner,
+  `CLAUDE.md`, `README.md`, and `reference/project-schema.md`.
+- **`/way-of-working:critic-gate` ran** on #49 (`architect` + `docs-consistency`, human-picked;
+  `security-critic` proposed and trimmed). **Three rounds, converged** — round 3 returned
+  tightenings-only. Round 1's two critics independently found the same top defect (the stale CI
+  step names), which is what pulled it into the PR. One architect claim was **checked and
+  rejected** (it named the wrong branch); its underlying convention point was right, hence the
+  `ci/49-…` → `fix/49-…` rename.
+- **Filed #52, #53, #54** as deferred critic findings rather than folding them into #49 —
+  the same discipline #43 used when it filed #48 and #49.
 
-**Next:** Pick the next backlog item — **#44** (secret-scanning validity checks; cheap, but
-the human must run the `PATCH` calls, since the harness classifier declines `gh api` writes
-to org repos), **#45** (which repos CodeQL can actually analyse — a decision, not a task),
-**#48** (TIER2 derive-vs-hand-maintain — opus), or **#49** (add `hooks/` to the scanned set
-and fix its one live hit — mechanical, coder-doable, the only one of the four that's a pure
-pick-up-and-go). **Architect/opus** is assigned next because the live choice among these is
-itself the kind of call #43's own scope note said belongs to opus, not because #49
-specifically needs opus.
+**Next:** Implement **#53** — invert `coupling-check.sh`'s component loop from an allowlist to a
+denylist so it **fails closed**, and add a header clause saying so. This is the structural cause
+of #49: adding `hooks` fixed the instance, not the property, and `commands/` is the obvious next
+instance. Mechanical against a written spec, so **coder/sonnet**. Then `/way-of-working:critic-gate`
+(it touches `code_paths`) and `/way-of-working:ship`.
 
-**HITL Gate: OPEN.** Which of #44/#45/#48/#49 comes next is not yet ratified — #49 is the
-only purely mechanical pick if a quick coder pass is wanted instead.
+**HITL Gate: NONE OPEN.** The next gate is the human's merge of #53's PR. **#45** (which repos
+CodeQL can analyse) and **#48** (TIER2 derive-vs-hand-maintain) are both **opus decisions** still
+waiting and may preempt #53 — say so at `/way-of-working:resume` rather than treating it as a gate.
 
 **Pointers:** [`docs/decisions.md`](../docs/decisions.md) (roadmap/decisions of record) ·
-[PR #47](https://github.com/glunk-works/claude-workbench/pull/47) (merged, closed #43) ·
-[#44](https://github.com/glunk-works/claude-workbench/issues/44) ·
 [#45](https://github.com/glunk-works/claude-workbench/issues/45) ·
 [#48](https://github.com/glunk-works/claude-workbench/issues/48) ·
-[#49](https://github.com/glunk-works/claude-workbench/issues/49)
+[#52](https://github.com/glunk-works/claude-workbench/issues/52) ·
+[#53](https://github.com/glunk-works/claude-workbench/issues/53) ·
+[#54](https://github.com/glunk-works/claude-workbench/issues/54)
