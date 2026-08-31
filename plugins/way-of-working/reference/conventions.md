@@ -261,10 +261,11 @@ state that then drifts, and correction narratives accreting on top of correction
   learn what is already decided reads the archive alongside it. The live record holds:
   open items, locked decisions, whatever status table or index other tooling orients from,
   and a current-action section that fits on one screen — compaction moves *finished
-  narrative*, never the surfaces a reader navigates by. Only a file-kind `{backlog}` has a
-  derived archive path so far (`reference/project-schema.md`); for `{roadmap}` the
-  destination is a per-repo choice until one is defined, so name it in the repo rather than
-  inferring a convention that does not exist yet.
+  narrative*, never the surfaces a reader navigates by. The destination is **derived, not
+  configured**: the `_archive` sibling of the live file's own path, by the single rule in
+  `reference/project-schema.md`, applied to a file-kind `{backlog}` and to `{roadmap}`
+  alike. One rule, so the archive is always beside the record it came out of and no repo
+  has to name a path — and so a repo with no sprint cadence can compact its roadmap too.
 - **Write to the artifact's budget.** A decision is a decision-log entry stating the choice
   and why — not a narrative of how it was reached. A lesson that must survive is a rule in
   the relevant skill or convention, not a war story where it happened. And when the mistake

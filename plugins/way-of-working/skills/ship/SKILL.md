@@ -15,8 +15,9 @@ committing on the base branch, a wrong scope) can't happen. This skill **opens**
 **stops**. It never merges, `--approve`s, or force-pushes — the human's merge is the
 approval.
 
-**Read `.ai/project.yml` first** for `{pr_base}`, `{repo}`, `{code_paths}`, and
-`{review.ci_gate}`. Commit and PR-title grammar is not repo-specific — it lives in
+**Read `.ai/project.yml` first** for `{pr_base}`, `{repo}`, `{code_paths}`,
+`{review.ci_gate}`, and — for the ledger-conflict rule in step 1 — `{backlog}` and
+`{roadmap}`. Commit and PR-title grammar is not repo-specific — it lives in
 `reference/conventions.md`; read it rather than restating it here. Step 5 also reads
 `pointers.sprint_plan` from `.ai/state.json` when a cursor exists.
 
@@ -30,8 +31,71 @@ approval.
      cut **from `{pr_base}`**.
    - **Already on a work branch?** Confirm it was cut from `{pr_base}` and just add to it.
    - Never rebase/force-push a pushed branch. To refresh a stale branch, merge `{pr_base}`
-     **into** it. A conflict in an append-only ledger file (a backlog, a changelog) is
-     usually *two additions* — keep **both** sides.
+     **into** it. A conflict in a ledger file (a backlog, a changelog) is usually *two
+     additions* — **keep both sides**. That default is load-bearing: of the two errors
+     available here it is the recoverable one, because a resurrected entry can be removed
+     again while an entry dropped on a branch that is then squash-merged and pruned cannot
+     be recovered from anywhere — squashing leaves the branch's own commits unreachable.
+
+     **One narrow exception, and it is proved before it is applied.** Where the incoming
+     side is a compaction (`/way-of-working:archive-sprint`'s compaction step), an item it
+     removed is a *move*, not an absence, and putting it back into the live file undoes the
+     close. Never read that off the hunk: in a conflict, a compaction's removal and your own
+     branch's new neighbouring item look identical.
+
+     **Establish whether the incoming side removed anything at all, then hand the removals to
+     the human.** During a conflicted `git merge {pr_base}`, `MERGE_HEAD` is the incoming side,
+     `HEAD` is your branch, and index **stage 1** is the base the merge actually used:
+
+     ```bash
+     git show :1:<the ledger>          # the base
+     git show MERGE_HEAD:<the ledger>  # what the incoming side made of it
+     diff <(git show :1:<the ledger>) <(git show MERGE_HEAD:<the ledger>)
+     ```
+
+     - **The incoming side removed nothing** — every entry in the base survives on
+       `MERGE_HEAD` — then there is no compaction here and nothing to except. **Keep both
+       sides** and move on. This is the ordinary two-additions conflict and the common case.
+     - **The incoming side removed entries** — then say so to the human, name the entries, and
+       let them resolve those. Restoring a compacted entry undoes a close; dropping one of
+       your own is unrecoverable; and telling those apart reliably is a matching problem this
+       skill deliberately does not try to solve in prose (see the note below). Everything the
+       incoming side did **not** remove still follows the default: keep both.
+
+     A merge conflict is a moment a human is already present for, which is what makes this
+     cheap. Resolve **per entry, not per hunk** — one hunk can hold a removal and an addition
+     at once, and the additions are not in question.
+
+     > **Ask a revision, never a merge base you computed.** The obvious form — diff
+     > `git merge-base HEAD MERGE_HEAD` against `MERGE_HEAD` — is **false under squash-merge,
+     > which is this repo's default**. A squash commit is not a descendant of the branch's own
+     > commits, so the merge base does not advance past it (this is `WB-D7`'s premise in
+     > another command): once your PR squash-merges and you keep working on the branch, that
+     > diff replays *your* already merged additions and deletions as if the incoming side had
+     > made them. Verified — after a squash-merge it attributed both a decline and an addition
+     > made on the work branch to `{pr_base}`. Stage 1 is the base **git itself resolved for
+     > this merge**, virtual bases included, so it is right where a recomputed base is not.
+
+     > **Why this stops at the human instead of deciding per item.** The mechanical version —
+     > look each removed id up in the incoming `_archive` sibling, drop it if found — needs to
+     > match an id **at its own entry anchor**, and a line-shaped `grep` cannot do that
+     > safely. It misses real entries (`- **BL-3** — …`, `1. BL-3 …`, `| BL-3 | …`) and, worse,
+     > *matches* a wrapped citation whose continuation line happens to begin with the id — which
+     > in the archive means silently dropping a live item. `/way-of-working:retro` mandates the
+     > shape that produces those citations, so they are ordinary content, not an edge case.
+     > That test belongs in a fixture-backed script under the plugin's `bin/`, per `WB-D10`, not
+     > in prose; until it exists, this step reports and the human decides.
+
+     **Where a test cannot be run, the default stands — keep both.** Any `git show` that fails
+     covers it: a ledger the incoming side **renamed** (`fatal: path … does not exist in
+     'MERGE_HEAD'`), or an add/add conflict where the path has no stage 1 at all (`fatal: path
+     … is in the index, but not at stage 1`) — in the latter the file is new on both sides, so
+     nothing can have been removed. Narrative with no entry ids falls here too, which is the
+     usual shape of removed `{roadmap}` prose.
+
+     All of this works only **while the merge is in progress**; `MERGE_HEAD` and stage 1 do
+     not exist before it starts or after it is committed or aborted. For a merge already
+     committed, the incoming side is `HEAD^2`.
    - **Push-reach preflight, before any commit:**
      ```bash
      gh api repos/{repo} --jq .permissions.push   # substitute {repo}'s real owner/name —
