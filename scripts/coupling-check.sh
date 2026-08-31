@@ -29,12 +29,19 @@
 # commit any path with a .git component, so in CI this arm is unreachable. A *submodule*
 # is not the case it covers -- a submodule's .git is a file, not a directory.)
 #
-# What this does NOT cover: a file sitting directly in plugins/, outside any plugin
-# directory (there are none today). That is narrower than the gap #49/#53 closed and is
-# not silently reopened by this loop. Everything else fails closed: a plugin whose every
-# entry is excluded, a plugins/ tree that is empty or missing, a wrong cwd, and a grep
-# that errors rather than answering all fail the gate rather than reporting a pass over a
-# tree this script did not actually read.
+# What this does NOT cover -- stated in full, because a gate's honest scope is part of
+# the gate, and "everything else is handled" is the claim that stops people looking:
+#   1. A file sitting directly in plugins/, outside any plugin directory (none today).
+#   2. A symlink BELOW a component directory. `grep -r` follows a symlink only when it is
+#      a command-line argument, so a symlinked SKILL.md at depth >= 2 is not read, while
+#      Claude Code loading that skill would follow it. `-R` would close this; it is not
+#      made here because it could not be verified on the authoring machine (no symlink
+#      support) and an unverified change to a control is worse than a stated gap.
+#   3. An empty directory satisfies the per-plugin counter below without any content
+#      being read -- git cannot commit one, but an unfetched submodule appears as one.
+# What DOES fail closed: a plugin whose every entry is excluded, a plugins/ tree that is
+# empty or missing, a wrong cwd, and a grep that errors rather than answering -- each
+# fails the gate rather than reporting a pass over a tree this script did not read.
 set -euo pipefail
 
 # Tier 1 -- the sprint's acceptance pattern (SW Task 3). These are the specific literals
@@ -84,10 +91,12 @@ for plugin_dir in plugins/*/; do
   case "${plugin_name##*/}" in .|..) continue ;; esac
   plugins=$((plugins + 1))
   plugin_scanned=0
-  # `*`, not `*/`: files at a plugin's root are plugin content too. hooks.json and
-  # .mcp.json both live there and both carry commands -- exactly the "someone pastes a
-  # working command in from the repo they happen to be sitting in" rot this gate exists
-  # for. `grep -r` takes a file argument as happily as a directory one.
+  # `*`, not `*/`: files at a plugin's root are plugin content too. .mcp.json lives
+  # there and carries MCP server commands, args and URLs -- exactly the "someone pastes
+  # a working command in from the repo they happen to be sitting in" rot this gate
+  # exists for. (hooks.json is NOT such a file: in this layout it sits inside hooks/,
+  # which is scanned as a component directory.) `grep -r` takes a file argument as
+  # happily as a directory one.
   for target in "${plugin_dir}"*; do
     # NOT `$(basename ...)`: command substitution strips trailing newlines, so a
     # directory whose name is "reference" followed by a newline would compare equal to
@@ -95,9 +104,17 @@ for plugin_dir in plugins/*/; do
     # A newline is a legal path character in git, so that is a committable gate bypass,
     # not a hypothetical.
     component="${target##*/}"
-    case "$component" in
-      reference|.claude-plugin|.git|.|..) continue ;;
-    esac
+    # Excluded by name AND type. Each exclusion is justified by what the entry
+    # *is* -- a documentation directory, a metadata directory, a git directory --
+    # so a plugin-root FILE that merely carries one of those names is none of
+    # those things and must be scanned like any other file. Matching on the name
+    # alone was a green pass over unread content, the same bypass shape as the
+    # trailing-newline one below. `.` and `..` are always directories.
+    if [ -d "$target" ]; then
+      case "$component" in
+        reference|.claude-plugin|.git|.|..) continue ;;
+      esac
+    fi
     plugin_scanned=$((plugin_scanned + 1))
     scanned=$((scanned + 1))
     # grep exits 0 = matched, 1 = clean, >=2 = it could not do the job (unreadable file,

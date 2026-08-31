@@ -51,9 +51,10 @@ the GitHub release notes.
   over something it had not read, all now closed and each covered by a regression in
   `tests/coupling-check.test.sh`:
   - **Files at a plugin's root were never scanned** -- the inner glob was `*/`, so only
-    directories were examined. `hooks.json` and `.mcp.json` both live at a plugin's root
-    and both carry commands. The glob is now `*`; `grep -r` takes a file as happily as a
-    directory.
+    directories were examined. `.mcp.json` lives there and carries MCP server commands.
+    The glob is now `*`; `grep -r` takes a file as happily as a directory. The exclusions
+    are matched on type as well as name, so a plugin-root *file* called `reference` is
+    not mistaken for the documentation directory.
   - **A whole plugin could be skipped silently.** The zero-scanned guard was one repo-wide
     counter, so any one scannable directory anywhere satisfied it -- a second plugin whose
     every entry was excluded passed green. The guard is now per-plugin.
@@ -66,9 +67,12 @@ the GitHub release notes.
     "nothing to see" as a gate that passed, the failure `invariants-check.sh` already
     names. Exit status is now captured, and anything `>= 2` fails the gate.
 
-  An empty or missing `plugins/` tree, a wrong cwd, and `.` / `..` from `dotglob` on bash
-  before 5.2 all fail closed too. The remaining uncovered case -- a file directly in
-  `plugins/`, outside any plugin directory -- is stated in the script's header. `CLAUDE.md`,
+  An empty or missing `plugins/` tree and a wrong cwd all fail the gate too, rather than
+  reporting a pass having read nothing. (`.` and `..`, which `dotglob` yields on bash
+  before 5.2, are *skipped* rather than failed -- left in they would send `grep` up into
+  the whole repo and make the documented local run permanently red on macOS's system
+  bash.) The remaining uncovered case -- a file directly in `plugins/`, outside any
+  plugin directory -- is stated in the script's header. `CLAUDE.md`,
   `README.md`, `reference/project-schema.md`, and the two CI workflow step names were all
   widened to match, per the precedent #49 set below. See #53.
 

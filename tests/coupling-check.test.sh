@@ -3,11 +3,15 @@
 #
 # The gate's whole job is to fail closed, and every bug it has had was a way to
 # report a pass over something it never read: #49 (hooks/ outside a hardcoded
-# allowlist) and then, in #53's own critic pass, four more -- files at a plugin
-# root, a whole plugin skipped by a repo-wide counter, a trailing newline
-# defeating the exclusion `case`, and grep's exit 2 read as "no match". A gate
-# that silently stops gating looks exactly like a gate that passed, so the
-# behaviour is pinned here rather than left to convention. See issue #53.
+# allowlist), and then six more found across two rounds of #53's own critic pass
+# -- files at a plugin root unscanned, a whole plugin skipped by a repo-wide
+# counter, a trailing newline defeating the exclusion `case`, grep's exit 2 read
+# as "no match", an exclusion matching a plugin-root file by name when it is
+# justified by type, and dotglob (which alone makes a root .mcp.json visible)
+# pinned by nothing. A gate that silently stops gating looks exactly like a gate
+# that passed, so the behaviour is pinned here rather than left to convention.
+# Every assertion below is mutation-checked: reverting its fix must fail it.
+# See issue #53.
 #
 # Each fixture is a throwaway plugins/ tree in a tempdir; the script is run with
 # that tree as cwd, which is how CI runs it.
@@ -68,8 +72,10 @@ assert_status "denylist: a brand-new component directory is scanned" 1 "$d"
 d="$(tree rootfile)"
 mkdir -p "$d/plugins/wow/skills"
 echo "portable content" >"$d/plugins/wow/skills/a.md"
-echo "$LITERAL" >"$d/plugins/wow/hooks.json"
-assert_status "root file: a literal in plugins/<name>/hooks.json is caught" 1 "$d"
+# A non-dot name deliberately: this case must prove the `*/` -> `*` glob change
+# on its own, independently of dotglob, which the .mcp.json case below covers.
+echo "$LITERAL" >"$d/plugins/wow/plugin-notes.md"
+assert_status "root file: a literal in a plain plugin-root file is caught" 1 "$d"
 
 # --- the exclusions are real, and only they are ------------------------------
 d="$(tree excluded)"
@@ -78,6 +84,25 @@ echo "$LITERAL" >"$d/plugins/wow/reference/schema.md"
 echo "$LITERAL" >"$d/plugins/wow/.claude-plugin/plugin.json"
 echo "portable content" >"$d/plugins/wow/skills/a.md"
 assert_status "exclusions: reference/ and .claude-plugin/ may carry literals" 0 "$d"
+
+# The exclusions are justified by what the entry IS, so they must match on type
+# as well as name: a plugin-root FILE named `reference` is not documentation.
+# Matching on name alone was a green pass over unread content.
+d="$(tree named_like_exclusion)"
+mkdir -p "$d/plugins/wow/skills"
+echo "portable content" >"$d/plugins/wow/skills/a.md"
+echo "$LITERAL" >"$d/plugins/wow/reference"
+assert_status "exclusions: a plugin-root FILE named reference is still scanned" 1 "$d"
+
+# dotglob is what makes the exclusion `case` a real decision rather than an
+# accident -- without it the glob never yields dot-entries at all, so
+# .claude-plugin/ would be skipped for the wrong reason and a dot-named root
+# file (.mcp.json carries MCP server commands) would never be scanned.
+d="$(tree dotfile)"
+mkdir -p "$d/plugins/wow/skills"
+echo "portable content" >"$d/plugins/wow/skills/a.md"
+echo "$LITERAL" >"$d/plugins/wow/.mcp.json"
+assert_status "dotglob: a literal in a plugin-root .mcp.json is caught" 1 "$d"
 
 # A reference/ nested BELOW a component dir is not the documentation exclusion
 # -- the exclusion is by name at depth 1 only.

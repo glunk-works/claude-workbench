@@ -51,7 +51,9 @@ jobs:
         run: bash scripts/invariants-check.sh
 
   # Also its own job: fixture tests for the plugin's bin/ scripts (see issue #21 --
-  # deterministic predicates extracted from skill prose belong in tested scripts).
+  # deterministic predicates extracted from skill prose belong in tested scripts) and
+  # for the CI gates themselves (see issue #53 -- a gate that stops gating looks exactly
+  # like a gate that passed, so its fail-closed behaviour is pinned by fixtures too).
   # Not yet in {ruleset.required_checks} -- see the PR that added this job.
   tests:
     runs-on: ubuntu-latest
