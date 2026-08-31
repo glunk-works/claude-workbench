@@ -152,8 +152,26 @@ knowing whether that reads `BI-D`, `WB-D`, or something else.
 and `/way-of-working:archive-sprint`, both of which route findings into a backlog and cite items by id:
 
 - `github_issues` — findings become GitHub issues, cited as `#N`. There is no backlog file
-  to read; the equivalent of "read what's already decided" is `gh issue list`.
+  to read; the equivalent of "read what's already decided" is `gh issue list --state all`.
+  **Two traps, both silent.** A bare `gh issue list` shows only *open* issues, so a
+  citation of a closed one reads as dangling when it is perfectly live. And `--state all`
+  does not widen the result window — it repopulates it: `--limit` defaults to 30, which
+  closed issues now compete for, so an old issue can fall off the page and read as absent.
+  To check **one cited id**, never scan — `gh issue view <N> --json state` answers directly,
+  with no limit to truncate it.
 - `file` — findings become items in `{backlog.path}`, cited as `{backlog.item_prefix}N`.
+  Its **archive sibling** is derived, not configured: in the **basename** only, insert
+  `_archive` before the final `.` (`docs/backlog.md` → `docs/backlog_archive.md`); a
+  basename with no `.` — or whose only `.` is a leading one, which names the file rather
+  than separating an extension — takes `_archive` appended (`docs/BACKLOG` →
+  `docs/BACKLOG_archive`; `docs/.backlog` → `docs/.backlog_archive`).
+  Never alter the directory part — a dot in a directory name is not an extension. That is
+  where resolved or declined items go when the live record is compacted
+  (`reference/conventions.md` § *Prose economy*), keeping their ID anchors so existing
+  citations still resolve. It is a derived path, not a promise that the file exists —
+  anything reading the backlog to learn what is already decided reads both, and treats a
+  missing sibling as empty rather than as an error. For a file-kind backlog the sibling is
+  the equivalent of `gh issue list --state closed`.
 
 A skill must branch on `kind` and never assume a file exists. This key was **not** in the
 original sprint plan; it was found while generalizing `/way-of-working:retro`, which the plan's inventory

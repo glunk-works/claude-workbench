@@ -83,9 +83,17 @@ Prose drifts in a small number of recognizable shapes. Find the instances of eac
   ruleset, that guard's taxonomy is also a doc-shaped claim and drifts the same way.
 - **Status claims.** "Done", "merged", "closed", "open" ↔ the actual PR, issue, or commit.
   Where `{backlog.kind}` is `github_issues`, verify against `gh issue list` / `gh pr view`
+  — and check a cited id with `gh issue view <N> --json state`, never a bare `gh issue
+  list`, which shows only open issues and makes a citation of a closed one read as dangling
+  when it is perfectly live (`reference/project-schema.md` has both traps)
   (adding `--repo {backlog.repo}` when that key is set — the backlog may live in a sibling
   repo); where it is `file`, verify against `{backlog.path}` and its `{backlog.item_prefix}`
-  ids. A decision recorded as locked should exist in `{decisions.log}` under
+  ids — **and against the `_archive` sibling beside it**, which compaction fills with
+  resolved and declined items, keeping their ID anchors (`reference/project-schema.md`
+  derives the path and says how to treat one that does not exist). A citation of an
+  archived id is a live, resolvable citation, not a dangling one; reporting it as dangling
+  is a false finding — the same false finding as the `--state` trap above, one branch over.
+  A decision recorded as locked should exist in `{decisions.log}` under
   `{decisions.prefix}`. **A backlog you could not reach is not a backlog that is empty** —
   a cross-repo `gh` call answers `404` when this identity cannot see the repo, so confirm
   reach (`gh api repos/{backlog.repo} --jq .permissions`) before reporting any status claim

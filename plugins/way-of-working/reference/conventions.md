@@ -5,6 +5,9 @@ directive/skill repository**: repo-agnostic ground rules the personas load as
 conventions, and the block the bootstrapping/maintenance workflows inject into
 every managed `glunk-works` repo. Keep it self-contained — no references to
 files that only exist in *this* repo — so it stays valid when copied elsewhere.
+Names in braces (`{roadmap}`, `{gates.green}`, …) are keys each repo sets in its own
+`.ai/project.yml`; the schema that defines them travels with the plugin that injects
+this file.
 
 ## Python conventions
 - **Formatting is not negotiable:** `ruff format` (line length 100) is the single source of truth; never hand-format against it. Lint with `ruff check` under rule sets `E, F, I, B, S` (pycodestyle, pyflakes, isort, bugbear, bandit). Import order is isort-managed — do not hand-order.
@@ -222,6 +225,59 @@ failure this section exists for, and it is silent in every other surface.
   `dependencies` — already answers the question the namespace exists to answer. Namespacing
   those is churn that breaks the tooling's own conventions. The rule targets automation
   writing labels *as you*, which is the case a reader cannot otherwise detect.
+
+## Prose economy — the deep record has a lifecycle
+
+`/way-of-working:handoff` bounds the cursor; nothing bounds the deep record (`{roadmap}`,
+a file-kind `{backlog}`) unless these rules do. An unbounded deep record is a standing
+per-session token cost — every load-bearing doc is context some session must load — and
+every hand-maintained claim in it is a future stale claim a critic round will be spent
+correcting. The recurring defect class this section exists for: prose restating current
+state that then drifts, and correction narratives accreting on top of corrections.
+
+- **Derive, don't restate.** A fact a command can produce — a count, a list, a status, a
+  live setting — is never hand-written into prose. Name the deriving command instead, or
+  state nothing. A number in prose is a stale claim with a fuse. If several docs need the
+  same figure, that is the signal to add the deriving command, not to copy the number.
+- **One authoritative site per fact.** Every other mention points at it. Two statements of
+  the same fact are a drift pair, and a critic finding one skewed corrects it by deleting
+  the copy, not by synchronizing it.
+- **Corrections replace text.** What was wrong and why belongs in the commit message and
+  the PR — immutable, greppable — not inline. Strikethrough-and-annotate is reserved for a
+  stale claim that still gates an open action, and it comes out once that action closes:
+  an annotation that outlives its gate is text to delete, not history to keep.
+- **Evidence, then prose — trust but verify.** A claim about live state records the
+  command and the date it was read. A correction is re-verified as hard as the claim it
+  replaces — fix rounds mint defects of their own, which is why
+  `/way-of-working:critic-gate`'s convergence rule never stops on the round that applied
+  fixes. A claim that cannot be evidenced is recorded as a risk the human accepts, not
+  as fact.
+- **The deep record is not append-only — it is compacted.** Resolved *or declined* backlog
+  items and completed execution narrative belong in an archive file **beside the live
+  record and tracked in git** — not
+  under `.ai/`, whose archive holds git-ignored cursor snapshots and would drop the content
+  at the next clone. Moving them is content-preserving — same text, same ID anchors — so
+  existing citations still resolve by grep, and anything that reads the live record to
+  learn what is already decided reads the archive alongside it. The live record holds:
+  open items, locked decisions, whatever status table or index other tooling orients from,
+  and a current-action section that fits on one screen — compaction moves *finished
+  narrative*, never the surfaces a reader navigates by. Only a file-kind `{backlog}` has a
+  derived archive path so far (`reference/project-schema.md`); for `{roadmap}` the
+  destination is a per-repo choice until one is defined, so name it in the repo rather than
+  inferring a convention that does not exist yet.
+- **Write to the artifact's budget.** A decision is a decision-log entry stating the choice
+  and why — not a narrative of how it was reached. A lesson that must survive is a rule in
+  the relevant skill or convention, not a war story where it happened. And when the mistake
+  a paragraph warns against has actually occurred, the durable form is a check that fails
+  the same way the prose warns — a `{gates.green}` check, either a new entry or a new case
+  inside one, verified by a deliberate regression — after which the paragraph shrinks to a
+  pointer at the check. Where the class is worth blocking a merge rather than only a local
+  run, promote it to CI as well: `{gates.green}` is a local pre-check, and CI on the PR is
+  the gate of record. Promoting means all three, in order — a workflow job whose id is the
+  check name, that name added to the repo's GitHub ruleset, and only then the name
+  mirrored into `{ruleset.required_checks}`, which records GitHub's state rather than
+  requesting it. Mirror it first and every later session reports the ruleset as weakened.
+  Prose is the interim control for defects that have not yet earned a gate.
 
 ## Definition of Done
 A unit of work is done only when: formatting + lint + the full test suite pass; new validated boundaries have negative-input tests; dependencies are pinned and CVE-clean with the SBOM regenerated; no unjustified `# noqa`; and no secrets in any committed file. For managed repos the repo's own `sprints/GLOBAL_DEFINITION_OF_DONE.md` (if present) extends, never relaxes, this bar.

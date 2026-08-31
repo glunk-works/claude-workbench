@@ -31,7 +31,13 @@ and `{backlog}`.
    The tracked item is a backlog entry per `{backlog}`: a GitHub issue cited as `#N` when
    `{backlog.kind}` is `github_issues`, or an item in `{backlog.path}` cited as
    `{backlog.item_prefix}N` when it is `file`. **If you cannot point to where the live check
-   is tracked, that tracking is the missing step** — create it before archiving.
+   is tracked, that tracking is the missing step** — create it before archiving. Search the
+   `_archive` sibling before creating one, so you do not duplicate an item that was
+   compacted out of the live file. But **an archived or closed item does not satisfy this
+   precondition** — deferred live verification needs tracking that is still *outstanding*,
+   and the archive holds resolved and declined items alike. Found there and still open:
+   that is the tracking. Found there and closed: check whether the verification actually
+   happened; if it did not, this precondition is unmet and a fresh item is the fix.
 
    If `{backlog.repo}` is set, that backlog lives in a **sibling repo** and every `gh issue`
    call takes `--repo {backlog.repo}` (`gh issue create --repo {backlog.repo} …`). Confirm
@@ -53,7 +59,12 @@ and `{backlog}`.
    Read the sprint plan (`pointers.sprint_plan`) for criteria marked **`BLOCKING:`** — the
    convention in `reference/conventions.md` § *Blocking preconditions*. For each one, confirm
    it is marked met **and** that you can point to where its satisfaction is recorded: the PR
-   that relied on it, a command output, or a tracked backlog item per `{backlog}`.
+   that relied on it, a command output, or a tracked backlog item per `{backlog}`. Search
+   the `_archive` sibling as well as the live file (`reference/project-schema.md` derives
+   the path and says how to treat one that does not exist), and check a cited issue with
+   `gh issue view <N> --json state` rather than listing open ones — evidence that was
+   closed or compacted out of the live record is still evidence, and reporting it as
+   missing is the false-dangling-citation failure, not a finding.
 
    - **Cannot find the evidence → that is the finding.** Ask the human directly whether the
      criterion was satisfied. If yes, get it recorded before archiving (a line on the

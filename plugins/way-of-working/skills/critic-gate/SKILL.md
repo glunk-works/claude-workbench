@@ -16,8 +16,9 @@ the expensive fresh-session review spends its attention on judgment — and so n
 green with no critic having looked. This runs in the **implementation session** after the
 green gate and before `/way-of-working:handoff`.
 
-**Read `.ai/project.yml` first** for `{gates.green}`, `{code_paths}`, `{agents.enabled}`,
-`{load_bearing_docs}`, and `{review.ci_gate}`.
+**Read `.ai/project.yml` first** for `{pr_base}`, `{gates.green}`, `{code_paths}`,
+`{agents.enabled}`, `{load_bearing_docs}`, `{review.ci_gate}`, and
+`{ruleset.required_checks}`.
 
 > **This pass is defense-in-depth that runs EARLIER.** Where `{review.ci_gate}` is set, it
 > is **not** that gate and must never be presented as satisfying it — that gate wants a
@@ -87,8 +88,26 @@ green gate and before `/way-of-working:handoff`.
    most-severe/most-reachable first. Tag each with its source critic and confidence. Drop
    nothing silently; a low-confidence finding is reported as low-confidence.
 
+   **Verify before acting — trust but verify.** A finding that can be checked by running
+   something (a command, a gate entry, a file read) is checked by running it before it is
+   acted on; a finding that rests on unexecuted reasoning is tagged as such. This is
+   *Convergence*'s retraction rule — verify a critic's claim against the source before
+   acting on it — applied to every finding, not only the ones a later round takes back.
+
 5. **Fix and re-gate (find/fix separation).** The critics are read-only — **the coder
    applies the fixes** (directly or via the `coder` subagent), then re-runs `{gates.green}`.
+
+   **For prose findings, prefer deletion and derivation over correction**
+   (`reference/conventions.md` § *Prose economy*). When the finding is a stale restatement
+   of derivable state — a count, a status, a live setting — the fix is to delete the claim
+   or replace it with its deriving command, never to hand-correct the value; a claim now
+   corrected for the second time is a claim to remove. And when the same prose defect
+   class recurs across rounds, the converging fix is a check that fails the same way the
+   finding reads — a `{gates.green}` check, verified by a deliberate regression, and, if
+   the class should block a merge rather than only a local run, promoted to CI. **That
+   promotion has a required order** (`{ruleset.required_checks}` is mirrored last, because
+   it records GitHub's state rather than requesting it); the order and the reason are in
+   the same *Prose economy* section — follow it there rather than from memory.
 
    **Then re-spawn the critics on the FIXED tree. This is not optional.** The old rule here
    was "if a fix touched a critic's area" — too weak, because it let whoever just made the

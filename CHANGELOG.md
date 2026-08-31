@@ -30,7 +30,61 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-**No migration required.**
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
+behavioral edge: `/way-of-working:critic-gate` now reads `{ruleset.required_checks}`, so a
+repo whose `.ai/project.yml` has no `ruleset` block gets an unreadable-key report from it
+where it got none before — an absent key is not a `null` key.
+
+### Added
+
+- **Prose economy: the deep record gets a lifecycle.** Repeated critic-gate rounds (the
+  evidence is gathered in `#57`) found the dominant defect class to be prose restating
+  current state — each fix round minting the next round's defects — while `{roadmap}` and a
+  file-kind `{backlog}` grew without bound as a standing per-session token cost. The class
+  fix is less load-bearing prose, not more review:
+  - `reference/conventions.md` — new **Prose economy** section: derive-don't-restate, one
+    authoritative site per fact, corrections replace text (the story lives in git),
+    evidence-then-prose (a correction is re-verified as hard as the claim it replaces),
+    the deep record is compacted rather than append-only, and — once the mistake a
+    paragraph warns against has actually occurred — the paragraph shrinks to a pointer at
+    a check that fails the same way, verified by a deliberate regression.
+  - `/way-of-working:handoff` — the regenerated cursor states no regenerable aggregates
+    (no counts, no check inventories); it names the deriving command or authority
+    instead. The cursor's own fields (status, hashes, model) and the critic pass's
+    round count + stopping condition stay.
+  - `/way-of-working:critic-gate` — findings checkable by execution are checked before
+    being acted on (trust but verify); prose fixes prefer deletion/derivation over
+    hand-correction, and a recurring prose defect class is promoted to a gate check.
+  - `reference/workflow.md` — the `/way-of-working:critic-gate` line no longer says
+    "iterates to clean", the formulation that skill explicitly rejects as unbounded.
+  - **A file-kind `{backlog}` gets a defined archive sibling, and the surfaces that read
+    the backlog read it too.** `reference/project-schema.md` derives the path rather than
+    configuring it; `/way-of-working:retro`, the `docs-consistency` agent, and
+    `/way-of-working:archive-sprint`'s evidence preconditions now consult it alongside the
+    live file. Without it a resolved item reads as missing — a re-proposed finding in
+    `retro`, a false "dangling citation" in `docs-consistency`, and a blocked sprint close
+    in `archive-sprint`. A sibling that does not exist yet is empty, not an error — the
+    derivation names a path, it does not promise a file.
+  - **Two silent `gh issue list` traps are now named where the contract is defined**
+    (`reference/project-schema.md`), and the readers follow it. A bare call shows only
+    *open* issues, so citing a closed one reads as dangling; and `--state all` does not
+    widen the result window but repopulates it against a `--limit` that defaults to 30, so
+    an old issue can fall off the page and read as absent — for one cited id, worse than
+    the bare call. To check a cited id, `gh issue view <N> --json state` answers directly.
+
+  **For anyone who injects `reference/conventions.md` into a managed repo:** it now
+  carries schema keys in braces (`{roadmap}`, `{gates.green}`, `{ruleset.required_checks}`)
+  where before it had none, and a new preamble says so. Injected verbatim, those read as
+  placeholders — the file is meant to be read in place beside the `project-schema.md` that
+  defines them.
+
+  This release ships the **rules and the readers**. The **writer** ships separately: an
+  `/way-of-working:archive-sprint` step that performs the compaction these rules describe,
+  and the `/way-of-working:ship` merge-conflict exception that keeps a compaction from
+  being undone by a "keep both sides" resolution. Until those land, compacting a live
+  record is a deliberate act someone takes by hand, and nothing moves content on its own.
+  Only a file-kind `{backlog}` has a derived archive path; `{roadmap}`'s destination is a
+  per-repo choice for now.
 
 ### Fixed
 
