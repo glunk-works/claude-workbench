@@ -108,22 +108,31 @@ event, run the check.
    complaint — and a squash-merged branch's commits are unreachable, so that work is gone
    with no warning. So the candidate test asks GitHub *which commit it merged*
    (`headRefOid`, free in the call already being made), and the deletion happens only when
-   the local tip **is** that commit.
+   the local tip **is** that commit. The comparison uses a bare `git rev-parse "$b"` on
+   purpose: `$b` comes from `%(refname:short)`, which renders a branch shadowed by a
+   same-named tag as `heads/<name>`, so the bare form resolves correctly — do not "tighten"
+   it to `refs/heads/$b`, which in that case does not resolve at all.
 
    **Do not substitute the obvious "is my tip pushed?" test** — `git rev-list --count
-   origin/$b..$b`. GitHub deletes the head branch on merge, and the first `git fetch
-   --prune` (or `fetch.prune=true`, or `git remote prune`) drops the local tracking ref;
-   after that `origin/<branch>` resolves for no merged branch at all, the count command
-   fails, and any fallback that fails safe skips **everything**. The prune becomes a
-   permanent no-op that reports every branch as carrying unpushed work. `headRefOid` is
-   immune — the PR record keeps it after the branch is gone.
+   origin/$b..$b`. It reads the remote-tracking ref, which stops resolving as soon as the
+   head branch is deleted on the remote (the repo's `deleteBranchOnMerge` setting, the PR
+   page's *Delete branch* button, or by hand) and the local ref is pruned. From then on the
+   count command fails for that branch, and any fallback that fails safe skips it
+   **permanently** — reporting stranded work that does not exist and implying a push that
+   is no longer possible. How much of the prune that quietly disables is decided by a repo
+   setting the test never consults: everything, where branches are deleted on merge;
+   nothing, where they are not. `headRefOid` does not depend on it — the PR record keeps
+   the merged commit after the branch is gone.
 
    Report in the pick-up summary in **at most one line**, and **never drop a skip** — a
    skipped branch is stranded work, and it is the one outcome here worth a human's
-   attention (e.g. `Pruned 6 squash-merged local branches.` / `Pruned 5; skipped feat/x —
-   its tip is not what GitHub merged.` / `No stale branches to prune.`). This is hygiene,
-   not a gate — never block the session on it; if the `gh` call fails, skip pruning and
-   say so.
+   attention. Name the skipped branches; past two, give the count and name the first
+   (`Pruned 6 squash-merged local branches.` / `Pruned 5; skipped feat/x — its tip is not
+   what GitHub merged.` / `Pruned 3; skipped 4, first feat/x — tips are not what GitHub
+   merged.` / `No stale branches to prune.`). If that will not fit one line, the skips win
+   and the line grows — the length rule exists to keep hygiene quiet, not to suppress the
+   one thing worth reading. This is hygiene, not a gate — never block the session on it; if
+   the `gh` call fails, skip pruning and say so.
 
 4. **Check the branch-protection ruleset for drift.** A scheduled drift job catches drift
    between sessions; this catches it at the moment work resumes, which in a solo repo is

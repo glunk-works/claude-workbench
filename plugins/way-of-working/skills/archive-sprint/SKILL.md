@@ -103,7 +103,7 @@ If any precondition fails, STOP and report why — do not archive.
    done
    ```
 
-   Report which branches were pruned, which were skipped, and why (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
+   Report which branches were pruned, and every skip the loop printed, with its reason (or "none"). A branch with no merged PR is not a candidate and is correctly silent — it is not a skip and does not belong in the report. Hygiene, not a gate — if the `gh` call fails, skip and say so.
 
    **Why the deletion is gated on a commit, not on merged-ness.** `-D` is safe only
    **per commit**, not per branch: merged-ness is confirmed out-of-band, but a merged
@@ -111,19 +111,27 @@ If any precondition fails, STOP and report why — do not archive.
    because a squash-merged branch's commits are unreachable that work is gone with no
    warning. `headRefOid` — the commit GitHub actually merged — comes free in the `gh pr
    list` call already being made, so the branch is deleted only when its local tip **is**
-   that commit, and the skip message names the real reason.
+   that commit, and the skip message names the real reason. The comparison uses a bare `git
+   rev-parse "$b"` on purpose: `$b` comes from `%(refname:short)`, which renders a branch
+   shadowed by a same-named tag as `heads/<name>`, so the bare form resolves correctly — do
+   not "tighten" it to `refs/heads/$b`, which in that case does not resolve at all.
 
    **Why not `origin/<branch>`.** The obvious test — "is my tip pushed?", `git rev-list
-   --count origin/$b..$b` — is a trap, and one that hides in the clone where it is
-   written: GitHub deletes the head branch on merge, and the first `git fetch --prune` (or
-   `fetch.prune=true`, or `git remote prune`, or deleting the remote branch yourself)
-   removes the local tracking ref. From then on `origin/<branch>` resolves for **no**
-   merged branch, the count command fails, and a fallback that fails safe skips every
-   candidate — turning the prune into a permanent no-op that tells the operator each
-   branch "carries local commits that are not pushed" and implies a push that is now
-   impossible. A clone that has never pruned its refs is the only one where it appears to
-   work. `git branch --contains <tip> {pr_base}` is no better: it is empty for *every*
-   squash-merged branch, which is the premise of the squash trap this prune exists for.
+   --count origin/$b..$b` — reads the remote-tracking ref, and that ref stops resolving
+   once the head branch is deleted on the remote: by the repo's `deleteBranchOnMerge`
+   setting, by the PR page's *Delete branch* button, or by hand, followed by any `git fetch
+   --prune` (or `fetch.prune=true`, or `git remote prune`). From then on the count command
+   fails for that branch and a fallback that fails safe skips it **permanently** — telling
+   the operator it "carries local commits that are not pushed" when it does not, and
+   implying a push that is no longer possible.
+
+   The trap is that **how much of the prune this disables is set by a repo setting the test
+   never consults**, so it is invisible where it is written and total somewhere else: where
+   branches are deleted on merge it eventually skips every candidate, and where they are
+   not it looks flawless. `headRefOid` does not depend on that setting at all — the PR
+   record keeps the merged commit after the branch is gone. `git branch --contains <tip>
+   {pr_base}` is no use either: it is empty for *every* squash-merged branch, which is the
+   premise of the squash trap this prune exists for.
 
 5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + `{roadmap}`) if they want it durable. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 

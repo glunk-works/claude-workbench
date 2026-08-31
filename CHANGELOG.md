@@ -45,14 +45,17 @@ the GitHub release notes.
   commit; anything else is reported as a skip rather than deleted.
 
   The first attempt at this fix tested `git rev-list --count origin/$b..$b` ("is my tip
-  pushed?") and was **worse than the bug**: GitHub deletes the head branch on merge, so
-  after one `git fetch --prune` — or with `fetch.prune=true` set — `origin/<branch>`
-  resolves for no merged branch at all, the count fails, and failing safe skips *every*
-  candidate. That turns the prune into a permanent no-op which tells the operator each
-  branch "carries local commits that are not pushed" and implies a push that is no longer
-  possible. It passes review in any clone that has never pruned its refs, which is the
-  clone it gets written in. `headRefOid` is immune: the PR record keeps it after the branch
-  is gone. Found while working #57 and carved out of it.
+  pushed?"). That failed *safe* — it deleted nothing — so it was never as dangerous as the
+  bug, but it was not a fix either: it reads the remote-tracking ref, which stops resolving
+  once the head branch is deleted on the remote (`deleteBranchOnMerge`, the PR page's
+  *Delete branch* button, or by hand) and the local ref is pruned. The count then fails for
+  that branch and the safe fallback skips it permanently, reporting stranded work that does
+  not exist. What makes it a trap rather than a plain bug is that **the blast radius is set
+  by a repo setting the test never consults**: where branches are deleted on merge it
+  eventually disables the prune entirely, and where they are not — as here,
+  `deleteBranchOnMerge` is `false` and 37 of 41 merged head branches still exist — it looks
+  flawless. `headRefOid` does not depend on that setting. Found while working #57 and
+  carved out of it.
 
 - **`/way-of-working:handoff` step 5 could cut the cursor branch off the wrong base.** The
   switch to `{pr_base}` was chained but the `checkout -b` after it was not, so an aborted
