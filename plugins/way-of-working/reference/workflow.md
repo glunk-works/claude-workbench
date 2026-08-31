@@ -279,5 +279,7 @@ gate still runs locally before the push.
   write it as a bounded imperative you would be content to see carried out without you; if
   it genuinely needs a decision, open a `hitl_gate` instead.
 - **`/way-of-working:archive-sprint`** — run **only** when a sprint has passed its HITL Gate **and** is committed.
-  Moves its `next-steps.md` snapshot into `.ai/archive/`, advances `.ai/state.json` to
-  the next sprint, and seeds a fresh `.ai/next-steps.md`.
+  Moves its `next-steps.md` snapshot into `.ai/archive/`, compacts the deep record
+  (completed narrative, and items closed during the sprint — resolved *and* declined —
+  move to archive files: move, don't rewrite, on its own PR), advances `.ai/state.json`
+  to the next sprint, and seeds a fresh `.ai/next-steps.md`.

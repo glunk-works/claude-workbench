@@ -2,8 +2,9 @@
 
 Consuming repos **pin a tag**, so nothing here reaches a repo until it bumps its pin in
 `.claude/settings.json`. This file exists so that decision can be made with the contents in
-view — `/way-of-working:archive-sprint` step 6 prompts for a pin bump at every sprint close,
-and a prompt that cannot say *"this one needs a migration"* is a trap.
+view — `/way-of-working:archive-sprint`'s *Consider bumping the plugin pin* step prompts for
+one at every sprint close, and a prompt that cannot say *"this one needs a migration"* is a
+trap.
 
 **Read the `⚠️ Migration` line, if a release has one, before bumping.**
 
@@ -30,10 +31,14 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-**No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
-behavioral edge: `/way-of-working:critic-gate` now reads `{ruleset.required_checks}`, so a
-repo whose `.ai/project.yml` has no `ruleset` block gets an unreadable-key report from it
-where it got none before — an absent key is not a `null` key.
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed — the
+archive destinations added this release are *derived* from paths a repo already sets, not
+configured. Three behavioral edges, all the same shape: an absent key is not a `null` key,
+so a skill that newly reads one reports it as unreadable where it previously said nothing.
+`/way-of-working:critic-gate` now reads `{ruleset.required_checks}`;
+`/way-of-working:archive-sprint` now reads `{agents.enabled}` and `{load_bearing_docs}`;
+and `/way-of-working:ship` now reads `{backlog}` and `{roadmap}` for its ledger-conflict
+rule.
 
 ### Added
 
@@ -78,13 +83,101 @@ where it got none before — an absent key is not a `null` key.
   placeholders — the file is meant to be read in place beside the `project-schema.md` that
   defines them.
 
-  This release ships the **rules and the readers**. The **writer** ships separately: an
-  `/way-of-working:archive-sprint` step that performs the compaction these rules describe,
-  and the `/way-of-working:ship` merge-conflict exception that keeps a compaction from
-  being undone by a "keep both sides" resolution. Until those land, compacting a live
-  record is a deliberate act someone takes by hand, and nothing moves content on its own.
-  Only a file-kind `{backlog}` has a derived archive path; `{roadmap}`'s destination is a
-  per-repo choice for now.
+  The rules and the readers landed first, then **the writer** — the entries below.
+
+- **One archive rule, now applied to `{roadmap}` as well.** Part A derived an `_archive`
+  sibling for a file-kind `{backlog}` and left `{roadmap}`'s destination "a per-repo choice
+  until one is defined." The writer defines it — as the *same* derivation, not a second
+  convention and not a new schema key. That keeps the archive **beside the live record**, as
+  the Prose economy rules require (an archive parked in a sprint directory is not), needs
+  nothing added to `.ai/project.yml`, and lets a repo with **no sprint cadence** compact its
+  roadmap — which the sprint-directory destination structurally could not, leaving the repos
+  most prone to roadmap bloat unable to do anything about it.
+
+- **The writer: `/way-of-working:archive-sprint` now performs the compaction, on its own
+  PR.** A new **step 2**, before the cursor advances (advance/seed renumbered 3–4;
+  prune/report/pin 5–7): the closed sprint's execution narrative moves out of `{roadmap}`
+  to its `_archive` sibling, file-kind `{backlog}` items closed during the sprint —
+  **resolved *and* declined**, matching what every reader of the sibling already expects to
+  find there — move to theirs keeping their id anchors, and correction annotations whose
+  gated action is confirmably closed are deleted. **Move, don't rewrite**, and the guardrail
+  is checkable rather than a claim about intent: a line may leave a source only when the
+  identical bytes are in an archive file staged in the same change — verified before the
+  commit, since a move that cannot show its destination is a deletion whatever it was meant
+  to be. It surveys first, confirms the sprint actually merged, cuts its branch from
+  `{pr_base}` before editing a file (editing first can abort the checkout, and git's own
+  advice then strands the work on a branch step 5 deletes), stages by explicit path, and
+  stops at an open PR the human merges. A repo with nothing to move takes a one-line exit.
+
+  Four details that are the difference between a working procedure and a plausible one, the
+  first three verified against git rather than reasoned about:
+  - the branch cut ends in **`git merge --ff-only origin/{pr_base}`, not `git pull`** —
+    where `pull.rebase=false` is configured, a plain pull *succeeds* on a diverged local
+    `{pr_base}`, merging silently, so every link in the chain returns zero and the compaction
+    branch is cut from a base carrying an unrelated commit. (With no pull config at all git
+    refuses instead, so the hazard is config-dependent — which is exactly why the procedure
+    should not depend on the operator's config. The ref is named for the same reason: a bare
+    merge follows `@{upstream}`, wherever that points.);
+  - **`git check-ignore` runs before `git add`, not after** — it is index-aware, so once a
+    path is staged it reports nothing even when `.gitignore` matches, making the check pass
+    by construction and prove nothing;
+  - **a non-zero `git add` is a stop** — given an ignored destination it stages the sources
+    anyway and exits 1, leaving exactly the deletion-without-destination in the index;
+  - the addition-side check is **scoped to the archive paths** — unscoped, the pointer lines
+    left at vacated anchors supply insertions and the check passes with no archive staged.
+
+  The correction-annotation exception has no destination to verify, so every removal claiming
+  it must be **enumerated with its evidence in the commit and PR body**. In a repo with a
+  `github_issues` backlog that exception can be all a compaction does, which would otherwise
+  leave the bright line resting entirely on the agent's own say-so. Relatedly, `state` alone
+  cannot tell a completed item from a declined one — both read `CLOSED` — so the check now
+  asks for `state,stateReason`.
+
+  The guardrail this replaces — *"archival only moves the `.ai/` cursor snapshot"* — was
+  true until this step existed and is now removed rather than annotated.
+
+- **The reader half: `/way-of-working:ship` gains a ledger-conflict exception.** Without it
+  the "keep both sides" default silently resurrects whatever a compaction archived, the
+  first time a stale branch is refreshed against `{pr_base}`. The exception is **proved,
+  never inferred from the hunk shape** — a compaction's removal and your branch's new
+  neighbouring item look identical in a conflict. It compares two revisions instead:
+  `git show :1:<ledger>`, the base the merge itself used, against
+  `git show MERGE_HEAD:<ledger>`, the incoming side. **Removed nothing → keep both sides and
+  move on**, which is the ordinary two-additions conflict and the common case. **Removed
+  entries → name them to the human and let them resolve those**, while everything untouched
+  still keeps both. Where a `git show` fails — a renamed ledger, or an add/add conflict with
+  no stage 1 — the default stands unchanged.
+
+  **It deliberately stops at the human rather than deciding each entry.** The mechanical
+  version — look a removed id up in the incoming `_archive` sibling and drop it if found —
+  needs to match an id at its own **entry anchor**, and a line-shaped `grep` cannot do that
+  safely. Three critic rounds each broke it in a new way: it misses real entries
+  (`- **BL-3** — …`, `1. BL-3 …`, `| BL-3 | …`), and it *matches* a wrapped citation whose
+  continuation line begins with the id — which in the archive means silently dropping a live
+  item. `/way-of-working:retro` mandates the citation shape that produces those, so they are
+  ordinary content rather than an edge case. Per `WB-D10` that predicate belongs in a
+  fixture-backed `bin/` script, not in prose — filed as `#66`, with the failing shapes as a
+  ready-made fixture table. Until it exists this step reports and the human decides, which
+  loses automation, not safety.
+
+  **It asks a revision, never a merge base.** The obvious form — diff `git merge-base HEAD
+  MERGE_HEAD` against `MERGE_HEAD` and call the result "the incoming side's changes, with
+  your side absent" — is **false under squash-merge, this project's own default**, and was
+  written that way first. A squash commit is not a descendant of the branch's commits, so
+  the merge base does not advance past it (`WB-D7`'s premise in a different command): once a
+  PR squash-merges and work continues on the branch, that diff replays the branch's *own*
+  additions and deletions as the incoming side's. Stage 1 is the base **git itself resolved
+  for this merge**, virtual bases included, so it is right where a recomputed base is not.
+  Reproduced before the fix — a decline and
+  an addition made on the work branch were both attributed to `{pr_base}`, which inverts the
+  rule's conclusion. `git show MERGE_HEAD:<path>` has no fork point to be wrong about.
+
+- **`/way-of-working:retro`'s "confirmed again" path is now defined for an archived item.**
+  Step 1 reads the `_archive` sibling, so it will match resolved and declined items;
+  neither annotating one in place nor reopening it is right. Archive files are never
+  edited — historical record, and a compaction moves text without rewriting it — and a
+  resolved item recurring is new information that earns a new item citing the old ID, not a
+  reopen that buries it. A declined one goes back to the owner rather than being reversed.
 
 ### Fixed
 

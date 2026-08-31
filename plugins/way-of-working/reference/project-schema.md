@@ -148,6 +148,23 @@ The repo's deep record, which the plugin points into and never duplicates.
 `decisions.prefix` lets a skill say "record this as a `{decisions.prefix}` entry" without
 knowing whether that reads `BI-D`, `WB-D`, or something else.
 
+#### The `_archive` sibling — one derivation, every compactable record
+
+A record the plugin compacts has an **archive sibling**, and that path is **derived, not
+configured** — there is no schema key for it, and a repo never names one. In the **basename**
+only, insert `_archive` before the final `.` (`docs/backlog.md` → `docs/backlog_archive.md`);
+a basename with no `.` — or whose only `.` is a leading one, which names the file rather than
+separating an extension — takes `_archive` appended (`docs/BACKLOG` → `docs/BACKLOG_archive`;
+`docs/.backlog` → `docs/.backlog_archive`). **Never alter the directory part** — a dot in a
+directory name is not an extension, and keeping the directory is what puts the archive beside
+the record it came out of, as `reference/conventions.md` § *Prose economy* requires.
+
+The rule applies to **`{roadmap}`** and to a **file-kind `{backlog.path}`** alike: one
+derivation, so a reader who knows any live record's path knows its archive's path. It is a
+derived path, **not a promise that the file exists** — anything reading a record to learn
+what is already decided reads both, and treats a missing sibling as empty rather than as an
+error. `/way-of-working:archive-sprint`'s compaction step is what fills them.
+
 `backlog.kind` is the one genuinely bimodal key here, and it is load-bearing for `/way-of-working:retro`
 and `/way-of-working:archive-sprint`, both of which route findings into a backlog and cite items by id:
 
@@ -160,18 +177,12 @@ and `/way-of-working:archive-sprint`, both of which route findings into a backlo
   To check **one cited id**, never scan — `gh issue view <N> --json state` answers directly,
   with no limit to truncate it.
 - `file` — findings become items in `{backlog.path}`, cited as `{backlog.item_prefix}N`.
-  Its **archive sibling** is derived, not configured: in the **basename** only, insert
-  `_archive` before the final `.` (`docs/backlog.md` → `docs/backlog_archive.md`); a
-  basename with no `.` — or whose only `.` is a leading one, which names the file rather
-  than separating an extension — takes `_archive` appended (`docs/BACKLOG` →
-  `docs/BACKLOG_archive`; `docs/.backlog` → `docs/.backlog_archive`).
-  Never alter the directory part — a dot in a directory name is not an extension. That is
-  where resolved or declined items go when the live record is compacted
-  (`reference/conventions.md` § *Prose economy*), keeping their ID anchors so existing
-  citations still resolve. It is a derived path, not a promise that the file exists —
-  anything reading the backlog to learn what is already decided reads both, and treats a
-  missing sibling as empty rather than as an error. For a file-kind backlog the sibling is
-  the equivalent of `gh issue list --state closed`.
+  Its **archive sibling** is derived by the single rule above. That is where items closed
+  during a sprint go when the live record is compacted — **resolved and declined alike**
+  (`reference/conventions.md` § *Prose economy*) — keeping their id anchors so existing
+  citations still resolve. For a file-kind backlog the sibling is the equivalent of
+  `gh issue list --state closed`: without reading it you cannot tell "never proposed" from
+  "already done", and a missing sibling means empty, not error.
 
 A skill must branch on `kind` and never assume a file exists. This key was **not** in the
 original sprint plan; it was found while generalizing `/way-of-working:retro`, which the plan's inventory

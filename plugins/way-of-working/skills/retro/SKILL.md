@@ -89,6 +89,19 @@ Explicitly reject:
    existing item if that adds signal. This is the anti-noise step; skipping it turns a retro
    into a re-litigation.
 
+   **"Confirmed again" is for a *live* item only.** Step 1 reads the `_archive` sibling (or
+   closed issues) as well, so it will sometimes match something already resolved or
+   declined — and neither annotating it there nor pulling it back is right. **Never edit an
+   archive file**: it is historical record, not a live claim, and a compaction moves text
+   without rewriting it (`reference/conventions.md` § *Prose economy*), so an annotation
+   added there both breaks that property and lands where nobody looks for current signal.
+   **Never reopen or un-archive the item either.** A resolved item recurring is genuinely
+   new information — the fix did not hold — and it earns a **new item that cites the old
+   one's ID**, which reopening would bury inside an existing item's history. For a
+   *declined* one, reopening also quietly reverses a decision the owner already made — the
+   nearest guardrail below covers a decision they have *deferred*, so treat this as the
+   same principle one step on: re-surface it to the human and let them choose.
+
 2. **Mine THIS session for friction.** Walk the actual exchange and list every point where a
    step cost more than it should have: a manual workaround, a re-diagnosis, a correction the
    human had to make, a thing done by hand that a skill already covers, a claim that
