@@ -1,56 +1,45 @@
 # Cursor — claude-workbench
 
-**Now:** No sprint in flight (this repo runs issue-driven, single-task PRs, not sprints).
-Status: **implementing** — [#57](https://github.com/glunk-works/claude-workbench/issues/57)
-is shipping as three PRs; the first has merged and the second is next.
+**Now:** No sprint in flight (issue-driven, single-task PRs). Status: **implementing** —
+[#57](https://github.com/glunk-works/claude-workbench/issues/57) ships as three PRs; **C and
+A have merged**, B is next.
 
 **Just done (2026-08-31):**
-- **[#60](https://github.com/glunk-works/claude-workbench/pull/60) merged** (`dade8a4`) —
-  two pre-existing data-loss paths, **carved out of #57** so they would not keep waiting on
-  a branch that had not converged in four rounds. The branch prune in `resume` /
-  `archive-sprint` deleted branches whose local tip had moved past the merged commit, and
-  `handoff` step 5's unchained `checkout -b` cut the cursor branch off the wrong base. The
-  prune is now gated on **`headRefOid`** — the commit GitHub actually merged, which survives
-  the head branch being deleted — never on `origin/<branch>`.
-- **Critic gate on #60: 3 rounds, the CAP FIRED — not converged.** Round 3 was still
-  returning genuine defects; its two findings were fixed with no re-run and the decision
-  handed to the human, who merged. **Three of the defects found were in fixes the gate
-  itself wrote**, including a critic's unverified universal that reached two shipped skills
-  before anyone checked it. Behavior converged at round 2 and never regressed — everything
-  after that was prose *about* the behavior.
-- **#57 split three ways** (human decision): **C** = the two bug fixes (**merged, #60**),
-  **A** = the prose-economy rules, **B** = `archive-sprint`'s compaction step.
-- **Filed [#61](https://github.com/glunk-works/claude-workbench/issues/61)** — reference
-  skill steps by name, not number (34 numeric refs across 8 files; the dangerous ones point
-  *into* a numbering from files the renumberer never opens) — and
-  **[#62](https://github.com/glunk-works/claude-workbench/issues/62)**, mechanize the
-  prune-block byte-identity invariant that `docs/decisions.md:276` only asserts in prose.
-- **`/way-of-working:retro` ran** — two findings to memory (heredocs eating backslashes into
-  a shipped commit; verifying a critic's *quantifier*, not just its mechanism), one
-  confirmed-again note to #57.
-- **Push identity fixed at the machine level** (`gh auth setup-git`). `git push` now follows
-  `gh`'s **active** account; the old per-push `-c credential.helper=…` workaround is
-  redundant. Consequence: `603-Identity` work now needs `gh auth switch` for `git` too.
+- **[#64](https://github.com/glunk-works/claude-workbench/pull/64) merged** (`f22de76`) —
+  **#57 part A**: `conventions.md`'s new **Prose economy** section, plus the matching rules
+  in `handoff` (no regenerable aggregates), `critic-gate` (verify before acting; prefer
+  deletion over correction) and `workflow.md`.
+- **The A/B boundary moved mid-review — the part worth remembering.** A was specified as
+  *rules only*; both critics found that a convention whose readers cannot honour it is not
+  actionable. The human redrew it to **A = rules + readers, B = the writer**, so A also
+  shipped `project-schema.md`'s `_archive` derivation and all **three** readers — `retro`,
+  `docs-consistency`, and `archive-sprint`'s two evidence preconditions (the third was
+  found only in round 2).
+- **Critic gate: 3 rounds, cap reached, NOT converged — the human called it.** Findings ran
+  18 → 19 → 22, rising because *scope* did (5 → 8 → 10 files); round 3's severe findings sat
+  in what rounds 1–2 had added. Narrowing was the response — `ship/SKILL.md` was pulled into
+  A in round 2 and deliberately reverted back out to B. Two of the sharpest findings were
+  defects the fix rounds themselves minted.
+- **⚠️ Part A's round-3 fixes were verified mechanically but never graded by a critic** —
+  the gate stopped at its cap before them, and they are on `main` now.
 
-**Next:** Rebuild **#57 part A — the prose-economy *rules* only** — on a branch cut fresh
-from `main`. **Do not rebase or reuse `feat/prose-economy`**: it is stale in four files and
-still carries the superseded prune loop #60 replaced. Take `conventions.md`'s *Prose
-economy* section, `handoff` step 4's no-regenerable-aggregates rule, and the `retro` /
-`critic-gate` / `workflow.md` / `docs-consistency.md` touches. Leave for **B**:
-`archive-sprint`'s compaction step, `project-schema.md`'s `_archive` derivation, and `ship`'s
-ledger-conflict exception. Two bullets — *Corrections replace text* and *The deep record is
-not append-only* — name the compaction step, which will not exist until B lands: state them
-as conventions **without asserting the mechanism exists**, and let B add the pointer. Then
-green gate → `/way-of-working:critic-gate` → `/way-of-working:ship`. Model: **opus** — the
-A/B boundary is a judgment call and the critic gate follows immediately.
+**Next:** Build **#57 part B — the writer**, on a branch cut fresh from `main`:
+`archive-sprint`'s **compaction step** (move-don't-rewrite, verified before commit) and
+`ship`'s **ledger-conflict exception** (prove a removal per item from the `_archive` sibling
+on the *incoming* revision; "not in the archive" is **not** proof of "your side's addition"
+— a deliberate deletion lands there too, so that branch asks the human). Fold in two
+consequences: `archive-sprint`'s "archival only moves the `.ai/` cursor snapshot" goes false
+when compaction lands, and `retro`'s "confirmed again" path must say whether an archived item
+is annotated in place or reopened. **Do not reuse `feat/prose-economy`** — stale, still
+carries the prune loop #60 replaced. Then green gate → `/way-of-working:critic-gate` →
+`/way-of-working:ship`. Model: **opus** — B writes a destructive move.
 
-**HITL Gate: NONE OPEN.** The next gate is the human's merge of A's PR. Two decisions sit
-with the human, neither blocking: #61's scope (ban same-file `step N` self-references too?)
-and #62's sequencing (it will fail on `feat/prose-economy` until B is rebuilt).
+**HITL Gate: NONE OPEN.** B's scope is specified and the A/B line is settled; the next gate
+is the human's merge of B's PR. Two non-blocking decisions sit with the human:
+[#61](https://github.com/glunk-works/claude-workbench/issues/61)'s scope and
+[#62](https://github.com/glunk-works/claude-workbench/issues/62).
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) (roadmap + decision log; no sprint
-plan — `sprints_dir` is empty by design) ·
-[#57](https://github.com/glunk-works/claude-workbench/issues/57) ·
-[#61](https://github.com/glunk-works/claude-workbench/issues/61) ·
-[#62](https://github.com/glunk-works/claude-workbench/issues/62) · branch
-`feat/prose-economy` — no PR, stale: **source material for A and B, never a base**.
+plan — `sprints_dir` empty by design) ·
+[#57](https://github.com/glunk-works/claude-workbench/issues/57) · branch
+`feat/prose-economy` — no PR, stale: **source material for B, never a base**.
