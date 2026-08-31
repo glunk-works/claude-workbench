@@ -1,45 +1,52 @@
 # Cursor — claude-workbench
 
 **Now:** No sprint in flight (issue-driven, single-task PRs). Status: **implementing** —
-[#57](https://github.com/glunk-works/claude-workbench/issues/57) ships as three PRs; **C and
-A have merged**, B is next.
+[#57](https://github.com/glunk-works/claude-workbench/issues/57) is **closed**; all three
+parts shipped. Next up is its one deliberate carve-out.
 
 **Just done (2026-08-31):**
-- **[#64](https://github.com/glunk-works/claude-workbench/pull/64) merged** (`f22de76`) —
-  **#57 part A**: `conventions.md`'s new **Prose economy** section, plus the matching rules
-  in `handoff` (no regenerable aggregates), `critic-gate` (verify before acting; prefer
-  deletion over correction) and `workflow.md`.
-- **The A/B boundary moved mid-review — the part worth remembering.** A was specified as
-  *rules only*; both critics found that a convention whose readers cannot honour it is not
-  actionable. The human redrew it to **A = rules + readers, B = the writer**, so A also
-  shipped `project-schema.md`'s `_archive` derivation and all **three** readers — `retro`,
-  `docs-consistency`, and `archive-sprint`'s two evidence preconditions (the third was
-  found only in round 2).
-- **Critic gate: 3 rounds, cap reached, NOT converged — the human called it.** Findings ran
-  18 → 19 → 22, rising because *scope* did (5 → 8 → 10 files); round 3's severe findings sat
-  in what rounds 1–2 had added. Narrowing was the response — `ship/SKILL.md` was pulled into
-  A in round 2 and deliberately reverted back out to B. Two of the sharpest findings were
-  defects the fix rounds themselves minted.
-- **⚠️ Part A's round-3 fixes were verified mechanically but never graded by a critic** —
-  the gate stopped at its cap before them, and they are on `main` now.
+- **[#67](https://github.com/glunk-works/claude-workbench/pull/67) merged** (`e0cb6bf`) —
+  **#57 part B, the writer**: `archive-sprint`'s compaction step 2 (steps renumbered 3–7),
+  `ship`'s ledger-conflict rule, `retro`'s archived-item path, plus the `workflow.md` /
+  `CHANGELOG.md` / `decisions.md` consequences.
+- **The `{roadmap}` archive destination changed mid-build, and this is the part worth
+  remembering.** Part B was drafted with a per-sprint `execution_record.md`; both critics
+  independently found it contradicted "an archive sits *beside* the live record" — and worse,
+  that a repo with **no sprint cadence could never compact its roadmap**. It now applies the
+  *same* `_archive` derivation A defined for a file-kind backlog. `project-schema.md` states
+  that rule once, for both. No schema key, no migration.
+- **`ship`'s per-entry matcher was deliberately cut** — the one place B's scope was reduced
+  rather than met. See **Next**.
+- **#57 closed** with the three-part record and both deviations written up.
 
-**Next:** Build **#57 part B — the writer**, on a branch cut fresh from `main`:
-`archive-sprint`'s **compaction step** (move-don't-rewrite, verified before commit) and
-`ship`'s **ledger-conflict exception** (prove a removal per item from the `_archive` sibling
-on the *incoming* revision; "not in the archive" is **not** proof of "your side's addition"
-— a deliberate deletion lands there too, so that branch asks the human). Fold in two
-consequences: `archive-sprint`'s "archival only moves the `.ai/` cursor snapshot" goes false
-when compaction lands, and `retro`'s "confirmed again" path must say whether an archived item
-is annotated in place or reopened. **Do not reuse `feat/prose-economy`** — stale, still
-carries the prune loop #60 replaced. Then green gate → `/way-of-working:critic-gate` →
-`/way-of-working:ship`. Model: **opus** — B writes a destructive move.
+**Critic gate (part B): 3 rounds, `architect` + `docs-consistency`, cap reached, NOT
+converged — the human called it.** Findings **22 → 14 → 8**, falling in count *and*
+severity, every round-3 finding in one line of one file. **Rounds 1 and 2 each minted a
+defect in their own fix**: round 1's merge-base test was false under squash-merge (`WB-D7`'s
+premise in a different command, reproduced), and round 2's replacement escalated *every*
+ordinary conflict to a human. The critics **split** on the final verdict; the deciding
+evidence was reproduced directly — a wrapped citation beginning with an id falsely anchors,
+which in an archive drops a live item.
 
-**HITL Gate: NONE OPEN.** B's scope is specified and the A/B line is settled; the next gate
-is the human's merge of B's PR. Two non-blocking decisions sit with the human:
-[#61](https://github.com/glunk-works/claude-workbench/issues/61)'s scope and
-[#62](https://github.com/glunk-works/claude-workbench/issues/62).
+**Next:** Build **[#66](https://github.com/glunk-works/claude-workbench/issues/66)** on a
+branch cut fresh from `main` — the tested anchor-matcher `ship` needs, as a
+`plugins/way-of-working/bin/` script plus a `tests/` fixture suite, per `WB-D10` and the
+`cursor-drift.sh` precedent. Match the id as a **literal**, tolerate **arbitrary** leading
+markup (enumerating markers is what failed three times), and decide explicitly what a wrapped
+continuation line does. Then rewrite `ship` step 1 to resolve per entry and shrink the prose
+to a pointer. Then green gate → `/way-of-working:critic-gate` → `/way-of-working:ship`.
+Model: **opus** — it carries a matching-design decision, not just a script.
+
+**HITL Gate: NONE OPEN.** #66 is fully specified by its issue body; the next gate is the
+human's merge of its PR. Two non-blocking decisions sit with the human:
+[#61](https://github.com/glunk-works/claude-workbench/issues/61) (now with fresh evidence —
+renumbering `archive-sprint` invalidated two external step citations, both caught only by a
+mechanical sweep) and [#62](https://github.com/glunk-works/claude-workbench/issues/62). To
+know, not decide: B's correction-annotation exception stays **self-certified** — fenced by
+prose and a mandatory enumeration in the commit/PR body, but not mechanically checked.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) (roadmap + decision log; no sprint
 plan — `sprints_dir` empty by design) ·
-[#57](https://github.com/glunk-works/claude-workbench/issues/57) · branch
-`feat/prose-economy` — no PR, stale: **source material for B, never a base**.
+[#66](https://github.com/glunk-works/claude-workbench/issues/66) (next) ·
+[#57](https://github.com/glunk-works/claude-workbench/issues/57) (closed, full record in its
+closing comment)
