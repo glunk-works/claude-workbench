@@ -34,6 +34,22 @@ the GitHub release notes.
 
 ### Fixed
 
+- **`coupling-check.sh`'s component loop was an allowlist, which is what let the
+  `plugins/*/hooks/` gap below (#49) happen in the first place: a new component directory
+  had to be added to a hardcoded list by hand before the gate would ever look at it.**
+  Inverted to a denylist -- the loop now scans every directory under `plugins/*/` except
+  `reference/` (documentation, legitimately quotes concrete example values),
+  `.claude-plugin/` (plugin metadata, `plugin.json`'s `author` field legitimately carries
+  the org name), and `.git/` (added defensively so a plugin ever vendored as a nested
+  clone doesn't fail on its own remote URL). `shopt -s dotglob` was required for the
+  `.claude-plugin/` exclusion to be a real decision rather than an accident: bash globs
+  skip dot-directories by default, so without it the exclusion `case` arm was
+  unreachable and `.claude-plugin/` was already being skipped for the wrong reason. Also
+  added a zero-scanned guard -- an empty or missing `plugins/` tree now fails the gate
+  instead of silently reporting pass having scanned nothing, the same failure shape this
+  issue exists to close. The two CI workflow step names and `reference/project-schema.md`'s
+  opening sentence were widened to match, per the precedent #49 set below. See #53.
+
 - **The coupling gate never scanned `plugins/*/hooks/`, and a stale literal was sitting in
   the blind spot.** The scanned set was `skills/`, `agents/`, and `bin/`. `hooks/` carries
   shipped, executed plugin code by exactly the argument that added `bin/` in #21:

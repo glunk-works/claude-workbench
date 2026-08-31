@@ -7,15 +7,29 @@
 # but it catches the way portability actually rots: someone pastes a working command,
 # a check name, or a repo name in from the repo they happen to be sitting in.
 #
-# Scope is skills/, agents/, bin/, and hooks/. reference/ is documentation about the
-# contract and necessarily quotes concrete values -- project-schema.md's worked examples
-# are the whole point of it. Widening this to reference/ would make the schema doc
-# unwritable. bin/ carries shared, executed plugin code exactly like skills/ and agents/
-# do (see issue #21) -- the same portability rule applies to it, and to hooks/ (see issue
-# #49), whose scripts are registered in hooks.json and run in every consuming repo.
-# .claude-plugin/ is excluded for a different reason than reference/: it is plugin
-# *metadata*, not executed code, and plugin.json's author field legitimately carries the
-# org name that TIER2 matches -- scanning it would false-positive on correct content.
+# Scope is every directory under plugins/*/ EXCEPT reference/, .claude-plugin/, and .git/
+# -- a denylist, not an allowlist, so this loop fails closed for its one job: a new
+# component *directory* (commands/, templates/, whatever comes next) is scanned
+# automatically the moment it exists, with no separate edit to this script required first.
+# #49 was the allowlist version of this exact bug: hooks/ shipped and ran in every
+# consuming repo for a full sprint before this check ever looked at it, because the loop
+# only knew the names in the sprint's original acceptance pattern (skills, agents, bin).
+# `dotglob` is on below so the glob itself yields dot-directories -- without it,
+# .claude-plugin/ would be skipped by the glob, not by the `case` arm that documents the
+# skip, and the same silent gap would apply to any future dot-directory. reference/ is
+# documentation about the contract and necessarily quotes concrete values --
+# project-schema.md's worked examples are the whole point of it. Widening this to
+# reference/ would make the schema doc unwritable. .claude-plugin/ is excluded for a
+# different reason: it is plugin *metadata*, not executed code, and plugin.json's author
+# field legitimately carries the org name that TIER2 matches -- scanning it would
+# false-positive on correct content. .git/ is excluded so a plugin ever vendored as a
+# nested clone or submodule doesn't fail on its own remote URL, which is exactly this kind
+# of match on a directory that isn't plugin content at all.
+#
+# What this does NOT cover: a repo-specific literal sitting in a file at the *root* of a
+# plugin directory (there are none today), and an empty or missing plugins/ tree still
+# exits 0 having scanned nothing -- both are narrower gaps than the one #49/#53 closed, not
+# silently reopened by this loop, and are tracked separately rather than folded in here.
 set -euo pipefail
 
 # Tier 1 -- the sprint's acceptance pattern (SW Task 3). These are the specific literals
@@ -53,11 +67,16 @@ TIER3='docs/[A-Za-z_]+roadmap\.md|\.ai/context/[A-Za-z_]+\.(md|json)'
 PATTERN="${TIER1}|${TIER2}|${TIER3}"
 
 fail=0
-shopt -s nullglob
+scanned=0
+shopt -s nullglob dotglob
 for plugin_dir in plugins/*/; do
-  for component in skills agents bin hooks; do
-    target="${plugin_dir}${component}"
-    [ -d "$target" ] || continue
+  for target in "${plugin_dir}"*/; do
+    target="${target%/}"
+    component="$(basename "$target")"
+    case "$component" in
+      reference|.claude-plugin|.git) continue ;;
+    esac
+    scanned=$((scanned + 1))
     if hits=$(grep -rnE "$PATTERN" "$target"); then
       echo "COUPLING FAIL: repo-specific literal in $target" >&2
       echo "$hits" >&2
@@ -65,6 +84,11 @@ for plugin_dir in plugins/*/; do
     fi
   done
 done
+
+if [ "$scanned" -eq 0 ]; then
+  echo "COUPLING FAIL: scanned zero directories under plugins/*/ -- the tree is missing, empty, or this script is running from the wrong cwd. A gate that scans nothing and reports pass is the exact failure mode #49/#53 exist to close." >&2
+  exit 1
+fi
 
 if [ "$fail" -ne 0 ]; then
   cat >&2 <<'EOF'
@@ -83,4 +107,4 @@ EOF
   exit 1
 fi
 
-echo "Coupling check passed: no repo-specific literals in any skills/, agents/, bin/, or hooks/ tree."
+echo "Coupling check passed: scanned $scanned directories under plugins/*/ (except reference/, .claude-plugin/, .git/), no repo-specific literals found."
