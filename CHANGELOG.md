@@ -47,14 +47,16 @@ the GitHub release notes.
   exclusion `case` arm was unreachable and `.claude-plugin/` was already being skipped for
   the wrong reason.
 
-  The critic pass on this change found four further ways the gate could report a pass
-  over something it had not read, all now closed and each covered by a regression in
+  Two rounds of critique on this change found five further ways the gate could report a
+  pass over something it had not read, all now closed and each covered by a regression in
   `tests/coupling-check.test.sh`:
   - **Files at a plugin's root were never scanned** -- the inner glob was `*/`, so only
     directories were examined. `.mcp.json` lives there and carries MCP server commands.
-    The glob is now `*`; `grep -r` takes a file as happily as a directory. The exclusions
-    are matched on type as well as name, so a plugin-root *file* called `reference` is
-    not mistaken for the documentation directory.
+    The glob is now `*`; `grep -r` takes a file as happily as a directory.
+  - **The exclusions matched on name alone**, so a plugin-root *file* called `reference`,
+    `.claude-plugin` or `.git` was skipped as though it were the directory of that name --
+    a green pass over unread content, and new surface created by scanning root files at
+    all. Each exclusion is justified by what the entry *is*, so it now matches on type too.
   - **A whole plugin could be skipped silently.** The zero-scanned guard was one repo-wide
     counter, so any one scannable directory anywhere satisfied it -- a second plugin whose
     every entry was excluded passed green. The guard is now per-plugin.
@@ -71,8 +73,10 @@ the GitHub release notes.
   reporting a pass having read nothing. (`.` and `..`, which `dotglob` yields on bash
   before 5.2, are *skipped* rather than failed -- left in they would send `grep` up into
   the whole repo and make the documented local run permanently red on macOS's system
-  bash.) The remaining uncovered case -- a file directly in `plugins/`, outside any
-  plugin directory -- is stated in the script's header. `CLAUDE.md`,
+  bash.) The cases the gate still does *not* cover -- a file directly in `plugins/`
+  outside any plugin directory, a symlink below a component directory, a plugin-root
+  symlink named like an exclusion, and an empty directory satisfying the per-plugin
+  counter -- are enumerated in the script's header rather than left to be discovered. `CLAUDE.md`,
   `README.md`, `reference/project-schema.md`, and the two CI workflow step names were all
   widened to match, per the precedent #49 set below. See #53.
 

@@ -37,7 +37,11 @@
 #      Claude Code loading that skill would follow it. `-R` would close this; it is not
 #      made here because it could not be verified on the authoring machine (no symlink
 #      support) and an unverified change to a control is worse than a stated gap.
-#   3. An empty directory satisfies the per-plugin counter below without any content
+#   3. A plugin-root symlink to a directory, named like an exclusion. `[ -d ]` resolves
+#      the link, so it takes the exclusion arm even though a symlink is not the
+#      documentation/metadata/git directory the exclusion is justified by. `[ ! -L ]`
+#      would close it, and is left unmade for the same reason as case 2.
+#   4. An empty directory satisfies the per-plugin counter below without any content
 #      being read -- git cannot commit one, but an unfetched submodule appears as one.
 # What DOES fail closed: a plugin whose every entry is excluded, a plugins/ tree that is
 # empty or missing, a wrong cwd, and a grep that errors rather than answering -- each

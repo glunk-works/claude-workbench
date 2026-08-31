@@ -10,7 +10,10 @@
 # justified by type, and dotglob (which alone makes a root .mcp.json visible)
 # pinned by nothing. A gate that silently stops gating looks exactly like a gate
 # that passed, so the behaviour is pinned here rather than left to convention.
-# Every assertion below is mutation-checked: reverting its fix must fail it.
+# Each assertion that pins a fix is mutation-checked: reverting that fix must fail
+# it. The rest are deliberate controls -- a clean tree, the real exclusions, a
+# nested reference/, and the working-grep pair -- which pin the absence of false
+# positives and so have no fix to revert.
 # See issue #53.
 #
 # Each fixture is a throwaway plugins/ tree in a tempdir; the script is run with
