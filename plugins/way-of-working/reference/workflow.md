@@ -10,12 +10,14 @@ inheriting a bloated context window.
 - **`.ai/`** — *this* dev-workflow's state (how Claude Code sessions hand off).
   - `.ai/next-steps.md` (git-tracked) — the human-readable cursor: current phase/sprint, status, next action, which model to use, HITL Gate state. A **thin pointer** into the roadmap + the active sprint file; not a second copy of them.
   - `.ai/state.json` (git-ignored) — the machine cursor (`current_sprint_id`, `sprint_status`, `assigned_model`, `last_commit`, `next_action`, `pointers`).
-  - `.ai/context/` (git-tracked) — heavy reference loaded on demand (`modules.md`, `conventions.md`, this file).
+  - `.ai/context/` (git-tracked) — heavy reference loaded on demand, where a repo keeps any.
   - `.ai/archive/` (git-ignored) — retired sprint snapshots.
 - **`.agent/STATE.md` + `.agent/MEMORY.md`** — the loop-orchestrator **product's** runtime Ralph state, written when the engine itself runs. Nothing in the dev workflow writes these.
 
-The deep, authoritative history stays in `docs/migration_roadmap.md`; `.ai/` never
-duplicates it, only points at the current cursor within it.
+The deep, authoritative history stays in the repo's own docs — `{roadmap}` while a
+sprint is live, each closed sprint's execution narrative archived beside its
+`sprint_plan.md` at sprint close (`/way-of-working:archive-sprint`'s compaction step);
+`.ai/` never duplicates it, only points at the current cursor within it.
 
 ## Model routing
 
@@ -276,5 +278,6 @@ gate still runs locally before the push.
   write it as a bounded imperative you would be content to see carried out without you; if
   it genuinely needs a decision, open a `hitl_gate` instead.
 - **`/way-of-working:archive-sprint`** — run **only** when a sprint has passed its HITL Gate **and** is committed.
-  Moves its `next-steps.md` snapshot into `.ai/archive/`, advances `.ai/state.json` to
-  the next sprint, and seeds a fresh `.ai/next-steps.md`.
+  Moves its `next-steps.md` snapshot into `.ai/archive/`, compacts the deep record
+  (completed narrative and resolved items move to archive files — move, don't rewrite),
+  advances `.ai/state.json` to the next sprint, and seeds a fresh `.ai/next-steps.md`.

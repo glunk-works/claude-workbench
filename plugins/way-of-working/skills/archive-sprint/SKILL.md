@@ -2,8 +2,9 @@
 name: archive-sprint
 description: >-
   Retire a COMPLETED sprint that has passed its HITL Gate and is committed — snapshot its
-  .ai/next-steps.md into .ai/archive/, advance .ai/state.json to the next sprint, and seed a
-  fresh next-steps.md. Run ONLY on sprint completion; /way-of-working:handoff and /way-of-working:resume never archive.
+  .ai/next-steps.md into .ai/archive/, compact the deep record (move completed narrative
+  and resolved items to archive files), advance .ai/state.json to the next sprint, and seed
+  a fresh next-steps.md. Run ONLY on sprint completion; /way-of-working:handoff and /way-of-working:resume never archive.
 ---
 
 # /way-of-working:archive-sprint — retire a completed sprint and bootstrap the next
@@ -13,13 +14,13 @@ cursor small and moving completed detail out of routine context. This is the ONL
 command that archives — do not invoke it for ordinary session switches.
 
 **Read `.ai/project.yml` first** for `{roadmap}`, `{sprints_dir}`, `{pr_base}`, `{models}`,
-and `{backlog}`.
+`{backlog}`, and `{agents.enabled}`.
 
 ## Preconditions (verify ALL before doing anything)
 
 1. The sprint's HITL Gate is **passed** — the user approved it (ask if unclear — never assume).
 2. The work is **committed** (`git status --short` clean, or only unrelated changes). If dirty, stop and tell the user to commit first.
-3. `{roadmap}` reflects the sprint as done (status row + commit hash recorded). If not, do that first (or flag it).
+3. `{roadmap}` reflects the sprint as done, however that repo's roadmap records status, with the closing commit hash. If not, do that first (or flag it).
 4. **Verification ledger — "complete" must not overclaim "verified live."** If this sprint
    marks an item **complete** (or flips `{roadmap}` to done), confirm the docs make the
    **hermetic-vs-live** distinction explicit and that any verification the hermetic suite
@@ -79,11 +80,41 @@ If any precondition fails, STOP and report why — do not archive.
 
 1. **Snapshot** the current `.ai/next-steps.md` to `.ai/archive/<current_sprint_id>-next-steps.md` (`.ai/archive/` is git-ignored). This preserves the sprint's final cursor for manual history queries.
 
-2. **Advance `.ai/state.json`** to the next sprint: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>". Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet).
+2. **Compact the deep record (move, don't rewrite) — before the cursor advances**, while
+   `pointers.sprint_plan` still names the closed sprint. A sprint close is the compaction
+   trigger (`reference/conventions.md` § *Prose economy*) — this is what keeps `{roadmap}`
+   and a file-kind `{backlog}` from growing without bound as a standing per-session token
+   cost. Content-preserving moves only:
 
-3. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in `planning`; **Just done** = one line noting the prior sprint archived + its commit; **Next** = "plan <next unit>" + the planning model; **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written").
+   - Move the closed sprint's completed execution narrative out of `{roadmap}` into
+     `execution_record.md` beside the closed sprint's `sprint_plan.md` (the directory
+     containing `pointers.sprint_plan`), verbatim. Move only what is unambiguously
+     narrative about this sprint's execution; decisions and whatever the repo's roadmap
+     keeps as current status stay put — when in doubt, leave it in place.
+   - For a file-kind `{backlog}`, move items resolved during this sprint into the archive
+     file named by inserting `_archive` before `{backlog.path}`'s extension
+     (`docs/backlog.md` → `docs/backlog_archive.md`), keeping each item's ID anchor so
+     citations still resolve by grep.
+   - Delete inline correction annotations (strikethroughs, "this used to say…") whose
+     gated action has closed — their story is already in git and the PR record. One still
+     gating an open action stays until the first archive after that action closes.
 
-4. **Prune squash-merged local branches** (a sprint boundary is when the just-merged `sprint/NN-*` branch becomes dead — the "squash trap"). With squash merges, `git branch --merged {pr_base}` **cannot** see these branches; ask GitHub which PRs merged and `-D` **only** those — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
+   Stage the whole move — `git add` the shrunken sources **and** the new archive files,
+   which are untracked until added; committing the sources without them is how a move
+   silently becomes a deletion — then report `git diff --stat HEAD` so the human sees
+   what the close reclaimed. If `docs-consistency` is in `{agents.enabled}`, propose it
+   on the compaction diff; its one job here is confirming no *live* claim moved to an
+   archive. If it is not enabled, say plainly that the compaction diff gets no critic
+   look. A move-only diff converges in one round; a compaction that wants to **rewrite**
+   what it moves is out of scope for this step — file it as its own item. The archive
+   files themselves are historical record, not live claims: they do not join
+   `{load_bearing_docs}`.
+
+3. **Advance `.ai/state.json`** to the next sprint: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>". Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet).
+
+4. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in `planning`; **Just done** = one line noting the prior sprint archived + its commit; **Next** = "plan <next unit>" + the planning model; **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written").
+
+5. **Prune squash-merged local branches** (a sprint boundary is when the just-merged `sprint/NN-*` branch becomes dead — the "squash trap"). With squash merges, `git branch --merged {pr_base}` **cannot** see these branches; ask GitHub which PRs merged and `-D` **only** those — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
 
    ```bash
    base=$(yq -r .pr_base .ai/project.yml)      # or read it however you like
@@ -97,9 +128,9 @@ If any precondition fails, STOP and report why — do not archive.
 
    Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
 
-5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + `{roadmap}`) if they want it durable. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
+6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival — the tracked `next-steps.md` change from step 4, the shrunken `{roadmap}` (and `{backlog}`, where file-kind), and step 2's new archive files, already staged there. Before reporting, verify with `git status --short` that no moved content is left untracked. Never unstage: the loaded index is deliberate — it is what keeps the move from committing as a bare deletion — so until the human commits, report the compaction as **staged, awaiting the human's commit**, which is also why the next session's tree is not clean. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
-6. **Consider bumping the plugin pin.** A sprint close is the one ritual that reliably
+7. **Consider bumping the plugin pin.** A sprint close is the one ritual that reliably
    recurs, which makes it the right moment to check whether `.claude/settings.json` points
    at the newest tag of this plugin's source repo. Tag-pinning makes upgrades opt-in, and
    opt-in without a trigger means never. Mention the current pin and whether a newer tag
@@ -127,6 +158,6 @@ If any precondition fails, STOP and report why — do not archive.
    That is precisely how this hides.
 
 ## Guardrails
-- Never delete `{roadmap}` history or the sprint_plan files — archival only moves the `.ai/` cursor snapshot; the deep record stays in the repo's docs and in git.
+- Compaction (step 2) **moves** prose verbatim between tracked files; it never rewrites what it moves and never deletes content from the repo — the one exception is correction annotations whose story is already in git. The sprint_plan files stay in place. Nothing here ever touches git history.
 - Never archive an un-approved or uncommitted sprint.
 - The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, or the current branch. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git).

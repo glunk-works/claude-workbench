@@ -30,8 +30,11 @@ approval.
      cut **from `{pr_base}`**.
    - **Already on a work branch?** Confirm it was cut from `{pr_base}` and just add to it.
    - Never rebase/force-push a pushed branch. To refresh a stale branch, merge `{pr_base}`
-     **into** it. A conflict in an append-only ledger file (a backlog, a changelog) is
-     usually *two additions* — keep **both** sides.
+     **into** it. A conflict in a ledger file (a backlog, a changelog) is
+     usually *two additions* — keep **both** sides. The exception is a side that is a
+     compaction move (`/way-of-working:archive-sprint` step 2): an archived item is a
+     *deletion*, not an addition — keep it archived rather than resurrecting it into the
+     live file.
    - **Push-reach preflight, before any commit:**
      ```bash
      gh api repos/{repo} --jq .permissions.push   # substitute {repo}'s real owner/name —

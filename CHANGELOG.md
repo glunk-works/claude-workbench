@@ -2,7 +2,7 @@
 
 Consuming repos **pin a tag**, so nothing here reaches a repo until it bumps its pin in
 `.claude/settings.json`. This file exists so that decision can be made with the contents in
-view — `/way-of-working:archive-sprint` step 6 prompts for a pin bump at every sprint close,
+view — `/way-of-working:archive-sprint` step 7 prompts for a pin bump at every sprint close,
 and a prompt that cannot say *"this one needs a migration"* is a trap.
 
 **Read the `⚠️ Migration` line, if a release has one, before bumping.**
@@ -30,7 +30,37 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-**No migration required.**
+**No migration required.** No `.ai/project.yml` key changed. New archive files appear at
+the next sprint close — see *Added* below.
+
+### Added
+
+- **Prose economy: the deep record gets a lifecycle.** Consuming-repo evidence, three
+  sessions running, showed the dominant critic-gate defect class is prose restating
+  current state — each fix round minting the next round's defects — while `{roadmap}` and
+  a file-kind `{backlog}` grew without bound as a standing per-session token cost. The
+  class fix is less load-bearing prose, not more review:
+  - `reference/conventions.md` — new **Prose economy** section: derive-don't-restate, one
+    authoritative site per fact, corrections replace text (the story lives in git),
+    evidence-then-prose (a correction is re-verified as hard as the claim it replaces),
+    archive-at-sprint-close, and — once the mistake a paragraph warns against has
+    actually occurred — the paragraph shrinks to a pointer at a check that fails the
+    same way, verified by a deliberate regression.
+  - `/way-of-working:archive-sprint` — new **compaction step** (step 2, before the
+    cursor advances; the advance/seed steps renumbered 3–4, branch prune, report, and
+    pin-bump 5–7): moves the closed sprint's execution narrative out of `{roadmap}` to
+    an `execution_record.md` beside its sprint plan, moves resolved file-kind backlog
+    items to an `_archive` sibling (same ID anchors), strips correction annotations
+    whose gated action closed — move-don't-rewrite, staged up front so a bare-deletion
+    commit has to be deliberate rather than a default, and it proposes a `docs-consistency` look (where enabled) to
+    confirm no live claim was archived.
+  - `/way-of-working:critic-gate` — findings checkable by execution are checked before
+    being acted on (trust but verify); prose fixes prefer deletion/derivation over
+    hand-correction, and a recurring prose defect class is promoted to a gate entry.
+  - `/way-of-working:handoff` — the regenerated cursor states no regenerable aggregates
+    (no counts, no check inventories); it names the deriving command or authority
+    instead. The cursor's own fields (status, hashes, model) and the critic pass's
+    round count + stopping condition stay.
 
 ### Fixed
 

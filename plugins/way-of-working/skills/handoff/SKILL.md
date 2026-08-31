@@ -65,6 +65,13 @@ and `{review.ci_gate}`.
    - **Next:** the imperative next action + which model should do it + any open HITL Gate.
    - **Pointers:** `{roadmap}` + the active sprint_plan path (do not copy their content — link to them).
    Regenerate the whole file (it is a cursor, not an append log — history lives in git + the roadmap).
+   State no **regenerable aggregates**: no counts, no check inventories, no lists a
+   command can re-emit — name the deriving command or the authority instead
+   (`reference/conventions.md` § *Prose economy*). Two things stay: the cursor's own
+   fields — status, commit hashes, the assigned model — which are `next-steps.md`'s job
+   as the git-tracked ledger behind git-ignored `.ai/state.json`, and the critic pass's
+   round count + stopping condition, which step 1 requires and no command can re-derive.
+   The rule bars restating what a command or another file already answers.
 
 5. **Commit `.ai/next-steps.md` as its own docs-only PR against `{pr_base}`.** The cursor
    sync travels as a small, standalone, docs-only PR, separate from whatever code PR this

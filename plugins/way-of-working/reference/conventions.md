@@ -223,6 +223,46 @@ failure this section exists for, and it is silent in every other surface.
   those is churn that breaks the tooling's own conventions. The rule targets automation
   writing labels *as you*, which is the case a reader cannot otherwise detect.
 
+## Prose economy — the deep record has a lifecycle
+
+`/way-of-working:handoff` bounds the cursor; nothing bounds the deep record (`{roadmap}`,
+a file-kind `{backlog}`) unless these rules do. An unbounded deep record is a standing
+per-session token cost — every load-bearing doc is context some session must load — and
+every hand-maintained claim in it is a future stale claim a critic round will be spent
+correcting. The recurring defect class this section exists for: prose restating current
+state that then drifts, and correction narratives accreting on top of corrections.
+
+- **Derive, don't restate.** A fact a command can produce — a count, a list, a status, a
+  live setting — is never hand-written into prose. Name the deriving command instead, or
+  state nothing. A number in prose is a stale claim with a fuse. If several docs need the
+  same figure, that is the signal to add the deriving command, not to copy the number.
+- **One authoritative site per fact.** Every other mention points at it. Two statements of
+  the same fact are a drift pair, and a critic finding one skewed corrects it by deleting
+  the copy, not by synchronizing it.
+- **Corrections replace text.** What was wrong and why belongs in the commit message and
+  the PR — immutable, greppable — not inline. Strikethrough-and-annotate is reserved for a
+  stale claim that still gates an open action, and `/way-of-working:archive-sprint`'s
+  compaction step removes each one at the first sprint close after its gated action
+  closes.
+- **Evidence, then prose — trust but verify.** A claim about live state records the
+  command and the date it was read. A correction is re-verified as hard as the claim it
+  replaces — fix rounds mint defects of their own, which is why
+  `/way-of-working:critic-gate`'s convergence rule never stops on the round that applied
+  fixes. A claim that cannot be evidenced is recorded as a risk the human accepts, not
+  as fact.
+- **The deep record is not append-only.** Resolved backlog items and completed
+  execution narrative move to archive files at sprint close —
+  content-preserving, same ID anchors, so citations still resolve by grep. The live record
+  holds: open items, locked decisions (one row each), and a current-action section that
+  fits on one screen.
+- **Write to the artifact's budget.** A decision is a decision-log row, not an essay. A
+  lesson that must survive is a rule in the relevant skill or convention, not a war story
+  where it happened. And when the mistake a paragraph warns against has actually occurred, the durable
+  form is a check that fails the same way the prose warns — a `{gates.green}` entry,
+  verified by a deliberate regression — after which the paragraph shrinks to a pointer
+  at the check. Prose is the interim control for defects that have not yet earned a
+  gate.
+
 ## Definition of Done
 A unit of work is done only when: formatting + lint + the full test suite pass; new validated boundaries have negative-input tests; dependencies are pinned and CVE-clean with the SBOM regenerated; no unjustified `# noqa`; and no secrets in any committed file. For managed repos the repo's own `sprints/GLOBAL_DEFINITION_OF_DONE.md` (if present) extends, never relaxes, this bar.
 

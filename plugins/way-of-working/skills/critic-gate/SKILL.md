@@ -87,8 +87,21 @@ green gate and before `/way-of-working:handoff`.
    most-severe/most-reachable first. Tag each with its source critic and confidence. Drop
    nothing silently; a low-confidence finding is reported as low-confidence.
 
+   **Verify before acting — trust but verify.** A finding that can be checked by running
+   something (a command, a gate entry, a file read) is checked by running it before it is
+   acted on; a finding that rests on unexecuted reasoning is tagged as such.
+
 5. **Fix and re-gate (find/fix separation).** The critics are read-only — **the coder
    applies the fixes** (directly or via the `coder` subagent), then re-runs `{gates.green}`.
+
+   **For prose findings, prefer deletion and derivation over correction**
+   (`reference/conventions.md` § *Prose economy*). When the finding is a stale restatement
+   of derivable state — a count, a status, a live setting — the fix is to delete the claim
+   or replace it with its deriving command, never to hand-correct the value; a claim now
+   corrected for the second time is a claim to remove. And when the same prose defect
+   class recurs across rounds, the converging fix is a check that fails the same way the
+   finding reads — a `{gates.green}` entry, verified by a deliberate regression — after
+   which the prose that guarded the class shrinks to a pointer at the check.
 
    **Then re-spawn the critics on the FIXED tree. This is not optional.** The old rule here
    was "if a fix touched a critic's area" — too weak, because it let whoever just made the

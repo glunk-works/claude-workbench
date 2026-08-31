@@ -273,7 +273,7 @@ take effect. Full reasoning and the task breakdown that implements them:
   pass.
 
   Deliberately **not** done in this pass, per the issue's own staging: the
-  `/way-of-working:resume` step 3 / `/way-of-working:archive-sprint` step 4 branch-prune block, byte-identical
+  `/way-of-working:resume` step 3 / `/way-of-working:archive-sprint` step 5 branch-prune block, byte-identical
   in both skills today, is a stronger duplication case but the issue's own order asks for one
   extraction to run through a real `/way-of-working:resume` session before a second one
   starts — this repo consuming its own plugin (`WB-D1`) makes that the very next tag-pinned
