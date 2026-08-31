@@ -30,11 +30,20 @@ approval.
      cut **from `{pr_base}`**.
    - **Already on a work branch?** Confirm it was cut from `{pr_base}` and just add to it.
    - Never rebase/force-push a pushed branch. To refresh a stale branch, merge `{pr_base}`
-     **into** it. A conflict in a ledger file (a backlog, a changelog) is
-     usually *two additions* — keep **both** sides. The exception is a side that is a
-     compaction move (`/way-of-working:archive-sprint` step 2): an archived item is a
-     *deletion*, not an addition — keep it archived rather than resurrecting it into the
-     live file.
+     **into** it. A conflict in a ledger file (a backlog, a changelog) is usually *two
+     additions* — **keep both sides**. That default is load-bearing: it is the only one of
+     the two possible errors that is recoverable.
+
+     One narrow exception, and it must be **proved before it is applied**: where the
+     incoming side is a compaction move (`/way-of-working:archive-sprint`'s compaction
+     step), an already-archived item is a *deletion*, not an addition, and resurrecting it
+     into the live file undoes the close. Prove it per item, not per hunk — grep the
+     item's **ID** out of the `_archive` sibling. **Found there → keep it archived. Not
+     found there → it is an addition; keep it.** Never infer from the shape of the hunk:
+     a compaction deletion and your own branch's new neighbouring item look identical in
+     a conflict, and a new item dropped here is unrecoverable once the branch is
+     squash-merged and pruned — squashing leaves the branch's commits unreachable, so
+     there is no side of the merge left to recover it from.
    - **Push-reach preflight, before any commit:**
      ```bash
      gh api repos/{repo} --jq .permissions.push   # substitute {repo}'s real owner/name —

@@ -259,8 +259,10 @@ state that then drifts, and correction narratives accreting on top of correction
   lesson that must survive is a rule in the relevant skill or convention, not a war story
   where it happened. And when the mistake a paragraph warns against has actually occurred, the durable
   form is a check that fails the same way the prose warns — a `{gates.green}` entry,
-  verified by a deliberate regression — after which the paragraph shrinks to a pointer
-  at the check. Prose is the interim control for defects that have not yet earned a
+  verified by a deliberate regression, and carried into `{ruleset.required_checks}` where
+  the class is worth blocking a merge, since `{gates.green}` is a local pre-check and CI
+  on the PR is the gate of record — after which the paragraph shrinks to a pointer at the
+  check. Prose is the interim control for defects that have not yet earned a
   gate.
 
 ## Definition of Done

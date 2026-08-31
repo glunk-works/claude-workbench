@@ -29,7 +29,9 @@ Branch on `{backlog.kind}` and never assume a backlog file exists:
   decided with `gh issue list --state open` (plus `--state closed` when checking whether
   something was already considered and rejected).
 - **`file`** — findings become items in `{backlog.path}`, cited as `{backlog.item_prefix}N`.
-  Read that file's index directly.
+  Read that file's index directly, **and the `_archive` sibling beside it** — that is where
+  a sprint close moves resolved items, so it is the file-kind equivalent of `--state
+  closed`: without it you will re-propose something already done.
 
 **The backlog may not live in this repo.** `{backlog.repo}` — absent or `null` means
 `{repo}`, the common case — names the repo that actually holds the findings, for the

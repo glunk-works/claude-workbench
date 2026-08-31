@@ -2,7 +2,7 @@
 
 Consuming repos **pin a tag**, so nothing here reaches a repo until it bumps its pin in
 `.claude/settings.json`. This file exists so that decision can be made with the contents in
-view — `/way-of-working:archive-sprint` step 7 prompts for a pin bump at every sprint close,
+view — `/way-of-working:archive-sprint`'s pin-bump step prompts at every sprint close,
 and a prompt that cannot say *"this one needs a migration"* is a trap.
 
 **Read the `⚠️ Migration` line, if a release has one, before bumping.**
@@ -46,9 +46,8 @@ the next sprint close — see *Added* below.
     archive-at-sprint-close, and — once the mistake a paragraph warns against has
     actually occurred — the paragraph shrinks to a pointer at a check that fails the
     same way, verified by a deliberate regression.
-  - `/way-of-working:archive-sprint` — new **compaction step** (step 2, before the
-    cursor advances; the advance/seed steps renumbered 3–4, branch prune, report, and
-    pin-bump 5–7): moves the closed sprint's execution narrative out of `{roadmap}` to
+  - `/way-of-working:archive-sprint` — a new **compaction step**, inserted before the
+    cursor advances (the steps after it renumbered accordingly): moves the closed sprint's execution narrative out of `{roadmap}` to
     an `execution_record.md` beside its sprint plan, moves resolved file-kind backlog
     items to an `_archive` sibling (same ID anchors), strips correction annotations
     whose gated action closed — move-don't-rewrite, staged up front so a bare-deletion
@@ -61,6 +60,22 @@ the next sprint close — see *Added* below.
     (no counts, no check inventories); it names the deriving command or authority
     instead. The cursor's own fields (status, hashes, model) and the critic pass's
     round count + stopping condition stay.
+  - **`/way-of-working:ship` — a behaviour change to conflict resolution.** ⚠️ The
+    ledger-file default is unchanged and still *keep both sides*; but where the incoming
+    side is a compaction move, an already-archived item is a deletion rather than an
+    addition. That exception must be **proved per item** — grep the id out of the
+    `_archive` sibling; not found there means it is an addition and is kept. Inferring it
+    from the shape of the hunk can drop a new item permanently once the branch is
+    squash-merged and pruned.
+  - `/way-of-working:retro` and the `docs-consistency` agent now read the `{backlog}`
+    `_archive` sibling alongside the live file — for a file-kind backlog that sibling is
+    the equivalent of `gh issue list --state closed`, and without it a resolved item reads
+    as missing (a false "dangling citation" finding, or a re-proposed finding).
+  - `/way-of-working:critic-gate`'s new-doc row gains a carve-out so it stops recommending
+    that each sprint's archive files be added to `{load_bearing_docs}`.
+  - `reference/workflow.md` — the archive-sprint summary now names the compaction step,
+    and its `/way-of-working:critic-gate` line no longer says "iterates to clean", the
+    formulation that skill explicitly rejects as unbounded.
 
 ### Fixed
 

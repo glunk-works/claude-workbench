@@ -254,7 +254,8 @@ gate still runs locally before the push.
 - **`/way-of-working:critic-gate`** — run in the implementation session **after the green gate, before
   `/way-of-working:handoff`**. Proposes which read-only critics the diff warrants (the table above) and
   spawns only what you confirm — no auto-fan-out — then aggregates findings for the coder to
-  fix and iterates to clean. Defense-in-depth that runs *earlier* — **not** the
+  fix, then re-runs the critics on the fixed tree and iterates under its stopping rule —
+  never "until the critics are clean," which on a dense diff may never terminate. Defense-in-depth that runs *earlier* — **not** the
   `architect-review` CI gate, which still runs fresh after handoff.
 - **`/way-of-working:resume`** — run at the **start** of a session. Reads `.ai/state.json` +
   `.ai/next-steps.md` + the pointed sprint_plan + roadmap NEXT ACTION, states the exact

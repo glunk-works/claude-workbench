@@ -69,6 +69,15 @@ green gate and before `/way-of-working:handoff`.
    with the human, and adding the file to `{load_bearing_docs}` is the durable fix that moves
    it into the second row for next time.
 
+   **One carve-out.** An archive file produced by `/way-of-working:archive-sprint`'s
+   compaction step (an `execution_record.md`, a `{backlog}` `_archive` sibling) is a
+   newly-added doc every sprint close, and it does **not** join `{load_bearing_docs}`: it
+   is historical record, deliberately frozen, and the drift audit exists for live claims.
+   Proposing `docs-consistency` on the compaction diff is still right — but as the check
+   archive-sprint names (did a *live* claim get moved, and is each moved passage
+   byte-identical?), not as a prose-vs-code drift audit, and without the add-to-the-set
+   recommendation.
+
    A repo may also enable agents defined locally in its own `.claude/agents/` — a
    guard-surface auditor, a test-validity triager, a live-verification runner. Those are
    repo-local by definition: if one is in `{agents.enabled}` and its angle fits the diff,
@@ -100,8 +109,10 @@ green gate and before `/way-of-working:handoff`.
    or replace it with its deriving command, never to hand-correct the value; a claim now
    corrected for the second time is a claim to remove. And when the same prose defect
    class recurs across rounds, the converging fix is a check that fails the same way the
-   finding reads — a `{gates.green}` entry, verified by a deliberate regression — after
-   which the prose that guarded the class shrinks to a pointer at the check.
+   finding reads — a `{gates.green}` entry, verified by a deliberate regression, and added
+   to `{ruleset.required_checks}` if the class should block a merge rather than only a
+   local run — after which the prose that guarded the class shrinks to a pointer at the
+   check.
 
    **Then re-spawn the critics on the FIXED tree. This is not optional.** The old rule here
    was "if a fix touched a critic's area" — too weak, because it let whoever just made the

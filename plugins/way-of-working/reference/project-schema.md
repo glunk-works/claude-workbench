@@ -70,6 +70,7 @@ pr_base: main                    # branch every PR is cut from and based on.
 # ── the deep record ──────────────────────────────────────────────────────────
 roadmap: docs/hardening_roadmap.md   # reference of record: status + next action.
 sprints_dir: sprints                 # sprint plans live at <sprints_dir>/*/sprint_plan.md
+                                     # a closed sprint's execution_record.md sits beside its plan
 threat_model: docs/hardening_roadmap.md   # security-critic's ground truth.
 
 decisions:
@@ -154,6 +155,12 @@ and `/way-of-working:archive-sprint`, both of which route findings into a backlo
 - `github_issues` — findings become GitHub issues, cited as `#N`. There is no backlog file
   to read; the equivalent of "read what's already decided" is `gh issue list`.
 - `file` — findings become items in `{backlog.path}`, cited as `{backlog.item_prefix}N`.
+  Its **archive sibling** is derived, not configured: insert `_archive` before
+  `{backlog.path}`'s extension (`docs/backlog.md` → `docs/backlog_archive.md`). That is
+  where `/way-of-working:archive-sprint`'s compaction step moves items resolved at a
+  sprint close, keeping their ID anchors so citations still resolve. Anything that reads
+  the backlog to learn what is already decided must read both files — the sibling is the
+  file-kind equivalent of `gh issue list --state closed`.
 
 A skill must branch on `kind` and never assume a file exists. This key was **not** in the
 original sprint plan; it was found while generalizing `/way-of-working:retro`, which the plan's inventory
@@ -287,7 +294,9 @@ prose.
 
 `agents.enabled` is which of the plugin's agents this repo uses. `/way-of-working:critic-gate` proposes
 from this list only — it never offers an agent the repo has not enabled, and never one that
-is not in the plugin at all.
+is not in the plugin at all. `/way-of-working:archive-sprint` reads it too, to decide whether
+its compaction step can propose a `docs-consistency` look at the archive diff; where the agent
+is not enabled, that step says so rather than skipping silently.
 
 A repo may define **additional** agents locally in `.claude/agents/`. Those are repo-local
 by definition and out of the plugin's scope; adding one to `agents.enabled` does not make it
