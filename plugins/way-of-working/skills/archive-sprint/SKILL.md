@@ -89,13 +89,24 @@ If any precondition fails, STOP and report why — do not archive.
    **Survey first, then cut the branch, then edit — in that order.** Work out what would
    move without changing anything yet. If the answer is nothing — no narrative to archive,
    no resolved file-kind items, no deletable annotations — say so in one line and go to
-   step 3: no branch, no commit, no PR, and step 6 reports no compaction.
+   step 3: no branch, no commit, no PR, and step 6 reports no compaction. Still switch to
+   `{pr_base}` first (`git checkout {pr_base}`) — step 5 never prunes the branch you are
+   standing on, so staying on the just-merged sprint branch would exempt the one branch a
+   sprint-boundary prune exists to reap.
 
-   Otherwise **cut the branch before touching a file**:
+   The survey is **provisional**: it reads the tree you are standing on, and the checkout
+   below replaces that with `{pr_base}`'s, which may have moved since this sprint branched.
+   Re-read the sources on the new branch before editing and let that reading win — a
+   section another PR already compacted is not yours to move again, and one that arrived
+   since is in scope. If the re-read turns up nothing to move after all, delete the branch
+   you just cut and take the nothing-moved exit.
+
+   Otherwise **cut the branch before touching a file** — one chain, so nothing downstream
+   runs if any link fails:
 
    ```bash
-   git fetch origin {pr_base} && git checkout {pr_base} && git pull
-   git checkout -b docs/compact-<sprint>
+   git fetch origin {pr_base} && git checkout {pr_base} && git pull \
+     && git checkout -b docs/compact-<sprint>
    ```
 
    The order is the whole point. Editing first and switching after does not work: `git
@@ -103,9 +114,18 @@ If any precondition fails, STOP and report why — do not archive.
    you are leaving and `{pr_base}` differ in a file you have touched — and `{roadmap}` and
    `{backlog}` are the likeliest files in the repo to have diverged. At that moment git's
    own advice is *"commit your changes"*, which on the just-merged sprint branch means
-   committing onto a branch step 5 will `git branch -D`, silently and unrecoverably. Cut
-   the branch while the tree is still clean and none of that can arise. **Never edit on
-   `{pr_base}`, and never on the just-merged sprint branch.**
+   committing onto a branch step 5 will `git branch -D`, silently and unrecoverably.
+   **Never edit on `{pr_base}`, and never on the just-merged sprint branch.**
+
+   **The chain matters as much as the order.** Precondition 2 admits a tree with unrelated
+   changes, so the checkout can abort here too — and an unchained `git checkout -b` after
+   an abort cuts the compaction branch off whatever you were standing on, which is the one
+   state this whole arrangement exists to avoid. If any link fails: **stop, and hand it to
+   the human** — say which file blocks the switch and ask them to commit or stash it. Do
+   not commit it yourself (it is not yours and not part of the compaction), do not
+   `git stash` on their behalf, and do not proceed on the current branch. A compaction
+   deferred to the next close costs nothing; a compaction on the wrong branch is the
+   failure mode.
 
    **If `pointers.sprint_plan` is null or names no existing directory** — a repo in a
    steady state with no sprint cadence, which the schema explicitly supports — there is no
@@ -196,28 +216,33 @@ If any precondition fails, STOP and report why — do not archive.
    cur=$(git branch --show-current)
    for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
      case "$b" in "$base"|"$cur") continue;; esac
-     printf '%s\n' "$merged" | grep -qxF "$b" && git branch -D "$b" && echo "pruned $b"
+     printf '%s\n' "$merged" | grep -qxF "$b" || continue          # not merged -- not a candidate
+     if [ "$(git rev-list --count "origin/$b..$b" 2>/dev/null || echo 1)" -eq 0 ]; then
+       git branch -D "$b" && echo "pruned $b"
+     else
+       echo "skipped $b -- merged, but carries local commits that are not pushed"
+     fi
    done
    ```
 
-   Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
+   Report which branches were pruned, which were skipped, and why (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
 
-   **`-D` is safe only per-commit, not per-branch.** Merged-ness is confirmed out-of-band,
-   but a merged branch that has since received a *local, unpushed* commit still deletes
-   without complaint — and because a squash-merged branch's commits are unreachable, that
-   work is gone with no warning. The test is **containment, not existence**: a stale
-   `origin/<branch>` survives GitHub's server-side delete until someone prunes, so `git
-   rev-parse --verify origin/<branch>` succeeds and proves nothing; and `git branch
-   --contains <tip> {pr_base}` is empty for *every* squash-merged branch, which is the
-   premise of the squash trap this prune exists for — using it as the test would skip all
-   of them and prune nothing. Add to the loop:
+   **Why the merged test and the deletion are separate lines.** `-D` is safe only
+   per-commit, not per-branch: merged-ness is confirmed out-of-band, but a merged branch
+   that has since received a *local, unpushed* commit still deletes without complaint, and
+   because a squash-merged branch's commits are unreachable that work is gone with no
+   warning. The unpushed test has to sit **between** "is a candidate" and "delete it" —
+   fused onto the `&& git branch -D` line it would be inert, and placed above the merged
+   test it would fire on every unmerged branch in the repo and report noise about branches
+   nobody proposed deleting.
 
-   ```bash
-   [ "$(git rev-list --count "origin/$b..$b" 2>/dev/null || echo 1)" -eq 0 ] || continue
-   ```
-
-   Zero means fully pushed and safe to delete; anything else — unpushed commits, or no
-   `origin/$b` after a `git fetch --prune` — means skip it and report it as skipped.
+   The test is **containment, not existence**: a stale `origin/<branch>` survives GitHub's
+   server-side delete until someone prunes, so `git rev-parse --verify origin/<branch>`
+   succeeds and proves nothing; and `git branch --contains <tip> {pr_base}` is empty for
+   *every* squash-merged branch — the premise of the squash trap this prune exists for —
+   so using it would skip all of them and prune nothing. `git rev-list --count
+   origin/$b..$b` is `0` only when the local tip is already on the remote; a missing
+   `origin/$b` makes git exit non-zero, and the `|| echo 1` falls to the safe side.
 
 6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. If step 2 opened a compaction PR, say what it reclaimed and link it, and note it is awaiting the human's merge like any other PR; if nothing moved, say that instead of naming a commit that does not exist. What remains uncommitted is the tracked `next-steps.md` change from step 4 — remind the user to commit that if they want it durable. Confirm with `git status --short` that the tree holds only that, so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 

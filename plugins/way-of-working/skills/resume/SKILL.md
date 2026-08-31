@@ -92,23 +92,22 @@ event, run the check.
    cur=$(git branch --show-current)
    for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
      case "$b" in "$base"|"$cur") continue;; esac
-     printf '%s\n' "$merged" | grep -qxF "$b" && git branch -D "$b" && echo "pruned $b"
+     printf '%s\n' "$merged" | grep -qxF "$b" || continue          # not merged -- not a candidate
+     if [ "$(git rev-list --count "origin/$b..$b" 2>/dev/null || echo 1)" -eq 0 ]; then
+       git branch -D "$b" && echo "pruned $b"
+     else
+       echo "skipped $b -- merged, but carries local commits that are not pushed"
+     fi
    done
    ```
-   **Skip any branch carrying a local, unpushed commit.** Merged-ness is confirmed
-   out-of-band per *branch*; a merged branch that has since received a commit still
-   deletes without complaint, and a squash-merged branch's commits are unreachable — so
-   that work is gone silently. The test is **containment, not existence**: a stale
-   `origin/<branch>` survives GitHub's server-side delete, so `rev-parse --verify` proves
-   nothing, and `git branch --contains <tip> {pr_base}` is empty for every squash-merged
-   branch — the premise of the squash trap itself — so using it would prune nothing at
-   all. Add to the loop:
-
-   ```bash
-   [ "$(git rev-list --count "origin/$b..$b" 2>/dev/null || echo 1)" -eq 0 ] || continue
-   ```
-
-   Zero means fully pushed and safe; anything else means skip it and say so.
+   The unpushed test sits **between** the merged test and the deletion, which is the only
+   position where it does anything: a merged branch that has since received a local,
+   unpushed commit still `-D`s without complaint, and a squash-merged branch's commits are
+   unreachable, so that work is gone silently. The test is **containment, not existence** —
+   a stale `origin/<branch>` survives GitHub's server-side delete, so `rev-parse --verify`
+   proves nothing, and `git branch --contains <tip> {pr_base}` is empty for every
+   squash-merged branch (the premise of the squash trap itself), so it would prune nothing
+   at all.
 
    Report the result in the pick-up summary in **at most one line** (e.g. `Pruned 6 squash-merged local branches.` or `No stale branches to prune.`). This is hygiene, not a gate — never block the session on it; if the `gh` call fails, skip pruning and say so.
 
