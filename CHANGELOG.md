@@ -34,6 +34,45 @@ the GitHub release notes.
 
 ### Fixed
 
+- **The branch prune in `/way-of-working:resume` and `/way-of-working:archive-sprint` could
+  delete unpushed work without warning.** Both fused the merged test onto the deletion
+  (`grep -qxF "$b" && git branch -D "$b"`), which makes `-D` safe per *branch* while the
+  risk is per *commit*: a branch whose PR GitHub reports `merged` can since have taken a
+  local commit, and because a squash-merged branch's commits are unreachable from
+  `{pr_base}`, `-D` takes that commit with no complaint and nothing to recover it from.
+  The deletion is now gated on the commit GitHub actually merged — `headRefOid`, which the
+  same `gh pr list` call already returns — and fires only when the local tip **is** that
+  commit; anything else is reported as a skip rather than deleted.
+
+  The first attempt at this fix tested `git rev-list --count origin/$b..$b` ("is my tip
+  pushed?"). That failed *safe* — it deleted nothing — so it was never as dangerous as the
+  bug, but it was not a fix either: it reads the remote-tracking ref, which stops resolving
+  once the head branch is deleted on the remote (`deleteBranchOnMerge`, the PR page's
+  *Delete branch* button, or by hand) and the local ref is pruned. The count then fails for
+  that branch and the safe fallback skips it permanently, reporting stranded work that does
+  not exist. What makes it a trap rather than a plain bug is that **the blast radius is set
+  by a repo setting the test never consults**: where branches are deleted on merge it
+  eventually disables the prune entirely, and where they are not — as here, where
+  `deleteBranchOnMerge` was `false` and 37 of 41 merged head branches still existed on
+  2026-08-31 — it looks
+  flawless. `headRefOid` does not depend on that setting. Found while working #57 and
+  carved out of it.
+
+- **`/way-of-working:handoff` step 5 could cut the cursor branch off the wrong base.** The
+  switch to `{pr_base}` was chained but the `checkout -b` after it was not, so an aborted
+  switch was followed by a branch cut from wherever the session was standing — quietly
+  producing the exact outcome the step exists to prevent. There are two abort paths, not
+  one, and the step now names both — and names the right determinant, which is whether
+  `.ai/next-steps.md`'s *committed* content differs between the branch being left and
+  `{pr_base}`, not whether the local base is stale. Where it differs, `git checkout`
+  refuses; where it does not — the ordinary case — the checkout succeeds and carries the
+  modification across, and `git pull` aborts instead once the fetch brings a change to that
+  file. Unchained, the first lands the cursor branch on the **code branch** and the second
+  on a **stale `{pr_base}`**. The cut is now one `&&` chain; a failed link stops,
+  names the blocking file, and hands it to the human rather than committing or stashing on
+  their behalf — including the case where the chain stops with the session parked on
+  `{pr_base}`. Found while working #57 and carved out of it.
+
 - **`coupling-check.sh`'s component loop was an allowlist, which is what let the
   `plugins/*/hooks/` gap below (#49) happen in the first place: a new component directory
   had to be added to a hardcoded list by hand before the gate would ever look at it.**

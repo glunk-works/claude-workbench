@@ -87,15 +87,48 @@ If any precondition fails, STOP and report why — do not archive.
 
    ```bash
    base=$(yq -r .pr_base .ai/project.yml)      # or read it however you like
-   merged=$(gh pr list --state merged --limit 300 --json headRefName -q '.[].headRefName')
+   merged=$(gh pr list --state merged --limit 300 --json headRefName,headRefOid \
+              -q '.[] | "\(.headRefName) \(.headRefOid)"') \
+     || { echo "gh call failed -- skipping the prune"; merged=; }
    cur=$(git branch --show-current)
    for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
      case "$b" in "$base"|"$cur") continue;; esac
-     printf '%s\n' "$merged" | grep -qxF "$b" && git branch -D "$b" && echo "pruned $b"
+     tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$1 == b { print $2; exit }')
+     [ -n "$tip_gh" ] || continue                    # no merged PR -- not a candidate
+     if [ "$(git rev-parse "$b")" = "$tip_gh" ]; then
+       git branch -D "$b" && echo "pruned $b"
+     else
+       echo "skipped $b -- merged, but its tip is not the commit GitHub merged"
+     fi
    done
    ```
 
-   Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
+   Report which branches were pruned, and every skip the loop printed, with its reason (or "none"). A branch with no merged PR is not a candidate and is correctly silent — it is not a skip and does not belong in the report. Hygiene, not a gate — if the `gh` call fails, skip and say so.
+
+   **Why the deletion is gated on a commit, not on merged-ness.** `-D` is safe only
+   **per commit**, not per branch: merged-ness is confirmed out-of-band, but a merged
+   branch whose local tip has moved since the push still deletes without complaint, and
+   because a squash-merged branch's commits are unreachable that work is gone with no
+   warning. `headRefOid` — the commit GitHub actually merged — comes free in the `gh pr
+   list` call already being made, so the branch is deleted only when its local tip **is**
+   that commit, and the skip message names the real reason.
+
+   **Why not `origin/<branch>`.** The obvious test — "is my tip pushed?", `git rev-list
+   --count origin/$b..$b` — reads the remote-tracking ref, and that ref stops resolving
+   once the head branch is deleted on the remote: by the repo's `deleteBranchOnMerge`
+   setting, by the PR page's *Delete branch* button, or by hand, followed by any `git fetch
+   --prune` (or `fetch.prune=true`, or `git remote prune`). From then on the count command
+   fails for that branch and a fallback that fails safe skips it **permanently** — telling
+   the operator it "carries local commits that are not pushed" when it does not, and
+   implying a push that is no longer possible.
+
+   The trap is that **how much of the prune this disables is set by a repo setting the test
+   never consults**, so it is invisible where it is written and total somewhere else: where
+   branches are deleted on merge it eventually skips every candidate, and where they are
+   not it looks flawless. `headRefOid` does not depend on that setting at all — the PR
+   record keeps the merged commit after the branch is gone. `git branch --contains <tip>
+   {pr_base}` is no use either: it is empty for *every* squash-merged branch, which is the
+   premise of the squash trap this prune exists for.
 
 5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + `{roadmap}`) if they want it durable. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
@@ -129,4 +162,4 @@ If any precondition fails, STOP and report why — do not archive.
 ## Guardrails
 - Never delete `{roadmap}` history or the sprint_plan files — archival only moves the `.ai/` cursor snapshot; the deep record stays in the repo's docs and in git.
 - Never archive an un-approved or uncommitted sprint.
-- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, or the current branch. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git).
+- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, the current branch, or a branch whose local tip is not the commit GitHub merged. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git) — but that argument covers the commit GitHub merged and nothing added since, which is why the tip check (against `headRefOid`, never against `origin/<branch>`) is part of the prune and not an optional refinement.

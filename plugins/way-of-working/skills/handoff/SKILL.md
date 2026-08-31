@@ -70,11 +70,47 @@ and `{review.ci_gate}`.
    sync travels as a small, standalone, docs-only PR, separate from whatever code PR this
    session's work landed on. Do it now, don't just remind:
    - If the current branch is a code branch (e.g. mid-implementation, or the just-pushed
-     feature branch), do **not** commit the cursor sync there — switch to `{pr_base}`
-     (`git fetch origin {pr_base} && git checkout {pr_base} && git pull`), cut a fresh small
-     branch (e.g. `docs/sync-cursor-<slug>`), and commit `.ai/next-steps.md` there. If a
-     `/way-of-working:handoff` runs directly on `{pr_base}` with nothing else in flight, cutting a fresh
-     branch from it is still correct — never commit straight to `{pr_base}`.
+     feature branch), do **not** commit the cursor sync there — switch to `{pr_base}`, cut
+     a fresh small branch (e.g. `docs/sync-cursor-<slug>`), and commit `.ai/next-steps.md`
+     there. If a `/way-of-working:handoff` runs directly on `{pr_base}` with nothing else
+     in flight, cutting a fresh branch from it is still correct — never commit straight to
+     `{pr_base}`.
+
+     ```bash
+     git fetch origin {pr_base} && git checkout {pr_base} && git pull \
+       && git checkout -b docs/sync-cursor-<slug>
+     ```
+
+     **One chain, and it can abort — at either of two links.** Step 4 has just rewritten
+     tracked `.ai/next-steps.md`, and which link refuses turns on whether that file's
+     *committed* content differs between the branch you are leaving and `{pr_base}` — not
+     on whether your local `{pr_base}` is up to date:
+     - **It differs** → `git checkout {pr_base}` refuses outright (*"Please commit your
+       changes or stash them before you switch branches"*), because the switch would have
+       to overwrite your edit.
+     - **It does not differ** — the ordinary case, a code branch that never committed a
+       cursor change of its own → the checkout **succeeds** and carries the modified file
+       across. `git pull` then aborts instead (*"Your local changes … would be overwritten
+       by merge"*) whenever the fetch brings a change to that file, which is exactly when
+       `{pr_base}` has had a cursor sync since this branch was cut. Do not go looking only
+       for the checkout error; this is the link you will hit most.
+
+     Either way, **stop and say so**: name the blocking file and hand it to the human. Do
+     not commit on the current branch to get past it — that is how a cursor sync ends up
+     on a code branch, which is the thing this step exists to prevent — and do not `git
+     stash` on the human's behalf.
+
+     Without the `&&` chain, **both** failures produce a wrong branch instead of an error,
+     and neither announces itself: after an aborted `checkout` the `checkout -b` cuts the
+     cursor branch off the **code branch**, and after an aborted `pull` it cuts off
+     `{pr_base}` at the commit your local copy is still on — **stale**, because the merge
+     that would have advanced it is the step that just failed. Same wrong-base defect, one
+     layer quieter.
+
+     **If the chain stops at `git pull`, you are now standing on `{pr_base}` with the
+     modified cursor in the tree.** That is not a state to commit out of either — `{pr_base}`
+     is protected and this step never commits to it. Report it as the blocking state,
+     naming the branch you ended up on, and let the human resolve it.
    - **This holds even when the cursor describes work that currently lives only on an
      unmerged code branch** — a second session handing off before the first session's PR has
      merged (a "stacked" handoff). There is **no exception** for that case, because
