@@ -15,8 +15,8 @@ committing on the base branch, a wrong scope) can't happen. This skill **opens**
 **stops**. It never merges, `--approve`s, or force-pushes — the human's merge is the
 approval.
 
-**Read `.ai/project.yml` first** for `{pr_base}`, `{repo}`, `{code_paths}`, and
-`{review.ci_gate}`. Commit and PR-title grammar is not repo-specific — it lives in
+**Read `.ai/project.yml` first** for `{pr_base}`, `{repo}`, `{code_paths}`,
+`{review.ci_gate}`, and — for the ledger-conflict rule in step 1 — `{backlog}`. Commit and PR-title grammar is not repo-specific — it lives in
 `reference/conventions.md`; read it rather than restating it here. Step 5 also reads
 `pointers.sprint_plan` from `.ai/state.json` when a cursor exists.
 
@@ -38,11 +38,18 @@ approval.
      incoming side is a compaction move (`/way-of-working:archive-sprint`'s compaction
      step), an already-archived item is a *deletion*, not an addition, and resurrecting it
      into the live file undoes the close. Prove it per item, not per hunk — grep the
-     item's **ID** out of the `_archive` sibling. **Found there → keep it archived. Not
+     item's **ID** out of the `_archive` sibling — for a file-kind `{backlog}`, that is
+     `{backlog.path}` with `_archive` inserted before its extension (`docs/backlog.md` →
+     `docs/backlog_archive.md`), per `reference/project-schema.md`. Where there is no such
+     file to grep — a `github_issues` backlog, a changelog, a sibling-repo backlog you
+     cannot reach, or an `_archive` file that is itself in conflict — the test cannot be
+     run, so the exception does not apply and the default stands: keep both. **Found there → keep it archived. Not
      found there → it is an addition; keep it.** Never infer from the shape of the hunk:
      a compaction deletion and your own branch's new neighbouring item look identical in
      a conflict, and a new item dropped here is unrecoverable once the branch is
-     squash-merged and pruned — squashing leaves the branch's commits unreachable, so
+     squash-merged and pruned. The rule is scoped to *items with ids*; moved `{roadmap}`
+     narrative has no id to grep, so it falls to keep-both, which at worst resurrects
+     prose a later compaction moves again — the recoverable error — squashing leaves the branch's commits unreachable, so
      there is no side of the merge left to recover it from.
    - **Push-reach preflight, before any commit:**
      ```bash

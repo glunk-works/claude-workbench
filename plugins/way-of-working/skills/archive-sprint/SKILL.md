@@ -14,7 +14,7 @@ cursor small and moving completed detail out of routine context. This is the ONL
 command that archives — do not invoke it for ordinary session switches.
 
 **Read `.ai/project.yml` first** for `{roadmap}`, `{sprints_dir}`, `{pr_base}`, `{models}`,
-`{backlog}`, and `{agents.enabled}`.
+`{backlog}`, `{agents.enabled}`, and `{load_bearing_docs}`.
 
 ## Preconditions (verify ALL before doing anything)
 
@@ -88,9 +88,9 @@ If any precondition fails, STOP and report why — do not archive.
 
    **If `pointers.sprint_plan` is null or names no existing directory** — a repo in a
    steady state with no sprint cadence, which the schema explicitly supports — there is no
-   sprint directory to archive beside. Say so in one line and skip to step 3; do not
-   invent a destination path. The backlog and annotation bullets below still apply if
-   `{backlog}` is file-kind.
+   sprint directory to archive beside. Say so in one line and **skip the first bullet
+   only**; do not invent a destination path. The other two bullets, and everything after
+   them in this step, still apply.
 
    - Move the closed sprint's completed execution narrative out of `{roadmap}` into
      `execution_record.md` beside the closed sprint's `sprint_plan.md` (the directory
@@ -105,46 +105,67 @@ If any precondition fails, STOP and report why — do not archive.
      citations still resolve by grep.
    - Delete inline correction annotations (strikethroughs, "this used to say…") **only
      where the annotation itself names the action it gates and you can confirm from the
-     repo that that action closed** — a cited `{backlog}` item that is resolved, or a
-     merged PR. Delete the whole construct, struck text included; its story is in git and
+     repo that that action closed** — a cited `{backlog}` item closed **as completed**, or
+     a merged PR. A declined or not-planned item does not close the action: the correction
+     it gates is still live, and `gh issue view` reports both as `CLOSED`. Delete the whole construct, struck text included; its story is in git and
      the PR record. **An annotation that names no action, or whose action you cannot
      confirm closed, stays.** This is the one bullet that produces no destination
      artifact, so a wrong judgement leaves nothing to grep for — when in doubt, leave it.
 
-   Stage the whole move — `git add` the shrunken sources **and** the new archive files,
-   which are untracked until added; committing the sources without them is how a move
-   silently becomes a deletion.
+   **If nothing moved** — no narrative to archive, no resolved file-kind items, no
+   deletable annotations — say so in one line and go to step 3. Make no commit, no branch
+   and no PR; the rest of this step and step 6's reporting of it do not apply.
 
-   **Then verify the move actually was one, before reporting.** `git status --short` is
+   Otherwise: **stage by explicit path** — `git add <each source> <each archive file>`,
+   never `git add -A` or `git commit -a`. The archive files are untracked until added, and
+   committing the sources without them is how a move silently becomes a deletion. The
+   explicit paths matter for a second reason: precondition 2 admits a tree with unrelated
+   changes, so a directory-wide or all-files add would sweep someone else's work into a
+   commit labelled as a compaction.
+
+   **Then verify the move actually was one, before committing.** `git status --short` is
    not sufficient: it is blind to an archive file that was never written at all (the more
    likely failure — the text was deleted and lost) and it does not list ignored files, so
-   a destination caught by the repo's `.gitignore` shows nothing while `git add` quietly
-   did nothing. Check all three:
+   a destination caught by the repo's `.gitignore` never enters the index. Check all three:
    - `git diff --cached --stat` shows an **addition** side, not deletions alone;
-   - every line removed from a source is greppable, verbatim, in a staged archive file;
-   - `git check-ignore <archive paths>` names nothing.
+   - every line removed from a source — **except a correction annotation deleted under the
+     bullet above, which by design has no destination** — is greppable, verbatim, in a
+     staged archive file;
+   - `git check-ignore <archive paths>` names nothing. (It exits 1 when nothing matches,
+     so read its *output*, not its exit status.)
 
-   Then **commit the compaction as its own commit** — subject `docs: compact the deep
-   record at <sprint> close` — and report `git diff --stat HEAD~1` so the human sees what
-   the close reclaimed. Committing here is safe: the preconditions above already required
-   a clean, committed tree, so this commit contains the compaction and nothing else. It is
-   also *necessary*: leaving the move staged hands the next command a loaded index, and
-   `/way-of-working:handoff` and `/way-of-working:ship` both stage a specific path and
-   then commit — a bare `git commit` would sweep the whole compaction into a docs-only
-   cursor PR, which `/way-of-working:handoff` requires to touch `.ai/next-steps.md` and
-   nothing else. The commit is not the merge: it is local, and the human still reviews it
-   on the PR that carries it.
+   **Then ship the compaction as its own PR, exactly like any other change to tracked
+   docs.** Do not simply commit where you stand. A compaction is a destructive edit to the
+   consuming repo's own record, and it gets the same treatment every other such edit gets:
+   - Switch to `{pr_base}` and pull, then cut a branch from it — `docs/compact-<sprint>`.
+     **Never commit straight to `{pr_base}`**, and never onto the just-merged sprint
+     branch: that branch's PR is already merged, so the next `/way-of-working:resume` or
+     step 5 below will `git branch -D` it, and because a squash-merged branch's commits are
+     unreachable, `-D` succeeds silently and takes the compaction with it. An unpushed
+     commit on a merged branch is *less* recoverable than an unstaged edit, not more.
+   - Commit with subject `docs: compact the deep record at <sprint> close`, push, and open
+     the PR. Pushing is what makes the content durable; until then it exists in exactly one
+     place.
+   - Report `git show --stat HEAD` so the human sees what the close reclaimed, and hand
+     them the PR link. **That PR is the human checkpoint for this step** — the sprint's own
+     HITL Gate approved the sprint, not this compaction. Do not merge it yourself; the
+     human's merge is the approval, as everywhere else.
 
-   If `docs-consistency` is in `{agents.enabled}`, propose it on the compaction diff. Give
-   it the check shape explicitly, because this is not its usual contradiction hunt and the
-   archive will otherwise read to it as exactly the intentional historical prose it is
-   told not to flag: **for each claim moved to an archive file, is it still true and still
-   live? and is each moved passage byte-identical to what left the source?** If it is not
-   enabled, say plainly that the compaction diff gets no critic look. A move-only diff
-   converges in one round; a compaction that wants to **rewrite** what it moves is out of
-   scope for this step — file it as its own item. Do not add the archive files to
-   `{load_bearing_docs}`: they are historical record, not live claims. If that key is a
-   glob wide enough to sweep them in, narrow the glob.
+   Keeping the compaction on its own branch is also what keeps it out of the cursor PR:
+   `/way-of-working:handoff` requires its PR to touch `.ai/next-steps.md` and nothing else,
+   and it cuts that branch from `{pr_base}` — so a compaction committed on `{pr_base}`, or
+   left staged, rides into it either way.
+
+   If `docs-consistency` is in `{agents.enabled}`, propose it on the compaction PR. Give it
+   the check shape explicitly, because this is not its usual contradiction hunt: **did a
+   *live* claim get moved into an archive, and is each moved passage byte-identical to what
+   left the source?** Without that framing the archive reads to it as exactly the
+   intentional historical prose its charter tells it not to flag, and it will correctly
+   report nothing. If it is not enabled, say plainly that the compaction gets no critic
+   look. A move-only diff converges in one round; a compaction that wants to **rewrite**
+   what it moves is out of scope for this step — file it as its own item. Do not add the
+   archive files to `{load_bearing_docs}`: they are historical record, not live claims. If
+   that key is a glob wide enough to sweep them in, narrow the glob.
 
 3. **Advance `.ai/state.json`** to the next sprint: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>". Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet).
 
@@ -164,7 +185,15 @@ If any precondition fails, STOP and report why — do not archive.
 
    Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
 
-6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Step 2 already committed the compaction as its own commit; say what it reclaimed and name the commit. What remains uncommitted is the tracked `next-steps.md` change from step 4 — remind the user to commit that if they want it durable. Confirm with `git status --short` that the tree holds only that, so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
+   **`-D` is safe only per-commit, not per-branch.** Merged-ness is confirmed out-of-band,
+   but a merged branch that has since received a *local, unpushed* commit still deletes
+   without complaint — and because a squash-merged branch's commits are unreachable, that
+   work is gone with no warning. Before pruning, skip any branch whose tip is not contained
+   in `{pr_base}` and not pushed: `git branch --contains <tip> {pr_base}` empty **and**
+   `git rev-parse --verify origin/<branch>` failing means unpushed local work. Report those
+   as skipped rather than deleting them.
+
+6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. If step 2 opened a compaction PR, say what it reclaimed and link it, and note it is awaiting the human's merge like any other PR; if nothing moved, say that instead of naming a commit that does not exist. What remains uncommitted is the tracked `next-steps.md` change from step 4 — remind the user to commit that if they want it durable. Confirm with `git status --short` that the tree holds only that, so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
 7. **Consider bumping the plugin pin.** A sprint close is the one ritual that reliably
    recurs, which makes it the right moment to check whether `.claude/settings.json` points
@@ -194,6 +223,6 @@ If any precondition fails, STOP and report why — do not archive.
    That is precisely how this hides.
 
 ## Guardrails
-- Compaction (step 2) may remove a line from `{roadmap}` or `{backlog}` **only when the identical bytes appear in an archive file staged in the same index** — verify before reporting, per step 2's three checks. That is the bright line, and it is checkable before the commit rather than a claim about intent: a move that cannot show its destination is a deletion, whatever it was meant to be. The single exception is a correction annotation, which by definition has no destination — so it is fenced by its own narrower test in step 2 (the annotation must name the action it gates, and that action must be confirmably closed) and by nothing else. Compaction never rewrites what it moves, the sprint_plan files stay in place, and nothing here ever touches git history.
+- Compaction (step 2) may remove a line from `{roadmap}` or `{backlog}` **only when the identical bytes appear in an archive file staged, and then committed, in the same change** — verify before reporting, per step 2's three checks. That is the bright line, and it is checkable before the commit rather than a claim about intent: a move that cannot show its destination is a deletion, whatever it was meant to be. The single exception is a correction annotation, which by definition has no destination — so it is fenced by its own narrower test in step 2 (the annotation must name the action it gates, and that action must be confirmably closed) and by nothing else. Compaction never rewrites what it moves, the sprint_plan files stay in place, and nothing here ever touches git history.
 - Never archive an un-approved or uncommitted sprint.
-- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, or the current branch. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git).
+- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, the current branch, or a branch carrying a local unpushed commit. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git) — but that argument is about the branch's *merged* commits, not about anything added since, which is why the unpushed-commit check is part of the prune and not an optional refinement.

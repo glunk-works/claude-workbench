@@ -31,7 +31,8 @@ the GitHub release notes.
 ## [Unreleased]
 
 **No migration required.** No `.ai/project.yml` key changed. New archive files appear at
-the next sprint close — see *Added* below.
+the next sprint close, and `/way-of-working:archive-sprint` now opens a PR of its own at
+that moment where it previously touched no git state — see *Added* below.
 
 ### Added
 
@@ -50,9 +51,20 @@ the next sprint close — see *Added* below.
     cursor advances (the steps after it renumbered accordingly): moves the closed sprint's execution narrative out of `{roadmap}` to
     an `execution_record.md` beside its sprint plan, moves resolved file-kind backlog
     items to an `_archive` sibling (same ID anchors), strips correction annotations
-    whose gated action closed — move-don't-rewrite, staged up front so a bare-deletion
-    commit has to be deliberate rather than a default, and it proposes a `docs-consistency` look (where enabled) to
-    confirm no live claim was archived.
+    whose gated action closed — move-don't-rewrite, verified before it is committed (a
+    removed line must be greppable verbatim in a staged archive file), and it proposes a
+    `docs-consistency` look (where enabled) to confirm no live claim was archived.
+    ⚠️ **`/way-of-working:archive-sprint` now creates a commit and opens a PR**, which it
+    never did before: the compaction ships on its own `docs/compact-<sprint>` branch cut
+    from `{pr_base}`, and that PR is the human checkpoint for the step. It is never
+    committed onto `{pr_base}` or onto the just-merged sprint branch — the latter is
+    pruned by `git branch -D`, which succeeds silently on a squash-merged branch and would
+    take an unpushed compaction with it.
+  - **The branch prune in `/way-of-working:archive-sprint` and `/way-of-working:resume` now
+    skips a merged branch carrying a local unpushed commit.** Merged-ness is confirmed
+    out-of-band per *branch*; anything committed since is unreachable after a squash merge,
+    so `-D` deleted it without warning. Pre-existing, and reachable by any workflow that
+    commits after a merge.
   - `/way-of-working:critic-gate` — findings checkable by execution are checked before
     being acted on (trust but verify); prose fixes prefer deletion/derivation over
     hand-correction, and a recurring prose defect class is promoted to a gate entry.

@@ -17,7 +17,7 @@ green with no critic having looked. This runs in the **implementation session** 
 green gate and before `/way-of-working:handoff`.
 
 **Read `.ai/project.yml` first** for `{gates.green}`, `{code_paths}`, `{agents.enabled}`,
-`{load_bearing_docs}`, and `{review.ci_gate}`.
+`{load_bearing_docs}`, `{review.ci_gate}`, `{backlog}`, and `{ruleset.required_checks}`.
 
 > **This pass is defense-in-depth that runs EARLIER.** Where `{review.ci_gate}` is set, it
 > is **not** that gate and must never be presented as satisfying it — that gate wants a
@@ -109,9 +109,12 @@ green gate and before `/way-of-working:handoff`.
    or replace it with its deriving command, never to hand-correct the value; a claim now
    corrected for the second time is a claim to remove. And when the same prose defect
    class recurs across rounds, the converging fix is a check that fails the same way the
-   finding reads — a `{gates.green}` entry, verified by a deliberate regression, and added
-   to `{ruleset.required_checks}` if the class should block a merge rather than only a
-   local run — after which the prose that guarded the class shrinks to a pointer at the
+   finding reads — a `{gates.green}` entry, verified by a deliberate regression, and, if
+   the class should block a merge rather than only a local run, promoted to CI: a workflow
+   job whose id is the check name, that name added to the repo's GitHub ruleset, and only
+   then mirrored into `{ruleset.required_checks}` (which records GitHub's state rather than
+   requesting it — mirroring first makes every later session report the ruleset as
+   weakened) — after which the prose that guarded the class shrinks to a pointer at the
    check.
 
    **Then re-spawn the critics on the FIXED tree. This is not optional.** The old rule here

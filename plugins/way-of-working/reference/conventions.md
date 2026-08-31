@@ -5,6 +5,9 @@ directive/skill repository**: repo-agnostic ground rules the personas load as
 conventions, and the block the bootstrapping/maintenance workflows inject into
 every managed `glunk-works` repo. Keep it self-contained — no references to
 files that only exist in *this* repo — so it stays valid when copied elsewhere.
+Names in braces (`{roadmap}`, `{gates.green}`, …) are keys each repo sets in its own
+`.ai/project.yml`; the schema that defines them travels with the plugin that injects
+this file.
 
 ## Python conventions
 - **Formatting is not negotiable:** `ruff format` (line length 100) is the single source of truth; never hand-format against it. Lint with `ruff check` under rule sets `E, F, I, B, S` (pycodestyle, pyflakes, isort, bugbear, bandit). Import order is isort-managed — do not hand-order.
@@ -259,9 +262,12 @@ state that then drifts, and correction narratives accreting on top of correction
   lesson that must survive is a rule in the relevant skill or convention, not a war story
   where it happened. And when the mistake a paragraph warns against has actually occurred, the durable
   form is a check that fails the same way the prose warns — a `{gates.green}` entry,
-  verified by a deliberate regression, and carried into `{ruleset.required_checks}` where
-  the class is worth blocking a merge, since `{gates.green}` is a local pre-check and CI
-  on the PR is the gate of record — after which the paragraph shrinks to a pointer at the
+  verified by a deliberate regression, and — and where the class is worth blocking a merge,
+  promoted to CI, since `{gates.green}` is a local pre-check and CI on the PR is the gate
+  of record. Promoting means all three, in order: a workflow job whose id is the check
+  name, that name added to the repo's GitHub ruleset, and only then the name mirrored into
+  `{ruleset.required_checks}`. Mirroring it first makes every later session report the
+  ruleset as weakened, because the key is a mirror of GitHub's state, not a request for it — after which the paragraph shrinks to a pointer at the
   check. Prose is the interim control for defects that have not yet earned a
   gate.
 

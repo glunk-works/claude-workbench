@@ -95,6 +95,12 @@ event, run the check.
      printf '%s\n' "$merged" | grep -qxF "$b" && git branch -D "$b" && echo "pruned $b"
    done
    ```
+   **Skip any branch carrying a local, unpushed commit.** Merged-ness is confirmed
+   out-of-band, but a merged branch that has since received one still deletes without
+   complaint, and a squash-merged branch's commits are unreachable — so that work is gone
+   silently. No `origin/<branch>`, or `git branch --contains <tip> {pr_base}` empty, means
+   unpushed local work: report it as skipped, do not delete it.
+
    Report the result in the pick-up summary in **at most one line** (e.g. `Pruned 6 squash-merged local branches.` or `No stale branches to prune.`). This is hygiene, not a gate — never block the session on it; if the `gh` call fails, skip pruning and say so.
 
 4. **Check the branch-protection ruleset for drift.** A scheduled drift job catches drift
