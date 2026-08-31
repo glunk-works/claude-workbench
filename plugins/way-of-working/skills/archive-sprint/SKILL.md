@@ -111,10 +111,7 @@ If any precondition fails, STOP and report why — do not archive.
    because a squash-merged branch's commits are unreachable that work is gone with no
    warning. `headRefOid` — the commit GitHub actually merged — comes free in the `gh pr
    list` call already being made, so the branch is deleted only when its local tip **is**
-   that commit, and the skip message names the real reason. The comparison uses a bare `git
-   rev-parse "$b"` on purpose: `$b` comes from `%(refname:short)`, which renders a branch
-   shadowed by a same-named tag as `heads/<name>`, so the bare form resolves correctly — do
-   not "tighten" it to `refs/heads/$b`, which in that case does not resolve at all.
+   that commit, and the skip message names the real reason.
 
    **Why not `origin/<branch>`.** The obvious test — "is my tip pushed?", `git rev-list
    --count origin/$b..$b` — reads the remote-tracking ref, and that ref stops resolving

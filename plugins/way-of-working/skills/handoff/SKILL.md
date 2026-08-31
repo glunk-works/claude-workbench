@@ -82,15 +82,18 @@ and `{review.ci_gate}`.
      ```
 
      **One chain, and it can abort — at either of two links.** Step 4 has just rewritten
-     tracked `.ai/next-steps.md`, and which link refuses depends on whether your local
-     `{pr_base}` is current:
-     - **Local `{pr_base}` already current** → `git checkout {pr_base}` aborts (*"Your
-       local changes … would be overwritten by checkout"*).
-     - **Local `{pr_base}` stale** — the ordinary state after a session spent on a code
-       branch, because `git fetch` updates `origin/{pr_base}` and *not* `{pr_base}` — →
-       the checkout **succeeds** and `git pull` aborts instead, with a different message
-       (*"… would be overwritten by merge"*). Do not go looking only for the checkout
-       error; the stale case is the common one.
+     tracked `.ai/next-steps.md`, and which link refuses turns on whether that file's
+     *committed* content differs between the branch you are leaving and `{pr_base}` — not
+     on whether your local `{pr_base}` is up to date:
+     - **It differs** → `git checkout {pr_base}` refuses outright (*"Please commit your
+       changes or stash them before you switch branches"*), because the switch would have
+       to overwrite your edit.
+     - **It does not differ** — the ordinary case, a code branch that never committed a
+       cursor change of its own → the checkout **succeeds** and carries the modified file
+       across. `git pull` then aborts instead (*"Your local changes … would be overwritten
+       by merge"*) whenever the fetch brings a change to that file, which is exactly when
+       `{pr_base}` has had a cursor sync since this branch was cut. Do not go looking only
+       for the checkout error; this is the link you will hit most.
 
      Either way, **stop and say so**: name the blocking file and hand it to the human. Do
      not commit on the current branch to get past it — that is how a cursor sync ends up
@@ -99,8 +102,10 @@ and `{review.ci_gate}`.
 
      Without the `&&` chain, **both** failures produce a wrong branch instead of an error,
      and neither announces itself: after an aborted `checkout` the `checkout -b` cuts the
-     cursor branch off the **code branch**, and after an aborted `pull` it cuts off a
-     **stale `{pr_base}`** — the same wrong-base defect, one layer quieter.
+     cursor branch off the **code branch**, and after an aborted `pull` it cuts off
+     `{pr_base}` at the commit your local copy is still on — **stale**, because the merge
+     that would have advanced it is the step that just failed. Same wrong-base defect, one
+     layer quieter.
 
      **If the chain stops at `git pull`, you are now standing on `{pr_base}` with the
      modified cursor in the tree.** That is not a state to commit out of either — `{pr_base}`

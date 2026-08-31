@@ -61,12 +61,13 @@ the GitHub release notes.
   switch to `{pr_base}` was chained but the `checkout -b` after it was not, so an aborted
   switch was followed by a branch cut from wherever the session was standing — quietly
   producing the exact outcome the step exists to prevent. There are two abort paths, not
-  one, and the step now names both: with local `{pr_base}` current, `git checkout` refuses
-  (a modified `.ai/next-steps.md` differs between the branches); with local `{pr_base}`
-  stale — the ordinary state after a session on a code branch, since `git fetch` updates
-  `origin/{pr_base}` and not `{pr_base}` — the checkout succeeds and `git pull` aborts
-  instead. Unchained, the first lands the cursor branch on the **code branch** and the
-  second on a **stale `{pr_base}`**. The cut is now one `&&` chain; a failed link stops,
+  one, and the step now names both — and names the right determinant, which is whether
+  `.ai/next-steps.md`'s *committed* content differs between the branch being left and
+  `{pr_base}`, not whether the local base is stale. Where it differs, `git checkout`
+  refuses; where it does not — the ordinary case — the checkout succeeds and carries the
+  modification across, and `git pull` aborts instead once the fetch brings a change to that
+  file. Unchained, the first lands the cursor branch on the **code branch** and the second
+  on a **stale `{pr_base}`**. The cut is now one `&&` chain; a failed link stops,
   names the blocking file, and hands it to the human rather than committing or stashing on
   their behalf — including the case where the chain stops with the session parked on
   `{pr_base}`. Found while working #57 and carved out of it.

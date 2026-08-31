@@ -108,10 +108,7 @@ event, run the check.
    complaint — and a squash-merged branch's commits are unreachable, so that work is gone
    with no warning. So the candidate test asks GitHub *which commit it merged*
    (`headRefOid`, free in the call already being made), and the deletion happens only when
-   the local tip **is** that commit. The comparison uses a bare `git rev-parse "$b"` on
-   purpose: `$b` comes from `%(refname:short)`, which renders a branch shadowed by a
-   same-named tag as `heads/<name>`, so the bare form resolves correctly — do not "tighten"
-   it to `refs/heads/$b`, which in that case does not resolve at all.
+   the local tip **is** that commit.
 
    **Do not substitute the obvious "is my tip pushed?" test** — `git rev-list --count
    origin/$b..$b`. It reads the remote-tracking ref, which stops resolving as soon as the
@@ -120,9 +117,9 @@ event, run the check.
    count command fails for that branch, and any fallback that fails safe skips it
    **permanently** — reporting stranded work that does not exist and implying a push that
    is no longer possible. How much of the prune that quietly disables is decided by a repo
-   setting the test never consults: everything, where branches are deleted on merge;
-   nothing, where they are not. `headRefOid` does not depend on it — the PR record keeps
-   the merged commit after the branch is gone.
+   setting the test never consults: eventually everything, where branches are deleted on
+   merge; one candidate per hand-deleted branch, where they are not. `headRefOid` does not
+   depend on it — the PR record keeps the merged commit after the branch is gone.
 
    Report in the pick-up summary in **at most one line**, and **never drop a skip** — a
    skipped branch is stranded work, and it is the one outcome here worth a human's
