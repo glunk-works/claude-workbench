@@ -7,13 +7,14 @@
 # but it catches the way portability actually rots: someone pastes a working command,
 # a check name, or a repo name in from the repo they happen to be sitting in.
 #
-# Scope is every directory under plugins/*/ EXCEPT reference/, .claude-plugin/, and .git/
-# -- a denylist, not an allowlist, so this loop fails closed for its one job: a new
-# component *directory* (commands/, templates/, whatever comes next) is scanned
-# automatically the moment it exists, with no separate edit to this script required first.
+# Scope is every entry under plugins/*/ EXCEPT reference/, .claude-plugin/, and .git/ --
+# a denylist, not an allowlist, so this loop fails closed for its one job: a new component
+# (commands/, templates/, a root .mcp.json, whatever comes next) is scanned automatically
+# the moment it exists, with no separate edit to this script required first.
 # #49 was the allowlist version of this exact bug: hooks/ shipped and ran in every
-# consuming repo for a full sprint before this check ever looked at it, because the loop
-# only knew the names in the sprint's original acceptance pattern (skills, agents, bin).
+# consuming repo for weeks, across several releases, before this check ever looked at it,
+# because the loop only knew names that had been added to it by hand -- `skills agents`
+# as first written, plus `bin` hand-added later in #21.
 # `dotglob` is on below so the glob itself yields dot-directories -- without it,
 # .claude-plugin/ would be skipped by the glob, not by the `case` arm that documents the
 # skip, and the same silent gap would apply to any future dot-directory. reference/ is
@@ -23,15 +24,17 @@
 # different reason: it is plugin *metadata*, not executed code, and plugin.json's author
 # field legitimately carries the org name that TIER2 matches -- scanning it would
 # false-positive on correct content. .git/ is excluded so a plugin ever vendored as a
-# nested clone or submodule doesn't fail on its own remote URL, which is exactly this kind
-# of match on a directory that isn't plugin content at all.
+# nested clone doesn't fail on its own remote URL, which is exactly this kind of match on
+# a directory that isn't plugin content at all. (It is defensive only: git refuses to
+# commit any path with a .git component, so in CI this arm is unreachable. A *submodule*
+# is not the case it covers -- a submodule's .git is a file, not a directory.)
 #
-# What this does NOT cover: a repo-specific literal sitting in a file at the *root* of a
-# plugin directory, outside any subdirectory (there are none today) -- a narrower gap than
-# the one #49/#53 closed, not silently reopened by this loop, and tracked separately rather
-# than folded in here. The empty-or-missing plugins/ tree is NOT such a gap: the
-# zero-scanned guard below fails the gate rather than reporting a pass having looked at
-# nothing, which is the same failure shape this script exists to close.
+# What this does NOT cover: a file sitting directly in plugins/, outside any plugin
+# directory (there are none today). That is narrower than the gap #49/#53 closed and is
+# not silently reopened by this loop. Everything else fails closed: a plugin whose every
+# entry is excluded, a plugins/ tree that is empty or missing, a wrong cwd, and a grep
+# that errors rather than answering all fail the gate rather than reporting a pass over a
+# tree this script did not actually read.
 set -euo pipefail
 
 # Tier 1 -- the sprint's acceptance pattern (SW Task 3). These are the specific literals
@@ -70,25 +73,59 @@ PATTERN="${TIER1}|${TIER2}|${TIER3}"
 
 fail=0
 scanned=0
+plugins=0
 shopt -s nullglob dotglob
 for plugin_dir in plugins/*/; do
-  for target in "${plugin_dir}"*/; do
-    target="${target%/}"
-    component="$(basename "$target")"
+  # `.` and `..` only appear here on bash < 5.2, which has no `globskipdots`. Left
+  # unhandled they would send `grep -r` up into the whole repo -- fail-closed, but it
+  # would make the local run in CLAUDE.md permanently red on macOS's bash 3.2, and a
+  # contributor debugging that is on the shortest path to "simplifying" this loop away.
+  plugin_name="${plugin_dir%/}"
+  case "${plugin_name##*/}" in .|..) continue ;; esac
+  plugins=$((plugins + 1))
+  plugin_scanned=0
+  # `*`, not `*/`: files at a plugin's root are plugin content too. hooks.json and
+  # .mcp.json both live there and both carry commands -- exactly the "someone pastes a
+  # working command in from the repo they happen to be sitting in" rot this gate exists
+  # for. `grep -r` takes a file argument as happily as a directory one.
+  for target in "${plugin_dir}"*; do
+    # NOT `$(basename ...)`: command substitution strips trailing newlines, so a
+    # directory whose name is "reference" followed by a newline would compare equal to
+    # plain reference and be skipped -- the value checked would not be the value used.
+    # A newline is a legal path character in git, so that is a committable gate bypass,
+    # not a hypothetical.
+    component="${target##*/}"
     case "$component" in
-      reference|.claude-plugin|.git) continue ;;
+      reference|.claude-plugin|.git|.|..) continue ;;
     esac
+    plugin_scanned=$((plugin_scanned + 1))
     scanned=$((scanned + 1))
-    if hits=$(grep -rnE "$PATTERN" "$target"); then
+    # grep exits 0 = matched, 1 = clean, >=2 = it could not do the job (unreadable file,
+    # I/O error, bad regex). The old `if hits=$(grep ...)` form read >=2 as "clean" and
+    # threw away any hits it had already found -- a gate that dies quietly reporting the
+    # same "nothing to see" as a gate that passed. Same lesson invariants-check.sh names.
+    status=0
+    hits=$(grep -rnE "$PATTERN" "$target") || status=$?
+    if [ "$status" -eq 0 ]; then
       echo "COUPLING FAIL: repo-specific literal in $target" >&2
       echo "$hits" >&2
       fail=1
+    elif [ "$status" -ne 1 ]; then
+      echo "COUPLING FAIL: grep exited $status on $target -- that is an error, not a clean" >&2
+      echo "result. Refusing to report a pass over a tree this gate could not read." >&2
+      fail=1
     fi
   done
+  if [ "$plugin_scanned" -eq 0 ]; then
+    echo "COUPLING FAIL: nothing scannable in $plugin_dir -- every entry was excluded or it is empty." >&2
+    echo "A plugin this gate never looked at must not be reported as a pass." >&2
+    fail=1
+  fi
 done
 
-if [ "$scanned" -eq 0 ]; then
-  echo "COUPLING FAIL: scanned zero directories under plugins/*/ -- the tree is missing, empty, or this script is running from the wrong cwd. A gate that scans nothing and reports pass is the exact failure mode #49/#53 exist to close." >&2
+# The per-plugin guard above cannot fire when there are no plugins at all.
+if [ "$plugins" -eq 0 ]; then
+  echo "COUPLING FAIL: found no plugin directories under plugins/*/ -- the tree is missing, empty, or this script is running from the wrong cwd. A gate that scans nothing and reports pass is the exact failure mode #49/#53 exist to close." >&2
   exit 1
 fi
 
@@ -109,4 +146,4 @@ EOF
   exit 1
 fi
 
-echo "Coupling check passed: scanned $scanned directories under plugins/*/ (except reference/, .claude-plugin/, .git/), no repo-specific literals found."
+echo "Coupling check passed: scanned $scanned entries across $plugins plugin(s) under plugins/*/ (every entry except reference/, .claude-plugin/, .git/), no repo-specific literals found."

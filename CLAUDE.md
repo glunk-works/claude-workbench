@@ -15,7 +15,7 @@ after the green gate and before handoff on any diff touching `code_paths`.
 
 ## The one rule that matters most here
 
-**Shared plugin code in `plugins/way-of-working/` — every directory except `reference/`
+**Shared plugin code in `plugins/way-of-working/` — every entry except `reference/`
 and `.claude-plugin/` — may never name a repo-specific value.** Every literal removed
 becomes a schema key
 ([project-schema.md](plugins/way-of-working/reference/project-schema.md)), enforced
@@ -28,9 +28,10 @@ Definition of Done) — they apply to this repo's own PRs too.
 
 ```
 bash scripts/lint.sh            # marketplace.json / plugin.json / SKILL.md frontmatter
-bash scripts/coupling-check.sh  # no repo-specific literals in any dir under plugins/*/ except reference/, .claude-plugin/
+bash scripts/coupling-check.sh  # no repo-specific literals in any plugins/*/ entry except reference/, .claude-plugin/, .git/
 bash scripts/invariants-check.sh  # known-wrong forms haven't come back
 sh tests/cursor-drift.test.sh   # bin/ script fixtures (not yet a required check)
+sh tests/coupling-check.test.sh # coupling gate fixtures (not yet a required check)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH.

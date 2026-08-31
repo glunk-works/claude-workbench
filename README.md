@@ -19,7 +19,7 @@ the full reasoning, and `glunk-works/bounty-infra`'s
 
 ## The parameterization rule
 
-Shared plugin code in `plugins/way-of-working/` — every directory except `reference/` and
+Shared plugin code in `plugins/way-of-working/` — every entry except `reference/` and
 `.claude-plugin/` — may **never name a repo-specific value** (a check name, a roadmap
 path, a review-gate header string, an identity). If it needs one, it reads the consuming
 repo's `.ai/project.yml` (`plugins/way-of-working/reference/project-schema.md`). If a

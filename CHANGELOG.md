@@ -37,18 +37,40 @@ the GitHub release notes.
 - **`coupling-check.sh`'s component loop was an allowlist, which is what let the
   `plugins/*/hooks/` gap below (#49) happen in the first place: a new component directory
   had to be added to a hardcoded list by hand before the gate would ever look at it.**
-  Inverted to a denylist -- the loop now scans every directory under `plugins/*/` except
+  Inverted to a denylist -- the loop now scans every entry under `plugins/*/` except
   `reference/` (documentation, legitimately quotes concrete example values),
   `.claude-plugin/` (plugin metadata, `plugin.json`'s `author` field legitimately carries
-  the org name), and `.git/` (added defensively so a plugin ever vendored as a nested
-  clone doesn't fail on its own remote URL). `shopt -s dotglob` was required for the
-  `.claude-plugin/` exclusion to be a real decision rather than an accident: bash globs
-  skip dot-directories by default, so without it the exclusion `case` arm was
-  unreachable and `.claude-plugin/` was already being skipped for the wrong reason. Also
-  added a zero-scanned guard -- an empty or missing `plugins/` tree now fails the gate
-  instead of silently reporting pass having scanned nothing, the same failure shape this
-  issue exists to close. The two CI workflow step names and `reference/project-schema.md`'s
-  opening sentence were widened to match, per the precedent #49 set below. See #53.
+  the org name), and `.git/` (defensive only, for a plugin vendored as a nested clone;
+  git refuses to commit a `.git` path, so in CI the arm is unreachable). `shopt -s
+  dotglob` was required for the `.claude-plugin/` exclusion to be a real decision rather
+  than an accident: bash globs skip dot-directories by default, so without it the
+  exclusion `case` arm was unreachable and `.claude-plugin/` was already being skipped for
+  the wrong reason.
+
+  The critic pass on this change found four further ways the gate could report a pass
+  over something it had not read, all now closed and each covered by a regression in
+  `tests/coupling-check.test.sh`:
+  - **Files at a plugin's root were never scanned** -- the inner glob was `*/`, so only
+    directories were examined. `hooks.json` and `.mcp.json` both live at a plugin's root
+    and both carry commands. The glob is now `*`; `grep -r` takes a file as happily as a
+    directory.
+  - **A whole plugin could be skipped silently.** The zero-scanned guard was one repo-wide
+    counter, so any one scannable directory anywhere satisfied it -- a second plugin whose
+    every entry was excluded passed green. The guard is now per-plugin.
+  - **`$(basename ...)` stripped trailing newlines**, so a directory named `reference` plus
+    a newline compared equal to `reference` and was skipped. A newline is a legal path
+    character in git, making that a committable bypass. Now `${target##*/}`, which
+    compares the value actually used.
+  - **`grep` exiting 2 (a real error) was read as "no match"** by the `if hits=$(grep ...)`
+    form, discarding any hits already found -- a gate that dies quietly reporting the same
+    "nothing to see" as a gate that passed, the failure `invariants-check.sh` already
+    names. Exit status is now captured, and anything `>= 2` fails the gate.
+
+  An empty or missing `plugins/` tree, a wrong cwd, and `.` / `..` from `dotglob` on bash
+  before 5.2 all fail closed too. The remaining uncovered case -- a file directly in
+  `plugins/`, outside any plugin directory -- is stated in the script's header. `CLAUDE.md`,
+  `README.md`, `reference/project-schema.md`, and the two CI workflow step names were all
+  widened to match, per the precedent #49 set below. See #53.
 
 - **The coupling gate never scanned `plugins/*/hooks/`, and a stale literal was sitting in
   the blind spot.** The scanned set was `skills/`, `agents/`, and `bin/`. `hooks/` carries

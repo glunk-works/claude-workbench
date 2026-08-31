@@ -1,6 +1,6 @@
 # `.ai/project.yml` — the parameterization contract
 
-Every directory in this plugin except `reference/` and `.claude-plugin/` is portable.
+Every entry in this plugin except `reference/` and `.claude-plugin/` is portable.
 **Shared plugin code may never name a repo-specific value.** Where behavior needs one, it
 reads it from `.ai/project.yml` in the consuming repo. This file defines that contract.
 

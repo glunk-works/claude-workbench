@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: No repo-specific literals anywhere in plugins/*/ except reference/, .claude-plugin/
+      - name: No repo-specific literals in any plugins/*/ entry except reference/, .claude-plugin/, .git/
         run: bash scripts/coupling-check.sh
 
   # Also its own job, for the same reason `coupling` is: it answers a third question --
@@ -62,3 +62,5 @@ jobs:
           persist-credentials: false
       - name: cursor-drift.sh fixtures
         run: sh tests/cursor-drift.test.sh
+      - name: coupling-check.sh fixtures
+        run: sh tests/coupling-check.test.sh
