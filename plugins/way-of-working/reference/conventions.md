@@ -262,14 +262,14 @@ state that then drifts, and correction narratives accreting on top of correction
   lesson that must survive is a rule in the relevant skill or convention, not a war story
   where it happened. And when the mistake a paragraph warns against has actually occurred, the durable
   form is a check that fails the same way the prose warns — a `{gates.green}` entry,
-  verified by a deliberate regression, and — and where the class is worth blocking a merge,
-  promoted to CI, since `{gates.green}` is a local pre-check and CI on the PR is the gate
-  of record. Promoting means all three, in order: a workflow job whose id is the check
-  name, that name added to the repo's GitHub ruleset, and only then the name mirrored into
-  `{ruleset.required_checks}`. Mirroring it first makes every later session report the
-  ruleset as weakened, because the key is a mirror of GitHub's state, not a request for it — after which the paragraph shrinks to a pointer at the
-  check. Prose is the interim control for defects that have not yet earned a
-  gate.
+  verified by a deliberate regression — after which the paragraph shrinks to a pointer at
+  the check. Where the class is worth blocking a merge rather than only a local run,
+  promote it to CI as well: `{gates.green}` is a local pre-check, and CI on the PR is the
+  gate of record. Promoting means all three, in order — a workflow job whose id is the
+  check name, that name added to the repo's GitHub ruleset, and only then the name
+  mirrored into `{ruleset.required_checks}`, which records GitHub's state rather than
+  requesting it. Mirror it first and every later session reports the ruleset as weakened.
+  Prose is the interim control for defects that have not yet earned a gate.
 
 ## Definition of Done
 A unit of work is done only when: formatting + lint + the full test suite pass; new validated boundaries have negative-input tests; dependencies are pinned and CVE-clean with the SBOM regenerated; no unjustified `# noqa`; and no secrets in any committed file. For managed repos the repo's own `sprints/GLOBAL_DEFINITION_OF_DONE.md` (if present) extends, never relaxes, this bar.

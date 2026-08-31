@@ -43,14 +43,16 @@ approval.
      `docs/backlog_archive.md`), per `reference/project-schema.md`. Where there is no such
      file to grep — a `github_issues` backlog, a changelog, a sibling-repo backlog you
      cannot reach, or an `_archive` file that is itself in conflict — the test cannot be
-     run, so the exception does not apply and the default stands: keep both. **Found there → keep it archived. Not
-     found there → it is an addition; keep it.** Never infer from the shape of the hunk:
-     a compaction deletion and your own branch's new neighbouring item look identical in
-     a conflict, and a new item dropped here is unrecoverable once the branch is
-     squash-merged and pruned. The rule is scoped to *items with ids*; moved `{roadmap}`
-     narrative has no id to grep, so it falls to keep-both, which at worst resurrects
-     prose a later compaction moves again — the recoverable error — squashing leaves the branch's commits unreachable, so
-     there is no side of the merge left to recover it from.
+     run, so the exception does not apply and the default stands: keep both.
+
+     **Found there → keep it archived. Not found there → it is an addition; keep it.**
+     Never infer from the shape of the hunk: a compaction deletion and your own branch's
+     new neighbouring item look identical in a conflict, and a new item dropped here is
+     unrecoverable once the branch is squash-merged and pruned — squashing leaves the
+     branch's commits unreachable, so there is no side of the merge left to recover it
+     from. The rule is scoped to *items with ids*; moved `{roadmap}` narrative has no id
+     to grep, so it falls to keep-both, which at worst resurrects prose that a later
+     compaction moves again — the recoverable error, and the right one to make here.
    - **Push-reach preflight, before any commit:**
      ```bash
      gh api repos/{repo} --jq .permissions.push   # substitute {repo}'s real owner/name —
