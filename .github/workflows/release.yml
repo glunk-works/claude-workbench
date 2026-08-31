@@ -77,7 +77,7 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code@2.1.224
       - name: Validate plugin manifests and skill frontmatter
         run: bash scripts/lint.sh
-      - name: No repo-specific literals in skills/, agents/, bin/, or hooks/
+      - name: No repo-specific literals in any plugins/*/ entry except reference/, .claude-plugin/, .git/
         run: bash scripts/coupling-check.sh
       # Every gate in ci.yml runs here too -- that is this job's whole contract. A gate
       # added to ci.yml and not added here silently stops applying at the one moment it
@@ -86,6 +86,8 @@ jobs:
         run: bash scripts/invariants-check.sh
       - name: cursor-drift.sh fixtures
         run: sh tests/cursor-drift.test.sh
+      - name: coupling-check.sh fixtures
+        run: sh tests/coupling-check.test.sh
 
   release:
     needs: verify

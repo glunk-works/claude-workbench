@@ -19,13 +19,14 @@ the full reasoning, and `glunk-works/bounty-infra`'s
 
 ## The parameterization rule
 
-Shared plugin code in `plugins/way-of-working/` — skills, agents, `bin/`, `hooks/` — may
-**never name a repo-specific value** (a check name, a roadmap path, a review-gate header
-string, an identity). If it needs one, it reads the consuming repo's `.ai/project.yml`
-(`plugins/way-of-working/reference/project-schema.md`). If a value can't be expressed
-there, the skill isn't portable and belongs local to that repo instead. A repo-local
-override of a shared skill is a **bug report against the schema, not a fork** — plugin
-skills cannot be partially overridden; a same-named local skill shadows the whole thing.
+Shared plugin code in `plugins/way-of-working/` — every entry except `reference/` and
+`.claude-plugin/` — may **never name a repo-specific value** (a check name, a roadmap
+path, a review-gate header string, an identity). If it needs one, it reads the consuming
+repo's `.ai/project.yml` (`plugins/way-of-working/reference/project-schema.md`). If a
+value can't be expressed there, the skill isn't portable and belongs local to that repo
+instead. A repo-local override of a shared skill is a **bug report against the schema,
+not a fork** — plugin skills cannot be partially overridden; a same-named local skill
+shadows the whole thing.
 
 ## Using it in a repo
 
@@ -60,5 +61,5 @@ plugins/way-of-working/
 docs/decisions.md   # the WB-D* log
 CHANGELOG.md        # what each tag changes — read before bumping a pin
 scripts/            # the CI gates: lint, coupling, invariants
-tests/              # fixtures for the plugin's bin/ scripts
+tests/              # fixtures for the plugin's bin/ scripts and for the CI gates
 ```
