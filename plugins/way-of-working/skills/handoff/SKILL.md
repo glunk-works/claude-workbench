@@ -77,19 +77,35 @@ and `{review.ci_gate}`.
      `{pr_base}`.
 
      ```bash
-     git fetch origin {pr_base} && git checkout {pr_base} && git pull        && git checkout -b docs/sync-cursor-<slug>
+     git fetch origin {pr_base} && git checkout {pr_base} && git pull \
+       && git checkout -b docs/sync-cursor-<slug>
      ```
 
-     **One chain, and it can abort.** Step 4 has just rewritten tracked
-     `.ai/next-steps.md`, and `git checkout` refuses to switch when the branch you are
-     leaving and `{pr_base}` differ in a file you have modified — which is exactly the
-     cursor's situation whenever the base has had a cursor sync since this branch was cut.
-     If any link fails, **stop and say so**: name the blocking file and hand it to the
-     human. Do not commit on the current branch to get past it — that is how a cursor sync
-     ends up on a code branch, which is the thing this step exists to prevent — and do not
-     `git stash` on the human's behalf. Without the `&&` chain, a failed switch is followed
-     by a `checkout -b` that cuts the cursor branch off the code branch, quietly producing
-     the same wrong result.
+     **One chain, and it can abort — at either of two links.** Step 4 has just rewritten
+     tracked `.ai/next-steps.md`, and which link refuses depends on whether your local
+     `{pr_base}` is current:
+     - **Local `{pr_base}` already current** → `git checkout {pr_base}` aborts (*"Your
+       local changes … would be overwritten by checkout"*).
+     - **Local `{pr_base}` stale** — the ordinary state after a session spent on a code
+       branch, because `git fetch` updates `origin/{pr_base}` and *not* `{pr_base}` — →
+       the checkout **succeeds** and `git pull` aborts instead, with a different message
+       (*"… would be overwritten by merge"*). Do not go looking only for the checkout
+       error; the stale case is the common one.
+
+     Either way, **stop and say so**: name the blocking file and hand it to the human. Do
+     not commit on the current branch to get past it — that is how a cursor sync ends up
+     on a code branch, which is the thing this step exists to prevent — and do not `git
+     stash` on the human's behalf.
+
+     Without the `&&` chain, **both** failures produce a wrong branch instead of an error,
+     and neither announces itself: after an aborted `checkout` the `checkout -b` cuts the
+     cursor branch off the **code branch**, and after an aborted `pull` it cuts off a
+     **stale `{pr_base}`** — the same wrong-base defect, one layer quieter.
+
+     **If the chain stops at `git pull`, you are now standing on `{pr_base}` with the
+     modified cursor in the tree.** That is not a state to commit out of either — `{pr_base}`
+     is protected and this step never commits to it. Report it as the blocking state,
+     naming the branch you ended up on, and let the human resolve it.
    - **This holds even when the cursor describes work that currently lives only on an
      unmerged code branch** — a second session handing off before the first session's PR has
      merged (a "stacked" handoff). There is **no exception** for that case, because

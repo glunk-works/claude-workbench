@@ -37,26 +37,36 @@ the GitHub release notes.
 - **The branch prune in `/way-of-working:resume` and `/way-of-working:archive-sprint` could
   delete unpushed work without warning.** Both fused the merged test onto the deletion
   (`grep -qxF "$b" && git branch -D "$b"`), which makes `-D` safe per *branch* while the
-  risk is per *commit*: a branch whose PR GitHub reports `merged` can since have received a
-  local, unpushed commit, and because a squash-merged branch's commits are unreachable from
-  `{pr_base}`, `-D` takes that commit with no complaint and nothing to recover it from. The
-  loop now tests `git rev-list --count origin/$b..$b -eq 0` **between** "is a candidate" and
-  "delete it", and reports skipped branches rather than deleting them. The position is
-  load-bearing: fused onto the `&&` line the test is inert, and placed above the merged test
-  it fires on every unmerged branch in the repo. The test is containment, not existence — a
-  stale `origin/<branch>` outlives GitHub's server-side delete, so `rev-parse --verify`
-  proves nothing, and `git branch --contains` is empty for every squash-merged branch, which
-  is the premise of the squash trap the prune exists for.
+  risk is per *commit*: a branch whose PR GitHub reports `merged` can since have taken a
+  local commit, and because a squash-merged branch's commits are unreachable from
+  `{pr_base}`, `-D` takes that commit with no complaint and nothing to recover it from.
+  The deletion is now gated on the commit GitHub actually merged — `headRefOid`, which the
+  same `gh pr list` call already returns — and fires only when the local tip **is** that
+  commit; anything else is reported as a skip rather than deleted.
 
-- **`/way-of-working:handoff` step 5 could cut the cursor branch off the code branch.** The
+  The first attempt at this fix tested `git rev-list --count origin/$b..$b` ("is my tip
+  pushed?") and was **worse than the bug**: GitHub deletes the head branch on merge, so
+  after one `git fetch --prune` — or with `fetch.prune=true` set — `origin/<branch>`
+  resolves for no merged branch at all, the count fails, and failing safe skips *every*
+  candidate. That turns the prune into a permanent no-op which tells the operator each
+  branch "carries local commits that are not pushed" and implies a push that is no longer
+  possible. It passes review in any clone that has never pruned its refs, which is the
+  clone it gets written in. `headRefOid` is immune: the PR record keeps it after the branch
+  is gone. Found while working #57 and carved out of it.
+
+- **`/way-of-working:handoff` step 5 could cut the cursor branch off the wrong base.** The
   switch to `{pr_base}` was chained but the `checkout -b` after it was not, so an aborted
-  `git checkout` was followed by a branch cut from wherever the session was standing —
-  quietly producing the exact outcome the step exists to prevent. `git checkout` refuses to
-  switch when the branch being left and `{pr_base}` differ in a modified file, which is the
-  cursor's situation whenever the base has had a cursor sync since the branch was cut, so
-  this is the common path rather than an edge case. The cut is now one `&&` chain, and a
-  failed link stops and hands the blocking file to the human rather than committing or
-  stashing on their behalf.
+  switch was followed by a branch cut from wherever the session was standing — quietly
+  producing the exact outcome the step exists to prevent. There are two abort paths, not
+  one, and the step now names both: with local `{pr_base}` current, `git checkout` refuses
+  (a modified `.ai/next-steps.md` differs between the branches); with local `{pr_base}`
+  stale — the ordinary state after a session on a code branch, since `git fetch` updates
+  `origin/{pr_base}` and not `{pr_base}` — the checkout succeeds and `git pull` aborts
+  instead. Unchained, the first lands the cursor branch on the **code branch** and the
+  second on a **stale `{pr_base}`**. The cut is now one `&&` chain; a failed link stops,
+  names the blocking file, and hands it to the human rather than committing or stashing on
+  their behalf — including the case where the chain stops with the session parked on
+  `{pr_base}`. Found while working #57 and carved out of it.
 
 - **`coupling-check.sh`'s component loop was an allowlist, which is what let the
   `plugins/*/hooks/` gap below (#49) happen in the first place: a new component directory
