@@ -27,9 +27,11 @@
 # of match on a directory that isn't plugin content at all.
 #
 # What this does NOT cover: a repo-specific literal sitting in a file at the *root* of a
-# plugin directory (there are none today), and an empty or missing plugins/ tree still
-# exits 0 having scanned nothing -- both are narrower gaps than the one #49/#53 closed, not
-# silently reopened by this loop, and are tracked separately rather than folded in here.
+# plugin directory, outside any subdirectory (there are none today) -- a narrower gap than
+# the one #49/#53 closed, not silently reopened by this loop, and tracked separately rather
+# than folded in here. The empty-or-missing plugins/ tree is NOT such a gap: the
+# zero-scanned guard below fails the gate rather than reporting a pass having looked at
+# nothing, which is the same failure shape this script exists to close.
 set -euo pipefail
 
 # Tier 1 -- the sprint's acceptance pattern (SW Task 3). These are the specific literals
