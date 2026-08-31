@@ -91,11 +91,33 @@ If any precondition fails, STOP and report why — do not archive.
    cur=$(git branch --show-current)
    for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
      case "$b" in "$base"|"$cur") continue;; esac
-     printf '%s\n' "$merged" | grep -qxF "$b" && git branch -D "$b" && echo "pruned $b"
+     printf '%s\n' "$merged" | grep -qxF "$b" || continue          # not merged -- not a candidate
+     if [ "$(git rev-list --count "origin/$b..$b" 2>/dev/null || echo 1)" -eq 0 ]; then
+       git branch -D "$b" && echo "pruned $b"
+     else
+       echo "skipped $b -- merged, but carries local commits that are not pushed"
+     fi
    done
    ```
 
-   Report which branches were pruned (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
+   Report which branches were pruned, which were skipped, and why (or "none"). Hygiene, not a gate — if the `gh` call fails, skip and say so.
+
+   **Why the merged test and the deletion are separate lines.** `-D` is safe only
+   per-commit, not per-branch: merged-ness is confirmed out-of-band, but a merged branch
+   that has since received a *local, unpushed* commit still deletes without complaint, and
+   because a squash-merged branch's commits are unreachable that work is gone with no
+   warning. The unpushed test has to sit **between** "is a candidate" and "delete it" —
+   fused onto the `&& git branch -D` line it would be inert, and placed above the merged
+   test it would fire on every unmerged branch in the repo and report noise about branches
+   nobody proposed deleting.
+
+   The test is **containment, not existence**: a stale `origin/<branch>` survives GitHub's
+   server-side delete until someone prunes, so `git rev-parse --verify origin/<branch>`
+   succeeds and proves nothing; and `git branch --contains <tip> {pr_base}` is empty for
+   *every* squash-merged branch — the premise of the squash trap this prune exists for —
+   so using it would skip all of them and prune nothing. `git rev-list --count
+   origin/$b..$b` is `0` only when the local tip is already on the remote; a missing
+   `origin/$b` makes git exit non-zero, and the `|| echo 1` falls to the safe side.
 
 5. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. Remind the user to commit the archival (the tracked `next-steps.md` change + `{roadmap}`) if they want it durable. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
@@ -129,4 +151,4 @@ If any precondition fails, STOP and report why — do not archive.
 ## Guardrails
 - Never delete `{roadmap}` history or the sprint_plan files — archival only moves the `.ai/` cursor snapshot; the deep record stays in the repo's docs and in git.
 - Never archive an un-approved or uncommitted sprint.
-- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, or the current branch. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git).
+- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, the current branch, or a branch carrying a local unpushed commit. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git) — but that argument is about the branch's *merged* commits, not about anything added since, which is why the unpushed-commit check is part of the prune and not an optional refinement.

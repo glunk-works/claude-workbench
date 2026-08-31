@@ -34,6 +34,30 @@ the GitHub release notes.
 
 ### Fixed
 
+- **The branch prune in `/way-of-working:resume` and `/way-of-working:archive-sprint` could
+  delete unpushed work without warning.** Both fused the merged test onto the deletion
+  (`grep -qxF "$b" && git branch -D "$b"`), which makes `-D` safe per *branch* while the
+  risk is per *commit*: a branch whose PR GitHub reports `merged` can since have received a
+  local, unpushed commit, and because a squash-merged branch's commits are unreachable from
+  `{pr_base}`, `-D` takes that commit with no complaint and nothing to recover it from. The
+  loop now tests `git rev-list --count origin/$b..$b -eq 0` **between** "is a candidate" and
+  "delete it", and reports skipped branches rather than deleting them. The position is
+  load-bearing: fused onto the `&&` line the test is inert, and placed above the merged test
+  it fires on every unmerged branch in the repo. The test is containment, not existence — a
+  stale `origin/<branch>` outlives GitHub's server-side delete, so `rev-parse --verify`
+  proves nothing, and `git branch --contains` is empty for every squash-merged branch, which
+  is the premise of the squash trap the prune exists for.
+
+- **`/way-of-working:handoff` step 5 could cut the cursor branch off the code branch.** The
+  switch to `{pr_base}` was chained but the `checkout -b` after it was not, so an aborted
+  `git checkout` was followed by a branch cut from wherever the session was standing —
+  quietly producing the exact outcome the step exists to prevent. `git checkout` refuses to
+  switch when the branch being left and `{pr_base}` differ in a modified file, which is the
+  cursor's situation whenever the base has had a cursor sync since the branch was cut, so
+  this is the common path rather than an edge case. The cut is now one `&&` chain, and a
+  failed link stops and hands the blocking file to the human rather than committing or
+  stashing on their behalf.
+
 - **`coupling-check.sh`'s component loop was an allowlist, which is what let the
   `plugins/*/hooks/` gap below (#49) happen in the first place: a new component directory
   had to be added to a hardcoded list by hand before the gate would ever look at it.**

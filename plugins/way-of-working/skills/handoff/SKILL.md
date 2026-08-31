@@ -70,11 +70,26 @@ and `{review.ci_gate}`.
    sync travels as a small, standalone, docs-only PR, separate from whatever code PR this
    session's work landed on. Do it now, don't just remind:
    - If the current branch is a code branch (e.g. mid-implementation, or the just-pushed
-     feature branch), do **not** commit the cursor sync there — switch to `{pr_base}`
-     (`git fetch origin {pr_base} && git checkout {pr_base} && git pull`), cut a fresh small
-     branch (e.g. `docs/sync-cursor-<slug>`), and commit `.ai/next-steps.md` there. If a
-     `/way-of-working:handoff` runs directly on `{pr_base}` with nothing else in flight, cutting a fresh
-     branch from it is still correct — never commit straight to `{pr_base}`.
+     feature branch), do **not** commit the cursor sync there — switch to `{pr_base}`, cut
+     a fresh small branch (e.g. `docs/sync-cursor-<slug>`), and commit `.ai/next-steps.md`
+     there. If a `/way-of-working:handoff` runs directly on `{pr_base}` with nothing else
+     in flight, cutting a fresh branch from it is still correct — never commit straight to
+     `{pr_base}`.
+
+     ```bash
+     git fetch origin {pr_base} && git checkout {pr_base} && git pull        && git checkout -b docs/sync-cursor-<slug>
+     ```
+
+     **One chain, and it can abort.** Step 4 has just rewritten tracked
+     `.ai/next-steps.md`, and `git checkout` refuses to switch when the branch you are
+     leaving and `{pr_base}` differ in a file you have modified — which is exactly the
+     cursor's situation whenever the base has had a cursor sync since this branch was cut.
+     If any link fails, **stop and say so**: name the blocking file and hand it to the
+     human. Do not commit on the current branch to get past it — that is how a cursor sync
+     ends up on a code branch, which is the thing this step exists to prevent — and do not
+     `git stash` on the human's behalf. Without the `&&` chain, a failed switch is followed
+     by a `checkout -b` that cuts the cursor branch off the code branch, quietly producing
+     the same wrong result.
    - **This holds even when the cursor describes work that currently lives only on an
      unmerged code branch** — a second session handing off before the first session's PR has
      merged (a "stacked" handoff). There is **no exception** for that case, because
