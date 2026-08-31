@@ -1,47 +1,56 @@
 # Cursor — claude-workbench
 
 **Now:** No sprint in flight (this repo runs issue-driven, single-task PRs, not sprints).
-Status: **awaiting_review** — #53 is on a green PR awaiting the human's merge; #57 is
-implemented on a pushed branch but its critic pass has **not** converged.
+Status: **implementing** — [#57](https://github.com/glunk-works/claude-workbench/issues/57)
+is shipping as three PRs; the first has merged and the second is next.
 
 **Just done (2026-08-31):**
-- **#53 → [PR #58](https://github.com/glunk-works/claude-workbench/pull/58)** (`dc5513c` is
-  #57's tip; #58's tip is on `fix/53-coupling-check-denylist`). `coupling-check.sh`'s loop
-  inverted from an allowlist to a denylist. Three critic rounds found **six further
-  fail-open paths**, all closed: plugin-root files unscanned, a repo-wide zero-scanned
-  counter that let a whole plugin pass green, `$(basename)` stripping a trailing newline
-  past the exclusion, `grep` exit 2 read as "no match", exclusions matching by name and not
-  type, and `dotglob` pinned by no assertion. New `tests/coupling-check.test.sh` — 13
-  assertions, wired into both workflows, **mutation-checked 8/8**. All four required checks
-  green on the PR, and every fixture (including the platform-dependent newline one) runs
-  rather than self-skips on the Linux runner.
-- **#57 on pushed branch `feat/prose-economy`** (`dc5513c`), **no PR yet**. The
-  prose-economy patch from the `603-Identity` side, applied and then hardened across
-  **four critic rounds**.
+- **[#60](https://github.com/glunk-works/claude-workbench/pull/60) merged** (`dade8a4`) —
+  two pre-existing data-loss paths, **carved out of #57** so they would not keep waiting on
+  a branch that had not converged in four rounds. The branch prune in `resume` /
+  `archive-sprint` deleted branches whose local tip had moved past the merged commit, and
+  `handoff` step 5's unchained `checkout -b` cut the cursor branch off the wrong base. The
+  prune is now gated on **`headRefOid`** — the commit GitHub actually merged, which survives
+  the head branch being deleted — never on `origin/<branch>`.
+- **Critic gate on #60: 3 rounds, the CAP FIRED — not converged.** Round 3 was still
+  returning genuine defects; its two findings were fixed with no re-run and the decision
+  handed to the human, who merged. **Three of the defects found were in fixes the gate
+  itself wrote**, including a critic's unverified universal that reached two shipped skills
+  before anyone checked it. Behavior converged at round 2 and never regressed — everything
+  after that was prose *about* the behavior.
+- **#57 split three ways** (human decision): **C** = the two bug fixes (**merged, #60**),
+  **A** = the prose-economy rules, **B** = `archive-sprint`'s compaction step.
+- **Filed [#61](https://github.com/glunk-works/claude-workbench/issues/61)** — reference
+  skill steps by name, not number (34 numeric refs across 8 files; the dangerous ones point
+  *into* a numbering from files the renumberer never opens) — and
+  **[#62](https://github.com/glunk-works/claude-workbench/issues/62)**, mechanize the
+  prune-block byte-identity invariant that `docs/decisions.md:276` only asserts in prose.
+- **`/way-of-working:retro` ran** — two findings to memory (heredocs eating backslashes into
+  a shipped commit; verifying a critic's *quantifier*, not just its mechanism), one
+  confirmed-again note to #57.
+- **Push identity fixed at the machine level** (`gh auth setup-git`). `git push` now follows
+  `gh`'s **active** account; the old per-push `-c credential.helper=…` workaround is
+  redundant. Consequence: `603-Identity` work now needs `gh auth switch` for `git` too.
 
-**Critic pass — the outcome, not just its existence:**
-- **#53: 3 rounds, CONVERGED** on code (round 3 confirmed clean and independently
-  reproduced the 8/8 mutation result); its remaining findings were prose and were fixed.
-- **#57: 4 rounds, NOT CONVERGED — the cap fired and then some.** Every round found real
-  defects, and *twice the fix was worse than the bug*: round 2's "commit the compaction
-  itself" was destroyed silently by `git branch -D` on a squash-merged branch; round 3's
-  "ship it as a PR" aborted on `git checkout` and then cut the branch off the wrong base.
-  Both fixed, plus a genuine pre-existing bug — the branch-prune guard in `resume` and
-  `archive-sprint` argued safety per *branch* while the risk is per *commit*.
-  **Round 4's own fixes have not been critiqued.**
-- Note: the critics were spawned directly, not via `/way-of-working:critic-gate`. The
-  skill's propose-and-confirm step was never exercised.
+**Next:** Rebuild **#57 part A — the prose-economy *rules* only** — on a branch cut fresh
+from `main`. **Do not rebase or reuse `feat/prose-economy`**: it is stale in four files and
+still carries the superseded prune loop #60 replaced. Take `conventions.md`'s *Prose
+economy* section, `handoff` step 4's no-regenerable-aggregates rule, and the `retro` /
+`critic-gate` / `workflow.md` / `docs-consistency.md` touches. Leave for **B**:
+`archive-sprint`'s compaction step, `project-schema.md`'s `_archive` derivation, and `ship`'s
+ledger-conflict exception. Two bullets — *Corrections replace text* and *The deep record is
+not append-only* — name the compaction step, which will not exist until B lands: state them
+as conventions **without asserting the mechanism exists**, and let B add the pointer. Then
+green gate → `/way-of-working:critic-gate` → `/way-of-working:ship`. Model: **opus** — the
+A/B boundary is a judgment call and the critic gate follows immediately.
 
-**Next:** Run a **fresh `/way-of-working:critic-gate` on `feat/prose-economy`** — check out
-the branch, diff against `origin/main`, and put the round-4 commit (`dc5513c`) under the
-gate; the human confirms which critics run. Model: **opus** (architect/review work).
-Carry in one standing question: the prose-economy *rules* converged early, but the git
-choreography of `archive-sprint`'s compaction step has minted defects four rounds running —
-worth deciding whether that step should split into its own PR rather than shipping here.
-
-**HITL Gate:** NONE OPEN for that critic gate. Two decisions sit with the human and neither
-blocks it: merge PR #58 (green, ready), and the split question above.
+**HITL Gate: NONE OPEN.** The next gate is the human's merge of A's PR. Two decisions sit
+with the human, neither blocking: #61's scope (ban same-file `step N` self-references too?)
+and #62's sequencing (it will fail on `feat/prose-economy` until B is rebuilt).
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) (roadmap + decision log; no sprint
-plan — `sprints_dir` is empty by design). Branches: `fix/53-coupling-check-denylist` (PR
-#58), `feat/prose-economy` (no PR).
+plan — `sprints_dir` is empty by design) ·
+[#57](https://github.com/glunk-works/claude-workbench/issues/57) ·
+[#61](https://github.com/glunk-works/claude-workbench/issues/61) ·
+[#62](https://github.com/glunk-works/claude-workbench/issues/62) · branch
+`feat/prose-economy` — no PR, stale: **source material for A and B, never a base**.
