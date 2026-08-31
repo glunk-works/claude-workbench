@@ -52,8 +52,9 @@ the GitHub release notes.
   that branch and the safe fallback skips it permanently, reporting stranded work that does
   not exist. What makes it a trap rather than a plain bug is that **the blast radius is set
   by a repo setting the test never consults**: where branches are deleted on merge it
-  eventually disables the prune entirely, and where they are not — as here,
-  `deleteBranchOnMerge` is `false` and 37 of 41 merged head branches still exist — it looks
+  eventually disables the prune entirely, and where they are not — as here, where
+  `deleteBranchOnMerge` was `false` and 37 of 41 merged head branches still existed on
+  2026-08-31 — it looks
   flawless. `headRefOid` does not depend on that setting. Found while working #57 and
   carved out of it.
 
