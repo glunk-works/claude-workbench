@@ -1,45 +1,47 @@
 # Cursor — claude-workbench
 
 **Now:** No sprint in flight (this repo runs issue-driven, single-task PRs, not sprints).
-Status: **implementing** — two issues closed this session, both merged; the next pick-up is
-[#53](https://github.com/glunk-works/claude-workbench/issues/53).
+Status: **awaiting_review** — #53 is on a green PR awaiting the human's merge; #57 is
+implemented on a pushed branch but its critic pass has **not** converged.
 
-**Just done (2026-08-14):**
-- **#44 declined and closed** via [PR #51](https://github.com/glunk-works/claude-workbench/pull/51)
-  (`e5afdee`). Secret-scanning validity checks require **GitHub Secret Protection**
-  ($19/committer/mo, Team or Enterprise); `glunk-works` is on **free**, so all 8 `PATCH` calls
-  returned **200 and changed nothing**. Declined at ~$276/yr against an alert queue #28 recorded
-  as empty on all 8 repos. Recorded in
-  [`.ai/context/security-posture-2026-08-13.md`](context/security-posture-2026-08-13.md).
-  **The operative lesson: a 200 is not a confirmation** — only the re-read caught it.
-- **#49 closed** via [PR #55](https://github.com/glunk-works/claude-workbench/pull/55)
-  (`9e6c191`). `coupling-check.sh` never scanned `plugins/*/hooks/`, and a stale literal was
-  sitting in the blind spot. Widened the scanned set; fixed the hit; corrected both CI workflow
-  step names (the `coupling` **job id** deliberately untouched — it is what
-  `ruleset.required_checks` matches); widened the rule sentence in the gate's header + banner,
-  `CLAUDE.md`, `README.md`, and `reference/project-schema.md`.
-- **`/way-of-working:critic-gate` ran** on #49 (`architect` + `docs-consistency`, human-picked;
-  `security-critic` proposed and trimmed). **Three rounds, converged** — round 3 returned
-  tightenings-only. Round 1's two critics independently found the same top defect (the stale CI
-  step names), which is what pulled it into the PR. One architect claim was **checked and
-  rejected** (it named the wrong branch); its underlying convention point was right, hence the
-  `ci/49-…` → `fix/49-…` rename.
-- **Filed #52, #53, #54** as deferred critic findings rather than folding them into #49 —
-  the same discipline #43 used when it filed #48 and #49.
+**Just done (2026-08-31):**
+- **#53 → [PR #58](https://github.com/glunk-works/claude-workbench/pull/58)** (`dc5513c` is
+  #57's tip; #58's tip is on `fix/53-coupling-check-denylist`). `coupling-check.sh`'s loop
+  inverted from an allowlist to a denylist. Three critic rounds found **six further
+  fail-open paths**, all closed: plugin-root files unscanned, a repo-wide zero-scanned
+  counter that let a whole plugin pass green, `$(basename)` stripping a trailing newline
+  past the exclusion, `grep` exit 2 read as "no match", exclusions matching by name and not
+  type, and `dotglob` pinned by no assertion. New `tests/coupling-check.test.sh` — 13
+  assertions, wired into both workflows, **mutation-checked 8/8**. All four required checks
+  green on the PR, and every fixture (including the platform-dependent newline one) runs
+  rather than self-skips on the Linux runner.
+- **#57 on pushed branch `feat/prose-economy`** (`dc5513c`), **no PR yet**. The
+  prose-economy patch from the `603-Identity` side, applied and then hardened across
+  **four critic rounds**.
 
-**Next:** Implement **#53** — invert `coupling-check.sh`'s component loop from an allowlist to a
-denylist so it **fails closed**, and add a header clause saying so. This is the structural cause
-of #49: adding `hooks` fixed the instance, not the property, and `commands/` is the obvious next
-instance. Mechanical against a written spec, so **coder/sonnet**. Then `/way-of-working:critic-gate`
-(it touches `code_paths`) and `/way-of-working:ship`.
+**Critic pass — the outcome, not just its existence:**
+- **#53: 3 rounds, CONVERGED** on code (round 3 confirmed clean and independently
+  reproduced the 8/8 mutation result); its remaining findings were prose and were fixed.
+- **#57: 4 rounds, NOT CONVERGED — the cap fired and then some.** Every round found real
+  defects, and *twice the fix was worse than the bug*: round 2's "commit the compaction
+  itself" was destroyed silently by `git branch -D` on a squash-merged branch; round 3's
+  "ship it as a PR" aborted on `git checkout` and then cut the branch off the wrong base.
+  Both fixed, plus a genuine pre-existing bug — the branch-prune guard in `resume` and
+  `archive-sprint` argued safety per *branch* while the risk is per *commit*.
+  **Round 4's own fixes have not been critiqued.**
+- Note: the critics were spawned directly, not via `/way-of-working:critic-gate`. The
+  skill's propose-and-confirm step was never exercised.
 
-**HITL Gate: NONE OPEN.** The next gate is the human's merge of #53's PR. **#45** (which repos
-CodeQL can analyse) and **#48** (TIER2 derive-vs-hand-maintain) are both **opus decisions** still
-waiting and may preempt #53 — say so at `/way-of-working:resume` rather than treating it as a gate.
+**Next:** Run a **fresh `/way-of-working:critic-gate` on `feat/prose-economy`** — check out
+the branch, diff against `origin/main`, and put the round-4 commit (`dc5513c`) under the
+gate; the human confirms which critics run. Model: **opus** (architect/review work).
+Carry in one standing question: the prose-economy *rules* converged early, but the git
+choreography of `archive-sprint`'s compaction step has minted defects four rounds running —
+worth deciding whether that step should split into its own PR rather than shipping here.
 
-**Pointers:** [`docs/decisions.md`](../docs/decisions.md) (roadmap/decisions of record) ·
-[#45](https://github.com/glunk-works/claude-workbench/issues/45) ·
-[#48](https://github.com/glunk-works/claude-workbench/issues/48) ·
-[#52](https://github.com/glunk-works/claude-workbench/issues/52) ·
-[#53](https://github.com/glunk-works/claude-workbench/issues/53) ·
-[#54](https://github.com/glunk-works/claude-workbench/issues/54)
+**HITL Gate:** NONE OPEN for that critic gate. Two decisions sit with the human and neither
+blocks it: merge PR #58 (green, ready), and the split question above.
+
+**Pointers:** [docs/decisions.md](../docs/decisions.md) (roadmap + decision log; no sprint
+plan — `sprints_dir` is empty by design). Branches: `fix/53-coupling-check-denylist` (PR
+#58), `feat/prose-economy` (no PR).
