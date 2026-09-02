@@ -1,7 +1,7 @@
 {
   "name": "way-of-working",
   "description": "Portable Claude Code working method: the /way-of-working:resume -> /way-of-working:handoff -> /way-of-working:critic-gate -> /way-of-working:ship session protocol, the architect/coder/security-critic/docs-consistency agents, a SessionStart cursor banner, and the Global Conventions. Parameterized per repo by .ai/project.yml (see reference/project-schema.md) -- a shared skill never names a repo-specific value.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "author": {
     "name": "glunk-works"
   }
