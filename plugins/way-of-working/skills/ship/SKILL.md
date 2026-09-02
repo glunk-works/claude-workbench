@@ -93,22 +93,18 @@ and `{decisions.prefix}`. Commit and PR-title grammar is not repo-specific — i
        case.
      - **Removed, and `entry-anchor.sh` answers 0** — keep both, and name the entry to the
        human as **probably moved into the archive by a compaction**, so the likely
-       resolution is to drop it from the live file. That is triage, not a verdict: exit 0 is
-       strong evidence, and the script's own header refuses to call it proof.
+       resolution is to drop it from the live file. That is triage, not a verdict.
      - **Removed, and it answers 1 or 2** — keep both, and name the entry as
        **unresolved**. `1` is not proof your side added it: a deliberate deletion by the
        incoming side lands there too, and so does a real entry in one of the shapes the
        script misses.
 
-     > **Why exit 0 does not act on its own.** An earlier draft of this step accepted the
-     > removal on 0. Every critic round found a new shape where a *citation* answers 0 —
-     > markup on a wrapped continuation line, the same inside a block quote, a nested list
-     > item, a fenced example whose fence closed early, a lazy paragraph continuation — and
-     > each was caught only because someone went looking. The predicate now says of itself
-     > that its cost list is "a floor, not a proof". A branch that deletes a live entry
-     > unrecoverably cannot hang on a predicate that honest, so it doesn't: the human sees
-     > every removal, sorted by how sure the machine is, and a merge conflict is a moment
-     > they are already present for.
+     > **Why exit 0 does not act on its own** is the header's closing argument, not this
+     > step's to restate: the script calls its own cost list a floor, not a proof — critic
+     > rounds kept finding new citation shapes that answer 0, each caught only because
+     > someone went looking — and an unrecoverable deletion cannot hang on a predicate that
+     > honest. An earlier draft of this step did exactly that; read the header rather than
+     > relearn it.
 
      > **Ask a revision, never a merge base you computed.** The obvious form — diff
      > `git merge-base HEAD MERGE_HEAD` against `MERGE_HEAD` — is **false under squash-merge,
