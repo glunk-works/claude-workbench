@@ -1,52 +1,46 @@
 # Cursor — claude-workbench
 
 **Now:** No sprint in flight (issue-driven, single-task PRs). Status: **implementing** —
-[#57](https://github.com/glunk-works/claude-workbench/issues/57) is **closed**; all three
-parts shipped. Next up is its one deliberate carve-out.
+[#66](https://github.com/glunk-works/claude-workbench/issues/66) is built and on
+[PR #69](https://github.com/glunk-works/claude-workbench/pull/69), open and unmerged.
 
-**Just done (2026-08-31):**
-- **[#67](https://github.com/glunk-works/claude-workbench/pull/67) merged** (`e0cb6bf`) —
-  **#57 part B, the writer**: `archive-sprint`'s compaction step 2 (steps renumbered 3–7),
-  `ship`'s ledger-conflict rule, `retro`'s archived-item path, plus the `workflow.md` /
-  `CHANGELOG.md` / `decisions.md` consequences.
-- **The `{roadmap}` archive destination changed mid-build, and this is the part worth
-  remembering.** Part B was drafted with a per-sprint `execution_record.md`; both critics
-  independently found it contradicted "an archive sits *beside* the live record" — and worse,
-  that a repo with **no sprint cadence could never compact its roadmap**. It now applies the
-  *same* `_archive` derivation A defined for a file-kind backlog. `project-schema.md` states
-  that rule once, for both. No schema key, no migration.
-- **`ship`'s per-entry matcher was deliberately cut** — the one place B's scope was reduced
-  rather than met. See **Next**.
-- **#57 closed** with the three-part record and both deviations written up.
+**Just done (2026-09-01):**
+- **[#69](https://github.com/glunk-works/claude-workbench/pull/69) opened** (`3170794`) —
+  `bin/entry-anchor.sh` + `tests/entry-anchor.test.sh`, the tested anchor-matcher `#66`
+  asked for, wired into the `tests` CI job, plus the `ship` step-1 rule that consumes it and
+  `WB-D11`.
+- **`ship` no longer acts on exit `0`.** Every branch keeps both sides; the predicate's
+  answer only *ranks* the removals reported to the human. The issue asked for per-entry
+  **resolution** and got per-entry **ranking**, and step-1 prose grew where `#66` said
+  shrink — a deliberate reduction, recorded in `WB-D11` and the CHANGELOG rather than
+  papered over. Both critics said close `#66` on this PR and file a follow-up for the prose.
+- **The rule was wrong four times inside the critic gate**, each in a new direction and each
+  a *citation* answering `0` — markup on a wrapped continuation line, the same inside a
+  blockquote, a nested list item, a fence closed early. It is now positional: an entry
+  marker at **column 0, outside every tracked container**. `WB-D11` carries the sequence.
+- **`archive-sprint` corrected** — it promised `ship`'s rule *prevents* a compaction's
+  entries being resurrected. Nothing mechanical does; the rule surfaces and a human decides.
+  That claim sat one file outside the diff.
 
-**Critic gate (part B): 3 rounds, `architect` + `docs-consistency`, cap reached, NOT
-converged — the human called it.** Findings **22 → 14 → 8**, falling in count *and*
-severity, every round-3 finding in one line of one file. **Rounds 1 and 2 each minted a
-defect in their own fix**: round 1's merge-base test was false under squash-merge (`WB-D7`'s
-premise in a different command, reproduced), and round 2's replacement escalated *every*
-ordinary conflict to a human. The critics **split** on the final verdict; the deciding
-evidence was reproduced directly — a wrapped citation beginning with an id falsely anchors,
-which in an archive drops a live item.
+**Critic gate: 8 rounds, `architect` + `docs-consistency`. Cap (2) reached at round 3; the
+human authorized every round past it.** Round 8 returned *"nothing here changes what the
+operator does"* (architect) and *"ship it"* (docs-consistency) — the first converged round.
+Severity fell only after the exit-`0` wiring was removed; before that, every round found a
+new unrecoverable-direction false match.
 
-**Next:** Build **[#66](https://github.com/glunk-works/claude-workbench/issues/66)** on a
-branch cut fresh from `main` — the tested anchor-matcher `ship` needs, as a
-`plugins/way-of-working/bin/` script plus a `tests/` fixture suite, per `WB-D10` and the
-`cursor-drift.sh` precedent. Match the id as a **literal**, tolerate **arbitrary** leading
-markup (enumerating markers is what failed three times), and decide explicitly what a wrapped
-continuation line does. Then rewrite `ship` step 1 to resolve per entry and shrink the prose
-to a pointer. Then green gate → `/way-of-working:critic-gate` → `/way-of-working:ship`.
-Model: **opus** — it carries a matching-design decision, not just a script.
+**Next:** Finish the **owed mutation sweep** — the check `WB-D11` prescribes and the suite
+header now instructs. It ran through the comment scanner only; it is targeted-only over the
+match loop and `END`, and a fifth unpinned guard turned up in the part that *was* swept, so
+"four unpinned, two reasons" is measured in part and asserted in part. `.ai/state.json`'s
+`next_action` carries the full procedure and stopping rule. Then critic-gate round 9 on #69.
+Model: **opus** — it ends in a judgment about what the record may claim.
 
-**HITL Gate: NONE OPEN.** #66 is fully specified by its issue body; the next gate is the
-human's merge of its PR. Two non-blocking decisions sit with the human:
-[#61](https://github.com/glunk-works/claude-workbench/issues/61) (now with fresh evidence —
-renumbering `archive-sprint` invalidated two external step citations, both caught only by a
-mechanical sweep) and [#62](https://github.com/glunk-works/claude-workbench/issues/62). To
-know, not decide: B's correction-annotation exception stays **self-certified** — fenced by
-prose and a mandatory enumeration in the commit/PR body, but not mechanically checked.
+**HITL Gate: NONE OPEN** for that next action. Two decisions sit with the human: whether to
+merge #69, and whether closing #66 on it is right given the recorded scope reduction.
+[#61](https://github.com/glunk-works/claude-workbench/issues/61) and
+[#62](https://github.com/glunk-works/claude-workbench/issues/62) remain open and unchanged.
 
-**Pointers:** [docs/decisions.md](../docs/decisions.md) (roadmap + decision log; no sprint
-plan — `sprints_dir` empty by design) ·
-[#66](https://github.com/glunk-works/claude-workbench/issues/66) (next) ·
-[#57](https://github.com/glunk-works/claude-workbench/issues/57) (closed, full record in its
-closing comment)
+**Pointers:** [docs/decisions.md](../docs/decisions.md) (`WB-D11` is this work's record; no
+sprint plan — `sprints_dir` empty by design) ·
+[#69](https://github.com/glunk-works/claude-workbench/pull/69) ·
+[#66](https://github.com/glunk-works/claude-workbench/issues/66)
