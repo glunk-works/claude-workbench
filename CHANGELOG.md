@@ -228,10 +228,20 @@ its ledger-conflict rule.
 
   Fixtures cover `#66`'s shape table row for row, both citation collisions it mandates, all
   false-match classes above, and at least one row per rule — `sh tests/entry-anchor.test.sh`
-  lists them. Every guard is mutation-tested (delete it, and the suite goes red) except four
-  the suite names explicitly, and those four for **two** different reasons: three need a
-  non-conforming `awk` to reach, and one (`[ ! -r "$file" ]`) is a Windows platform limit,
-  since `chmod 000` there does not deny the owner a read.
+  lists them. Mutation-tested exhaustively and to completion: 86 candidate lines — 68 red, 6
+  non-terminating, 12 green — plus each conjunct of the two compound guards measured on its
+  own (ten variants, all red). Four guards stay green and the suite names them: three need a
+  non-conforming `awk` to reach, one (`[ ! -r "$file" ]`) is a Windows platform limit, since
+  `chmod 000` there does not deny the owner a read. A fifth green line is not a guard at all —
+  the `exit` after `found = 1` short-circuits the rest of the file and cannot change the
+  answer, so a status-only contract can never pin it.
+
+  **Two things about the sweep the earlier note got wrong by construction.** Whole-line
+  deletion cannot test a guard that shares its line with other content — three of the four are
+  sub-expressions, and their line going red says nothing about them. And a deletion can make
+  the script *non-terminating* rather than wrong, which hangs a suite that has no timeout
+  instead of failing it; that is why every earlier attempt at this sweep stranded partway.
+  Bound each run, and count a hang as detected rather than green.
 
   **It asks a revision, never a merge base.** The obvious form — diff `git merge-base HEAD
   MERGE_HEAD` against `MERGE_HEAD` and call the result "the incoming side's changes, with

@@ -363,6 +363,12 @@ $0 !~ /^([-*+][[:space:]]|[0-9]+[.)][[:space:]]|##?#?#?#?#?[[:space:]]|[|])/ { n
   # of a non-empty id in "" is 0, which ends the loop anyway. A redundant guard is
   # indistinguishable from a live one under mutation -- two have already been
   # deleted from this file for that reason.
+  #
+  # NON-EMPTY is load-bearing, and the guard that supplies it is 100 lines up. On
+  # gawk `index("", "")` is 1, not 0, so an empty id makes this condition
+  # permanently true while `start` runs past the end: the loop terminates only
+  # because BEGIN rejects an empty id and exits before reaching it. Mutation
+  # confirms it -- delete that exit and the suite does not go red, it hangs.
   while ((p = index(substr(line, start), id)) > 0) {
     pos = start + p - 1
     prefix = substr(line, 1, pos - 1)

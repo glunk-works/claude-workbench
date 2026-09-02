@@ -406,8 +406,9 @@ take effect. Full reasoning and the task breakdown that implements them:
   the one it claimed to test, a "the scan must continue" row that answered the same either
   way, an error-mapping branch no input could reach. Deleting the intended guard left the
   suite green in every case. Found by mutation, never by reading, and the discipline
-  generalizes: a suite guarding a predicate with several rules is checked by deleting each
-  rule in turn. Every guard here is pinned that way except four, and those four for **two**
+  generalizes: a suite guarding a predicate with several rules is checked by mutating each
+  rule in turn — each sub-expression on its own, under a bounded timeout, for the two reasons
+  the paragraph below records. Every guard here is pinned that way except four, and those four for **two**
   different reasons — which is the part that kept going wrong. Three need a non-conforming
   `awk` to reach (the POSIX bracket-class probe, the `(pos > 1)` guard on the preceding
   character, and `exit rc` rather than a bare `exit`); one, `[ ! -r "$file" ]`, is a Windows
@@ -422,8 +423,24 @@ take effect. Full reasoning and the task breakdown that implements them:
   miscounts as a subtler error already diagnosed. A decision entry whose subject is overclaiming had shipped an overclaim
   about its own history, and a critic caught it. The general form is worth more than the
   incident: **a record of one's own errors drifts toward the version that reads better**, so
-  it needs the same mechanical check as any other claim. Here that check exists — re-run the
-  mutation sweep and count what stays green.
+  it needs the same mechanical check as any other claim. Here that check exists — but running
+  it was never as simple as the sentence that used to end this entry ("re-run the sweep and
+  count what stays green"), and that sentence was itself part of why the count kept being wrong.
+
+  **The sweep has now been run to completion, and the procedure it corrected is the finding.**
+  86 candidate lines: 68 red, 6 non-terminating, 12 green. The four named guards are confirmed
+  unpinned — but only under **sub-expression** mutation, because three of them share a line
+  with other load-bearing content, so deleting the line removes that content too and the red
+  says nothing about the guard. Line-granularity deletion, which is what "delete each rule in
+  turn" had always meant here, structurally cannot test them. Second, a deletion can make the
+  script **non-terminating** rather than wrong: six do, and the suite has no timeout, so those
+  hang it forever rather than failing it. Every earlier attempt at this sweep stranded on
+  exactly that and was recorded as still owed — the orphaned processes from those sessions
+  were still running when this one finished it. So: bound each run, count a hang as detected,
+  and mutate sub-expressions on their own. Each conjunct of the two compound guards was
+  measured that way too (ten variants, all red, including the six-hash cap and the column-0
+  requirement). A fifth line stays green and is not a guard: the `exit` after `found = 1`
+  cannot change the answer, so a status-only contract can never pin it — named, not deleted.
 
 ## Status
 

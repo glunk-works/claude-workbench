@@ -21,32 +21,47 @@
 # green. That is only ever found by mutation, never by reading, so this suite is
 # checked by deleting each guard in turn and confirming it goes red.
 #
-# Four guards are not pinned, for TWO different reasons. Both are stated -- and
-# both are re-derived by running the sweep, never carried forward from the last
-# revision of this note. EVERY previous version of it was wrong, each with a
-# different count and each with a reason that did not cover the list, and each
-# error survived because the next reader trusted the note instead of the sweep.
-# So: delete each guard in turn, count what stays green, and rewrite this block
-# from what you measured.
+# FIVE things here are not pinned by a fixture, and the sweep that establishes
+# that has THREE outcomes, not two. Both are re-derived by RUNNING the sweep,
+# never carried forward: every previous version of this note was wrong, with a
+# different count each time and a procedure that could not have measured it.
 #
-# Only a NON-CONFORMING awk reaches these three, so no fixture here can:
+# Deleting a whole LINE is not enough. Three of the four guards below are
+# sub-expressions sharing a line with other load-bearing content, so deleting the
+# line removes that content too and the red says nothing about the guard. Mutate
+# each on its own. Compound conditions are the same case: the fence-closer rule
+# and the marker alternation were measured one conjunct at a time -- ten variants,
+# all red, including the six-hash cap and the column-0 requirement.
+#
+# And BOUND each run. Six deletions make the script NON-TERMINATING rather than
+# wrong: the empty-id guard, and each loop's own advance. This suite has no
+# timeout, so such a mutant hangs it forever instead of failing it -- which is why
+# every earlier attempt at this sweep stranded partway and left the count below
+# asserted rather than measured. Count a hang as DETECTED, never as green.
+#
+# Four guards no fixture here can reach:
 #   * the BEGIN probe for POSIX bracket classes, which needs an awk that lacks
 #     them (mawk 1.3.3);
 #   * the `(pos > 1) ? substr(...) : ""` guard on the `before` character, since a
 #     conforming awk already returns "" for substr(s, 0, 1);
 #   * `exit rc` rather than a bare `exit` in BEGIN, which only shows up on an awk
-#     that skips END.
+#     that skips END. Deleting that line OUTRIGHT is a different mutation and does
+#     not go green -- it hangs, because the match loop's termination argument
+#     assumes a non-empty id;
+#   * the `[ ! -r "$file" ]` half of the readability check -- a PLATFORM limit,
+#     not an awk one: on a Windows checkout `chmod 000` does not deny the owner a
+#     read, so an unreadable-but-existing file cannot be constructed here.
 #
-# And one is a PLATFORM limit, not an awk one:
-#   * the `[ ! -r "$file" ]` half of the readability check. On a Windows checkout
-#     `chmod 000` does not deny the owner a read, so an unreadable-but-existing
-#     file cannot be constructed here.
+# The fifth is not a guard at all: the `exit` after `found = 1` in the match loop.
+# It short-circuits the rest of the file and cannot change the answer, so a
+# contract that is exit status only can never pin it. It is named rather than
+# deleted because the short-circuit is worth keeping.
 #
-# Deleting any of the four leaves this suite green. They are named rather than
-# left to look covered -- an unpinned guard nobody has written down is
-# indistinguishable from a pinned one, which is the defect this header exists to
-# prevent. Every other guard goes red when it is deleted; that is checked by
-# doing it, not by believing it.
+# Measured: 86 candidate lines -- 68 red, 6 hang, 12 green. The 12 are two lines
+# of the bracket-class probe block, that `exit`, `set -eu`, five stderr
+# diagnostics this suite deliberately never asserts, two initialisers awk supplies
+# anyway, and an optional `;;`. The other two guards go green only under
+# sub-expression mutation. Checked by doing it, not by believing it.
 #
 # Permitted toolset: POSIX sh + awk. No jq, no yq, no python.
 set -eu
