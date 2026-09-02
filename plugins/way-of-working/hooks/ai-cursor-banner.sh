@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # SessionStart hook: surface the .ai/ dev-workflow cursor at the top of every
 # session so the ASSIGNED model/persona for the next action can't be missed.
-# Automates the manual "you're on the wrong model for this" reminder — see the
-# consuming repo's own model-routing rule in its CLAUDE.md, and this plugin's
-# reference/workflow.md for the role->model mapping the cursor's fields carry.
+# Automates the manual "you're on the wrong model for this" reminder — the
+# role->model routing lives in the `models` key of the consuming repo's
+# .ai/project.yml, and this plugin's reference/workflow.md explains the
+# role split the cursor's fields carry.
 #
 # Reads .ai/state.json (relative to the session cwd = project root). Emits a
 # SessionStart additionalContext block. No-ops silently outside the repo root
@@ -20,7 +21,7 @@ jq '{
     additionalContext: (
       "[.ai cursor] Assigned: \(.assigned_persona)/\(.assigned_model) for \(.current_sprint_id) (sprint_status: \(.sprint_status)).\n"
       + "Next action: \((.next_action // "unset") | split(". ")[0]).\n"
-      + "If THIS session is not running \(.assigned_model), it is the wrong session for planning/review/architecture work: /way-of-working:handoff -> new session -> /model \(.assigned_model) -> /way-of-working:resume (CLAUDE.md model-routing rule). Mechanical/coder tasks are fine on any model."
+      + "If THIS session is not running \(.assigned_model), it is the wrong session for planning/review/architecture work: /way-of-working:handoff -> new session -> /model \(.assigned_model) -> /way-of-working:resume (`models` in .ai/project.yml). Mechanical/coder tasks are fine on any model."
     )
   }
 }' "$state" 2>/dev/null || exit 0
