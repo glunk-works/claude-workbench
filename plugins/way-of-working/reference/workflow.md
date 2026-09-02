@@ -1,6 +1,6 @@
 # Dev-workflow protocol: model routing + session handoff
 
-This repo is built with two models, split to keep each session lean and single-model
+This workflow runs on two models, split to keep each session lean and single-model
 (the fix for hitting session limits — long Opus sessions accumulate huge context).
 Work is externalized into `.ai/` so a fresh session can rehydrate cheaply instead of
 inheriting a bloated context window.
@@ -9,10 +9,10 @@ inheriting a bloated context window.
 
 - **`.ai/`** — *this* dev-workflow's state (how Claude Code sessions hand off).
   - `.ai/next-steps.md` (git-tracked) — the human-readable cursor: current phase/sprint, status, next action, which model to use, HITL Gate state. A **thin pointer** into the roadmap + the active sprint file; not a second copy of them.
-  - `.ai/state.json` (git-ignored) — the machine cursor (`current_sprint_id`, `sprint_status`, `assigned_model`, `last_commit`, `next_action`, `pointers`).
+  - `.ai/state.json` (git-ignored) — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`).
   - `.ai/context/` (git-tracked) — heavy reference loaded on demand, where a repo keeps any.
   - `.ai/archive/` (git-ignored) — retired sprint snapshots.
-- **`.agent/STATE.md` + `.agent/MEMORY.md`** — the loop-orchestrator **product's** runtime Ralph state, written when the engine itself runs. Nothing in the dev workflow writes these.
+- **A repo's own products' agent state** (an orchestrator's runtime files, another tool's memory) — written when that product runs. Nothing in the dev workflow writes it.
 
 The deep, authoritative history stays in the repo's own docs — `{roadmap}` and whatever
 archive files it retires content into; `.ai/` never duplicates it, only points at the
@@ -21,11 +21,14 @@ current cursor within it.
 ## Model routing
 
 - **Architect = Opus.** Decide *what* to build or *whether* a diff is correct: architecture, design, sprint/phase planning (one question at a time, HITL Gates), Architect Review of a coding diff, boundary calls, non-trivial debugging, roadmap/memory updates.
-- **Coder = Sonnet.** Execute an already-defined spec: implement a sprint task, write/adjust tests, mechanical refactors, run the green gate (`hatch run lint/format/test/audit/sbom`), fix lint.
+- **Coder = Sonnet.** Execute an already-defined spec: implement a sprint task, write/adjust tests, mechanical refactors, run the green gate (`gates.green` in `.ai/project.yml`), fix lint.
 
-Phase 1 (now) is **manual, persona-driven** routing — you or the orchestrator pick the
-model. Automated routing (a proxy/router) is explicitly out of scope until the
-thresholds are proven.
+Which concrete model fills each role is per-repo configuration — the `models` key in
+`.ai/project.yml`; Opus and Sonnet are the defaults this doc's diagrams use. (`models`
+governs *sessions*, not subagent spawns — the plugin's agents each fix their own model;
+see `project-schema.md`.) Routing is
+**manual and persona-driven** — the human picks the model. Automated routing (a
+proxy/router) is explicitly out of scope.
 
 ## Switch points across a sprint
 
@@ -41,7 +44,7 @@ SONNET (code)  /way-of-working:resume -> branch sprint/NN-slug -> implement + te
    |   /model alone does NOT clear context — a reviewer holding the authoring |
    |   context proofreads its own reasoning instead of re-deriving it.        |
 OPUS (review)  /way-of-working:resume -> /code-review the diff -> HITL Gate -> update roadmap
-   |           -> open PR (base: main) -> STOP                                |
+   |           -> open PR (base: pr_base) -> STOP                             |
    |                                                                          |
    v                                                                          |
 HUMAN          review the PR -> merge = approval -> /way-of-working:archive-sprint, plan next
@@ -53,15 +56,14 @@ never carries into the coding session, and vice-versa — that is the token savi
 - **Primary path: session handoff** (above). Use it at every sprint boundary.
 - **Secondary path: in-session subagent.** For a small, well-scoped coding task that
   doesn't warrant a full session switch, an Opus session may dispatch the Sonnet
-  **`coder`** subagent (`.claude/agents/coder.md`) via the Agent tool. The subagent's
+  **`coder`** subagent (shipped in the plugin's `agents/`) via the Agent tool. The subagent's
   result returns into the Opus context, so prefer the handoff path for anything large.
 
 ## Integration gate: every sprint lands via a pull request
 
 **A merged PR is the human approval.** Nothing reaches the integration branch
 without it. Claude commits and pushes freely on a sprint branch, opens the PR, and
-**never merges** — the same posture the engine enforces on managed repos, where
-`tools/repo_io` deliberately exposes no merge verb.
+**never merges**.
 
 - **Branch per sprint:** `sprint/NN-slug`, cut from `pr_base` (`.ai/project.yml`).
 - **PR base is `pr_base`.** Every sprint PR merges into that branch — normally the repo's
@@ -73,8 +75,8 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
   local record; this doc states the rule, not the war story.
 - **CI runs on the PR.** The CI workflow triggers on `pull_request:` with no branch filter
   — so a sprint branch pushed *without* a PR gets **no CI at all**. The PR is what turns the
-  green gate on for sprint work; the local `hatch run`/equivalent gate (`gates.green` in
-  `.ai/project.yml`) is a pre-check, not the gate of record. (A repo running a long-lived
+  green gate on for sprint work; the local `gates.green` gate (`.ai/project.yml`) is a
+  pre-check, not the gate of record. (A repo running a long-lived
   integration branch per the note above will also need `push:` on that branch while it's
   active, stripped once the branch retires — repo-local CI config, not this doc's concern.)
 - **Claude does not merge, and does not force-push a pushed branch** without asking.
@@ -106,8 +108,9 @@ which critics a diff *warrants* from the table below, presents that list with a 
 and spawns **only** what the human confirms (or the critics named explicitly in the call). A
 light change may want one critic; a trust-boundary change may want the full set.
 
-> **`/way-of-working:critic-gate` is defense-in-depth that runs EARLIER — it is NOT the `architect-review`
-> CI gate and never satisfies it.** The fresh-session Architect review still happens after
+> **`/way-of-working:critic-gate` is defense-in-depth that runs EARLIER — it is NOT the
+> fresh-session review gate (`review.ci_gate`) and never satisfies it.** Where a repo wires
+> that gate, the fresh-session Architect review still happens after
 > `/way-of-working:handoff`, unchanged (next section). Two properties keep the pass honest: the critics are
 > **separate subagents** (fresh context — not `/model`-switching and self-reviewing), and
 > they are **read-only** (they *find*; the coder *fixes* — so a critic can't wave its own
@@ -117,54 +120,59 @@ Propose by what the diff touches — don't offer critics that have nothing to lo
 
 | Diff touches… | propose |
 | --- | --- |
-| any `src/` | **`security-critic`** (taint / trust-boundary) **and/or `architect`** (correctness pre-review) |
-| a guard surface (new subprocess/write/import/MCP verb) | **also `guard-adversary`** (`isolation: "worktree"`) |
-| a test-validity sprint (BL-23) | **`mutation-triage`** (sharded, N in parallel) |
-| load-bearing docs / roadmap / CLAUDE.md | **`docs-consistency`** |
+| anything in `code_paths` | **`security-critic`** (taint / trust-boundary) **and/or `architect`** (correctness pre-review) |
+| anything in `load_bearing_docs` | **`docs-consistency`** (prose-vs-code drift) |
+| a repo-local agent's own trigger | that agent, proposed the same way (its definition says when it applies) |
+
+(`/way-of-working:critic-gate`'s own SKILL carries the authoritative table, including the
+newly-added-doc row; this is the overview.)
 
 #### The agent catalog (spawn via the Agent tool by `subagent_type`)
 
-All live in `.claude/agents/`. A definition loads at session start; name it here so a
-`/way-of-working:resume`'d session knows to reach for it (the same pattern that puts `coder` in the loop).
+The plugin ships four, in its own `agents/`; `agents.enabled` in `.ai/project.yml` picks
+which of them a repo uses, and `/way-of-working:critic-gate` proposes from that list only.
 
 - **`coder`** (Sonnet, read/write) — implement one defined sprint task; the secondary
   in-session path when a full handoff is overkill.
 - **`architect`** (Opus, read-only) — correctness + structural-invariant review; the
-  `/way-of-working:critic-gate` pre-review and a `/code-review` fan-out target. **Not** the CI gate.
-- **`security-critic`** (Opus, read-only) — threat-model SAST / taint-flow on a `src/` diff.
-- **`guard-adversary`** (Opus, worktree) — BL-32: adversarial invariant-injection audit of
-  the static structural guards; run when a diff touches a guard surface, or as its own beat.
-- **`mutation-triage`** (Sonnet, read-only) — BL-23: triage a shard of mutmut survivors into
-  keep/fix/delete; spawn N in parallel on a test-validity sprint.
-- **`live-verify`** (Opus, worktree) — a DEFERRED_VERIFICATION V-run against a disposable
-  scratch repo. **Requires explicit per-run authorization** (real GitHub side effects + spend).
+  `/way-of-working:critic-gate` pre-review and a `/code-review` fan-out target. **Not** the
+  fresh-session review gate.
+- **`security-critic`** (Opus, read-only) — threat-model taint-flow on a `code_paths` diff.
 - **`docs-consistency`** (Opus, read-only) — cross-check load-bearing prose against ground
   truth; run before a roadmap-heavy PR or at archive time.
+
+A repo may define **additional** agents locally in `.claude/agents/` (a guard-surface
+auditor, a mutation-triage shard runner, a live-verification runner are shapes that have
+worked) and add them to `agents.enabled`; `/way-of-working:critic-gate` then proposes them
+when their own definition says they apply.
 
 ### The Architect Review is a posted GitHub review, not just prose
 
 > **Vocabulary (two distinct checkpoints — do not use them interchangeably):**
 > - **Architect Review** — the fresh-session Opus review of a coding diff, posted onto the PR.
->   Enforced by the `architect-review` CI check. *Claude does this one.*
+>   Enforced by the `review.ci_gate.check` CI check, where a repo configures one. *Claude
+>   does this one.*
 > - **HITL Gate** — the human's approval. In practice: **the merge**. *Only the owner does this one.*
 >
 > An Architect Review going green does **not** pass the HITL Gate; it only unblocks it. The
 > older term "HITL review" meant the first of these and is retired — but note it survives,
 > deliberately and permanently, inside the frozen header string below.
 
-**It is a CI gate** (`.github/workflows/hitl-review.yml`): any PR touching `src/` fails
-the `architect-review` check until a review carrying the header + attestation below is
-posted **against that PR's current head commit**. Docs / sprint-plan / `.ai/`-cursor PRs
-are exempt (no runtime behavior to get wrong). A review of an *earlier* commit does not
-count — push first, then review the final diff.
+**Where `review.ci_gate` is configured, it is a CI gate**: any PR touching `code_paths`
+(or the gate's own `triggers_on`) fails the `review.ci_gate.check` check until a review
+carrying the configured header + attestation is posted **against that PR's current head
+commit**. Docs / sprint-plan / `.ai/`-cursor PRs are exempt (no runtime behavior to get
+wrong). A review of an *earlier* commit does not count — push first, then review the final
+diff.
 
-This is a check rather than a convention because the convention failed once, here: a fully
+This is a check rather than a convention because the convention failed once, in the repo
+this plugin was extracted from: a fully
 green PR shipped a fix that covered one call site and silently left several sibling paths
 still broken, the suite and CI both passed, and the review that would have caught it simply
 never ran — it was only caught by a review done *after* the merge. A rule that lives only in
 prose is a rule that gets skipped, which is why `review.ci_gate` exists as a schema key
 rather than a paragraph: where a repo configures it, CI enforces the review; where it is
-`null` (no fresh-session review gate defined for this repo yet), every skill that would
+`null` (no fresh-session review gate defined for the repo), every skill that would
 otherwise reference this gate must take that branch cleanly instead of asserting a
 requirement that isn't wired up.
 
@@ -189,19 +197,19 @@ written the code. That is exactly what makes the review adversarial: the reviewe
 re-derive intent from the sprint plan and the diff, the way a stranger would, and a claim the
 author found obvious has to survive being read cold.
 
-Both prior reviews violated this and it shows: #32's review was done by `/model opus` inside
-the authoring session, and #34 was authored by Opus and would have been self-reviewed. The
-gate now requires the reviewer to attest. **The review body must OPEN with these two
-lines, verbatim — the check matches BOTH by literal `contains()` (`hitl-review.yml`
-`HEADER` + `ATTESTATION`), so a paraphrase that reads identically to a human still fails
-the gate:**
+This failed twice in practice before the attestation existed: one review was done by
+`/model opus` inside the authoring session, and another was authored by Opus and would have
+been self-reviewed. The gate now requires the reviewer to attest. **The review body must
+OPEN with these two lines, verbatim — the check matches BOTH by literal `contains()` on
+`review.ci_gate.header` and `.attestation`, so a paraphrase that reads identically to a
+human still fails the gate:**
 
 > ⚠️ **The header says "HITL review" and that is deliberate — it is a frozen wire string, not
 > prose.** It predates the Architect Review / HITL Gate vocabulary above and was **knowingly
-> left unrenamed**: it is matched byte-for-byte by `hitl-review.yml` and pinned by
-> `tests/test_ci_config.py`. Do **not** "correct" it to say "Architect Review". Renaming it is a
-> deliberate, atomic change to the workflow + the test + every skill that recites it, never a
-> docs tidy-up.
+> left unrenamed**: where the gate is wired, it is matched byte-for-byte by the CI workflow
+> and often pinned by that repo's own config test. Do **not** "correct" it to say "Architect
+> Review". Renaming it is a deliberate, atomic change to the workflow + the test + every
+> skill that recites it, never a docs tidy-up.
 
 ```
 **Opus/Architect HITL review (automated)**
@@ -216,7 +224,7 @@ every such variant fails (this is a recurring, silent mistake: the check goes re
 you post, not because the review is wrong but because the string drifted). CI cannot
 observe a session boundary; the attestation does not prove one — it makes reviewing your
 own work a *knowing false statement* rather than something that quietly happens. That is as
-far as a check can go; real attribution needs a separate machine identity (**BL-6**).
+far as a check can go; real attribution needs a separate machine identity.
 
 Two distinct artifacts — do not conflate them:
 
@@ -230,23 +238,23 @@ Two distinct artifacts — do not conflate them:
 Rules:
 
 - **`--comment` only. Never `--approve`, never `--request-changes`.** The merge is the
-  human's approval; a Claude-issued approval would be a gate approving itself. This is
-  also enforced by GitHub: the `gh` token authenticates as **`Seuss27`**, the same
-  identity that opens the PR, and GitHub forbids approving your own PR.
+  human's approval; a Claude-issued approval would be a gate approving itself. Where the
+  `gh` token authenticates as the same identity that opens the PR — the common solo-repo
+  shape — GitHub also enforces this: you cannot approve your own PR.
 - **Open the review with the verbatim two-line header + attestation block above** —
-  paste it, do not retype or reword it. Because Claude and the repo owner share the
-  `Seuss27` identity, a posted review otherwise renders as the owner reviewing their own
+  paste it, do not retype or reword it. Where Claude and the repo owner share one
+  identity, a posted review otherwise renders as the owner reviewing their own
   PR; the header is what makes authorship unambiguous, and the check enforces both lines
   by literal `contains()` (a paraphrase fails). (A separate machine identity would make
-  attribution *real* rather than declared — tracked as **BL-6** in `docs/backlog.md`.)
+  attribution *real* rather than declared.)
 - **Inline comments for line-anchored defects; the summary body for the scope verdict.**
   `/code-review --comment` posts findings inline on the diff — right for concrete bugs.
   But most of the Architect review is *not* line-anchored ("does this honor the sprint
-  plan's locked FD1/FD2/FD3?", "is the scope exactly these files?"); that judgment
+  plan's locked decisions?", "is the scope exactly these files?"); that judgment
   belongs in the review summary.
 
-Nothing here changes on-branch commit hygiene: commits stay signed, and the green
-gate still runs locally before the push.
+Nothing here changes on-branch commit hygiene: the repo's own commit rules (signing
+included, where used) still apply, and the green gate still runs locally before the push.
 
 ## The skills
 
@@ -255,12 +263,11 @@ gate still runs locally before the push.
   spawns only what you confirm — no auto-fan-out — then aggregates findings for the coder to
   fix, then re-runs the critics on the fixed tree and iterates under its stopping rule —
   never "until the critics are clean," which on a dense diff may never terminate.
-  Defense-in-depth that runs *earlier* — **not** the
-  `architect-review` CI gate, which still runs fresh after handoff.
+  Defense-in-depth that runs *earlier* — **not** the `review.ci_gate` review, which still
+  runs fresh after handoff where a repo wires one.
 - **`/way-of-working:resume`** — run at the **start** of a session. Reads `.ai/state.json` +
   `.ai/next-steps.md` + the pointed sprint_plan + roadmap NEXT ACTION, states the exact
-  pick-up point, and adopts the assigned persona/model. (Distinct from the
-  `loop-orchestrator resume` CLI subcommand — different namespace.)
+  pick-up point, and adopts the assigned persona/model.
   **It may then start the `next_action` unattended** — but only on a clean, unambiguous
   cursor: `hitl_gate` reading `NONE OPEN`, `sprint_status` `implementing`, the model
   matching `assigned_model`, and no cursor/HEAD drift. Anything else — a `planning`
@@ -270,7 +277,7 @@ gate still runs locally before the push.
   is unchanged and still enforced; what auto-start removes is the content-free "go" that
   re-approved a `next_action` the human already approved at `/way-of-working:handoff` time.
 - **`/way-of-working:handoff`** — run **before** switching model/session. Checks the QA-critic pass ran
-  on any `src/` diff (a prompt, not a block — nothing else in the pipeline points at
+  on any `code_paths` diff (a prompt, not a block — nothing else in the pipeline points at
   `/way-of-working:critic-gate`, so `/way-of-working:handoff` is where a forgotten pass gets caught). Serializes the
   current cursor to `.ai/state.json` — **including `hitl_gate`, always, even when nothing
   is open**, since `/way-of-working:resume`'s auto-start reads it — regenerates `.ai/next-steps.md` (what
@@ -283,3 +290,11 @@ gate still runs locally before the push.
   (completed narrative, and items closed during the sprint — resolved *and* declined —
   move to archive files: move, don't rewrite, on its own PR), advances `.ai/state.json`
   to the next sprint, and seeds a fresh `.ai/next-steps.md`.
+- **`/way-of-working:ship`** — run when a task is done. Commits with a conventions-correct
+  message, pushes to a branch cut from `pr_base` (never the base itself), and opens a PR
+  with a length-checked title — then **stops**; the human's merge is the approval.
+- **`/way-of-working:pr-checks`** — report a PR's required checks and an explicit
+  merge-ready verdict **without merging**; decodes the skipped/blocked/conflict traps.
+- **`/way-of-working:retro`** — a session-end look at *how the session worked*: friction
+  that recurred or cost rework, each finding routed to its existing home (a backlog item,
+  a memory, a small doc edit). Not for code diffs, and never a new parallel doc.
