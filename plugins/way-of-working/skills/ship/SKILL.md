@@ -16,8 +16,8 @@ committing on the base branch, a wrong scope) can't happen. This skill **opens**
 approval.
 
 **Read `.ai/project.yml` first** for `{pr_base}`, `{repo}`, `{code_paths}`,
-`{review.ci_gate}`, and — for the ledger-conflict rule in step 1 — `{backlog}` and
-`{roadmap}`. Commit and PR-title grammar is not repo-specific — it lives in
+`{review.ci_gate}`, and — for the ledger-conflict rule in step 1 — `{backlog}`, `{roadmap}`
+and `{decisions.prefix}`. Commit and PR-title grammar is not repo-specific — it lives in
 `reference/conventions.md`; read it rather than restating it here. Step 5 also reads
 `pointers.sprint_plan` from `.ai/state.json` when a cursor exists.
 
@@ -37,34 +37,78 @@ approval.
      again while an entry dropped on a branch that is then squash-merged and pruned cannot
      be recovered from anywhere — squashing leaves the branch's own commits unreachable.
 
-     **One narrow exception, and it is proved before it is applied.** Where the incoming
-     side is a compaction (`/way-of-working:archive-sprint`'s compaction step), an item it
-     removed is a *move*, not an absence, and putting it back into the live file undoes the
-     close. Never read that off the hunk: in a conflict, a compaction's removal and your own
-     branch's new neighbouring item look identical.
+     **One case is worth telling the human about, per entry — and it is never applied
+     automatically.** Where the
+     incoming side is a compaction (`/way-of-working:archive-sprint`'s compaction step), an
+     item it removed is a *move*, not an absence, and putting it back into the live file
+     undoes the close. Never read that off the hunk: in a conflict, a compaction's removal
+     and your own branch's new neighbouring item look identical.
 
-     **Establish whether the incoming side removed anything at all, then hand the removals to
-     the human.** During a conflicted `git merge {pr_base}`, `MERGE_HEAD` is the incoming side,
-     `HEAD` is your branch, and index **stage 1** is the base the merge actually used:
+     During a conflicted `git merge {pr_base}`, `MERGE_HEAD` is the incoming side, `HEAD` is
+     your branch, and index **stage 1** is the base the merge actually used. Find what the
+     incoming side removed, then ask, per removed id, whether that id landed in the same
+     side's `_archive` sibling (a **derived** path, never configured — see
+     `reference/project-schema.md`):
 
      ```bash
-     git show :1:<the ledger>          # the base
-     git show MERGE_HEAD:<the ledger>  # what the incoming side made of it
-     diff <(git show :1:<the ledger>) <(git show MERGE_HEAD:<the ledger>)
+     ledger=<the conflicted ledger>            # {backlog.path} or {roadmap}
+     archive=<its _archive sibling>
+     base=$(mktemp); inc=$(mktemp); arc=$(mktemp)
+     # Redirect to files and STOP on failure — never `diff <(git show …) <(git show …)`.
+     # Process substitution discards the `git show` status, and a failed show leaves an
+     # EMPTY file rather than an absent one, so `diff` still exits 1 with a confident-
+     # looking answer. Stage 1 is the LEFT argument, so the two failures point opposite
+     # ways: a ledger deleted/renamed on the incoming side reports every entry as
+     # REMOVED — the dangerous read, since it feeds the whole ledger to the archive
+     # lookup — while a missing stage 1 reports every entry as added, which merely
+     # looks like the common case. Both are unrunnable; neither should be interpreted.
+     git show ":1:$ledger"         >"$base" || { echo "no stage 1 — keep both"; exit; }
+     git show "MERGE_HEAD:$ledger" >"$inc"  || { echo "renamed — keep both"; exit; }
+     # `|| :` because diff exits 1 whenever the files differ -- which is the only case
+     # this step exists for, so under `set -e` it would abort exactly when it matters.
+     # Read only the `<` lines. A line the incoming side EDITED shows as both `<` and
+     # `>`; looking its id up is harmless (it answers 1, "unresolved") but expected.
+     diff "$base" "$inc" || :                             # its `<` lines are the removals
+     git show "MERGE_HEAD:$archive" >"$arc" || : >"$arc"  # absent ⇒ empty, not an error
+     st=0; entry-anchor.sh "<id>" "$arc" || st=$?; echo "$st"   # once per `<`-line id
      ```
 
-     - **The incoming side removed nothing** — every entry in the base survives on
-       `MERGE_HEAD` — then there is no compaction here and nothing to except. **Keep both
-       sides** and move on. This is the ordinary two-additions conflict and the common case.
-     - **The incoming side removed entries** — then say so to the human, name the entries, and
-       let them resolve those. Restoring a compacted entry undoes a close; dropping one of
-       your own is unrecoverable; and telling those apart reliably is a matching problem this
-       skill deliberately does not try to solve in prose (see the note below). Everything the
-       incoming side did **not** remove still follows the default: keep both.
+     Quote the `<id>` placeholder as shown, so the line fails loudly like the others rather
+     than being read as a shell redirection.
 
-     A merge conflict is a moment a human is already present for, which is what makes this
-     cheap. Resolve **per entry, not per hunk** — one hunk can hold a removal and an addition
-     at once, and the additions are not in question.
+     `entry-anchor.sh` is the plugin's tested predicate for the one question this needs —
+     *does this file carry `<id>` at its own entry anchor?* It is on the Bash tool's `PATH`
+     by bare name while the plugin is enabled, and answers **0** yes, **1** no, **2** could
+     not tell. Why a line-shaped `grep` cannot stand in for it, and which real ledger shapes
+     it misses or falsely matches, are argued in its own header — read that, don't restate
+     it, and don't reimplement it inline.
+
+     Resolve **per entry, not per hunk** — one hunk can hold a removal and an addition at
+     once, and the additions are never in question. **Every branch below keeps both sides.
+     This step never deletes an entry**; what the predicate changes is how confidently each
+     removal is described to the human, not whether it is applied:
+
+     - **Not removed** — every entry in the base that survives on `MERGE_HEAD`: **keep
+       both**, and say nothing further. The ordinary two-additions conflict, and the common
+       case.
+     - **Removed, and `entry-anchor.sh` answers 0** — keep both, and name the entry to the
+       human as **probably moved into the archive by a compaction**, so the likely
+       resolution is to drop it from the live file. That is triage, not a verdict: exit 0 is
+       strong evidence, and the script's own header refuses to call it proof.
+     - **Removed, and it answers 1 or 2** — keep both, and name the entry as
+       **unresolved**. `1` is not proof your side added it: a deliberate deletion by the
+       incoming side lands there too, and so does a real entry in one of the shapes the
+       script misses.
+
+     > **Why exit 0 does not act on its own.** An earlier draft of this step accepted the
+     > removal on 0. Every critic round found a new shape where a *citation* answers 0 —
+     > markup on a wrapped continuation line, the same inside a block quote, a nested list
+     > item, a fenced example whose fence closed early, a lazy paragraph continuation — and
+     > each was caught only because someone went looking. The predicate now says of itself
+     > that its cost list is "a floor, not a proof". A branch that deletes a live entry
+     > unrecoverably cannot hang on a predicate that honest, so it doesn't: the human sees
+     > every removal, sorted by how sure the machine is, and a merge conflict is a moment
+     > they are already present for.
 
      > **Ask a revision, never a merge base you computed.** The obvious form — diff
      > `git merge-base HEAD MERGE_HEAD` against `MERGE_HEAD` — is **false under squash-merge,
@@ -76,22 +120,22 @@ approval.
      > made on the work branch to `{pr_base}`. Stage 1 is the base **git itself resolved for
      > this merge**, virtual bases included, so it is right where a recomputed base is not.
 
-     > **Why this stops at the human instead of deciding per item.** The mechanical version —
-     > look each removed id up in the incoming `_archive` sibling, drop it if found — needs to
-     > match an id **at its own entry anchor**, and a line-shaped `grep` cannot do that
-     > safely. It misses real entries (`- **BL-3** — …`, `1. BL-3 …`, `| BL-3 | …`) and, worse,
-     > *matches* a wrapped citation whose continuation line happens to begin with the id — which
-     > in the archive means silently dropping a live item. `/way-of-working:retro` mandates the
-     > shape that produces those citations, so they are ordinary content, not an edge case.
-     > That test belongs in a fixture-backed script under the plugin's `bin/`, per `WB-D10`, not
-     > in prose; until it exists, this step reports and the human decides.
+     **Where a test cannot be run, the default stands — keep both.** Any `git show` on the
+     *ledger* that fails covers it: a ledger the incoming side **renamed or deleted**
+     (`fatal: path … exists on disk, but not in 'MERGE_HEAD'` — that wording, not "does not
+     exist in", whenever the file is still in your working tree, which is the normal shape
+     of this conflict), or an add/add conflict where the path has no stage 1
+     at all (`fatal: path … is in the index, but not at stage 1`) — in the latter the file is
+     new on both sides, so nothing can have been removed. Narrative with no entry ids falls
+     here too, which is the usual shape of removed `{roadmap}` prose: no id, no question to
+     ask. So does a removal on a record whose id scheme the schema doesn't give you
+     (`{backlog.item_prefix}` for a file-kind backlog, `{decisions.prefix}` for `{roadmap}`).
 
-     **Where a test cannot be run, the default stands — keep both.** Any `git show` that fails
-     covers it: a ledger the incoming side **renamed** (`fatal: path … does not exist in
-     'MERGE_HEAD'`), or an add/add conflict where the path has no stage 1 at all (`fatal: path
-     … is in the index, but not at stage 1`) — in the latter the file is new on both sides, so
-     nothing can have been removed. Narrative with no entry ids falls here too, which is the
-     usual shape of removed `{roadmap}` prose.
+     A **missing `_archive` sibling** is not one of these — it is a legitimate answer, not a
+     failure. The sibling is a derived path, never a promise the file exists; absent, it is
+     read as empty, every removed id answers `1` (or `2`), and every one of them is kept and
+     named. That is the same outcome by the same rule, which is why the `||` above swallows
+     it.
 
      All of this works only **while the merge is in progress**; `MERGE_HEAD` and stage 1 do
      not exist before it starts or after it is committed or aborted. For a merge already

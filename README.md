@@ -55,7 +55,7 @@ plugins/way-of-working/
   .claude-plugin/plugin.json
   skills/     resume/ handoff/ critic-gate/ ship/ pr-checks/ archive-sprint/ retro/
   agents/     architect.md coder.md security-critic.md docs-consistency.md
-  bin/        cursor-drift.sh — plugin executables, added to the Bash tool's PATH
+  bin/        cursor-drift.sh entry-anchor.sh — executables, added to the Bash tool's PATH
   hooks/      hooks.json + ai-cursor-banner.sh
   reference/  conventions.md  workflow.md  project-schema.md
 docs/decisions.md   # the WB-D* log

@@ -285,9 +285,11 @@ If any precondition fails, STOP and report why — do not archive.
 
    **A compaction PR merges before the next `/way-of-working:ship` refreshes a stale
    branch against `{pr_base}`** — and when it does, that merge is the incoming side of the
-   ledger-conflict exception in `/way-of-working:ship` step 1. That exception is what stops
-   a "keep both sides" resolution from resurrecting what this step archived; it is the
-   reader half of this writer, and neither is sound alone.
+   ledger-conflict rule in `/way-of-working:ship` step 1. That rule **surfaces** what this
+   step archived: it keeps both sides, as always, and reports each removal to the human
+   ranked by whether the archive appears to carry the item. It does **not** prevent a
+   resurrection — nothing mechanical does, and step 1 says so. The compaction is undone only
+   if a human, looking at that report, keeps an entry the archive already holds.
 
    If `docs-consistency` is in `{agents.enabled}`, propose it on the compaction PR. Give it
    the check shape explicitly, because this is not its usual contradiction hunt: **did a

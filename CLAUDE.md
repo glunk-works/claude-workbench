@@ -32,6 +32,7 @@ bash scripts/coupling-check.sh  # no repo-specific literals in any plugins/*/ en
 bash scripts/invariants-check.sh  # known-wrong forms haven't come back
 sh tests/cursor-drift.test.sh   # bin/ script fixtures (not yet a required check)
 sh tests/coupling-check.test.sh # coupling gate fixtures (not yet a required check)
+sh tests/entry-anchor.test.sh   # ledger entry-anchor matcher fixtures (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH.

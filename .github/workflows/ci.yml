@@ -66,3 +66,5 @@ jobs:
         run: sh tests/cursor-drift.test.sh
       - name: coupling-check.sh fixtures
         run: sh tests/coupling-check.test.sh
+      - name: entry-anchor.sh fixtures
+        run: sh tests/entry-anchor.test.sh
