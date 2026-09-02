@@ -109,8 +109,9 @@ and `{decisions.prefix}`. Commit and PR-title grammar is not repo-specific — i
      > **Ask a revision, never a merge base you computed.** The obvious form — diff
      > `git merge-base HEAD MERGE_HEAD` against `MERGE_HEAD` — is **false under squash-merge,
      > which is this repo's default**. A squash commit is not a descendant of the branch's own
-     > commits, so the merge base does not advance past it (this is `WB-D7`'s premise in
-     > another command): once your PR squash-merges and you keep working on the branch, that
+     > commits, so the merge base does not advance past it (the same premise
+     > `bin/cursor-drift.sh`'s own header is built on): once your PR squash-merges and you
+     > keep working on the branch, that
      > diff replays *your* already merged additions and deletions as if the incoming side had
      > made them. Verified — after a squash-merge it attributed both a decline and an addition
      > made on the work branch to `{pr_base}`. Stage 1 is the base **git itself resolved for
