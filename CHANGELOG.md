@@ -37,8 +37,8 @@ configured. Three behavioral edges, all the same shape: an absent key is not a `
 so a skill that newly reads one reports it as unreadable where it previously said nothing.
 `/way-of-working:critic-gate` now reads `{ruleset.required_checks}`;
 `/way-of-working:archive-sprint` now reads `{agents.enabled}` and `{load_bearing_docs}`;
-and `/way-of-working:ship` now reads `{backlog}` and `{roadmap}` for its ledger-conflict
-rule.
+and `/way-of-working:ship` now reads `{backlog}`, `{roadmap}` and `{decisions.prefix}` for
+its ledger-conflict rule.
 
 ### Added
 
@@ -136,29 +136,102 @@ rule.
   The guardrail this replaces — *"archival only moves the `.ai/` cursor snapshot"* — was
   true until this step existed and is now removed rather than annotated.
 
-- **The reader half: `/way-of-working:ship` gains a ledger-conflict exception.** Without it
+- **The reader half: `/way-of-working:ship` gains a ledger-conflict rule.** Without it
   the "keep both sides" default silently resurrects whatever a compaction archived, the
-  first time a stale branch is refreshed against `{pr_base}`. The exception is **proved,
-  never inferred from the hunk shape** — a compaction's removal and your branch's new
-  neighbouring item look identical in a conflict. It compares two revisions instead:
-  `git show :1:<ledger>`, the base the merge itself used, against
-  `git show MERGE_HEAD:<ledger>`, the incoming side. **Removed nothing → keep both sides and
-  move on**, which is the ordinary two-additions conflict and the common case. **Removed
-  entries → name them to the human and let them resolve those**, while everything untouched
-  still keeps both. Where a `git show` fails — a renamed ledger, or an add/add conflict with
-  no stage 1 — the default stands unchanged.
+  first time a stale branch is refreshed against `{pr_base}` — and the human is never told
+  which removals were even in question. A compaction's removal and your branch's new
+  neighbouring item look identical in a conflict, so the step compares two revisions instead
+  of reading the hunk: `git show :1:<ledger>`, the base the merge itself used, against
+  `git show MERGE_HEAD:<ledger>`, the incoming side.
 
-  **It deliberately stops at the human rather than deciding each entry.** The mechanical
-  version — look a removed id up in the incoming `_archive` sibling and drop it if found —
-  needs to match an id at its own **entry anchor**, and a line-shaped `grep` cannot do that
-  safely. Three critic rounds each broke it in a new way: it misses real entries
-  (`- **BL-3** — …`, `1. BL-3 …`, `| BL-3 | …`), and it *matches* a wrapped citation whose
-  continuation line begins with the id — which in the archive means silently dropping a live
-  item. `/way-of-working:retro` mandates the citation shape that produces those, so they are
-  ordinary content rather than an edge case. Per `WB-D10` that predicate belongs in a
-  fixture-backed `bin/` script, not in prose — filed as `#66`, with the failing shapes as a
-  ready-made fixture table. Until it exists this step reports and the human decides, which
-  loses automation, not safety.
+  **Every branch still keeps both sides — this step never deletes an entry.** What the
+  comparison buys is not a decision but a *sorted report*, per entry rather than per hunk:
+  not removed → keep both, say nothing (the ordinary two-additions conflict, and the common
+  case); removed and the archive appears to carry it → keep both, and flag it as **probably
+  moved by a compaction**, so the likely resolution is to drop it; removed and not → keep
+  both, flagged **unresolved**. Where a `git show` on the ledger fails — a renamed ledger, or
+  an add/add conflict with no stage 1 — the default stands unchanged.
+
+  An earlier draft of this release *did* accept the removal automatically on a positive
+  answer. It does not any more, and `WB-D11` records why: every critic round found a new
+  ledger shape where an ordinary **citation** answers positive, the predicate's own cost
+  section now describes itself as "a floor, not a proof", and an unrecoverable deletion
+  cannot hang on a predicate that honest.
+
+  **What that costs, stated plainly:** `#66` asked for step 1 to resolve per entry *instead
+  of handing every removal to the human*, and for the prose to shrink to a pointer. Per-entry
+  **ranking** shipped instead of per-entry **resolution**, and the step-1 prose grew by half
+  again rather than shrinking. That is the right trade against an unrecoverable deletion, and
+  it is still a reduction in what the issue asked for — `WB-D11` carries the full record.
+
+- **The predicate behind that ranking: `bin/entry-anchor.sh`, with
+  `tests/entry-anchor.test.sh`** (`#66`, per `WB-D10`). It answers one question — *does this
+  file carry `<id>` at its own entry anchor?* — as `0` yes, `1` no, `2` could not tell, and
+  the caller's policy for `2` is the policy for `1`. It exists because prose could not:
+  three critic rounds each shipped a line-shaped `grep` broken in a new direction, missing
+  real entries (`- **BL-3** — …`, `1. BL-3 …`, `| BL-3 | …`) and, worse, *matching* a wrapped
+  citation whose continuation line begins with the id — which in an `_archive` means silently
+  dropping a live item, and `/way-of-working:retro` mandates the citation shape that produces
+  those. Three design commitments, each from a round that failed without it: the id is
+  matched as a **literal**, never compiled (an interpolated `A.1` also matches `AX1`, and an
+  id holding `[` makes the matcher *error*, which a surrounding `if` reads as a clean "no");
+  the id must be delimited at **both** ends, so `BL-1` does not fire inside `BL-14` and
+  `BL-3` does not fire inside `12BL-3`; and — the load-bearing one — a line anchors only if
+  it **opens a top-level entry of the file it is in**: a bullet/ordered/heading marker
+  followed by whitespace, or a table pipe, at **column 0**, outside every container the
+  script tracks (fenced code, HTML comments, YAML front matter).
+
+  **Every earlier version of that rule was wrong, and always the same way — which is the
+  reason to trust this one and the reason to read its cost section.** Each asked whether the
+  *line* looked like an entry, and each was defeated by a structure containing it: markup
+  before the id (a **bolded** or `backticked` citation on a wrapped continuation line); then
+  "does the line open a *block*?", which admits every line of a blockquote since `>` is
+  unimpeachably a block start; then a citation written as a **nested list item** under its
+  own parent entry — the shape `/way-of-working:retro`'s "cite the id you supersede" mandate
+  actually produces; then, once containers were tracked, a fence *closed early* by a shorter
+  delimiter run or an info string, exposing the example entries inside it. Indentation,
+  quoting, fencing, commenting and front matter are all ways Markdown says *this line belongs
+  to something else*, and none is visible in the line's own marker. So the rule stops asking
+  about the line and requires the position a top-level entry necessarily occupies.
+
+  Fences and comments are opened permissively and closed strictly, and the asymmetry is
+  deliberate: a missed *open* exposes content, while a missed *close* only skips more of the
+  file. Front matter is the deliberate exception — line 1 and column 0 only, since a `---`
+  anywhere else is a thematic break rather than a container.
+
+  Nested means subordinate to the entry above it; quoted means someone else's ledger is being
+  reproduced; fenced or commented means it is an example. None is *this file's own* entry,
+  which is the question actually asked. Only the first failure was reproducible against this
+  repo's own `docs/decisions.md` — it has no blockquotes, and no ledger here nests an
+  id-bearing entry — so the rest were reproduced on constructed archives. Worth stating
+  precisely: an earlier draft claimed a live in-repo instance of the nested shape, and there
+  is none. The genuinely open-ended part — inline decoration between the
+  marker and the id — stays a shape test rather than a list: no letters, once
+  bracket-delimited *whitespace-free* spans are dropped, so a **checked** `- [x]` box anchors
+  like an unchecked one while `- [the note about this](#BL-3)` does not.
+
+  **Its cost is named in the script's header, false matches included, and stated there as a
+  floor rather than a proof.** Every miss is chosen — keep-both is recoverable — and the
+  header names the false matches it knows of, each with a `KNOWN false match` fixture pinning
+  it at its current answer. **That list is not repeated here**, deliberately: it was
+  enumerated in this entry twice and drifted short of the header both times, the second time
+  within a single review round, because a mechanism was added to the script and the copy here
+  was not. Per `reference/conventions.md` § *Prose economy*, the fix for a drift pair is to
+  delete the copy rather than synchronise it — read
+  `plugins/way-of-working/bin/entry-anchor.sh`, which is where the list is true by
+  construction. Every earlier revision offered a cost section listing
+  only misses while carrying an unlisted false match, which is why the honest form is a
+  general shape plus today's instances. The keep-both asymmetry is also why "could not tell" is
+  `2` and never `1`, and why misuse — a missing argument, an empty id, a directory, an `awk`
+  without POSIX bracket classes — exits `2` rather than the shell's default `1`: `1` is this
+  script's word for a confident negative.
+
+  Fixtures cover `#66`'s shape table row for row, both citation collisions it mandates, all
+  false-match classes above, and at least one row per rule — `sh tests/entry-anchor.test.sh`
+  lists them. Every guard is mutation-tested (delete it, and the suite goes red) except four
+  the suite names explicitly, and those four for **two** different reasons: three need a
+  non-conforming `awk` to reach, and one (`[ ! -r "$file" ]`) is a Windows platform limit,
+  since `chmod 000` there does not deny the owner a read.
 
   **It asks a revision, never a merge base.** The obvious form — diff `git merge-base HEAD
   MERGE_HEAD` against `MERGE_HEAD` and call the result "the incoming side's changes, with

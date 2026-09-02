@@ -287,6 +287,144 @@ take effect. Full reasoning and the task breakdown that implements them:
   gates — those run in CI and this repo's own shell, never inside a consuming repo's session,
   so they cannot be what a plugin skill invokes portably.)
 
+  **Second landing:** `bin/entry-anchor.sh` + `tests/entry-anchor.test.sh` (issue #66),
+  invoked from `/way-of-working:ship`'s ledger-conflict rule. Same shape, same reason, and
+  the sharpest evidence yet for the decision itself — the predicate was attempted in prose
+  in three consecutive `/way-of-working:critic-gate` rounds and was wrong in a **different**
+  direction each time, so no fourth round of careful reading was going to converge. The
+  design decision that predicate carries is `WB-D11`.
+
+- **WB-D11 — an approximate matcher picks its error direction, states it, and pins it with a
+  fixture.** `/way-of-working:ship` needs to know whether a ledger's `_archive` sibling
+  carries a removed item *at its own entry anchor*. Two lines are byte-identical in shape —
+  a wrapped citation continuing onto a new line, and an unmarked sub-entry — so the question
+  is not answerable exactly without a Markdown block parser, and a wrong guess by an
+  approximation of one is worse than no guess.
+
+  The rule: where a predicate cannot be exact, choose the direction by **which error is
+  recoverable**, not by which is rarer. Here a *miss* falls through to the keep-both default
+  and a resurrected entry can be deleted again by hand; a *false match* reports a live item
+  as already archived and drops it from the live file, on a branch that is then squash-merged
+  and pruned — leaving its own commits unreachable, recoverable from nowhere.
+
+  **Choosing the direction is not the same as implementing it, and the rule that implements
+  every earlier version of it was wrong inside this pass's own critic gate — always the same
+  way.** Each asked whether the *line* looked like an entry, and each was defeated by a
+  structure that contained it. The first asked "is there markup before the id?", believing a
+  continuation line offers only whitespace; but a ledger cites ids *in* markup (`retro`
+  mandates the citing shape), so a **bolded** or `backticked` id on a continuation line has
+  markup before it too. The second asked "does the line open a **block**?" — and a block
+  quote is a block, so every line of a quoted paragraph qualified. The third still accepted a
+  citation written as a **nested list item** beneath its own parent entry, which is exactly
+  what the citing mandate produces. The fourth finally tracked containers, but closed a fence
+  on any delimiter line — so a shorter run or an info string ended the block early and exposed
+  the example entries inside it. The same failure, one level in.
+
+  Only the first was reproducible against this repo's own `docs/decisions.md` — it carries no
+  blockquotes, and no ledger here nests an id-bearing entry — so the rest were reproduced on
+  constructed archives. Worth recording precisely, because "reproduced against our own files"
+  is a stronger claim than "reproduced", and this entry asserted the stronger one twice before
+  it was true: first of the blockquote shape, then of the nested shape, citing a file whose
+  nested list items carry paths rather than ids. A critic supplied the citation; strengthening
+  it on the way into prose was mine.
+
+  That is `WB-D10` arriving one level deeper, and the durable part of this entry: **a script
+  is not a tested predicate — its rules are.** The predicate had a fixture suite and a green
+  gate through every one of those defects, and several of its own fixtures asserted one of
+  them as correct behaviour. What found them was mutation and adversarial shapes, never the
+  suite passing.
+
+  **The rule that works stops asking about the line and requires a position.** An entry
+  anchors only at **column 0, outside every container the script tracks** — because
+  indentation, quoting, fencing, commenting and front matter are all ways Markdown says *this
+  line belongs to something else*, and none is legible in the line's own marker. None of them
+  marks *this file's own* entry, which is the question the caller asked. Fences and comments
+  are opened permissively and closed strictly: a missed open exposes content, a missed close
+  only skips more of the file. Front matter is the deliberate exception and the strictest test
+  in the script — line 1, column 0, nothing else on the line — because a `---` anywhere else
+  is a thematic break, and treating one as a container would blank the rest of the ledger.
+
+  The full cost is named in the script's header rather than restated here — **false matches
+  included, and stated as a floor rather than a proof.** Every broken version offered a cost
+  section listing only misses while carrying an unlisted false match; after every revision so
+  far did that, the
+  honest claim is the general shape — any container this does not track presents its lines as
+  if they were entries — plus the instances known today, not a closed list.
+
+  **When enumeration is legitimate — and the two answers this pass got wrong first.** Three
+  prose rounds had failed by listing markers, so the first cut treated *all* enumeration as
+  the defect; the second reintroduced a list and justified it as "the closed set CommonMark
+  defines". Both were wrong, and the blockquote bug is the proof of the second: `>` is
+  unimpeachably a CommonMark block start, and admitting it is exactly what reopened the hole.
+  **Specification membership is not what makes a list member safe.** What matters is the
+  direction a wrong member fails in — here, every marker *omitted* from the list makes an
+  entry invisible rather than spurious, so omissions can only cost recall. (The list can
+  still cost precision through what it *admits* — a lazy paragraph continuation beginning
+  with a marker — which is a separate defect, named in the cost section.) Enumerate where
+  omission is recoverable; shape-test where it is not.
+
+  And the deeper one, which the third failure taught: **a per-line list cannot be made safe
+  by improving the list.** Each of the three *per-line-marker* versions had a defensible
+  marker set; what defeated them was context the line does not carry. When a predicate's
+  errors come from containment, the fix is a positional or stateful test, not a better
+  enumeration.
+
+  **The last lesson, and the one that decided the design: a predicate that honestly declares
+  itself not-a-proof cannot carry an unrecoverable action.** Every critic round found a
+  new shape where a *citation* answers 0, at a roughly constant rate, and the cost section
+  ended up retreating — correctly — to "a floor, not a proof". At that point the question
+  stopped being *how do we make the predicate right enough to delete on* and became *why is
+  anything deleting on it*. `/way-of-working:ship` now keeps both sides on **every** branch
+  and uses the answer only to sort the removals it reports: `0` reads "probably moved,
+  likely safe to drop", `1`/`2` read "unresolved". The triage benefit that motivated `#66`
+  survives, but **not intact, and the record should not pretend otherwise.** `#66` was filed
+  to let step 1 "resolve per entry *instead of handing every removal to the human*", and to
+  shrink the prose to a pointer; what shipped hands every removal to the human *ranked*, and
+  the step-1 prose grew rather than shrank. Per-entry **ranking** replaced per-entry
+  **resolution**. That is the right trade against an unrecoverable deletion, and it is a
+  reduction in what the issue asked for.
+
+  The part that cost nothing was removing the destructive branch itself — it was never the
+  valuable half. Five rounds went by before anyone asked whether it had to be there,
+  including the round that wrote a header sentence forbidding precisely what the caller three
+  files away was doing.
+
+  One supporting commitment, from a round that failed for want of it: the id is matched as a
+  **literal** and never compiled as a pattern — an interpolated `A.1` also matches `AX1`, and
+  an id containing `[` makes the matcher *error*, which a surrounding `if` reads as a clean
+  "no match", the worst available failure.
+
+  A third answer follows from the same asymmetry: "could not tell" (`2`) is never folded into
+  "no" (`1`), and misuse — a missing argument, an empty id, a directory in place of a file, or
+  an `awk` whose POSIX bracket classes are unsupported and would fail *open* — exits `2`
+  rather than the shell's default `1`, because `1` is this predicate's word for a confident
+  negative. This is `WB-D7`'s lesson in a second command: a check that cannot distinguish
+  *couldn't look* from *isn't there* is the defect it exists to catch.
+
+  **A fixture only counts if removing the rule it names turns it red.** Both suites here
+  looked thorough and left guards unpinned — a boundary row caught by a *different* rule than
+  the one it claimed to test, a "the scan must continue" row that answered the same either
+  way, an error-mapping branch no input could reach. Deleting the intended guard left the
+  suite green in every case. Found by mutation, never by reading, and the discipline
+  generalizes: a suite guarding a predicate with several rules is checked by deleting each
+  rule in turn. Every guard here is pinned that way except four, and those four for **two**
+  different reasons — which is the part that kept going wrong. Three need a non-conforming
+  `awk` to reach (the POSIX bracket-class probe, the `(pos > 1)` guard on the preceding
+  character, and `exit rc` rather than a bare `exit`); one, `[ ! -r "$file" ]`, is a Windows
+  platform limit, because `chmod 000` there does not deny the owner a read. The suite names
+  all four with both reasons.
+
+  **Every previous version of that note was wrong, and wrong about the count every time** —
+  it climbed one, two, three, four, with `[ ! -r "$file" ]` sitting unpinned throughout and a
+  fresh live guard turning up in most rounds. An earlier draft of this very paragraph claimed
+  the opposite: that the count had always been right and only the universal attached to it
+  was wrong. That was false, and false in the flattering direction — it recast a series of
+  miscounts as a subtler error already diagnosed. A decision entry whose subject is overclaiming had shipped an overclaim
+  about its own history, and a critic caught it. The general form is worth more than the
+  incident: **a record of one's own errors drifts toward the version that reads better**, so
+  it needs the same mechanical check as any other claim. Here that check exists — re-run the
+  mutation sweep and count what stays green.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
@@ -309,5 +447,5 @@ against. Worth recording because the cheaper answer was available from the start
 found by asking "what does this actually cost the people adopting it," not by a new
 requirement arriving.
 
-`WB-D10` lands unreleased, alongside #23's push-identity fix (`CHANGELOG.md`'s
-`[Unreleased]` section) — it does not yet have a tag.
+`WB-D10` and `WB-D11` land unreleased, alongside #23's push-identity fix (`CHANGELOG.md`'s
+`[Unreleased]` section) — they do not yet have a tag.
