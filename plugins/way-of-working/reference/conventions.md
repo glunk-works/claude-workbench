@@ -318,3 +318,37 @@ Two rules, and they are cheap:
 artifact — no command output, no PR line, no tracked item — cannot be audited by anyone,
 including its author. If it genuinely cannot be evidenced, say so in the plan and treat it as
 a risk the human is accepting, not as a gate that was met.
+
+### A fixture that passes on a broken implementation is not coverage
+
+The DoD's "full test suite" counts only fixtures that turn red when the rule they name is
+removed. A fixture that exercises a feature inside a context that *independently produces
+the same answer* passes whether or not the feature is there at all — and it reads exactly
+like a fixture that is worth something, which is what makes it dangerous: it files the
+feature as covered while guarding nothing. The verdict attaches to the **(fixture, rule)
+pair**, not the fixture: one row can genuinely pin one rule and be decorative for another,
+and the remedy there is a new fixture beside it, not deleting the row.
+
+- **A fixture counts only if removing the rule it names turns *it* red — verify by doing
+  it, not by reading it.** The rule is pinned if any fixture catches the deletion; a
+  fixture that claimed the rule but stayed green while another row caught it is still
+  decorative.
+- **Beware the fixture that tests feature X inside a context that already yields the same
+  answer without X.** This is the common failure, not the exotic one: realistic fixtures
+  carry realistic context, and the context is exactly what can shadow the feature.
+- **Only mutation separates a real fixture from a decorative one — and the unit of
+  mutation is the sub-expression, not the line.** Deleting a whole line answers a
+  different question whenever the line carries more than the rule. Bound every run — a
+  mutant can hang instead of failing, and a hang counts as detected — and check that a
+  red mutant still runs at all before counting it as a pin: one that no longer parses
+  pins nothing.
+- **Read the survivor list; never just count it.** An uncaught mutant is either a missing
+  fixture or a survivor recorded with its own reason — a survivor asserted harmless
+  rather than checked is how a live guard stays filed as covered. Record the sweep's
+  scope as what was measured — a list of mutated sites is evidence; "every rule" is a
+  claim the sweep cannot make — and re-derive the result by running the sweep, never by
+  carrying a previous result forward.
+
+Scope: fixtures a unit of work adds or changes are verified within that unit. Sweeping a
+whole standing suite is a tracked obligation on its own cadence, recorded when it runs —
+not a per-unit gate.
