@@ -21,23 +21,32 @@
 # green. That is only ever found by mutation, never by reading, so this suite is
 # checked by deleting each guard in turn and confirming it goes red.
 #
-# FIVE things here are not pinned by a fixture, and the sweep that establishes
-# that has THREE outcomes, not two. Both are re-derived by RUNNING the sweep,
-# never carried forward: every previous version of this note was wrong, with a
-# different count each time and a procedure that could not have measured it.
+# FIVE things here are not pinned by a fixture, and a line-deletion sweep cannot
+# establish that on its own. Both facts are re-derived by RUNNING the sweep, never
+# carried forward: every previous version of this note was wrong, with a different
+# count each time and a procedure that could not have measured what it claimed.
 #
-# Deleting a whole LINE is not enough. Three of the four guards below are
-# sub-expressions sharing a line with other load-bearing content, so deleting the
-# line removes that content too and the red says nothing about the guard. Mutate
-# each on its own. Compound conditions are the same case: the fence-closer rule
-# and the marker alternation were measured one conjunct at a time -- ten variants,
-# all red, including the six-hash cap and the column-0 requirement.
+# THE UNIT IS A SUB-EXPRESSION, NOT A LINE. Deleting a whole line answers a
+# different question whenever the line carries more than the guard. Of the four
+# guards below, line deletion reports one green, one red for removing the
+# assignment around it, one red for no longer parsing, and one hang -- four
+# outcomes, none of them evidence about the guard. Mutate each on its own. Same
+# for every compound condition: the fence-closer rule, the marker alternation,
+# rule 4's own three conjuncts, the four-column threshold and the tab arithmetic
+# were each measured a sub-expression at a time -- sixteen variants, all red.
 #
-# And BOUND each run. Six deletions make the script NON-TERMINATING rather than
-# wrong: the empty-id guard, and each loop's own advance. This suite has no
-# timeout, so such a mutant hangs it forever instead of failing it -- which is why
-# every earlier attempt at this sweep stranded partway and left the count below
-# asserted rather than measured. Count a hang as DETECTED, never as green.
+# A RED CAN BE VACUOUS. 22 of the 69 reds are mutants that no longer run at all,
+# as shell or as awk. Those say nothing about the line that was deleted, so line
+# deletion leaves those guards untested and the sub-expression pass above is what
+# actually covers them. Check runnability before counting a red as a pin.
+#
+# AND BOUND EACH RUN. Six deletions make the script NON-TERMINATING rather than
+# wrong: the empty-id guard's exit, the comment loop's branch dispatch, the
+# whitespace loop's initialiser and its advance, and the match loop's position and
+# advance. (Not "every loop's advance" -- three other advances go red.) This suite
+# has no timeout, so such a mutant hangs it forever instead of failing it, which
+# is how an earlier attempt at this sweep stranded partway and left the count
+# below asserted rather than measured. Count a hang as DETECTED, never as green.
 #
 # Four guards no fixture here can reach:
 #   * the BEGIN probe for POSIX bracket classes, which needs an awk that lacks
@@ -57,11 +66,21 @@
 # contract that is exit status only can never pin it. It is named rather than
 # deleted because the short-circuit is worth keeping.
 #
-# Measured: 86 candidate lines -- 68 red, 6 hang, 12 green. The 12 are two lines
-# of the bracket-class probe block, that `exit`, `set -eu`, five stderr
-# diagnostics this suite deliberately never asserts, two initialisers awk supplies
-# anyway, and an optional `;;`. The other two guards go green only under
-# sub-expression mutation. Checked by doing it, not by believing it.
+# Measured. Candidates are every line that is not blank, not a comment, and not
+# brace-only: 86 of the script's 417. Deleting each in turn gives 69 red (47 of
+# them substantive, 22 vacuous), 6 hang, 11 green. The 11 are two lines of the
+# bracket-class probe block, that `exit`, `set -eu`, five stderr diagnostics this
+# suite deliberately never asserts, one initialiser awk supplies anyway
+# (`found = 0`), and an optional `;;`. The other three guards go green only under
+# sub-expression mutation.
+#
+# `col = 0` used to be in that green list, filed as a second harmless initialiser.
+# It is not harmless: `col` is an awk global, so without the reset the previous
+# fence line's column count carries into the next one and a 2-space-indented fence
+# pair accumulates to 4, the closer reads as indented code, and the file goes dark
+# from there. A live guard sat in this note as covered until a critic re-ran the
+# sweep and asked what the "initialisers" actually did. It has a fixture now.
+# Checked by doing it, not by believing it.
 #
 # Permitted toolset: POSIX sh + awk. No jq, no yq, no python.
 set -eu
@@ -372,6 +391,20 @@ Nested example, indented for readability:
 EOF
 assert_status "a closer indented four spaces is content, not a closer" \
   1 BL-3 "$tmp/indented-closer.md"
+
+# The indent is measured per line, and `col` is an awk GLOBAL, so it has to be
+# reset before each measurement. Without the reset the previous fence line's
+# column count carries into the next one: two 2-space-indented fences accumulate
+# to 4, the closer reads as indented code, the fence never closes, and the rest
+# of the file goes dark. An indented fence pair under a list item is an ordinary
+# ledger shape, so this is a live path, not a contrivance.
+cat >"$tmp/indent-carryover.md" <<'EOF'
+  ```
+  ```
+- BL-3 — a real entry, after the indented fence closed
+EOF
+assert_status "a second indented fence is measured from zero, not cumulatively" \
+  0 BL-3 "$tmp/indent-carryover.md"
 
 # ...and the mirror: a fence-looking line inside INDENTED code must not open a
 # fence, or every entry after it is silently lost for the rest of the file.

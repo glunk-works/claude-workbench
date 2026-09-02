@@ -243,6 +243,10 @@ BEGIN {
   # `exit rc`, not a bare `exit`: END is relied on to supply the status, and a
   # bare exit on an awk that skipped END would yield 0 -- which the caller reads
   # as "anchored", the worst of the three answers to arrive at by accident.
+  #
+  # This guard is also the TERMINATION PROOF for the match loop, which is not visible
+  # from here: with an empty id that loop never exits. Do not relocate or drop it
+  # on the reasoning two paragraphs above about where the empty-id check belongs.
   if (n == 0) {
     print "entry-anchor.sh: <id> is empty -- cannot answer" > "/dev/stderr"
     rc = 2
@@ -364,8 +368,8 @@ $0 !~ /^([-*+][[:space:]]|[0-9]+[.)][[:space:]]|##?#?#?#?#?[[:space:]]|[|])/ { n
   # indistinguishable from a live one under mutation -- two have already been
   # deleted from this file for that reason.
   #
-  # NON-EMPTY is load-bearing, and the guard that supplies it is 100 lines up. On
-  # gawk `index("", "")` is 1, not 0, so an empty id makes this condition
+  # NON-EMPTY is load-bearing, and what supplies it is the `if (n == 0)` guard in
+  # BEGIN. On gawk `index("", "")` is 1, not 0, so an empty id makes this condition
   # permanently true while `start` runs past the end: the loop terminates only
   # because BEGIN rejects an empty id and exits before reaching it. Mutation
   # confirms it -- delete that exit and the suite does not go red, it hangs.
@@ -382,6 +386,11 @@ $0 !~ /^([-*+][[:space:]]|[0-9]+[.)][[:space:]]|##?#?#?#?#?[[:space:]]|[|])/ { n
         after  !~ /[[:alnum:]._-]/ &&
         probe  !~ /[[:alpha:]]/) {
       found = 1
+      # A SHORT-CIRCUIT, not a guard, and the delete-if-unpinnable rule
+      # above does not reach it: `found` is never reset, so END answers the same
+      # with or without this, and a status-only contract can never pin it. Kept
+      # because it stops reading the rest of the file; named so the next sweep
+      # does not read its green as a missing fixture.
       exit
     }
     # Advance past this occurrence and keep scanning the SAME line: a rejected

@@ -408,8 +408,8 @@ take effect. Full reasoning and the task breakdown that implements them:
   suite green in every case. Found by mutation, never by reading, and the discipline
   generalizes: a suite guarding a predicate with several rules is checked by mutating each
   rule in turn — each sub-expression on its own, under a bounded timeout, for the two reasons
-  the paragraph below records. Every guard here is pinned that way except four, and those four for **two**
-  different reasons — which is the part that kept going wrong. Three need a non-conforming
+  the paragraph below records. Every guard here is pinned that way except four, and those
+  four for **two** different reasons — the part that kept going wrong. Three need a non-conforming
   `awk` to reach (the POSIX bracket-class probe, the `(pos > 1)` guard on the preceding
   character, and `exit rc` rather than a bare `exit`); one, `[ ! -r "$file" ]`, is a Windows
   platform limit, because `chmod 000` there does not deny the owner a read. The suite names
@@ -420,27 +420,48 @@ take effect. Full reasoning and the task breakdown that implements them:
   fresh live guard turning up in most rounds. An earlier draft of this very paragraph claimed
   the opposite: that the count had always been right and only the universal attached to it
   was wrong. That was false, and false in the flattering direction — it recast a series of
-  miscounts as a subtler error already diagnosed. A decision entry whose subject is overclaiming had shipped an overclaim
-  about its own history, and a critic caught it. The general form is worth more than the
+  miscounts as a subtler error already diagnosed. A decision entry whose subject is
+  overclaiming had shipped an overclaim about its own history, and a critic caught it. That
+  has now happened twice: the round-9 critics caught this entry doing it again, in the very
+  commit that recorded the sweep. The general form is worth more than the
   incident: **a record of one's own errors drifts toward the version that reads better**, so
   it needs the same mechanical check as any other claim. Here that check exists — but running
   it was never as simple as the sentence that used to end this entry ("re-run the sweep and
-  count what stays green"), and that sentence was itself part of why the count kept being wrong.
+  count what stays green"). That sentence prescribes an operation too coarse to establish what
+  the paragraph around it claims — see below — though it is not the only reason the count was
+  wrong, and this entry should not guess at a single cause for its own history.
 
   **The sweep has now been run to completion, and the procedure it corrected is the finding.**
-  86 candidate lines: 68 red, 6 non-terminating, 12 green. The four named guards are confirmed
-  unpinned — but only under **sub-expression** mutation, because three of them share a line
-  with other load-bearing content, so deleting the line removes that content too and the red
-  says nothing about the guard. Line-granularity deletion, which is what "delete each rule in
-  turn" had always meant here, structurally cannot test them. Second, a deletion can make the
-  script **non-terminating** rather than wrong: six do, and the suite has no timeout, so those
-  hang it forever rather than failing it. Every earlier attempt at this sweep stranded on
-  exactly that and was recorded as still owed — the orphaned processes from those sessions
-  were still running when this one finished it. So: bound each run, count a hang as detected,
-  and mutate sub-expressions on their own. Each conjunct of the two compound guards was
-  measured that way too (ten variants, all red, including the six-hash cap and the column-0
-  requirement). A fifth line stays green and is not a guard: the `exit` after `found = 1`
-  cannot change the answer, so a status-only contract can never pin it — named, not deleted.
+  86 candidate lines — every line that is not blank, not a comment, and not brace-only — give
+  69 red, 6 non-terminating, 11 green. The four named guards are confirmed unpinned, but only
+  under **sub-expression** mutation, and the reason generalizes past them: a whole-line
+  deletion answers a different question whenever the line carries more than the guard. Across
+  those four it reports one green, one red for removing the assignment around the guard, one
+  red for no longer parsing, and one hang — four outcomes, none of them evidence about the
+  guard. That is what "delete each rule in turn" had always meant here, and it cannot test
+  them.
+
+  Two more ways the old procedure under-measured. A red can be **vacuous** — 22 of the 69 are
+  mutants that no longer run at all, as shell or as `awk`, so they pin nothing and the lines
+  behind them are covered only by the sub-expression pass (sixteen variants across every
+  compound condition — the fence-closer rule, the marker alternation, rule 4's own three
+  conjuncts, the four-column threshold, the tab arithmetic — all red). And a deletion can make
+  the script **non-terminating** rather than wrong: six do, and the suite has no timeout, so
+  those hang it forever rather than failing it. That is how an attempt at this sweep stranded
+  partway and left it recorded as owed; its orphaned processes were still running when this
+  session finished the job. So: mutate sub-expressions, check runnability before counting a
+  red, and bound every run.
+
+  **The sweep's own result was a live guard this record had filed as covered.** `col = 0`
+  (`entry-anchor.sh`) sat in the green list as one of two harmless initialisers. It is an awk
+  global reset: without it the previous fence line's column count carries into the next one, a
+  2-space-indented fence pair accumulates past the four-column threshold, the closer reads as
+  indented code, and the file goes dark from there — an ordinary ledger shape, pinnable in
+  three lines. It went unnoticed because "initialiser" was asserted of it rather than checked,
+  in the same paragraph that demands the count be measured. It has a fixture now, which is why
+  the green count is 11 and not 12. A fifth green line really is not a guard: the `exit` after
+  `found = 1` cannot change the answer, so a status-only contract can never pin it — named at
+  the site, not deleted.
 
 ## Status
 

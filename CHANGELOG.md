@@ -228,20 +228,30 @@ its ledger-conflict rule.
 
   Fixtures cover `#66`'s shape table row for row, both citation collisions it mandates, all
   false-match classes above, and at least one row per rule — `sh tests/entry-anchor.test.sh`
-  lists them. Mutation-tested exhaustively and to completion: 86 candidate lines — 68 red, 6
-  non-terminating, 12 green — plus each conjunct of the two compound guards measured on its
-  own (ten variants, all red). Four guards stay green and the suite names them: three need a
-  non-conforming `awk` to reach, one (`[ ! -r "$file" ]`) is a Windows platform limit, since
-  `chmod 000` there does not deny the owner a read. A fifth green line is not a guard at all —
-  the `exit` after `found = 1` short-circuits the rest of the file and cannot change the
-  answer, so a status-only contract can never pin it.
+  lists them. Mutation-tested to completion: 86 candidate lines (every line that is not blank,
+  not a comment, and not brace-only) — 69 red, 6 non-terminating, 11 green — plus every
+  compound condition measured a sub-expression at a time (sixteen variants, all red). Four
+  guards stay green and the suite names them: three need a non-conforming `awk` to reach, one
+  (`[ ! -r "$file" ]`) is a Windows platform limit, since `chmod 000` there does not deny the
+  owner a read. A fifth green line is not a guard at all — the `exit` after `found = 1`
+  short-circuits the rest of the file and cannot change the answer, so a status-only contract
+  can never pin it.
 
-  **Two things about the sweep the earlier note got wrong by construction.** Whole-line
-  deletion cannot test a guard that shares its line with other content — three of the four are
-  sub-expressions, and their line going red says nothing about them. And a deletion can make
-  the script *non-terminating* rather than wrong, which hangs a suite that has no timeout
-  instead of failing it; that is why every earlier attempt at this sweep stranded partway.
-  Bound each run, and count a hang as detected rather than green.
+  **Three things about the sweep the earlier note got wrong by construction.** A whole-line
+  deletion answers a different question whenever the line carries more than the guard: across
+  the four guards it reports one green, one red for removing the surrounding assignment, one
+  red for no longer parsing, and one hang — four outcomes, none of them evidence about the
+  guard. A red can be **vacuous**: 22 of the 69 are mutants that no longer run at all, so they
+  pin nothing. And a deletion can make the script **non-terminating** rather than wrong, which
+  hangs a suite that has no timeout instead of failing it — how an earlier attempt at this
+  sweep stranded partway. Mutate sub-expressions, check runnability before counting a red, and
+  bound every run.
+
+  **The sweep also found a live guard the note had filed as harmless.** `col = 0` is an awk
+  global reset, not a redundant initialiser: without it the previous fence line's column count
+  carries into the next one, a 2-space-indented fence pair accumulates past the four-column
+  threshold, the closer reads as indented code, and the file goes dark from there. It has a
+  fixture now, which is why the green count is 11 rather than 12.
 
   **It asks a revision, never a merge base.** The obvious form — diff `git merge-base HEAD
   MERGE_HEAD` against `MERGE_HEAD` and call the result "the incoming side's changes, with
