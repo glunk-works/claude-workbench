@@ -246,7 +246,8 @@ BEGIN {
   #
   # This guard is also the TERMINATION PROOF for the match loop, which is not visible
   # from here: with an empty id that loop never exits. Do not relocate or drop it
-  # on the reasoning two paragraphs above about where the empty-id check belongs.
+  # on the strength of the note above the readable check, which argues only that a
+  # SECOND empty-id guard at the shell level would be redundant.
   if (n == 0) {
     print "entry-anchor.sh: <id> is empty -- cannot answer" > "/dev/stderr"
     rc = 2

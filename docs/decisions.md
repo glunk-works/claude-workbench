@@ -435,17 +435,18 @@ take effect. Full reasoning and the task breakdown that implements them:
   86 candidate lines — every line that is not blank, not a comment, and not brace-only — give
   69 red, 6 non-terminating, 11 green. The four named guards are confirmed unpinned, but only
   under **sub-expression** mutation, and the reason generalizes past them: a whole-line
-  deletion answers a different question whenever the line carries more than the guard. Across
-  those four it reports one green, one red for removing the assignment around the guard, one
-  red for no longer parsing, and one hang — four outcomes, none of them evidence about the
-  guard. That is what "delete each rule in turn" had always meant here, and it cannot test
-  them.
+  deletion answers a different question whenever the line carries more than the guard. Delete
+  those four at their own lines and you get two reds for no longer parsing, one red for
+  removing the assignment around the guard, and one hang — no green among them, and not one of
+  the four an answer about the guard. That is what "delete each rule in turn" had always meant
+  here, and it cannot test them.
 
   Two more ways the old procedure under-measured. A red can be **vacuous** — 22 of the 69 are
-  mutants that no longer run at all, as shell or as `awk`, so they pin nothing and the lines
-  behind them are covered only by the sub-expression pass (sixteen variants across every
-  compound condition — the fence-closer rule, the marker alternation, rule 4's own three
-  conjuncts, the four-column threshold, the tab arithmetic — all red). And a deletion can make
+  mutants that no longer run at all, as shell or as `awk`, so they pin nothing. Where such a
+  line carries a condition, what covers it is the sub-expression pass: 31 variants over the
+  fifteen sites that carry a condition made of parts, 27 red, and the 4 green are exactly the
+  four guards named above. Where the line is scaffolding — `fi`, `esac`, the `awk` invocation,
+  a loop header — nothing covers it and nothing needs to. And a deletion can make
   the script **non-terminating** rather than wrong: six do, and the suite has no timeout, so
   those hang it forever rather than failing it. That is how an attempt at this sweep stranded
   partway and left it recorded as owed; its orphaned processes were still running when this
@@ -458,10 +459,28 @@ take effect. Full reasoning and the task breakdown that implements them:
   2-space-indented fence pair accumulates past the four-column threshold, the closer reads as
   indented code, and the file goes dark from there — an ordinary ledger shape, pinnable in
   three lines. It went unnoticed because "initialiser" was asserted of it rather than checked,
-  in the same paragraph that demands the count be measured. It has a fixture now, which is why
-  the green count is 11 and not 12. A fifth green line really is not a guard: the `exit` after
-  `found = 1` cannot change the answer, so a status-only contract can never pin it — named at
-  the site, not deleted.
+  in the same paragraph that demands the count be measured. A fifth green line really is not a
+  guard: the `exit` after `found = 1` cannot change the answer, so a status-only contract can
+  never pin it — named at the site, not deleted.
+
+  **Then it happened again, in the commit that recorded all of the above.** That commit widened
+  a correctly-scoped sentence — "each conjunct of the *two compound guards*" — into "every
+  compound condition … all red". The pass had covered five sites. Behind the widened word sat
+  three more live, fixture-less guards: the `~~~` alternative of the fence opener, and the
+  "nothing else on the line" tail on each half of the front-matter delimiter, two of the three
+  failing toward a false match. The sentence was also self-refuting — it sat one sentence
+  before "four guards stay green", and both cannot be true. So the count of guards this record
+  filed as covered while they were live is **four**, found across two rounds, and the second
+  three were found by swapping the reviewing model rather than by another pass of the same one.
+  All four have fixtures now.
+
+  The `~~~` case is the one worth carrying forward, because it is not an oversight — it is a
+  fixture that *looks* like coverage. The suite's only other `~~~` row nests the tildes inside
+  a backtick fence, where a matcher that does not know `~~~` at all behaves identically. It
+  would have passed forever. The generalization: **a fixture exercising a feature in a context
+  where a broken implementation still passes is worth nothing, and reads exactly like a
+  fixture that is worth something.** Only mutation tells them apart — which is this entry's
+  own thesis, arriving a third time, at the level of the fixtures rather than the guards.
 
 ## Status
 

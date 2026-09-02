@@ -19,7 +19,8 @@
 # Several early ones did not -- they passed because a DIFFERENT rule happened to
 # catch the same input, so deleting the rule they claimed to test left the suite
 # green. That is only ever found by mutation, never by reading, so this suite is
-# checked by deleting each guard in turn and confirming it goes red.
+# checked by mutating each guard in turn and confirming it goes red -- deleting
+# the line is not enough, for the reasons below.
 #
 # FIVE things here are not pinned by a fixture, and a line-deletion sweep cannot
 # establish that on its own. Both facts are re-derived by RUNNING the sweep, never
@@ -27,18 +28,32 @@
 # count each time and a procedure that could not have measured what it claimed.
 #
 # THE UNIT IS A SUB-EXPRESSION, NOT A LINE. Deleting a whole line answers a
-# different question whenever the line carries more than the guard. Of the four
-# guards below, line deletion reports one green, one red for removing the
-# assignment around it, one red for no longer parsing, and one hang -- four
-# outcomes, none of them evidence about the guard. Mutate each on its own. Same
-# for every compound condition: the fence-closer rule, the marker alternation,
-# rule 4's own three conjuncts, the four-column threshold and the tab arithmetic
-# were each measured a sub-expression at a time -- sixteen variants, all red.
+# different question whenever the line carries more than the guard. Delete the
+# four guards below at their own lines and you get two reds for no longer
+# parsing, one red for removing the assignment around the guard, and one hang --
+# not one green among them, and not one of the four an answer about the guard.
+# (The probe guard shows up green only at its BODY lines, which is why two of
+# them are in the green list.) Mutate each on its own.
+#
+# The same applies to every condition made of parts. Fifteen sites carry one:
+# the readable check, the bracket-class probe, the front-matter opener and its
+# closer, the comment scanner's fence exclusion, the fence-open pattern, the tab
+# arithmetic, the four-column threshold, the fence-closer rule, the marker
+# alternation, the before-character ternary, rule 4's three conjuncts, the
+# status capture and the case arm. 31 variants across them: 27 red, and the 4
+# green are exactly the four guards named below -- no others.
+#
+# That list is the measured set, found by grepping for multi-part tests. It is
+# NOT a proof that none was missed. An unchecked "every" here has been wrong
+# twice: it is what left `col = 0` looking covered, and what left the `~~~`
+# fence alternative and both front-matter tails unpinned one commit later.
 #
 # A RED CAN BE VACUOUS. 22 of the 69 reds are mutants that no longer run at all,
-# as shell or as awk. Those say nothing about the line that was deleted, so line
-# deletion leaves those guards untested and the sub-expression pass above is what
-# actually covers them. Check runnability before counting a red as a pin.
+# as shell or as awk. Those say nothing about the line that was deleted. Where
+# such a line carries a condition, the sub-expression pass above is what covers
+# it; where it is scaffolding (`fi`, `esac`, the `awk` invocation, a loop
+# header), nothing does, and nothing needs to. Check runnability before counting
+# a red as a pin.
 #
 # AND BOUND EACH RUN. Six deletions make the script NON-TERMINATING rather than
 # wrong: the empty-id guard's exit, the comment loop's branch dispatch, the
@@ -67,7 +82,7 @@
 # deleted because the short-circuit is worth keeping.
 #
 # Measured. Candidates are every line that is not blank, not a comment, and not
-# brace-only: 86 of the script's 417. Deleting each in turn gives 69 red (47 of
+# brace-only: 86 of the script's 418. Deleting each in turn gives 69 red (47 of
 # them substantive, 22 vacuous), 6 hang, 11 green. The 11 are two lines of the
 # bracket-class probe block, that `exit`, `set -eu`, five stderr diagnostics this
 # suite deliberately never asserts, one initialiser awk supplies anyway
@@ -80,6 +95,14 @@
 # pair accumulates to 4, the closer reads as indented code, and the file goes dark
 # from there. A live guard sat in this note as covered until a critic re-ran the
 # sweep and asked what the "initialisers" actually did. It has a fixture now.
+#
+# Three more were found the same way, one commit later, behind the word "every":
+# the `~~~` alternative of the fence opener, and the "nothing else on the line"
+# tail on both halves of the front-matter delimiter. The tilde one is the shape
+# to remember -- the suite's only other `~~~` fixture nests it INSIDE a backtick
+# fence, where a matcher that does not know `~~~` at all behaves identically. It
+# read as covered and pinned nothing. Two of the three fail toward a false match,
+# the unrecoverable direction. All three have fixtures now.
 # Checked by doing it, not by believing it.
 #
 # Permitted toolset: POSIX sh + awk. No jq, no yq, no python.
@@ -358,6 +381,18 @@ EOF
 assert_status "a mismatched inner fence does not end the outer one" \
   1 BL-5 "$tmp/mixed-fence.md"
 
+# The row above is the only other `~~~` fixture, and it puts the tildes INSIDE a
+# backtick fence -- where a matcher that does not know `~~~` at all behaves
+# identically, so it pins nothing about that alternative. A TOP-LEVEL tilde fence
+# does: drop `~~~` from the opener and the entries inside one are presented as
+# this file's own, which is the unrecoverable direction.
+cat >"$tmp/tilde-fence.md" <<'EOF'
+~~~
+- BL-3 — an example entry, inside a tilde fence
+~~~
+EOF
+assert_status "a top-level ~~~ fence hides its contents" 1 BL-3 "$tmp/tilde-fence.md"
+
 # Closing is STRICT and opening is PERMISSIVE, and the asymmetry is the point: a
 # missed OPEN exposes content (false match, unrecoverable), a missed CLOSE only
 # skips more of the file (miss, recoverable). An earlier revision had it backwards
@@ -453,6 +488,34 @@ cat >"$tmp/thematic-break.md" <<'EOF'
 - BL-8 — a real entry after a thematic break.
 EOF
 assert_status "a mid-file --- does not open front matter" 0 BL-8 "$tmp/thematic-break.md"
+
+# The header calls front matter "line 1 only, column 0 only, NOTHING ELSE on the
+# line". The first two thirds are pinned above; these pin the third. Both halves
+# of the delimiter carry the strict tail, and they fail in opposite directions,
+# so each needs its own fixture.
+#
+# The OPENER: `--- title` is a setext underline or a thematic break, never front
+# matter. Loosening the tail to /^---/ opens a skip on line 1 and the whole
+# ledger goes dark -- a miss.
+cat >"$tmp/fm-open-loose.md" <<'EOF'
+--- title
+- BL-3 — a real entry, not inside front matter
+EOF
+assert_status "a --- with trailing text on line 1 does not open front matter" \
+  0 BL-3 "$tmp/fm-open-loose.md"
+
+# The CLOSER: the same loosening lets `--- note` end the block early and present
+# what follows as entries -- a false match, the unrecoverable direction. Real
+# front matter that never closes is the documented cost, and is the safe half.
+cat >"$tmp/fm-close-loose.md" <<'EOF'
+---
+supersedes:
+- BL-9
+--- note
+- BL-3 — still inside the front matter
+EOF
+assert_status "a --- with trailing text does not close front matter" \
+  1 BL-3 "$tmp/fm-close-loose.md"
 
 echo "# containment: a FENCE or COMMENT opener is recognised loosely on purpose"
 

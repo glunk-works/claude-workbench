@@ -229,29 +229,36 @@ its ledger-conflict rule.
   Fixtures cover `#66`'s shape table row for row, both citation collisions it mandates, all
   false-match classes above, and at least one row per rule — `sh tests/entry-anchor.test.sh`
   lists them. Mutation-tested to completion: 86 candidate lines (every line that is not blank,
-  not a comment, and not brace-only) — 69 red, 6 non-terminating, 11 green — plus every
-  compound condition measured a sub-expression at a time (sixteen variants, all red). Four
-  guards stay green and the suite names them: three need a non-conforming `awk` to reach, one
+  not a comment, and not brace-only) — 69 red, 6 non-terminating, 11 green — plus a
+  sub-expression pass over the fifteen sites that carry a condition made of parts: 31
+  variants, 27 red, and the 4 green are exactly the four guards the suite names as
+  unpinnable. Three of those need a non-conforming `awk` to reach; the fourth
   (`[ ! -r "$file" ]`) is a Windows platform limit, since `chmod 000` there does not deny the
   owner a read. A fifth green line is not a guard at all — the `exit` after `found = 1`
   short-circuits the rest of the file and cannot change the answer, so a status-only contract
   can never pin it.
 
   **Three things about the sweep the earlier note got wrong by construction.** A whole-line
-  deletion answers a different question whenever the line carries more than the guard: across
-  the four guards it reports one green, one red for removing the surrounding assignment, one
-  red for no longer parsing, and one hang — four outcomes, none of them evidence about the
-  guard. A red can be **vacuous**: 22 of the 69 are mutants that no longer run at all, so they
-  pin nothing. And a deletion can make the script **non-terminating** rather than wrong, which
-  hangs a suite that has no timeout instead of failing it — how an earlier attempt at this
-  sweep stranded partway. Mutate sub-expressions, check runnability before counting a red, and
-  bound every run.
+  deletion answers a different question whenever the line carries more than the guard: delete
+  the four guards at their own lines and you get two reds for no longer parsing, one red for
+  removing the surrounding assignment, and one hang — no green among them, and not one of the
+  four an answer about the guard. A red can be **vacuous**: 22 of the 69 are mutants that no
+  longer run at all, so they pin nothing. And a deletion can make the script
+  **non-terminating** rather than wrong, which hangs a suite that has no timeout instead of
+  failing it — how an earlier attempt at this sweep stranded partway. Mutate sub-expressions,
+  check runnability before counting a red, and bound every run.
 
-  **The sweep also found a live guard the note had filed as harmless.** `col = 0` is an awk
+  **The sweep found four live guards the note had filed as covered.** `col = 0` is an awk
   global reset, not a redundant initialiser: without it the previous fence line's column count
   carries into the next one, a 2-space-indented fence pair accumulates past the four-column
-  threshold, the closer reads as indented code, and the file goes dark from there. It has a
-  fixture now, which is why the green count is 11 rather than 12.
+  threshold, the closer reads as indented code, and the file goes dark from there. That one
+  turned up when a critic asked what the "initialisers" actually did; the other three turned
+  up one commit later, behind the word *every* — the `~~~` alternative of the fence opener,
+  and the "nothing else on the line" tail on both halves of the front-matter delimiter, two of
+  them failing toward a false match. The tilde one is the shape worth remembering: the only
+  other `~~~` fixture nests it inside a backtick fence, where a matcher that does not know
+  `~~~` at all behaves identically, so it read as covered and pinned nothing. All four have
+  fixtures now, which is why the green count is 11 rather than 12.
 
   **It asks a revision, never a merge base.** The obvious form — diff `git merge-base HEAD
   MERGE_HEAD` against `MERGE_HEAD` and call the result "the incoming side's changes, with
