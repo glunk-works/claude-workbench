@@ -1,47 +1,35 @@
 # Cursor — claude-workbench
 
-**Now:** No sprint in flight (issue-driven, single-task PRs). Status: **awaiting_review** —
-[#69](https://github.com/glunk-works/claude-workbench/pull/69) is finished and green at
-`f3302f9`, waiting only on the human's merge.
+**Now:** No sprint in flight (issue-driven, single-task PRs). Status: **implementing** —
+the next build is [#74](https://github.com/glunk-works/claude-workbench/issues/74); no
+gate is open.
 
 **Just done (2026-09-02):**
-- **The owed mutation sweep ran to completion** (`bbcaf82`) — the first time it has. Earlier
-  attempts stranded on a non-terminating mutant against a suite with no timeout; orphaned
-  processes from those sessions were still running when this one started. The sweep now
-  bounds every run and counts a hang as detected. Numbers and procedure live in `WB-D11`
-  and the suite header, re-derived against the shipping tree, never carried forward.
-- **Four live guards were found filed as covered, and fixtured** (`bbd8a78`, `f3302f9`) —
-  `col = 0` (an awk global reset, not an initialiser), the `~~~` fence-opener alternative,
-  and the "nothing else on the line" tail on both halves of the front-matter delimiter.
-  Two of the four fail toward a false match, the direction `entry-anchor.sh` calls
-  unrecoverable.
-- **The sweep's quantifier is now bounded, not universal.** Round 9's own fix had widened
-  "the two compound guards" into "every compound condition", and three of the four guards
-  above were hiding behind that word. The note now names the measured site list and says
-  explicitly that it is not a proof none was missed.
-- **[#71](https://github.com/glunk-works/claude-workbench/issues/71) and
-  [#72](https://github.com/glunk-works/claude-workbench/issues/72) filed** — the
-  fixture-coverage convention, and letting a late critic round switch models.
+- **#69 merged** (`9e05f8e`) and its half-resolved gate closed: the human approved closing
+  [#66](https://github.com/glunk-works/claude-workbench/issues/66) as completed, with the
+  deviation recorded on the issue — per-entry *ranking* shipped where #66 asked
+  *resolution*, deliberately, per the issue's own safe-direction clause. The prose-shrink
+  half of #66's payoff was spun out to #74, not dropped.
+- **#71 built and merged** (`663aceb`, PR #75): the fixture-coverage rule as a Global
+  Convention under the Definition of Done — carrying `WB-D11`'s three sweep corrections
+  (sub-expression unit, bounded runs, vacuous-red check), survivor-with-reason, and a
+  per-unit/standing-suite scope bound. Critic gate: `docs-consistency` + `architect`,
+  initial pass + **one** fix round, **stopped on convergence** (tightenings-only from both).
+  Remaining tightenings and the WB-D11 pointer follow-up are recorded in PR #75's body.
 
-**Critic gate: 10 rounds, `architect` + `docs-consistency`. Stopping condition: the human
-called it** — not convergence. Rounds 1–8 (Opus) converged at round 8; round 9 (Opus) found
-one live guard; **round 10 was run on Fable** and both critics independently found three
-more plus the false universal. Round 10 applied fixes and those fixes were **not**
-re-critiqued, which the gate's own rule says never to do — recorded here rather than
-smoothed over. That evidence is what [#72](https://github.com/glunk-works/claude-workbench/issues/72) is about.
+**Next:** Build **#74** — decide whether `/way-of-working:ship` step 1's ledger-conflict
+prose compresses (into the predicate's script header or `reference/`) without losing its
+guards; apply what compresses, or post the decline analysis on the issue and open a gate
+for the human to close it. Decline is an acceptable outcome by the issue's own framing.
+**Judge fresh from the sources** — the prior session's critics repeatedly defended that
+prose as load-bearing, which is priming, not a finding about #74.
+Model: **fable** — the human's explicit routing (2026-09-02), overriding `architect: opus`.
 
-**Next:** Wait for the merge decision. Once #69 merges, build **#71** — a `reference/`-only
-prose edit, fully specified in its issue body. Do **not** start #72 unattended; it is
-`status/needs-human` and asks for a design choice between three shapes.
-Model: **opus** — both are judgment about what the shared record may claim.
+**HITL Gate: NONE OPEN.** Next gate: the #74 PR's merge, or the #74 decline decision.
+Do not start #72 or #61 unattended (`status/needs-human`).
+Also open: #62, #54, #52, #48, #45.
 
-**HITL Gate: OPEN.** (1) Merge #69? (2) Is closing #66 on it right, given the recorded
-scope reduction — per-entry *ranking* shipped where #66 asked for *resolution*, and step-1
-prose grew where #66 asked it to shrink? Round 8's critics said close it and file a
-follow-up. Check the gate state with `gh pr checks 69` and `gh pr view 69`.
-Also open and untouched: #61, #62, #54, #52, #48, #45.
-
-**Pointers:** [docs/decisions.md](../docs/decisions.md) (`WB-D11` is this work's record; no
-sprint plan — `sprints_dir` empty by design) ·
-[#69](https://github.com/glunk-works/claude-workbench/pull/69) ·
-[#66](https://github.com/glunk-works/claude-workbench/issues/66)
+**Pointers:** [docs/decisions.md](../docs/decisions.md) (`WB-D11`; no sprint plan —
+`sprints_dir` empty by design) ·
+[#74](https://github.com/glunk-works/claude-workbench/issues/74) ·
+[PR #75](https://github.com/glunk-works/claude-workbench/pull/75)
