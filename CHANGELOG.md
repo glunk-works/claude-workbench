@@ -29,7 +29,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
-## [Unreleased]
+## [0.7.0] — 2026-09-02
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed — the
 archive destinations added this release are *derived* from paths a repo already sets, not
@@ -281,6 +281,23 @@ its ledger-conflict rule.
 
 ### Fixed
 
+- **`reference/workflow.md` no longer describes the repo the plugin was extracted from**
+  (`#52`). A load-bearing shipped doc asserted a `hatch run` green gate, a review-gate
+  workflow and its config test as existing files, `src/` paths, a hardcoded reviewer
+  identity, three agents the plugin does not ship, and origin backlog/PR ids. Every such
+  claim is now parameterized against the schema (`gates.green`, `code_paths`,
+  `load_bearing_docs`, `review.ci_gate.*`, `models`, `agents.enabled`) or reframed as
+  explicit origin-repo history; the skills section lists all seven shipped skills; the
+  frozen review header/attestation fence is byte-identical.
+- **The cursor banner pointed every session at a `CLAUDE.md` model-routing rule no
+  consuming repo is obliged to have** (`#54`). Both the runtime string and the header
+  comment now point at `models` in `.ai/project.yml` — the schema's home for role→model
+  routing — changed together so the hook's output and its own source comment keep agreeing.
+- **`/way-of-working:ship` step 1 cited a decision id from this repo's own log** (`#77`) —
+  a dangling reference in any consuming repo, and invisible to the coupling gate, whose
+  tiers cover repo names, acceptance strings and paths, not decision ids. The citation now
+  points at `bin/cursor-drift.sh`'s shipped header, which carries the same
+  squash-non-ancestry premise.
 - **The branch prune in `/way-of-working:resume` and `/way-of-working:archive-sprint` could
   delete unpushed work without warning.** Both fused the merged test onto the deletion
   (`grep -qxF "$b" && git branch -D "$b"`), which makes `-D` safe per *branch* while the
