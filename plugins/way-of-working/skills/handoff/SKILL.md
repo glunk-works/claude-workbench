@@ -150,9 +150,11 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
    - **Keep this PR touching `.ai/next-steps.md` and nothing else — that is load-bearing.**
      `last_commit` is set (step 4) *before* this commit exists, so once the human merges,
      HEAD has moved past the cursor. `/way-of-working:resume` step 2's classifier forgives
-     exactly that, and only that: a `cursor-sync` result, which means the path list is
-     **only** `.ai/next-steps.md`. Fold anything else into this PR and the next session loses its
-     auto-start and waits for a human "go" instead. This is also why the fix lives on the
+     the cursor commit as a `cursor-sync` result, and its allowlist is narrow — the ledger
+     and parked-sprint snapshots under `.ai/parked/`, nothing else. Handoff writes only the
+     ledger, so keeping this PR to that one file is what guarantees the result. Fold
+     anything else into this PR and the next session loses its auto-start and waits for a
+     human "go" instead. This is also why the fix lives on the
      read side: `last_commit` means *the commit whose work this cursor describes*, and a
      squash merge mints a different SHA than the local branch tip anyway, so no value
      written here could match what `/way-of-working:resume` later reads.

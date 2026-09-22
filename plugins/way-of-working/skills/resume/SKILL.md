@@ -66,19 +66,25 @@ event, run the check.
    answer — stays here, not in the script:
 
    - **`clean`** — `last_commit` is HEAD. Not drift.
-   - **`cursor-sync`** — HEAD differs from `last_commit` only in `.ai/next-steps.md`. **Not
-     drift.** This is the expected shape of a merged `/way-of-working:handoff`: it sets
-     `last_commit` to HEAD *before* committing `.ai/next-steps.md` and opening that commit as
-     a docs-only PR, so the moment the human merges it, HEAD has moved past `last_commit` by
-     exactly the cursor-sync commit. `.ai/state.json` is git-ignored, so nothing corrects
-     `last_commit` afterwards — recognising this case is required, not optional, or auto-start
-     can never fire in the intended flow.
+   - **`cursor-sync`** — HEAD differs from `last_commit` only in `.ai/next-steps.md`, in
+     files under `.ai/parked/`, or both. **Not drift.** This is the expected shape of a
+     merged `/way-of-working:handoff`: it sets `last_commit` to HEAD *before* committing
+     `.ai/next-steps.md` and opening that commit as a docs-only PR, so the moment the human
+     merges it, HEAD has moved past `last_commit` by exactly the cursor-sync commit.
+     `.ai/state.json` is git-ignored, so nothing corrects `last_commit` afterwards —
+     recognising this case is required, not optional, or auto-start can never fire in the
+     intended flow. `.ai/parked/` is admitted on the same footing. That directory holds
+     tracked cursor snapshots for sprints *other than* the live one — a parked sprint — and
+     a file describing a different sprint cannot invalidate the live `next_action`, so a
+     docs-only PR that lands one there is the same shape as the ledger commit above.
    - **`drift`** — anything else differs too. If the work branch named by `last_commit`
      simply hasn't merged yet, this is the **correct** answer, not a false alarm: the cursor
      describes work `{pr_base}` does not have yet. Wait. (Rejected: widening the allowlist to
      "docs-shaped paths" generally — a roadmap or sprint-plan edit between sessions can
      invalidate the very `next_action` auto-start is about to run unattended, which is the
-     one thing this check exists to catch.)
+     one thing this check exists to catch. The `.ai/parked/` carve-out is not that widening:
+     it admits one directory whose contents by definition describe a sprint other than the
+     live one, not a *kind* of file.)
    - **`unreadable`** — git cannot read `last_commit` at all. Wait.
 
    Say which case you found in one line, e.g. `HEAD differs from last_commit only in
@@ -206,9 +212,10 @@ event, run the check.
    >
    > **The `cursor-sync` carve-out above does not soften this**, and must not be read as
    > licence to wave through a delta that merely *looks* routine. It is narrow on purpose:
-   > **one named file, verified by the script.** A delta you did not run `cursor-drift.sh`
-   > against, or one it classified as `drift` because it carries any path besides
-   > `.ai/next-steps.md`, **waits** — however routine its story sounds. Treating some *other*
+   > **one named file plus one named directory, verified by the script.** A delta you did
+   > not run `cursor-drift.sh` against, or one it classified as `drift` because it carries
+   > any path besides `.ai/next-steps.md` and `.ai/parked/*`, **waits** — however routine
+   > its story sounds. Treating some *other*
    > `drift` result as probably harmless would be a real loosening, not a clarification: a
    > roadmap or sprint-plan edit between sessions can invalidate the very `next_action` about
    > to run unattended. If you find yourself reasoning about why a `drift` result is probably

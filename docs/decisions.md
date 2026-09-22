@@ -152,7 +152,9 @@ take effect. Full reasoning and the task breakdown that implements them:
   one-task-per-PR flow, not an edge case, and it was reproduced live within one tag of the
   fix landing. The check is now a **two-argument `git diff <last_commit> HEAD`**: it compares
   trees, is indifferent to ancestry, and reports exactly the cursor file once the work has
-  squash-merged. The allowlist stays at `.ai/next-steps.md` alone. (Rejected: widening it to
+  squash-merged. The allowlist is `.ai/next-steps.md` plus files under `.ai/parked/` — a
+  parked sprint's snapshot, which describes a different sprint and so cannot invalidate the
+  live `next_action` (`#87`). (Rejected: widening it to
   "docs-shaped paths," which would survive squash equally well but is a genuine loosening —
   a roadmap or sprint-plan edit between sessions can invalidate the very `next_action` that
   auto-start is about to run unattended, which is the one thing the drift check exists to

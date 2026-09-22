@@ -7,7 +7,9 @@
 # argument to real git commands, which only a real repo can catch. See issue #21
 # and docs/decisions.md WB-D7.
 #
-# Permitted toolset: git, POSIX sh. No jq, no yq, no python.
+# Permitted toolset: git, POSIX sh. No jq, no yq, no python. Plus bash, optionally,
+# for the one shell-portability fixture -- skipped, loudly, where bash is absent or
+# too old to know `lastpipe`; the script under test itself never needs it.
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -41,6 +43,38 @@ new_repo() {
 
 base_branch() {
   git symbolic-ref --short HEAD
+}
+
+# Build a repo where HEAD's tree differs from last_commit's by exactly the given
+# paths, in the same squash-merge shape as the drift fixture below: last_commit
+# is the tip of a work branch, a second commit on that branch writes the paths,
+# and the branch squash-merges -- so last_commit is never an ancestor of HEAD.
+# Sets $last for the caller's assertion.
+squash_delta() {
+  name="$1"
+  new_repo "$name"
+  shift
+  base="$(base_branch)"
+  echo a >a.txt && git add a.txt && git commit -qm "initial"
+  git checkout -qb work
+  echo work >a.txt && git add a.txt && git commit -qm "commit A: the work"
+  last="$(git rev-parse HEAD)"
+  for p in "$@"; do
+    mkdir -p "$(dirname "$p")"
+    echo x >"$p"
+    git add "$p"
+  done
+  git commit -qm "commit B: $*"
+  git checkout -q "$base"
+  git merge --squash work -q >/dev/null
+  git commit -qm "squash-merged"
+  # Assert the shape rather than trust the construction: a later edit to this
+  # helper that degraded it to a fast-forward would leave every fixture green
+  # while proving nothing about squash-merge.
+  if git merge-base --is-ancestor "$last" HEAD 2>/dev/null; then
+    echo "FAIL - fixture invariant broken ($name): last_commit IS an ancestor of HEAD" >&2
+    fail=1
+  fi
 }
 
 # --- clean: last_commit IS HEAD --------------------------------------------
@@ -102,6 +136,66 @@ git merge --squash work -q >/dev/null
 git commit -qm "squash-merged"
 assert_eq "drift: an unrelated path changed alongside the cursor" \
   "drift" "$("$script" "$last")"
+
+# --- cursor-sync: the .ai/parked/ carve-out (issue #87) ---------------------
+# /way-of-working:park-sprint's cursor-sync PR commits the parked snapshot
+# beside (or instead of) the ledger. A parked file describes a DIFFERENT sprint
+# and cannot invalidate the live next_action, so it is admitted; nothing else
+# under .ai/ or anywhere else is.
+squash_delta parked-only .ai/parked/s14-state.json .ai/parked/s14-next-steps.md
+assert_eq "cursor-sync: only files under .ai/parked/ differ" \
+  "cursor-sync" "$("$script" "$last")"
+
+squash_delta parked-plus-ledger .ai/parked/s14-state.json .ai/next-steps.md
+assert_eq "cursor-sync: .ai/parked/* plus .ai/next-steps.md" \
+  "cursor-sync" "$("$script" "$last")"
+
+squash_delta parked-plus-roadmap .ai/parked/s14-state.json docs/roadmap.md
+assert_eq "drift: a roadmap file changed alongside a parked snapshot" \
+  "drift" "$("$script" "$last")"
+
+# A FILE at .ai/parked is `.ai/parked` with no trailing slash; it is not
+# "under .ai/parked/" and the allowlist pattern must reject it.
+squash_delta parked-as-file .ai/parked
+assert_eq "drift: .ai/parked is a file, not a directory" \
+  "drift" "$("$script" "$last")"
+
+# The two edges the script's own comments assert, pinned: a sibling that
+# merely shares the prefix, and a nested path under the directory.
+squash_delta parked-sibling .ai/parked.md
+assert_eq "drift: .ai/parked.md shares the prefix but is not under .ai/parked/" \
+  "drift" "$("$script" "$last")"
+
+squash_delta parked-nested .ai/parked/s14/state.json
+assert_eq "cursor-sync: a nested path under .ai/parked/" \
+  "cursor-sync" "$("$script" "$last")"
+
+# core.quotePath regression: with git's default, a non-ASCII byte in the name
+# makes --name-only emit ".ai/parked/caf\303\251.md" -- quoted -- which no
+# allowlist pattern matches. The script pins quotePath off; this fixture would
+# read drift if that pin were ever dropped.
+squash_delta parked-non-ascii ".ai/parked/café-state.json"
+assert_eq "cursor-sync: a non-ASCII parked filename is not quoted into drift" \
+  "cursor-sync" "$("$script" "$last")"
+
+# --- shell portability: the drift verdict under a lastpipe shell -------------
+# POSIX lets a shell run the last stage of a pipeline in the current
+# environment (ksh93 does; bash does under `shopt -s lastpipe`). An `exit`
+# inside the allowlist loop -- the form this fixture was added to catch, before
+# it landed -- kills the whole script there: empty stdout, exit 1, on precisely
+# the drift answer. Every other fixture invokes the script under `sh`, which
+# cannot see that. Run the roadmap case once under bash with lastpipe on. Probe
+# the CAPABILITY, not the binary: bash < 4.2 (stock macOS ships 3.2) rejects
+# the option with exit 2 and never runs the script, which would read as a
+# spurious FAIL pointing at the script. Skip, loudly, on such a machine.
+if command -v bash >/dev/null 2>&1 && bash -O lastpipe -c true 2>/dev/null; then
+  squash_delta lastpipe-drift .ai/parked/s14-state.json docs/roadmap.md
+  out="$(bash -O lastpipe "$script" "$last")" && rc=0 || rc=$?
+  assert_eq "lastpipe: drift verdict survives a current-environment pipeline stage" \
+    "drift/0" "$out/$rc"
+else
+  echo "skip - lastpipe fixture: no bash with lastpipe support on PATH"
+fi
 
 # --- unreadable: last_commit is not an object git has -----------------------
 new_repo unreadable
