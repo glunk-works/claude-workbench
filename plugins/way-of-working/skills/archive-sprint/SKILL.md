@@ -86,6 +86,14 @@ command that archives — do not invoke it for ordinary session switches.
    is recorded nowhere is **indistinguishable from one that was skipped**, and that is the
    whole defect.
 
+6. **The sprint being closed is the live cursor's** — `.ai/state.json`'s
+   `current_sprint_id` names it. Never a parked one: a sprint with a snapshot under
+   `.ai/parked/` is brought back first (`/way-of-working:unpark-sprint <id>`), then closed
+   here — its snapshot is in-flight state, not an archive. The order matters the other way
+   too: unpark's free-cursor precondition admits a `done` live cursor, so a finished sprint
+   is closed **here** before anything is unparked over it, or its final cursor is
+   overwritten unarchived.
+
 If any precondition fails, STOP and report why — do not archive.
 
 ## Steps
@@ -302,9 +310,23 @@ If any precondition fails, STOP and report why — do not archive.
    archive files to `{load_bearing_docs}`: they are historical record, not live claims. If
    that key is a glob wide enough to sweep them in, narrow the glob.
 
-3. **Advance `.ai/state.json`** to the next sprint: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>". Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet).
+3. **Advance `.ai/state.json`** to the next sprint. **If `.ai/parked/` is non-empty, ask
+   first whether the next unit is a parked sprint** — name each id with its `parked_at`
+   from `.ai/parked/<id>-state.json`. If it is: confirm `git status --short` prints
+   nothing first — unpark's own precondition, checked before this step writes anything.
+   A dirty tree (precondition 2 admits unrelated changes) is a stop: hand it to the human
+   as step 2 does, and this step resumes once it is clean — never seed a blank cursor for
+   a sprint that still has a snapshot. Then write `sprint_status: "done"` on the closed
+   sprint's cursor (the state `/way-of-working:unpark-sprint`'s free-cursor precondition
+   reads) and run `/way-of-working:unpark-sprint <id>` in place of the rest of this step
+   and step 4 — it restores the cursor and ledger behind its own gate and opens the
+   cursor-sync PR. Unpark's closing "stop" ends *its* flow, not this one: come back here
+   for steps 5 to 7, **staying on unpark's docs branch** — checking out `{pr_base}` before
+   that PR merges would put the deleted snapshot back beside a cursor naming the same
+   sprint. Step 6 then has no uncommitted ledger change to report, and names the
+   `hitl_gate` unpark opened. Otherwise seed a blank next unit: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>". Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet).
 
-4. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in `planning`; **Just done** = one line noting the prior sprint archived + its commit; **Next** = "plan <next unit>" + the planning model; **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written").
+4. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in `planning`; **Just done** = one line noting the prior sprint archived + its commit; **Next** = "plan <next unit>" + the planning model; **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written"), plus `.ai/parked/` while it is non-empty, per `/way-of-working:handoff` step 4.
 
 5. **Prune squash-merged local branches** (a sprint boundary is when the just-merged `sprint/NN-*` branch becomes dead — the "squash trap"). With squash merges, `git branch --merged {pr_base}` **cannot** see these branches; ask GitHub which PRs merged and `-D` **only** those — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
 
@@ -353,7 +375,7 @@ If any precondition fails, STOP and report why — do not archive.
    {pr_base}` is no use either: it is empty for *every* squash-merged branch, which is the
    premise of the squash trap this prune exists for.
 
-6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. If step 2 opened a compaction PR, say what it reclaimed and link it, and note it is awaiting the human's merge like any other PR; if nothing moved, say that instead of naming a commit that does not exist. What remains uncommitted is the tracked `next-steps.md` change from step 4 — remind the user to commit that if they want it durable. Confirm with `git status --short` that the tree holds only that, so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
+6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. If step 2 opened a compaction PR, say what it reclaimed and link it, and note it is awaiting the human's merge like any other PR; if nothing moved, say that instead of naming a commit that does not exist. What remains uncommitted is the tracked `next-steps.md` change from step 4 — remind the user to commit that if they want it durable — unless step 3 handed to unpark, whose PR already carries the ledger. Confirm with `git status --short` that the tree holds only that (or nothing), so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
 7. **Consider bumping the plugin pin.** A sprint close is the one ritual that reliably
    recurs, which makes it the right moment to check whether `.claude/settings.json` points

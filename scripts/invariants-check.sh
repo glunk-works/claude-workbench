@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The regression gate: three invariants that have already been got wrong, in prose.
+# The regression gate: the invariants that have already been got wrong, in prose.
 #
 # This repo's skills describe MECHANICAL procedures in English, and English has no
 # compiler. Every check below exists because the described procedure shipped wrong at
@@ -91,6 +91,36 @@ if [ -n "$RESUME" ]; then
     report "/resume checks the ruleset before establishing reach" \
       "  reach check at line $reach, ruleset call at line $ruleset" \
       "The reach call must come FIRST -- it is what makes the ruleset result mean anything."
+  fi
+fi
+
+# --- 4. /handoff guards WHOSE sprint it is before it determines the new cursor -----
+#
+# Handoff regenerates .ai/state.json and .ai/next-steps.md WHOLESALE (its steps 3-4), so
+# a handoff for work on some other sprint overwrites the cursor's sprint's in-flight
+# state, with nothing left to restore it from. Shipped wrong: the guard-less prose ran in
+# a consuming repo, whose cursor-sync PR would have done exactly that over a `blocked`
+# sprint and was closed instead -- the evidence WB-D12 records, and the reason
+# /way-of-working:park-sprint exists. The fix is a guard that names that way out BEFORE
+# the step that decides the new cursor. As with check 3, ordering is the invariant, not
+# presence: a guard after the rewrite guards nothing. Issue #89.
+#
+# The guard is matched by its own bullet, not by any mention of park-sprint: a mention in
+# the frontmatter description would pin the first hit above the fold forever, and the
+# guard could then be deleted without tripping the gate. Rewording the bullet means
+# updating this pattern deliberately -- say so in the commit.
+HANDOFF=$(printf '%s\n' "${SKILLS[@]}" | grep '/handoff/SKILL.md$' || true)
+if [ -n "$HANDOFF" ]; then
+  guard=$(grep -nF '**Park the cursor'"'"'s sprint first**' "$HANDOFF" | head -1 | cut -d: -f1 || true)
+  rewrite=$(grep -n 'Determine the new cursor' "$HANDOFF" | head -1 | cut -d: -f1 || true)
+  if [ -z "$guard" ]; then
+    report "/handoff has no parked-sprint guard" \
+      "  expected: a '**Park the cursor's sprint first**' way out before 'Determine the new cursor'" \
+      "Without it a handoff for another sprint's work overwrites the cursor's in-flight state."
+  elif [ -n "$rewrite" ] && [ "$guard" -gt "$rewrite" ]; then
+    report "/handoff determines the new cursor before guarding whose sprint it is" \
+      "  park guard at line $guard, 'Determine the new cursor' at line $rewrite" \
+      "The guard must come FIRST -- a wholesale rewrite has already lost the state it guards."
   fi
 fi
 

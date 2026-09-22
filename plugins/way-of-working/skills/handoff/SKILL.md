@@ -19,8 +19,9 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
 
 ## Steps
 
-1. **Check the QA-critic pass ran** (skip if this session wrote no code — a planning
-   session has no diff to critique). Run `git diff {pr_base}...HEAD --stat`. If it touches
+1. **Check the QA-critic pass ran** (skip the critic check if this session wrote no code —
+   a planning session has no diff to critique — but never the stop at the end of this
+   step). Run `git diff {pr_base}...HEAD --stat`. If it touches
    `{code_paths}` and **no `/way-of-working:critic-gate` pass ran on that diff in this session**, say so
    plainly and offer to run it before handing off. The critic pass belongs to the
    implementation session — once you `/way-of-working:handoff`, the diff moves on with no critic having
@@ -38,6 +39,26 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
    "before `/way-of-working:handoff`" while `/way-of-working:handoff` never mentioned it, so the human was the only
    trigger. The gate still **proposes and the human still picks** which critics run; this
    step only stops the pass from being forgotten.
+
+   **Then, before step 2, one more stop — and this one runs even when the critic check
+   was skipped: whose sprint is this?** Steps 3 and 4 rewrite the cursor wholesale, so they must
+   describe the sprint the cursor already names. If this session's work was on a sprint
+   **other than** `current_sprint_id` — a blocked sprint's cursor left in place while
+   another ran — **stop**: a handoff here overwrites that sprint's only in-flight record.
+   A `null` `current_sprint_id` (a repo with no sprint cadence) has nothing to guard; go
+   on to step 2. Otherwise, two ways out, both the human's call:
+   - **Park the cursor's sprint first** — `/way-of-working:park-sprint <this session's
+     sprint>` sets it aside as a tracked snapshot, seeds the live cursor for this sprint,
+     and opens its own cursor-sync PR. It needs a clean tree, so this session's work is
+     committed or shipped first; this handoff then runs once the park PR has merged, from
+     a cursor that names the right sprint.
+   - **Hand off out of band** — write nothing under `.ai/`. In the chat, give the human
+     what this session did and its proposed next action — from this session, not from the
+     cursor — and say plainly that the cursor still describes the other sprint, so the
+     next `/way-of-working:resume` picks *that* up, not this work.
+
+   **Unsure which sprint the work belonged to is the same stop.** Say so and ask; never
+   guess a sprint into the cursor — fail closed, as `/way-of-working:resume` does.
 
 2. **Determine the new cursor** from what this session did:
    - `current_phase`, `current_sprint_id`, and `sprint_status` — one of `planning` |
@@ -63,7 +84,12 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
    - **Now:** current phase/sprint + status (one line).
    - **Just done:** 2–5 bullets of what this session accomplished (+ commit hashes).
    - **Next:** the imperative next action + which model should do it + any open HITL Gate.
-   - **Pointers:** `{roadmap}` + the active sprint_plan path (do not copy their content — link to them).
+   - **Pointers:** `{roadmap}` + the active sprint_plan path (do not copy their content — link to them),
+     plus `.ai/parked/` while that directory is non-empty — the directory, never its
+     listing. A park's **Just done** line is written by one pass over this file and gone
+     at the next regeneration; the directory and the banner's `Parked:` line are the
+     durable record
+     (`/way-of-working:park-sprint`).
    Regenerate the whole file (it is a cursor, not an append log — history lives in git + the roadmap).
    State no **regenerable aggregates**: no counts, no check inventories, no lists a
    command can re-emit — name the deriving command or the authority instead

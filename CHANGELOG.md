@@ -58,6 +58,28 @@ committing nothing.
 
 ### Changed
 
+- **`/way-of-working:handoff`, `/way-of-working:archive-sprint` and `/way-of-working:resume`
+  know about parked sprints.** Handoff stops, before it determines the new cursor, when
+  the session's work was on a sprint other than `current_sprint_id` — its wholesale
+  rewrite would overwrite the cursor's sprint's only in-flight record — and names the two ways
+  out: `/way-of-working:park-sprint` the cursor's sprint first, or hand off out of band and
+  leave `.ai/` untouched; unsure which sprint the work belonged to is the same stop, never
+  a guess, and a `null` `current_sprint_id` has nothing to guard. Its ledger's
+  **Pointers** carry `.ai/parked/` while that directory is non-empty, since a park's
+  **Just done** line is written by one pass over the ledger and gone at the next
+  regeneration.
+  Archive-sprint
+  closes only the live cursor's sprint — a parked one is unparked first, and a `done` one
+  is closed before anything is unparked over it, because unpark's free-cursor precondition
+  admits `done` — and, when `.ai/parked/` is non-empty, offers
+  `/way-of-working:unpark-sprint <id>` in place of seeding a blank next sprint, then
+  resumes at its own steps 5 to 7. Resume reports parked sprints with their `parked_at`
+  in at most one line, derived from the directory, and never treats one as the cursor.
+  `scripts/invariants-check.sh` gains a fourth known-wrong form — a handoff with no park
+  guard, or one that does not precede its *Determine the new cursor* step; the
+  consuming-repo near-miss `WB-D12` records — and `reference/conventions.md` says why
+  tracked `.ai/parked/` is no counter-example to its rule that the deep record's archive
+  never lives under `.ai/` (`#89`).
 - **`cursor-drift.sh` classifies `.ai/parked/*` deltas as `cursor-sync`.** The allowlist
   widens from exactly `.ai/next-steps.md` to that file plus anything under `.ai/parked/`; a
   delta carrying any other path — a *file* at `.ai/parked`, or the sibling `.ai/parked.md`,
