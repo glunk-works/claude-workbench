@@ -46,6 +46,13 @@ event, run the check.
    - `.ai/next-steps.md` — the human ledger: what was just done, what's next, which model to use, HITL Gate status.
    - The `pointers.sprint_plan` file (the active `{sprints_dir}/*/sprint_plan.md`) — the task list for the current sprint.
    - `{roadmap}` — read only its **status table** + its **next action** line, not the whole file, unless the next action needs the decisions log (`{decisions.log}`).
+   - `.ai/parked/` — always check it, whatever the stop-early rule above left unread; if
+     non-empty, read only `parked_at` off each `<id>-state.json`, for the one line step 6
+     reports. **A parked sprint is never the cursor**: no field of a parked snapshot is read
+     into the auto-start test — `.ai/parked/` bears on *that test* only through step 2:
+     its committed deltas classify as `cursor-sync`, and an uncommitted file under it
+     leaves the tree dirty like any other path — and bringing one back is
+     `/way-of-working:unpark-sprint <id>`, the human's call, not this skill's.
 
 2. **Check reality vs. the cursor.** Run `git log --oneline -5` and `git status --short`. If
    the tree is dirty, surface that — a previous session may not have finished a
@@ -190,7 +197,7 @@ event, run the check.
 
 5. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing. The role→model mapping is `{models}` (typically architect for planning/review, coder for implementation — see `reference/workflow.md`).
 
-6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check result, and the branch-prune result.
+6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check result, and the branch-prune result — plus, when `.ai/parked/` is non-empty, **at most one line** naming each parked sprint with its `parked_at` (step 1), derived from the directory, which is the authority (`Parked: 41 (2026-09-02), 43 (2026-09-15) — restore with /way-of-working:unpark-sprint <id>.`). Omit the line when there are none.
 
    Then **either start the next action or wait**, per the rule below.
 

@@ -256,7 +256,9 @@ state that then drifts, and correction narratives accreting on top of correction
   items and completed execution narrative belong in an archive file **beside the live
   record and tracked in git** — not
   under `.ai/`, whose archive holds git-ignored cursor snapshots and would drop the content
-  at the next clone. Moving them is content-preserving — same text, same ID anchors — so
+  at the next clone (tracked `.ai/parked/` is not a counter-example: it holds in-flight
+  state, not archives — `reference/workflow.md` § *Two sprints, one cursor*). Moving
+  them is content-preserving — same text, same ID anchors — so
   existing citations still resolve by grep, and anything that reads the live record to
   learn what is already decided reads the archive alongside it. The live record holds:
   open items, locked decisions, whatever status table or index other tooling orients from,
