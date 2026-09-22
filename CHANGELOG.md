@@ -29,6 +29,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [Unreleased]
+
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed.
+
+### Changed
+
+- **`cursor-drift.sh` classifies `.ai/parked/*` deltas as `cursor-sync`.** The allowlist
+  widens from exactly `.ai/next-steps.md` to that file plus anything under `.ai/parked/`; a
+  delta carrying any other path — a *file* at `.ai/parked`, or the sibling `.ai/parked.md`,
+  included — still reads as `drift`. This is the ground `/way-of-working:park-sprint` will
+  stand on: its cursor-sync PR commits the parked snapshot beside the ledger, and under the
+  one-file allowlist every park would cost the next session its auto-start. It is not the
+  "docs-shaped paths" widening `/way-of-working:resume` step 2 rejects — a parked file
+  describes a different sprint and cannot invalidate the live `next_action`; the resume
+  text, `WB-D7`, and `/way-of-working:handoff` step 5 now say so. `tests/cursor-drift.test.sh`
+  pins the edges, including the `core.quotePath` quoting of a non-ASCII parked name and the
+  shell-portability of the verdict (`#87`).
+
 ## [0.7.0] — 2026-09-02
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed — the
