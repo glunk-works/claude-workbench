@@ -51,9 +51,10 @@ jobs:
         run: bash scripts/invariants-check.sh
 
   # Also its own job: fixture tests for the plugin's bin/ scripts (see issue #21 --
-  # deterministic predicates extracted from skill prose belong in tested scripts) and
-  # for the CI gates themselves (see issue #53 -- a gate that stops gating looks exactly
-  # like a gate that passed, so its fail-closed behaviour is pinned by fixtures too).
+  # deterministic predicates extracted from skill prose belong in tested scripts), for
+  # its hooks/ (the SessionStart banner, see issue #88), and for the CI gates themselves
+  # (see issue #53 -- a gate that stops gating looks exactly like a gate that passed, so
+  # its fail-closed behaviour is pinned by fixtures too).
   # Not yet in {ruleset.required_checks} -- see the PR that added this job.
   tests:
     runs-on: ubuntu-latest
@@ -68,3 +69,5 @@ jobs:
         run: sh tests/coupling-check.test.sh
       - name: entry-anchor.sh fixtures
         run: sh tests/entry-anchor.test.sh
+      - name: ai-cursor-banner.sh fixtures
+        run: sh tests/ai-cursor-banner.test.sh
