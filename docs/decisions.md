@@ -29,9 +29,10 @@ take effect. Full reasoning and the task breakdown that implements them:
   pasted rather than retyped. (Rejected: prose in a `CLAUDE.md` — unstructured, unverifiable
   by a skill. `project.yml` as truth with `CLAUDE.md` rendering it — adds a sync obligation
   between two files, exactly the failure mode being eliminated.)
-- **WB-D3 (= BI-D12) — the plugin holds only what works in any repo.** 7 skills
-  (`resume`, `handoff`, `critic-gate`, `ship`, `pr-checks`, `archive-sprint`, `retro`) + the
-  4 general agents (`architect`, `coder`, `security-critic`, `docs-consistency`). Anything
+- **WB-D3 (= BI-D12) — the plugin holds only what works in any repo.** The skills
+  (`resume`, `handoff`, `critic-gate`, `ship`, `pr-checks`, `archive-sprint`, `retro`,
+  `park-sprint`, `unpark-sprint`) +
+  the 4 general agents (`architect`, `coder`, `security-critic`, `docs-consistency`). Anything
   that encodes one product's internals rather than a way of working stays local to that
   product's own repo. (Rejected: shipping everything gated by `project.yml` — ships
   definitions referencing tools most repos do not have. Skills-only with agents kept local —
@@ -484,6 +485,30 @@ take effect. Full reasoning and the task breakdown that implements them:
   fixture that is worth something.** Only mutation tells them apart — which is this entry's
   own thesis, arriving a third time, at the level of the fixtures rather than the guards.
 
+- **WB-D12 — a second sprint is a tracked snapshot beside the one live cursor, never a
+  second cursor.** One live cursor stays the design. When a sprint must be set aside
+  mid-flight — blocked on an outside decision while another sprint has to run —
+  `/way-of-working:park-sprint` copies `.ai/state.json` and `.ai/next-steps.md` into
+  tracked `.ai/parked/<id>-*` and re-seeds the live cursor; `/way-of-working:unpark-sprint`
+  restores them behind a `hitl_gate`, because the parked `next_action` was written against
+  an older HEAD and must never auto-start. `.ai/parked/` is tracked, unlike git-ignored
+  `.ai/archive/`, because a parked cursor is the *only* copy of in-flight state, and
+  `cursor-drift.sh` admits it as `cursor-sync` (`#87`) so parking costs the next session
+  nothing. Two shape choices follow from the same design: `parked_from_commit` is recorded
+  on a freshly pulled `{pr_base}`, never on a code branch, so the `<commit>..HEAD` range
+  unpark hands the human normally means what it looks like (the same squash-merge trap
+  as `WB-D7`, closed at write time instead of read time); and a park whose next sprint is
+  already parked is a swap, handed straight to unpark so one PR carries both and no
+  sprint is left with two cursors. (Rejected: a multi-sprint map inside `state.json` — a `schema_version` 2 break
+  that forks every skill and the banner hook, for a case two files beside the cursor cover
+  with no `.ai/project.yml` key and no migration.) Evidence, from a consuming repo: its
+  cursor held one sprint `blocked` for two weeks while two later sprints ran as unrecorded
+  "activity slots" — pasted handoff blocks, no resume, no handoff, no archive, and a memory
+  telling every session to ignore the banner; the one handoff that did run had to be closed,
+  because handoff regenerates the cursor wholesale and would have overwritten the blocked
+  sprint's in-flight state. The workaround was a standing per-session cost that lived
+  outside the plugin.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
@@ -507,4 +532,5 @@ found by asking "what does this actually cost the people adopting it," not by a 
 requirement arriving.
 
 `WB-D10` and `WB-D11` land unreleased, alongside #23's push-identity fix (`CHANGELOG.md`'s
-`[Unreleased]` section) — they do not yet have a tag.
+`[Unreleased]` section) — they do not yet have a tag. `WB-D12` lands with `#88`, also
+unreleased; `#92` is the release that tags it.

@@ -15,12 +15,25 @@ state=".ai/state.json"
 [ -f "$state" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
-jq '{
+# Parked sprints (/way-of-working:park-sprint) live as tracked snapshots in
+# .ai/parked/<id>-state.json. Derive the id list from the directory, never from
+# a field: the directory is the authority. Empty when there are none; the
+# `-e` test is what keeps an unmatched glob from echoing its own pattern.
+parked=""
+for f in .ai/parked/*-state.json; do
+  [ -e "$f" ] || continue
+  id="${f##*/}"
+  id="${id%-state.json}"
+  parked="${parked:+$parked, }$id"
+done
+
+jq --arg parked "$parked" '{
   hookSpecificOutput: {
     hookEventName: "SessionStart",
     additionalContext: (
       "[.ai cursor] Assigned: \(.assigned_persona)/\(.assigned_model) for \(.current_sprint_id) (sprint_status: \(.sprint_status)).\n"
       + "Next action: \((.next_action // "unset") | split(". ")[0]).\n"
+      + (if $parked == "" then "" else "Parked: \($parked) (restore with /way-of-working:unpark-sprint <id>).\n" end)
       + "If THIS session is not running \(.assigned_model), it is the wrong session for planning/review/architecture work: /way-of-working:handoff -> new session -> /model \(.assigned_model) -> /way-of-working:resume (`models` in .ai/project.yml). Mechanical/coder tasks are fine on any model."
     )
   }

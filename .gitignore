@@ -1,2 +1,4 @@
 .ai/state.json
 .ai/archive/
+# .ai/parked/ is deliberately NOT ignored: a parked sprint's snapshot is the only
+# copy of its in-flight state (reference/workflow.md, "Two sprints, one cursor").

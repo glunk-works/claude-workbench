@@ -31,7 +31,30 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-**No migration required.** No `.ai/project.yml` key was added, removed, or renamed.
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
+new directory, `.ai/parked/`, is **tracked** — a consuming repo whose `.gitignore` swallows
+all of `.ai/` cannot park a sprint, and `/way-of-working:park-sprint` refuses rather than
+committing nothing.
+
+### Added
+
+- **`/way-of-working:park-sprint <next-id>` and `/way-of-working:unpark-sprint <id>`.**
+  One live cursor stays the design; a sprint set aside mid-flight becomes a tracked
+  snapshot beside it — `.ai/parked/<id>-state.json`, carrying `parked_at`,
+  `parked_from_commit` (recorded on `{pr_base}`, so it is normally an ancestor of later HEADs)
+  and `parked_reason`, plus `<id>-next-steps.md` unchanged — and the live cursor is
+  re-seeded for the next sprint by `/way-of-working:handoff` steps 2 to 4 by reference.
+  Unpark restores the pair behind a `hitl_gate` naming what merged since, so a
+  `next_action` written against an older HEAD never auto-starts. A park whose next sprint
+  is already parked is a swap: it hands straight to unpark and one PR carries both. Each
+  fails closed on its own preconditions — a dirty tree for both; for park an ignore rule
+  that would swallow a snapshot or an existing parked id; for unpark an in-flight live
+  cursor — and both ship as the docs-only cursor-sync PR shape; both are mechanical, so
+  any model may run them. The `SessionStart` banner gains a `Parked: <ids>` line derived
+  from the directory, which is the authority (the ledger records a park as a **Just done**
+  event, never a copy of the list), and nothing when there are none, pinned by
+  `tests/ai-cursor-banner.test.sh`. `WB-D12` records the rejected alternative, a
+  multi-sprint `state.json` map (`#88`).
 
 ### Changed
 

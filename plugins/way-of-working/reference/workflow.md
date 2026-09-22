@@ -11,12 +11,33 @@ inheriting a bloated context window.
   - `.ai/next-steps.md` (git-tracked) — the human-readable cursor: current phase/sprint, status, next action, which model to use, HITL Gate state. A **thin pointer** into the roadmap + the active sprint file; not a second copy of them.
   - `.ai/state.json` (git-ignored) — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`).
   - `.ai/context/` (git-tracked) — heavy reference loaded on demand, where a repo keeps any.
-  - `.ai/archive/` (git-ignored) — retired sprint snapshots.
+  - `.ai/archive/` (git-ignored) — retired sprint snapshots. Disposable: a retired sprint's
+    durable record is in `{roadmap}` and the merged PRs.
+  - `.ai/parked/` (**git-tracked**) — `<id>-state.json` + `<id>-next-steps.md` for a sprint
+    set aside mid-flight (`/way-of-working:park-sprint`). Tracked, unlike its sibling,
+    because a parked cursor is the *only* copy of in-flight state — nothing else records
+    where that sprint stopped.
 - **A repo's own products' agent state** (an orchestrator's runtime files, another tool's memory) — written when that product runs. Nothing in the dev workflow writes it.
 
 The deep, authoritative history stays in the repo's own docs — `{roadmap}` and whatever
 archive files it retires content into; `.ai/` never duplicates it, only points at the
 current cursor within it.
+
+### Two sprints, one cursor
+
+There is exactly one live cursor. When a sprint has to be set aside mid-flight — blocked
+on an outside decision while another sprint needs to run — the answer is not a second
+cursor or a multi-sprint `state.json`: `/way-of-working:park-sprint <next-id>` snapshots
+the live pair into `.ai/parked/<id>-*`, re-seeds the live cursor for the next sprint, and
+opens the docs-only cursor-sync PR. `/way-of-working:unpark-sprint <id>` restores it
+behind a `hitl_gate` naming what merged in between, because the parked `next_action` was
+written against an older HEAD and must never auto-start. Swapping two sprints is a park
+whose `<next-id>` is already parked: park hands straight to unpark and one PR carries
+both. The directory is the authority for what is parked: the session banner derives its
+`Parked:` line from it, and the ledger records each park as a **Just done** event rather
+than restating the list. Both skills are
+mechanical; any model may run them. `/way-of-working:resume` step 2 admits the parked
+delta as `cursor-sync`, so parking costs the next session nothing.
 
 ## Model routing
 
@@ -290,6 +311,12 @@ included, where used) still apply, and the green gate still runs locally before 
   (completed narrative, and items closed during the sprint — resolved *and* declined —
   move to archive files: move, don't rewrite, on its own PR), advances `.ai/state.json`
   to the next sprint, and seeds a fresh `.ai/next-steps.md`.
+- **`/way-of-working:park-sprint <next-id>`** — set the live sprint aside mid-flight:
+  snapshot its cursor into tracked `.ai/parked/<id>-*`, seed the live cursor for the next
+  sprint, and open the docs-only cursor-sync PR. Mechanical; any model.
+- **`/way-of-working:unpark-sprint <id>`** — restore a parked sprint to the live cursor
+  behind a `hitl_gate` that names what merged since it was parked. Never leaves a cursor
+  that can auto-start. Mechanical; any model.
 - **`/way-of-working:ship`** — run when a task is done. Commits with a conventions-correct
   message, pushes to a branch cut from `pr_base` (never the base itself), and opens a PR
   with a length-checked title — then **stops**; the human's merge is the approval.
