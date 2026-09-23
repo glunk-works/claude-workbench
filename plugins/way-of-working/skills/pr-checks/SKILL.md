@@ -32,7 +32,7 @@ actually enforced.
 > **Without `.ai/project.yml`, this skill cannot give a verdict.** Say
 > `no .ai/project.yml — cannot determine the required-check set` and report the raw
 > `gh pr checks` output as *unclassified*. Never infer the required list from what happens
-> to have run: a check can run without being required, and a required check can be missing
+> to have run: a check can run without being required, and a required check can be absent
 > entirely — which is the exact case worth catching.
 
 ## Steps
@@ -47,9 +47,10 @@ actually enforced.
    `gh pr checks` exits non-zero when any check is failing/pending — that is expected, not
    an error; read its output regardless.
 
-2. **Classify each required check.** Report `green` / `red` / `pending` / `missing` for
-   every name in `{ruleset.required_checks}`. Then decode the ambiguous states — this is
-   where the value is:
+2. **Classify each required check.** Report `green` / `red` / `pending` / `absent` for
+   every name in `{ruleset.required_checks}` — the same word step 3's predicate uses for
+   the identical fact on the review-gate check, so a reviewer never sees two words for one
+   state. Then decode the ambiguous states — this is where the value is:
 
    - **`skipped` ≠ `failure`, but also ≠ a free pass.** A job can report `skipped` two ways:
      (a) a *deliberate condition* — e.g. on a PR touching none of `{code_paths}`, a test
@@ -147,7 +148,9 @@ actually enforced.
 
 List every required check by name with its state, then the merge state, then one verdict
 line. The example below is shaped for an 8-check repo with a review gate; the names and the
-count come from `{ruleset.required_checks}`, so a repo with four checks prints four.
+count come from `{ruleset.required_checks}`, so a repo with four checks prints four. A
+required check with no run on the head SHA prints as `absent` — never omitted — the same
+word steps 2 and 3 use for the identical fact.
 
 ```
 PR #94 — "test(core): land the mutation-audit fix verdicts" (sprint/38-t3 → main)
