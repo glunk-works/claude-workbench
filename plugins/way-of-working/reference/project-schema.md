@@ -35,7 +35,10 @@ failure the skill exists to prevent.
 
 Same rule for an individual key: a key that is absent is not a key that is `null`. `null` is
 a decision ("this repo has no review CI gate"); absent is an unanswered question. Treat
-absent as unreadable — report it, don't infer it.
+absent as unreadable — report it, don't infer it — **unless the key's own reference below
+marks it Optional and states what absent means**, as `backlog.repo`, `review.ci_gate.triggers_on`,
+and `migration_base` each do. There, absence is itself the documented answer, not a gap; the
+general rule is for every other key, where no such default exists to fall back on.
 
 ## Overriding is a bug report, not a fix
 
