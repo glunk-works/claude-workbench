@@ -352,11 +352,12 @@ If any precondition fails, STOP and report why — do not archive.
    fi
    ```
    An unreadable `base` is not a soft failure: `case "$b" in "$base"|"$cur")` is the only
-   thing standing between the loop and deleting `{pr_base}` itself, and an empty or `"null"`
-   pattern matches nothing, so a silent fallback would delete the very branch the loop
-   exists to protect. Guard on it before the `gh` call, not after.
+   **deliberate** guard against the loop ever targeting `{pr_base}` by name, and an empty
+   or `"null"` pattern matches nothing, so a silent fallback would leave `{pr_base}`
+   protected only by accident — by whether some merged PR's `headRefName` happens to equal
+   it and its local tip happens to match. Guard on it before the `gh` call, not after.
 
-   Report which branches were pruned, and every skip the loop printed, with its reason (or "none"). A branch with no merged PR is not a candidate and is correctly silent — it is not a skip and does not belong in the report. Hygiene, not a gate — if the `gh` call fails, skip and say so.
+   Report which branches were pruned, and every skip the loop printed, with its reason (or "none"). A branch with no merged PR is not a candidate and is correctly silent — it is not a skip and does not belong in the report. Hygiene, not a gate — if `pr_base` can't be read or the `gh` call fails, skip and say so.
 
    **Why the deletion is gated on a commit, not on merged-ness.** `-D` is safe only
    **per commit**, not per branch: merged-ness is confirmed out-of-band, but a merged
