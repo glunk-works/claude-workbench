@@ -15,13 +15,14 @@ and is never this: a subagent spawned mid-work is not a fresh session.
 
 Argument: a PR number in the repo whose checkout you are standing in, at its root, **on
 `{pr_base}`** — `git branch --show-current` prints the branch the file below names as
-`pr_base`. Never on the PR's branch: its `.ai/project.yml` is the author's.
+`pr_base`. Not there yet, including on the PR's own branch, whose `.ai/project.yml` is the
+author's: `git switch {pr_base} && git pull --ff-only`, then proceed.
 
-**Read `.ai/project.yml` from that checkout** for `{review.ci_gate}`, `{models.architect}`,
-`{repo}`, `{pr_base}`, `{code_paths}`, `{decisions.prefix}`, `{threat_model}`,
-`{ruleset.required_checks}`, and `{backlog}`. Missing or unreadable: stop; never guess a
-gate (`reference/project-schema.md`). Every step fails closed. Each code block is one tool
-call — shell state does not survive between calls.
+**Read `.ai/project.yml` from that checkout, now synced,** for `{review.ci_gate}`,
+`{models.architect}`, `{repo}`, `{pr_base}`, `{code_paths}`, `{decisions.prefix}`,
+`{threat_model}`, `{ruleset.required_checks}`, and `{backlog}`. Missing or unreadable: stop;
+never guess a gate (`reference/project-schema.md`). Every step fails closed. Each code block
+is one tool call — shell state does not survive between calls.
 
 ## Steps
 
@@ -63,16 +64,15 @@ call — shell state does not survive between calls.
    post next. `git worktree remove` when done.
 
 7. **Compose and post.** The body **opens** with `{review.ci_gate.header}` and
-   `{review.ci_gate.attestation}`, each on its own line, copied byte for byte from
-   `{pr_base}`'s file on the remote — `yq -er`, or any reader that emits the scalar
-   unchanged and fails on a missing one — never typed from memory. A chain that stops
-   before printing the path is a stop:
+   `{review.ci_gate.attestation}`, each on its own line, copied byte for byte from the
+   synced `.ai/project.yml` — `yq -er`, or any reader that emits the scalar unchanged and
+   fails on a missing one — never typed from memory. A chain that stops before printing the
+   path is a stop:
 
    ```bash
-   T=$(mktemp -d) && git fetch -q origin {pr_base} &&
-   git show "origin/{pr_base}:./.ai/project.yml" > "$T/project.yml" &&
-   { yq -er .review.ci_gate.header "$T/project.yml" && echo &&
-     yq -er .review.ci_gate.attestation "$T/project.yml" && echo; } > "$T/review.md" &&
+   T=$(mktemp -d) &&
+   { yq -er .review.ci_gate.header .ai/project.yml && echo &&
+     yq -er .review.ci_gate.attestation .ai/project.yml && echo; } > "$T/review.md" &&
    [ "$(grep -c . "$T/review.md")" -eq 2 ] && echo "$T/review.md"
    ```
 
