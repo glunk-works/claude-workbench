@@ -40,17 +40,19 @@ in-flight state. `/way-of-working:unpark-sprint` brings it back.
    normally an ancestor of later HEADs, which the range unpark shows the human relies on.
 3. **Seed the live cursor.** If both `.ai/parked/<next-sprint-id>-*` files exist, this is
    a **swap**: seed nothing, run `/way-of-working:unpark-sprint <next-sprint-id>` now, and
-   let it open the one PR for both. Otherwise follow `/way-of-working:handoff` steps 2 to
-   4 by reference — same fields, wholesale rewrite, `hitl_gate` always written.
+   let it open the one PR for both. Otherwise follow `/way-of-working:handoff`'s
+   *Determine the new cursor* through *Regenerate `.ai/next-steps.md`* steps by
+   reference — same fields, wholesale rewrite, `hitl_gate` always written.
    `sprint_status` is `planning` unless `{sprints_dir}/<next-sprint-id>*/sprint_plan.md`
    exists, then `implementing`. In the ledger, **Just done** is one line, `parked <id>:
    <parked_reason>`. The directory is the authority for what is parked and the session
    banner derives its `Parked:` line from it; never copy the list into the ledger.
-4. **Commit as one docs-only cursor-sync PR** per `/way-of-working:handoff` step 5, with
+4. **Commit as one docs-only cursor-sync PR** per `/way-of-working:handoff`'s *Commit
+   `.ai/next-steps.md` as its own docs-only PR against `{pr_base}`* step, with
    three files staged: both snapshots and `.ai/next-steps.md`. That delta is what
    `cursor-drift.sh` classifies as `cursor-sync`, so handoff's "one file" rule reads here
-   as "these three and nothing else". In a swap this step does not run — unpark step 4
-   opened the PR. **Never merge.** Report the PR URL and stop.
+   as "these three and nothing else". In a swap this step does not run —
+   unpark-sprint's *Commit as one docs-only cursor-sync PR* step opened the PR. **Never merge.** Report the PR URL and stop.
 
 ## Guardrails
 

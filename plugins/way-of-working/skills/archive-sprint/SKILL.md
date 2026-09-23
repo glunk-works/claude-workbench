@@ -109,10 +109,11 @@ If any precondition fails, STOP and report why — do not archive.
    **Survey first, then cut the branch, then edit — in that order.** Work out what would
    move without changing anything yet. If the answer is nothing — no narrative to archive,
    no closed file-kind items, no deletable annotations — say so in one line, `git checkout
-   {pr_base}`, and go to step 3: no branch, no commit, no PR, and step 6 reports no
-   compaction. Switch to `{pr_base}` even on that exit — step 5 never prunes the branch you
-   are standing on, so staying on the just-merged sprint branch would exempt the one branch
-   a sprint-boundary prune exists to reap.
+   {pr_base}`, and go to the *Advance `.ai/state.json` to the next sprint* step: no branch,
+   no commit, no PR, and the *Report* step reports no compaction. Switch to `{pr_base}`
+   even on that exit — the *Prune squash-merged local branches* step never prunes the
+   branch you are standing on, so staying on the just-merged sprint branch would exempt the
+   one branch a sprint-boundary prune exists to reap.
 
    **Confirm the sprint's work is actually in `{pr_base}` before surveying against it.**
    Precondition 2 asks only that the work is *committed*; everything below reads `{pr_base}`
@@ -152,7 +153,8 @@ If any precondition fails, STOP and report why — do not archive.
    you are leaving and `{pr_base}` differ in a file you have touched — and `{roadmap}` and
    `{backlog}` are the likeliest files in the repo to have diverged. At that moment git's
    own advice is *"commit your changes"*, which on the just-merged sprint branch means
-   committing onto a branch step 5 will `git branch -D`, silently and unrecoverably.
+   committing onto a branch the *Prune squash-merged local branches* step will `git branch
+   -D`, silently and unrecoverably.
    **Never edit on `{pr_base}`, and never on the just-merged sprint branch.**
 
    **`git merge --ff-only origin/{pr_base}`, not a plain `git pull`, and name the ref.** A
@@ -160,7 +162,7 @@ If any precondition fails, STOP and report why — do not archive.
    it merges — so every link in the chain returns zero and the compaction branch is cut from
    a base carrying an unrelated local commit, which then rides into the compaction PR. The
    chain's guard never fires because nothing failed. Divergence is reachable from this
-   skill's own loop: step 6 asks the human to commit the `next-steps.md` change, and
+   skill's own loop: the *Report* step asks the human to commit the `next-steps.md` change, and
    committing it on `{pr_base}` is exactly what diverges it. `--ff-only` turns that silent
    merge into a loud stop. Name `origin/{pr_base}` explicitly rather than letting the merge
    resolve `@{upstream}` — a bare form follows whatever upstream the branch is configured
@@ -273,7 +275,7 @@ If any precondition fails, STOP and report why — do not archive.
    the deep record at <sprint> close`, then `gh pr create --base {pr_base}`. Pushing is
    what makes the content durable — until then it exists in exactly one place. This push
    has no reach preflight of its own and carries the same push-identity exposure as
-   `/way-of-working:ship` step 1; a `403` here is diagnosed the same way.
+   `/way-of-working:ship`'s *Preflight the branch* step; a `403` here is diagnosed the same way.
 
    Report `git show --stat HEAD` so the human sees what the close reclaimed, and hand them
    the PR link. **That PR is the human checkpoint for this step** — the sprint's own HITL
@@ -293,10 +295,11 @@ If any precondition fails, STOP and report why — do not archive.
 
    **A compaction PR merges before the next `/way-of-working:ship` refreshes a stale
    branch against `{pr_base}`** — and when it does, that merge is the incoming side of the
-   ledger-conflict rule in `/way-of-working:ship` step 1. That rule **surfaces** what this
-   step archived: it keeps both sides, as always, and reports each removal to the human
-   ranked by whether the archive appears to carry the item. It does **not** prevent a
-   resurrection — nothing mechanical does, and step 1 says so. The compaction is undone only
+   ledger-conflict rule in `/way-of-working:ship`'s *Preflight the branch* step. That rule
+   **surfaces** what this step archived: it keeps both sides, as always, and reports each
+   removal to the human ranked by whether the archive appears to carry the item. It does
+   **not** prevent a resurrection — nothing mechanical does, and that step says so. The
+   compaction is undone only
    if a human, looking at that report, keeps an entry the archive already holds.
 
    If `docs-consistency` is in `{agents.enabled}`, propose it on the compaction PR. Give it
@@ -315,18 +318,21 @@ If any precondition fails, STOP and report why — do not archive.
    from `.ai/parked/<id>-state.json`. If it is: confirm `git status --short` prints
    nothing first — unpark's own precondition, checked before this step writes anything.
    A dirty tree (precondition 2 admits unrelated changes) is a stop: hand it to the human
-   as step 2 does, and this step resumes once it is clean — never seed a blank cursor for
+   as the *Compact the deep record* step does, and this step resumes once it is clean —
+   never seed a blank cursor for
    a sprint that still has a snapshot. Then write `sprint_status: "done"` on the closed
    sprint's cursor (the state `/way-of-working:unpark-sprint`'s free-cursor precondition
    reads) and run `/way-of-working:unpark-sprint <id>` in place of the rest of this step
-   and step 4 — it restores the cursor and ledger behind its own gate and opens the
-   cursor-sync PR. Unpark's closing "stop" ends *its* flow, not this one: come back here
-   for steps 5 to 7, **staying on unpark's docs branch** — checking out `{pr_base}` before
-   that PR merges would put the deleted snapshot back beside a cursor naming the same
-   sprint. Step 6 then has no uncommitted ledger change to report, and names the
+   and the *Seed a fresh `.ai/next-steps.md`* step — it restores the cursor and ledger
+   behind its own gate and opens the cursor-sync PR. Unpark's closing "stop" ends *its*
+   flow, not this one: come back here for the *Prune squash-merged local branches* through
+   *Consider bumping the plugin pin* steps, **staying on unpark's docs branch** — checking
+   out `{pr_base}` before that PR merges would put the deleted snapshot back beside a
+   cursor naming the same sprint. The *Report* step then has no uncommitted ledger change
+   to report, and names the
    `hitl_gate` unpark opened. Otherwise seed a blank next unit: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>". Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet).
 
-4. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in `planning`; **Just done** = one line noting the prior sprint archived + its commit; **Next** = "plan <next unit>" + the planning model; **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written"), plus `.ai/parked/` while it is non-empty, per `/way-of-working:handoff` step 4.
+4. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in `planning`; **Just done** = one line noting the prior sprint archived + its commit; **Next** = "plan <next unit>" + the planning model; **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written"), plus `.ai/parked/` while it is non-empty, per `/way-of-working:handoff`'s *Regenerate `.ai/next-steps.md`* step.
 
 5. **Prune squash-merged local branches** (a sprint boundary is when the just-merged `sprint/NN-*` branch becomes dead — the "squash trap"). With squash merges, `git branch --merged {pr_base}` **cannot** see these branches; ask GitHub which PRs merged and `-D` **only** those — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
 
@@ -384,7 +390,7 @@ If any precondition fails, STOP and report why — do not archive.
    {pr_base}` is no use either: it is empty for *every* squash-merged branch, which is the
    premise of the squash trap this prune exists for.
 
-6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. If step 2 opened a compaction PR, say what it reclaimed and link it, and note it is awaiting the human's merge like any other PR; if nothing moved, say that instead of naming a commit that does not exist. What remains uncommitted is the tracked `next-steps.md` change from step 4 — remind the user to commit that if they want it durable — unless step 3 handed to unpark, whose PR already carries the ledger. Confirm with `git status --short` that the tree holds only that (or nothing), so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
+6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. If the *Compact the deep record* step opened a compaction PR, say what it reclaimed and link it, and note it is awaiting the human's merge like any other PR; if nothing moved, say that instead of naming a commit that does not exist. What remains uncommitted is the tracked `next-steps.md` change from the *Seed a fresh `.ai/next-steps.md`* step — remind the user to commit that if they want it durable — unless the *Advance `.ai/state.json` to the next sprint* step handed to unpark, whose PR already carries the ledger. Confirm with `git status --short` that the tree holds only that (or nothing), so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
 7. **Consider bumping the plugin pin.** A sprint close is the one ritual that reliably
    recurs, which makes it the right moment to check whether `.claude/settings.json` points
@@ -414,6 +420,6 @@ If any precondition fails, STOP and report why — do not archive.
    That is precisely how this hides.
 
 ## Guardrails
-- Compaction (step 2) may remove a line from `{roadmap}` or `{backlog}` **only when the identical bytes appear in an archive file staged, and then committed, in the same change** — verify before reporting, per step 2's checks. That is the bright line, and it is checkable before the commit rather than a claim about intent: a move that cannot show its destination is a deletion, whatever it was meant to be. The single exception is a correction annotation, which by definition has no destination — so it is fenced instead by a narrower test (the annotation must name the action it gates, and that action must be confirmably closed **as completed**, not merely `CLOSED`) plus the requirement that every removal claiming it is enumerated with its evidence in the commit and PR body. Self-certification with nothing to grep for afterwards is exactly why that enumeration is not optional. Compaction never rewrites what it moves, the sprint_plan files stay in place, and nothing here ever touches git history.
+- Compaction (the *Compact the deep record* step) may remove a line from `{roadmap}` or `{backlog}` **only when the identical bytes appear in an archive file staged, and then committed, in the same change** — verify before reporting, per that step's checks. That is the bright line, and it is checkable before the commit rather than a claim about intent: a move that cannot show its destination is a deletion, whatever it was meant to be. The single exception is a correction annotation, which by definition has no destination — so it is fenced instead by a narrower test (the annotation must name the action it gates, and that action must be confirmably closed **as completed**, not merely `CLOSED`) plus the requirement that every removal claiming it is enumerated with its evidence in the commit and PR body. Self-certification with nothing to grep for afterwards is exactly why that enumeration is not optional. Compaction never rewrites what it moves, the sprint_plan files stay in place, and nothing here ever touches git history.
 - Never archive an un-approved or uncommitted sprint.
 - The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, the current branch, or a branch whose local tip is not the commit GitHub merged. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git) — but that argument covers the commit GitHub merged and nothing added since, which is why the tip check (against `headRefOid`, never against `origin/<branch>`) is part of the prune and not an optional refinement.

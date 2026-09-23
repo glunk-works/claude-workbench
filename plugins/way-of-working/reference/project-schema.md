@@ -166,7 +166,7 @@ branch only when the default branch's `migration_base` names it, or when the hum
 that base for one review. The base branch's own copy was written by whoever can push there,
 so it can't vouch for itself. The default branch's copy can only change by passing that
 branch's gate, **provided the default branch is protected**. Nothing checks that during
-review, and `/way-of-working:resume` step 4 checks the ruleset on `pr_base`, which on the
+review, and `/way-of-working:resume`'s *Check the branch-protection ruleset for drift* step checks the ruleset on `pr_base`, which on the
 integration branch is not the default branch.
 
 ### `roadmap`, `sprints_dir`, `decisions`, `backlog`, `threat_model`
@@ -260,7 +260,7 @@ honest. Do not invent a path that escapes the repo.
 > is not `{repo}` can fail for two reasons that look identical and demand opposite
 > responses: the thing is not there, or **this identity cannot see it** — GitHub answers an
 > unreachable resource with `404`, not `403`. Before trusting a cross-repo read, confirm
-> reach the same way `/way-of-working:resume` step 4 does:
+> reach the same way `/way-of-working:resume`'s *Check the branch-protection ruleset for drift* step does:
 > ```bash
 > gh api repos/{backlog.repo} --jq .permissions
 > ```

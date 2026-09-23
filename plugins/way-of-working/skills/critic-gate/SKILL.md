@@ -66,7 +66,7 @@ green gate and before `/way-of-working:handoff`.
    exactly the gap this row closes. It stays a **proposal**, like every other row — the human
    confirms whether the new doc is load-bearing enough to warrant `security-critic`, or trims
    it to `docs-consistency` alone, or skips it for a trivial addition (a changelog stub, a
-   README typo). Detection is mechanical (`--diff-filter=A` from step 1), the judgment stays
+   README typo). Detection is mechanical (`--diff-filter=A` from the *Scope the diff* step), the judgment stays
    with the human, and adding the file to `{load_bearing_docs}` is the durable fix that moves
    it into the second row for next time.
 
@@ -119,8 +119,9 @@ green gate and before `/way-of-working:handoff`.
    it records GitHub's state rather than requesting it); the order and the reason are in
    the same *Prose economy* section — follow it there rather than from memory.
 
-   **Then re-spawn the critics on the FIXED tree — the same as step 3, git-state
-   instruction included. This is not optional.** The old rule here
+   **Then re-spawn the critics on the FIXED tree — the same as the *On confirmation, spawn
+   only the approved critics* step, git-state instruction included. This is not optional.**
+   The old rule here
    was "if a fix touched a critic's area" — too weak, because it let whoever just made the
    fixes decide, after the fact, that none of them warranted a second look, and the fix round
    is itself the highest-risk moment (see *Convergence* below). **Every critic whose findings
@@ -206,8 +207,9 @@ Proposing keeps the routing's smarts — *which* critics a diff warrants — whi
 spawn decision (and the spend) with the human. A light change may only want one critic; a
 trust-boundary change may want the full set. The gate advises; the human picks.
 
-**What the human is approving is a bounded pass, not each individual spawn.** Step 2's
-confirmation covers the initial spawns *and* the re-runs the stopping rule allows — up to the
+**What the human is approving is a bounded pass, not each individual spawn.** The *Propose
+the applicable critics* step's confirmation covers the initial spawns *and* the re-runs the
+stopping rule allows — up to the
 cap. That is deliberate: asking again after every fix round would put the confirmation where
 it carries least information (mid-loop, on a diff whose density is now known) rather than
 where it carries most. The **cap** is what keeps the spend bounded, and crossing it returns

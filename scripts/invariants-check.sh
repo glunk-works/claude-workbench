@@ -15,6 +15,8 @@ fail=0
 SKILLS=(plugins/*/skills/*/SKILL.md)
 AGENTS=(plugins/*/agents/*.md)
 BIN_SCRIPTS=(plugins/*/bin/*.sh)
+HOOK_SCRIPTS=(plugins/*/hooks/*.sh)
+REFERENCE_DOCS=(plugins/*/reference/*.md)
 
 report() {
   echo "INVARIANT FAIL: $1" >&2
@@ -109,10 +111,19 @@ fi
 # the frontmatter description would pin the first hit above the fold forever, and the
 # guard could then be deleted without tripping the gate. Rewording the bullet means
 # updating this pattern deliberately -- say so in the commit.
+#
+# `rewrite` is anchored to the numbered HEADING itself (a list item whose bold text is
+# exactly "Determine the new cursor"), not a bare substring search: since issue #61's
+# name-based step references (check 6, below), the step's own name is legitimately cited
+# in prose earlier in the file too (the sprint-guard paragraph above it does exactly
+# that), and a bare substring search would grab the first such mention instead of the
+# heading -- reporting "determines before guarding" for a file where the guard is
+# correctly first. The number itself is not pinned -- `[0-9]+` matches whatever position
+# the step currently holds, so renumbering does not retrigger this note.
 HANDOFF=$(printf '%s\n' "${SKILLS[@]}" | grep '/handoff/SKILL.md$' || true)
 if [ -n "$HANDOFF" ]; then
   guard=$(grep -nF '**Park the cursor'"'"'s sprint first**' "$HANDOFF" | head -1 | cut -d: -f1 || true)
-  rewrite=$(grep -n 'Determine the new cursor' "$HANDOFF" | head -1 | cut -d: -f1 || true)
+  rewrite=$(grep -nE '^[0-9]+\.[[:space:]]+\*\*Determine the new cursor\*\*' "$HANDOFF" | head -1 | cut -d: -f1 || true)
   if [ -z "$guard" ]; then
     report "/handoff has no parked-sprint guard" \
       "  expected: a '**Park the cursor's sprint first**' way out before 'Determine the new cursor'" \
@@ -166,6 +177,36 @@ else
       "resume/SKILL.md and archive-sprint/SKILL.md must carry byte-identical prune" \
       "blocks -- see docs/decisions.md and issue #62."
   fi
+fi
+
+# --- 6. A skill step is cited by name, never by position ---------------------------
+#
+# Skill steps are referenced by position (the word "step" followed by a number), so
+# inserting a step silently breaks every reference to the ones after it -- including
+# references in OTHER files, which the person doing the renumbering never sees. Shipped
+# wrong repeatedly: a recount during Sprint 2 planning found the form in 66 places across
+# 15 files, up from 34 across 8 when first raised, because nothing stopped it from coming
+# back. The fix, approved 2026-09-23: cite a step by its own bolded name in prose (e.g.
+# "the *Prune squash-merged local branches* step"), with no exception for a reference to a
+# step within the SAME file -- a single rule with no exceptions is checkable by grep, and
+# "except when it's the same file" is not.
+#
+# Comments are NOT stripped here, unlike check 1 -- a bin/ script's own comment is exactly
+# where a cross-file "step N" reference tends to live (it is prose describing another
+# skill's procedure, not code), so it must count. Scanned over every prose surface this
+# plugin ships: skills, agents, bin/ and hooks/ scripts, and reference/ -- docs/decisions.md
+# is a historical log of decisions as they read AT THE TIME and is intentionally out of
+# scope; rewriting its past tense would misrepresent what was actually approved when.
+step_hits=""
+for f in "${SKILLS[@]}" "${AGENTS[@]}" "${BIN_SCRIPTS[@]}" "${HOOK_SCRIPTS[@]}" "${REFERENCE_DOCS[@]}"; do
+  h=$(grep -inE 'step[[:space:]]*#?[0-9]+' "$f" || true)
+  [ -n "$h" ] && step_hits+="  $f:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/    /')"$'\n'
+done
+if [ -n "$step_hits" ]; then
+  report "a skill step is cited by number, not by name" \
+    "$step_hits" \
+    "Cite the step's own bolded name instead, e.g. 'the *Prune squash-merged local" \
+    "branches* step' -- never a number, including within the same file. See issue #61."
 fi
 
 if [ "$fail" -ne 0 ]; then

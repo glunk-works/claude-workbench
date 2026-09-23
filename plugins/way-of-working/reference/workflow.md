@@ -36,7 +36,7 @@ whose `<next-id>` is already parked: park hands straight to unpark and one PR ca
 both. The directory is the authority for what is parked: the session banner derives its
 `Parked:` line from it, and the ledger records each park as a **Just done** event rather
 than restating the list. Both skills are
-mechanical; any model may run them. `/way-of-working:resume` step 2 admits the parked
+mechanical; any model may run them. `/way-of-working:resume`'s *Check reality vs. the cursor* step admits the parked
 delta as `cursor-sync`, so parking costs the next session nothing.
 
 ## Model routing

@@ -7,7 +7,8 @@
 # SHA by a job that may be named something else, which a repo does precisely because the
 # implicit check-run attaches to the wrong commit on an issue_comment event. A reader
 # that looks at only one surface reports "absent" for a gate that is right there on the
-# other. /way-of-working:pr-checks step 3 read only check-runs, so on a status-shaped
+# other. /way-of-working:pr-checks's *Read the review gate on both surfaces it can post
+# to* step read only check-runs, so on a status-shaped
 # gate its stale-run verdict could never fire (issue #91). This is a deterministic
 # predicate with a correctness argument, so it is a tested script the skills invoke
 # rather than a rule described in prose (WB-D10).
@@ -75,7 +76,8 @@
 # neutral and skipped count as SUCCESS, because GitHub's own required-check evaluation
 # counts both as passing, so this predicate and the merge box agree. The error direction
 # that buys: a `skipped` caused by a failed `needs:` reads as success here. Stated, and
-# covered by pr-checks step 2, which decodes a skip on the same PR; a review-gate job has
+# covered by pr-checks's *Classify each required check* step, which decodes a skip on
+# the same PR; a review-gate job has
 # no `needs:` in any workflow observed so far.
 #
 # Permitted toolset: POSIX sh + awk. No jq, no yq, no python -- this must run on any

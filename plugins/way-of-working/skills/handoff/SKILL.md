@@ -27,7 +27,7 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
    implementation session — once you `/way-of-working:handoff`, the diff moves on with no critic having
    looked, which is the failure mode that justifies a standing critic pass at all.
 
-   If a pass **did** run, carry its outcome into the report (step 6), not just its
+   If a pass **did** run, carry its outcome into the report (the *Report* step), not just its
    existence: the round count and which stopping condition fired — converged, cap reached,
    or the human called it. *"A critic pass ran"* and *"the critic pass converged"* are
    different claims, and a cursor that records only the first leaves the next session unable
@@ -40,13 +40,14 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
    trigger. The gate still **proposes and the human still picks** which critics run; this
    step only stops the pass from being forgotten.
 
-   **Then, before step 2, one more stop — and this one runs even when the critic check
-   was skipped: whose sprint is this?** Steps 3 and 4 rewrite the cursor wholesale, so they must
+   **Then, before *Determine the new cursor*, one more stop — and this one runs even when
+   the critic check was skipped: whose sprint is this?** The *Write `.ai/state.json`* and
+   *Regenerate `.ai/next-steps.md`* steps rewrite the cursor wholesale, so they must
    describe the sprint the cursor already names. If this session's work was on a sprint
    **other than** `current_sprint_id` — a blocked sprint's cursor left in place while
    another ran — **stop**: a handoff here overwrites that sprint's only in-flight record.
    A `null` `current_sprint_id` (a repo with no sprint cadence) has nothing to guard; go
-   on to step 2. Otherwise, two ways out, both the human's call:
+   on to *Determine the new cursor*. Otherwise, two ways out, both the human's call:
    - **Park the cursor's sprint first** — `/way-of-working:park-sprint <this session's
      sprint>` sets it aside as a tracked snapshot, seeds the live cursor for this sprint,
      and opens its own cursor-sync PR. It needs a clean tree, so this session's work is
@@ -115,8 +116,9 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
        && git checkout -b docs/sync-cursor-<slug>
      ```
 
-     **One chain, and it can abort — at either of two links.** Step 4 has just rewritten
-     tracked `.ai/next-steps.md`, and which link refuses turns on whether that file's
+     **One chain, and it can abort — at either of two links.** The *Regenerate
+     `.ai/next-steps.md`* step has just rewritten tracked `.ai/next-steps.md`, and which
+     link refuses turns on whether that file's
      *committed* content differs between the branch you are leaving and `{pr_base}` — not
      on whether your local `{pr_base}` is up to date:
      - **It differs** → `git checkout {pr_base}` refuses outright (*"Please commit your
@@ -148,7 +150,8 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
    - **This holds even when the cursor describes work that currently lives only on an
      unmerged code branch** — a second session handing off before the first session's PR has
      merged (a "stacked" handoff). There is **no exception** for that case, because
-     `.ai/next-steps.md` is *regenerated wholesale* (step 4), not patched: the sync carries
+     `.ai/next-steps.md` is *regenerated wholesale* (the *Regenerate `.ai/next-steps.md`*
+     step), not patched: the sync carries
      no code context, so a fresh `{pr_base}`-cut branch always applies cleanly even though
      `{pr_base}` lacks the code being described. A cursor that names an open PR is doing its
      job — it points forward and does not wait for that PR to merge; the docs sync merging
@@ -164,7 +167,7 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
      touching none of `{code_paths}` is exempt from it; if `{review.ci_gate}` is `null`,
      there is no review gate to be exempt from — say nothing about one. This push has no
      reach preflight of its own and carries the same push-identity exposure as
-     `/way-of-working:ship` step 1 — a 403 here is diagnosed the same way
+     `/way-of-working:ship`'s *Preflight the branch* step — a 403 here is diagnosed the same way
      (`reference/conventions.md` § *Push identity*).
    - **Never merge it.** The human's merge is the approval. Report the PR URL and stop.
    - `.ai/state.json` is git-ignored and needs no commit; it already travels with the
@@ -174,8 +177,9 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
      decide; a `/way-of-working:resume` still expects `last_commit` to match HEAD and a clean tree, and
      unrelated dirty state costs the next session its auto-start.
    - **Keep this PR touching `.ai/next-steps.md` and nothing else — that is load-bearing.**
-     `last_commit` is set (step 4) *before* this commit exists, so once the human merges,
-     HEAD has moved past the cursor. `/way-of-working:resume` step 2's classifier forgives
+     `last_commit` is set (the *Regenerate `.ai/next-steps.md`* step) *before* this commit
+     exists, so once the human merges, HEAD has moved past the cursor.
+     `/way-of-working:resume`'s *Check reality vs. the cursor* step's classifier forgives
      the cursor commit as a `cursor-sync` result, and its allowlist is narrow — the ledger
      and parked-sprint snapshots under `.ai/parked/`, nothing else. Handoff writes only the
      ledger, so keeping this PR to that one file is what guarantees the result. Fold
@@ -185,7 +189,7 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
      squash merge mints a different SHA than the local branch tip anyway, so no value
      written here could match what `/way-of-working:resume` later reads.
 
-6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (step 1), say so here. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/way-of-working:resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
+6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (the *Check the QA-critic pass ran* step), say so here. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/way-of-working:resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
 
    ```
    Next session:
@@ -209,4 +213,4 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
 ## Guardrails
 - Never write secrets into `.ai/next-steps.md` or `.ai/state.json`.
 - `.ai/next-steps.md` points into `{roadmap}` and the sprint files; it must not become a second copy of them.
-- `/way-of-working:handoff` writes the `next_action` that `/way-of-working:resume` may execute **without a further prompt** (see `/way-of-working:resume` step 6). Phrase it as a precise, bounded imperative that you would be content to see carried out unattended — not a vague direction that needs a human to interpret it. If the next step genuinely needs a decision, that is what `hitl_gate` is for: open one.
+- `/way-of-working:handoff` writes the `next_action` that `/way-of-working:resume` may execute **without a further prompt** (see `/way-of-working:resume`'s *State the pick-up point* step). Phrase it as a precise, bounded imperative that you would be content to see carried out unattended — not a vague direction that needs a human to interpret it. If the next step genuinely needs a decision, that is what `hitl_gate` is for: open one.
