@@ -38,8 +38,9 @@ instead of reaching the real remote with this session's credentials. Never push 
 from the clone. The one safe read in the other direction is `git -C <clone> fetch
 <workspace-path> <ref>` — it only ever reads from the workspace — for a commit that exists
 there but isn't on the remote yet; to test against an uncommitted change, export it first
-(`git -C <workspace> diff`) and apply that patch in the clone rather than touching the
-workspace. Run any script the diff itself contains only where its author is trusted or the
+(`git -C <workspace> diff HEAD --binary`, since plain `git diff` misses anything already
+staged, and copy in any new untracked file directly) and apply that patch in the clone
+rather than touching the workspace. Run any script the diff itself contains only where its author is trusted or the
 environment is sandboxed — the same rule `/way-of-working:architect-review` applies to the
 same risk; its own `fetch` and `git worktree add` against its checkout are exempt from the
 ban above because that is the reviewing session acting sequentially on its own workspace,
