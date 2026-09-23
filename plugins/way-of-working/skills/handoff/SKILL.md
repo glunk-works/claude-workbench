@@ -192,6 +192,7 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
      <new window>            # required if this crosses the review gate; otherwise /clear is fine
      /model <model>          # per assigned_model
      /way-of-working:resume
+     /way-of-working:architect-review <PR>   # only when next_action is that review
    ```
 
    **A review boundary needs a genuinely new session, not `/clear`.** If `{review.ci_gate}`
@@ -201,7 +202,9 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
    just context hygiene. For a same-person non-review switch (e.g. planning→coding),
    `/clear` → `/model` → `/way-of-working:resume` **in place** is acceptable for context — a new session is
    what the docs specify, but the integrity concern doesn't apply. Fill in the actual model
-   from `assigned_model` so it's paste-ready.
+   from `assigned_model` so it's paste-ready. When the `next_action` is that review, write
+   it as `/way-of-working:architect-review <PR>` — in the cursor and in this block — so the
+   next session runs the gate's satisfier rather than improvising one.
 
 ## Guardrails
 - Never write secrets into `.ai/next-steps.md` or `.ai/state.json`.

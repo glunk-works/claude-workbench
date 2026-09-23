@@ -69,5 +69,7 @@ jobs:
         run: sh tests/coupling-check.test.sh
       - name: entry-anchor.sh fixtures
         run: sh tests/entry-anchor.test.sh
+      - name: review-gate-state.sh fixtures
+        run: sh tests/review-gate-state.test.sh
       - name: ai-cursor-banner.sh fixtures
         run: sh tests/ai-cursor-banner.test.sh

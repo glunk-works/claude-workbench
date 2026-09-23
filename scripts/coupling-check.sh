@@ -50,7 +50,25 @@ set -euo pipefail
 
 # Tier 1 -- the sprint's acceptance pattern (SW Task 3). These are the specific literals
 # the 7 skills and 4 agents actually carried before they were generalized.
-TIER1='hatch run|migration_roadmap|architect-review|loop-orchestrator|Seuss27'
+#
+# `architect-review` was a consuming repo's CHECK NAME, and since #90 it is also the name
+# of a skill this plugin ships, so the bare token can no longer be the pattern: the
+# invocation `way-of-working:architect-review`, the skills/architect-review/ path, and
+# that skill's frontmatter `name: architect-review` are all legitimate. The pattern below
+# matches the token unless the two characters before it are `:` + space (the frontmatter,
+# and with it any `key: token` -- a YAML scalar, a pasted workflow step's `name:`, or prose
+# ending in a colon) or the one before it is `:` or `/` -- and with `/` goes any path or
+# URL whose last segment is the token, a consuming repo's `.github/workflows/<name>.yml`
+# included. Those are the whole miss set, measured by running every 0-, 1- and
+# 2-character printable prefix through the pattern.
+# Everything else is caught: bare in prose, a shell argument
+# (`review-gate-state.sh architect-review`), a jq expression, a `- ` list item, quotes,
+# backticks, a derived job name, any indentation. Consequence to know: in plugin code the
+# skill is written `/way-of-working:architect-review`, as every skill name is; the bare
+# token in backticks reads as a check name to this gate, by design. Pinned by
+# tests/coupling-check.test.sh, the `key: token` gap included.
+CHECK_NAME="[^:/ ]architect-review|(^|[^:]) architect-review|^architect-review"
+TIER1='hatch run|migration_roadmap|'"$CHECK_NAME"'|loop-orchestrator|Seuss27'
 
 # Tier 2 -- every repo in the org, plus any emitter name the reference docs use as a worked
 # example. A skill that names one of these is the same defect as tier 1, caught before it

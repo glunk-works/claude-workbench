@@ -221,9 +221,10 @@ and `{decisions.prefix}`. Commit and PR-title grammar is not repo-specific — i
 7. **If a review gate applies, flag it — do not satisfy it here.**
    - **`{review.ci_gate}` is set and the diff touches `{code_paths}`:** the
      `{review.ci_gate.check}` check stays red until a **fresh-session** review is posted
-     against the PR's current head commit. `/way-of-working:ship` does **not** post that review — switching
-     model mid-session is not a review session. Tell the user the PR needs the `/way-of-working:handoff` →
-     new session → `/way-of-working:resume` → review → post sequence.
+     against the PR's current head commit. `/way-of-working:ship` does **not** post that
+     review — switching model mid-session is not a review session. Tell the user the
+     sequence: `/way-of-working:handoff` → new session → `/way-of-working:resume` →
+     `/way-of-working:architect-review <N>`.
    - **`{review.ci_gate}` is `null`:** this repo has no review CI gate. Say nothing about
      one — do not invent a review step, and do not describe the PR as exempt from a gate
      that does not exist. The PR is complete at step 8.

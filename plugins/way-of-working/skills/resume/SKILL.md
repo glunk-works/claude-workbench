@@ -241,14 +241,11 @@ event, run the check.
    crosses a merge or review boundary: `/way-of-working:critic-gate` still proposes and the human still
    picks, the human still merges, and nothing here posts a review.
 
-   > **If `{review.ci_gate}` is set and the next action is posting that review:** the review
-   > body must **open with the verbatim header and attestation** held in
-   > `{review.ci_gate.header}` and `{review.ci_gate.attestation}`. The
-   > `{review.ci_gate.check}` check matches both by literal `contains()` — **copy them
-   > byte-for-byte out of `.ai/project.yml`; do not retype or reword them.** A reworded
-   > attestation fails the gate seconds after posting even though it reads identically to a
-   > human. Those strings are frozen wire values, not prose; see
-   > `reference/project-schema.md`.
+   > **If `{review.ci_gate}` is set and the next action is posting that review:** the
+   > action is `/way-of-working:architect-review <PR>`, which pastes the frozen header and
+   > attestation out of `.ai/project.yml` (why they are frozen: `reference/project-schema.md`
+   > § `review.ci_gate`) and verifies the check on the head SHA. Do not improvise it from
+   > `/code-review` and a hand-typed `gh pr review`.
    >
    > **If `{review.ci_gate}` is `null`, this repo has no review CI gate** — there is no
    > review to post and nothing here applies. Say nothing about one.
