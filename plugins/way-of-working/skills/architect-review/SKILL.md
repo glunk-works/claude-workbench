@@ -13,11 +13,10 @@ did not write it, posted so the gate goes green on the head commit. The `archite
 *subagent* is the `/way-of-working:critic-gate` pre-review, never this: a subagent spawned
 mid-work is not a fresh session.
 
-Argument: a PR number in the repo whose checkout you are standing in, at its root, **on
-`{pr_base}`** — `git branch --show-current` prints the branch the file below names as
-`pr_base`. Not there yet, including on the PR's own branch, whose `.ai/project.yml` is the
-author's: sync first, chained so a failed link is a stop, catching a dirty or unpushed local
-copy the merge alone would miss:
+Argument: a PR number in the repo whose checkout you are standing in, at its root. Wherever
+you start — already on `{pr_base}`, on the PR's own branch (whose `.ai/project.yml` is the
+author's), or anywhere else — sync onto `{pr_base}` first, chained so a failed link is a
+stop, catching a dirty or unpushed local copy the merge alone would miss:
 
 ```bash
 git fetch -q origin {pr_base} && git switch {pr_base} &&
