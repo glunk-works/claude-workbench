@@ -1,60 +1,54 @@
 # Cursor — claude-workbench
 
 **Now:** **Sprint 1** — [milestone 1](https://github.com/glunk-works/claude-workbench/milestone/1),
-*stabilize v0.8.0 and close the live-observed gaps*. Status: **implementing** — the next
-build is [#98](https://github.com/glunk-works/claude-workbench/issues/98); no gate is open.
-The plan of record is the milestone, not a file: build order, per-phase models, and the
-release that closes the sprint are in its description.
+*stabilize v0.8.0 and close the live-observed gaps*. Status: **implementing** — the last
+build before the release is `chore(release)` → `v0.9.0`; no gate is open.
 
 **Just done (2026-09-23):**
-- **#84** (`f79e6b1`): the prune snippet's `base=$(yq …)` now fails loudly instead of
-  unguarding `{pr_base}` on an empty/`null` read, in both copies. Critic gate: `architect` +
-  `docs-consistency`, 1 round, converged.
-- **#62** (`d59658c`): `invariants-check.sh` now mechanically checks the two prune-block
-  copies stay byte-identical. Critic gate: `architect`, 1 round — caught and fixed an
-  off-by-one that silently dropped the block's last line from the comparison.
-- **#85** (`f7440a0`): critic agent definitions now say read-only covers git state, not just
-  files (a critic once moved HEAD in the shared workspace live). Critic gate: `architect` +
-  `docs-consistency` + `security-critic`, **4 rounds** (human-authorized past the normal
-  2-round cap) — converged. Round 1 found the fix didn't cover #85's own scenario
-  (uncommitted work); round 2 found and closed a push-to-real-remote hole the round-1 fix
-  itself had opened; rounds 3–4 were prose-accuracy corrections (a historical claim wrong
-  twice, then a self-contradiction), each caught by a critic reading the repo's own other
-  docs rather than just re-reading the new prose.
-- **#97** (`da5d842`, [PR #110](https://github.com/glunk-works/claude-workbench/pull/110),
-  open): `architect-review` read `.ai/project.yml` from two copies and never synced the
-  first, so a stale local `{pr_base}` could produce a confusing false NOT READY on a PR
-  that's actually green. Now syncs onto `{pr_base}` unconditionally (fetch + switch + merge
-  --ff-only + a byte-equality check against `origin/{pr_base}`) before the first read, and
-  step 7 reads that single synced copy instead of a separate remote fetch. Critic gate:
-  `architect` + `docs-consistency`, **3 rounds** (at the 2-round cap) — round 1 found the
-  original fix used a bare `git pull` (against this plugin's own `archive-sprint`
-  precedent) and no equality check; round 2 (both critics independently) found the fixed
-  sync only ran when *not already* on `{pr_base}`, missing #97's own reproduction; round 3
-  converged clean on both.
+- **#97** (`161392e`, [PR #110](https://github.com/glunk-works/claude-workbench/pull/110),
+  merged): `architect-review` now syncs onto `{pr_base}` unconditionally before its first
+  read. Critic gate: `architect` + `docs-consistency`, 3 rounds, converged.
+- **#98** (`06ad89b`, [PR #115](https://github.com/glunk-works/claude-workbench/pull/115),
+  merged): `architect-review`'s `{pr_base}` check was self-consistency, not an independent
+  anchor — a checkout on a branch whose own `.ai/project.yml` named itself as `pr_base`
+  (and named a `repo` it controlled) satisfied every later check. Now anchors both
+  `{repo}` and `{pr_base}` to `gh repo view` against the checkout's own git remote, with a
+  ruleset-based fallback for the schema's long-migration case. Critic gate: `architect` +
+  `docs-consistency` + `security-critic`, **4 rounds** (human-authorized past the 2-round
+  cap) — converged. Round 1 found the fix didn't close its own reproduction (`{repo}` was
+  still untrusted); round 2 found 2 HIGH bugs in the replacement (`gh api --jq` doesn't
+  accept `--arg`; a jq/shell injection path); round 3 found a "two-hop" fix was inert
+  ritual and relocated the real check; round 4 converged on wording only. Also fixed a
+  real, independent bug in `resume` step 4's ruleset-name lookup along the way. Filed
+  #112/#113/#114 for deliberately deferred, deeper gaps.
+- **#100** (`eae5e6c`, [PR #116](https://github.com/glunk-works/claude-workbench/pull/116),
+  merged): `pr-checks` said `missing` where `review-gate-state.sh` says `absent` for the
+  same fact. Now `absent` everywhere. Critic gate: `architect` + `docs-consistency`, 2
+  rounds, converged.
+- **#99** (`5034273`, [PR #117](https://github.com/glunk-works/claude-workbench/pull/117),
+  merged): four low tightenings in `architect-review` (steps 3/4/8). Critic gate:
+  `architect` + `docs-consistency`, 3 rounds, converged — round 1 caught a real, live-
+  verified HIGH bug in the fix itself: the new step-8 polling loop broke on
+  `review-gate-state.sh`'s exit code (always 0 for all four words) rather than its
+  printed word, so it never actually polled; fixed to test the captured word instead.
 
-**Next:** Build **#98** on **sonnet** (`coder`): `architect-review`'s step-3 "on `{pr_base}`"
-check is self-consistency (checked in the same checkout it verifies), not an independent
-anchor — a checkout on a branch whose own `.ai/project.yml` lies about `pr_base` satisfies
-it. Design settled in the issue comment: compare `{pr_base}` against
-`gh api repos/{repo} --jq .default_branch` (admin-only, unlike `origin/HEAD`); on mismatch
-(the schema's long-migration case) don't fail — confirm `{ruleset.name}` protects
-`{pr_base}` via the same ruleset call `/way-of-working:resume` step 4 already makes, proceed
-if it does, stop naming both values if not. **Budget note from the issue comment:** the new
-clause is meant to replace step 3's "since the author controls that base" justification,
-which #99 item 4 removes anyway — land after #99, or trim that sentence yourself when #98
-lands. Then #100 (one word, `absent`), #99 (four low tightenings), then `chore(release)` →
-`v0.9.0`. Critic gate: `architect` + `docs-consistency` + `security-critic` for #98 (trust
-chain); `architect` + `docs-consistency` for #100/#99.
-**Do not start #61** until every Sprint 1 PR has merged. **Do not start #104** unattended.
+**Next:** Build the milestone's item 7, `chore(release)` → `v0.9.0`, on **sonnet**
+(`coder`) — following [PR #101](https://github.com/glunk-works/claude-workbench/pull/101)'s
+shape exactly: a `## [0.9.0]` `CHANGELOG.md` entry summarizing #97/#98/#100/#99, a
+`plugin.json` version bump, and an explicit migration note (no `.ai/project.yml` key
+changed, but `architect-review` now also reads `{ruleset.rule_types}` — confirm that's
+still "no migration required," as `.ai/parked/` was for 0.8.0). Critic gate not required
+for changelog/version mechanics alone (#101's own precedent) — say so in the PR body.
+**Stop at the open PR — do not dispatch `release.yml` unattended;** cutting the tag is
+explicitly the human's deliberate act (its `dry_run` default says so). After the human
+runs it and it lands, this repo's own pin-bump PR follows next, per
+[PR #102](https://github.com/glunk-works/claude-workbench/pull/102)'s precedent — that
+pin-bump PR closes Sprint 1.
+**Do not start #61** until every Sprint 1 PR has merged — verify against the milestone
+first. **Do not start #104** unattended.
 
-**HITL Gate: NONE OPEN.** Next gate: the human's merge of [PR #110](https://github.com/glunk-works/claude-workbench/pull/110)
-(#97). Sprint 1 ships as `v0.9.0` after item 7 (`chore(release)`).
-
-**Note:** this cursor sync supersedes the still-open
-[PR #109](https://github.com/glunk-works/claude-workbench/pull/109) — cut before this
-session's work, from the same stale base. #109 can be closed unmerged once this PR lands;
-this one carries everything #109 had plus #97.
+**HITL Gate: NONE OPEN.** Next gate: the human's merge of the `chore(release)` PR, then
+the human's own dispatch of `release.yml` (`dry_run` first) to actually cut the tag.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) (`WB-D12`) ·
 [milestone 1](https://github.com/glunk-works/claude-workbench/milestone/1) ·
