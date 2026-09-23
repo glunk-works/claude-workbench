@@ -184,21 +184,38 @@ event, run the check.
    > took effect.) Ask the **repo** what this token can do; never ask the token what it
    > claims, and never parse that output.
 
-   Then the ruleset itself. One read-only call, no new token scope:
+   Then the ruleset itself. Two read-only calls, no new token scope — the first is load-
+   bearing: `rules/branches/{branch}` carries each applying ruleset's **id**, never its
+   name, so a name check without it would silently pass against any ruleset at all. `gh
+   api --jq` takes one plain string, not `jq`'s own flags, so bind `{ruleset.name}` with
+   real `jq --arg` on piped output instead of interpolating it into a filter string — this
+   step needs `jq` on `PATH`, not just `gh`. Capture each call's own output before piping,
+   and let `jq` itself pick the first match — never `| head -1`, which would exit 0 even
+   when `jq` fails or isn't installed, so `jq`'s own exit status decides pass/fail too:
    ```bash
-   gh api repos/{repo}/rules/branches/{pr_base}
+   L=$(gh api --paginate repos/{repo}/rulesets) &&
+   RID=$(printf '%s' "$L" | jq -r --arg n '{ruleset.name}' \
+     'first(.[] | select(.name==$n) | .id) // empty') &&
+   { [ -z "$RID" ] || {
+       B=$(gh api --paginate repos/{repo}/rules/branches/{pr_base}) &&
+       printf '%s' "$B" | jq --argjson id "$RID" '[.[] | select(.ruleset_id==$id)]'
+     }; }
    ```
-   Confirm the response carries **every** rule type in `{ruleset.rule_types}`, that the
-   ruleset named `{ruleset.name}` is among those applying, and — if
+   A failed `gh api` call breaks the chain before `$RID` or `$B` is even set — that is
+   "inconclusive" below, never "weakened or missing". Empty `$RID` after a successful
+   call, or an empty filtered array: no ruleset named `{ruleset.name}` applies to
+   `{pr_base}` — *that* is "weakened or missing". Otherwise confirm
+   the filtered array carries **every** rule type in `{ruleset.rule_types}`, and — if
    `required_status_checks` is one of them — that its contexts cover **every** name in
    `{ruleset.required_checks}`. Report in the pick-up summary, **at most one line**:
    - Healthy → e.g. `Ruleset check: healthy ({N} rule types, {M} required checks).`
    - Weakened or missing → impossible to miss; name exactly what is absent. The reach check
      above is what earns this verdict the right to be stated as a finding rather than a
      maybe.
-   - The call itself failed (network/auth), or `.ai/project.yml` did not supply the
-     expected shape → report **inconclusive**, never healthy, and say **which** of the two
-     it was — an unreachable identity and a failed lookup are different reports. A preflight
+   - Either `gh api` call failed (network/auth), `jq` itself failed or is missing, or
+     `.ai/project.yml` did not supply the expected shape → report **inconclusive**, never
+     healthy, and say **which** it was — an
+     unreachable identity and a failed lookup are different reports. A preflight
      that cannot tell "healthy" from "couldn't look" is the whole defect it exists to catch,
      in miniature; one that cannot tell "couldn't look" from "isn't there" is that same
      defect one layer down.

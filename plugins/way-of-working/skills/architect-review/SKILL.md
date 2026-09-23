@@ -2,79 +2,94 @@
 name: architect-review
 description: >-
   Post the fresh-session Architect Review a PR's review CI gate requires, verify the gate
-  went green on the head SHA, and file the non-blocking findings. Run in a NEW session that
-  did not author the diff. Never approves, never merges.
+  went green on the head SHA, and file non-blocking findings. Run in a NEW session that
+  didn't author the diff. Never approves, never merges.
 ---
 
 # /way-of-working:architect-review — satisfy the fresh-session review gate (never approve)
 
 Goal: satisfy what `{review.ci_gate}` enforces — a review of a PR's diff by a session that
-did not write it, posted so the gate goes green on the head commit. The `architect`
-*subagent* is the `/way-of-working:critic-gate` pre-review, never this: a subagent spawned
-mid-work is not a fresh session.
+didn't write it, posted so it goes green on the head commit. The `architect` *subagent* is
+`/way-of-working:critic-gate`'s pre-review, never this: spawned mid-work isn't a fresh
+session.
 
 Argument: a PR number in the repo whose checkout you are standing in, at its root. Wherever
 you start — already on `{pr_base}`, on the PR's own branch (whose `.ai/project.yml` is the
-author's), or anywhere else — sync onto `{pr_base}` first, chained so a failed link is a
-stop, catching a dirty or unpushed local copy the merge alone would miss:
+author's), or anywhere else — sync onto `{pr_base}`, chained so a failed link stops,
+catching a dirty or unpushed local copy the merge alone would miss:
 
 ```bash
 git fetch -q origin {pr_base} && git switch {pr_base} &&
 git merge --ff-only "origin/{pr_base}" &&
-git diff --quiet "origin/{pr_base}" -- .ai/project.yml
+git diff --quiet "origin/{pr_base}" -- :/.ai/project.yml
 ```
 
 **Read `.ai/project.yml` from that checkout, now verified synced,** for `{review.ci_gate}`,
 `{models.architect}`, `{repo}`, `{pr_base}`, `{code_paths}`, `{decisions.prefix}`,
-`{threat_model}`, `{ruleset.required_checks}`, and `{backlog}`. Missing or unreadable: stop;
-never guess a gate (`reference/project-schema.md`). Every step fails closed. Each code block
-is one tool call — shell state does not survive between calls.
+`{threat_model}`, `{ruleset.name}`, `{ruleset.rule_types}`, `{ruleset.required_checks}`,
+and `{backlog}` — missing or unreadable is a stop, and so is this `{pr_base}` not matching
+`git branch --show-current`: a second-hop branch can name itself honestly yet not be the
+one you're on. Never guess a gate (`reference/project-schema.md`).
+
+Then anchor both `{repo}` and `{pr_base}` to `origin` itself, not `gh`'s default-remote
+guess (can be `upstream` in a fork):
+
+```bash
+U=$(git remote get-url origin) && gh repo view "$U" --json nameWithOwner,defaultBranchRef \
+  --jq '[.nameWithOwner, (.defaultBranchRef.name // "")] | @tsv'
+```
+
+The call failing, or its first field not `{repo}`, is an unconditional stop: nothing below
+means anything against the wrong repo. The second field is the default branch: equal
+to `{pr_base}`, proceed; not equal — the schema's long-migration case
+(`reference/project-schema.md` § `repo`, `pr_base`) — confirm `{ruleset.name}` protects
+`{pr_base}` via `/way-of-working:resume` step 4's ruleset check; proceed only then. Neither
+holds: stop, naming both branch values. Every step fails closed; shell state does not
+survive between calls.
 
 ## Steps
 
 1. **Is there a gate, and is this the right session?** `{review.ci_gate}` `null`: say so and
-   stop — `/way-of-working:critic-gate` is the critic look such a repo gets instead.
-   Otherwise compare the model you're running as with `{models.architect}` and say so in one
-   line.
+   stop — `/way-of-working:critic-gate` is the look such a repo gets. Otherwise compare
+   your running model with `{models.architect}`.
 
-2. **State the integrity precondition once, then honor it.** If this session's context
-   contains authoring the diff — you wrote it, then `/clear`ed or `/model`-switched —
+2. **State the integrity precondition, then honor it.** If this context contains
+   authoring the diff — you wrote it, then `/clear`ed or `/model`-switched —
    **stop and do not post.** CI cannot observe a session boundary; the attestation you
-   paste in step 7 is what makes reviewing your own work a *knowing false statement*
-   rather than something that quietly happens.
+   paste in step 7 turns reviewing your own work into a *knowing false statement*.
 
 3. **Pin the target.** `gh pr view <N> --json headRefOid,headRefName,baseRefName,files`;
-   `baseRefName` must be `{pr_base}` — a PR based on any other branch is a stop, since the
-   author controls that base. Check whether the PR touches `{code_paths}` (or
+   `baseRefName` must be the anchored `{pr_base}` — any other branch is a stop. Check
+   whether the PR touches `{code_paths}` (or
    `{review.ci_gate.triggers_on}` where set). An exempt PR (docs, sprint plan, `.ai/`
    cursor) gets one plain statement and no review posted.
 
 4. **Check the other required checks first** — invoke `/way-of-working:pr-checks <N>` via
-   the Skill tool, not re-derived. Expect the gate itself to read
-   `absent` or `failure`: that is what you are about to satisfy. Review only a PR whose other required
-   checks are green, unless the human says otherwise: a fix pushed after your review moves
-   the head and re-arms the gate.
+   the Skill tool. Expect the gate to read `absent` or `failure`: that is what you're
+   about to satisfy. Review only a PR whose other checks are green, unless the human says
+   otherwise: a fix pushed after review moves the head and re-arms the gate.
 
-5. **Load context lean.** The PR body; the sprint-plan task row it links; the
-   `{decisions.prefix}` ids and `{threat_model}` boundaries it names; the critic-gate
-   outcome recorded on the PR. Not the whole plan, not the whole repo.
+5. **Load context lean.** The PR body; its sprint-plan task row; `{decisions.prefix}`
+   ids and `{threat_model}` boundaries it names; the critic-gate outcome. Not the whole
+   plan, not the whole repo.
 
 6. **Review by execution, in a scratch worktree.** Fetch the head, `git worktree add
-   <tmp> <sha>`, and reproduce each claim the PR makes: run the test it says it added,
-   the gate it says is green, the command it says now fails. Plant a mutation to witness
-   a guard go red, then remove it. This runs the PR's code with your credentials: do it
-   where the author is trusted or the worktree is sandboxed, and read no config from the
-   worktree. No subagent fan-out by default — the fresh session *is* the architect; spawn
-   a critic only for an angle you name, and verify its findings before they enter the
-   review. Line-anchored defects may go inline; the scope verdict goes in the body you
-   post next. `git worktree remove` when done, back at the main checkout's root, since
-   step 7 reads `.ai/project.yml` there.
+   <tmp> <sha>`, and reproduce each claim: the added test, the gate it says is
+   green, the command it says now fails. Plant a mutation to witness a guard go red,
+   then remove it. This runs the PR's code with your credentials: do it
+   only where the author is trusted or the worktree is sandboxed, and read no config from
+   it — the worktree shares this checkout's `.git`. No subagent fan-out by default — the
+   fresh session *is* the architect; spawn a critic only for a named angle, its findings
+   verified first.
+   Line-anchored defects may go inline; the scope verdict goes in the body posted next.
+   `git worktree remove` when done, back at the main checkout's root — step 7 re-reads
+   `.ai/project.yml` from there.
 
 7. **Compose and post.** The body **opens** with `{review.ci_gate.header}` and
    `{review.ci_gate.attestation}`, each on its own line, copied byte for byte from the
    synced `.ai/project.yml` — `yq -er`, or any reader that emits the scalar unchanged and
-   fails on a missing one — never typed from memory. A chain that stops before printing the
-   path is a stop:
+   fails on a missing one — never typed from memory. A chain that stops before printing
+   the path is a stop:
 
    ```bash
    T=$(mktemp -d) &&
@@ -90,8 +105,8 @@ is one tool call — shell state does not survive between calls.
    Claude-issued approval would be a gate approving itself.
 
 8. **Verify the post took.** Poll until `{review.ci_gate.check}` reads `success` on the
-   head SHA — bounded, about 90 s — through the tested predicate, which reads **both**
-   surfaces a gate can post to. The `&&` chain is load-bearing: a failed call must never
+   head SHA — bounded, about 90 s — through the tested predicate, reading **both**
+   surfaces it posts to. The `&&` chain is load-bearing: a failed call must never
    reach it, since a missing document reads as `absent`:
 
    ```bash
@@ -104,23 +119,21 @@ is one tool call — shell state does not survive between calls.
    review-gate-state.sh "{review.ci_gate.check}" < "$T/gate.tsv" && echo "$SHA"
    ```
 
-   Anything but `success` on stdout — `pending`, `failure`, `absent`, or nothing at all
-   (exit 2) — is not green. On exit 0 say which shape carried the gate (its stderr line).
-   Still not `success` at the bound: diagnose **in this order** and say which it was.
-   (a) **The head moved** — the printed SHA is not the one you reviewed; the review is
-   posted again against the new head. (b) **A string mismatch** —
-   `gh api --paginate repos/{repo}/pulls/<N>/reviews --jq '.[].body' | grep -cF` each
-   value (`reference/project-schema.md` § `review.ci_gate`). (c) **The gate's job never posted** — read its log
-   (`gh run view <run-id> --log`); a rerun is not the fix. The other shape, `success` here
-   while the PR still shows a red, is the **runner trap**: a status posted from a job whose
-   name is not in `{ruleset.required_checks}` leaves that job's own check-run red until
-   `gh run rerun`, and it blocks nothing. Then report the merge
-   verdict in `/way-of-working:pr-checks` language: READY, STALE-RED, NOT READY, or
-   PENDING.
+   Anything but `success` on stdout — `pending`, `failure`, `absent`, or nothing (exit 2) —
+   is not green. On exit 0 say which shape carried the gate. Still not `success` at the
+   bound: diagnose **in order**. (a) **Head moved** — the
+   printed SHA isn't the one reviewed; repost against the new head. (b) **String
+   mismatch** — `gh api --paginate repos/{repo}/pulls/<N>/reviews --jq '.[].body' | grep
+   -cF` each value (`reference/project-schema.md` § `review.ci_gate`). (c) **Job never
+   posted** — read its log (`gh run view <run-id> --log`); a rerun isn't the fix. The
+   **runner trap**: `success` here while the PR shows red is a status from a job not in
+   `{ruleset.required_checks}` — its check-run stays red until `gh run rerun`, blocking
+   nothing. Report the verdict in `/way-of-working:pr-checks` language: READY, STALE-RED,
+   NOT READY, or PENDING.
 
 9. **File every non-blocking finding now, one item each,** per `{backlog}`. For
-   `github_issues`: `gh issue create`, quoting the finding's reproduction and labeled per
-   `reference/conventions.md`; when `{backlog.repo}` is set, reach first, chained —
+   `github_issues`: `gh issue create`, quoting its reproduction, labeled per
+   `reference/conventions.md`; `{backlog.repo}` set: reach first —
    `gh api repos/{backlog.repo} --jq .permissions && gh issue create --repo {backlog.repo} …`.
    For `file`, an entry in `{backlog.path}` under the next `{backlog.item_prefix}` id.
    **Findings never travel in `next_action`.**
@@ -132,7 +145,7 @@ is one tool call — shell state does not survive between calls.
 
 - `--comment` only. No `--approve`, no `--request-changes`, no `gh pr merge`, no push to
   the branch, no `--force`.
-- The two frozen strings are copied from `.ai/project.yml` on `{pr_base}`, never typed.
-  Why: `reference/project-schema.md` only.
-- Wrong session (step 2), no gate (step 1), unreadable schema, a moved head, strings you
-  could not copy byte for byte: each is a stated stop, never a best effort.
+- The two frozen strings are copied from `.ai/project.yml` on `{pr_base}`, never typed —
+  why: `reference/project-schema.md`.
+- Wrong session, no gate, unreadable schema, a moved head, an uncopyable string: each is a
+  stop, not a best effort.
