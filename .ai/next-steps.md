@@ -16,7 +16,11 @@ release that closes the sprint are in its description.
 - **#85** (`f7440a0`): critic agent definitions now say read-only covers git state, not just
   files (a critic once moved HEAD in the shared workspace live). Critic gate: `architect` +
   `docs-consistency` + `security-critic`, **4 rounds** (human-authorized past the normal
-  2-round cap) — converged.
+  2-round cap) — converged. Round 1 found the fix didn't cover #85's own scenario
+  (uncommitted work); round 2 found and closed a push-to-real-remote hole the round-1 fix
+  itself had opened; rounds 3–4 were prose-accuracy corrections (a historical claim wrong
+  twice, then a self-contradiction), each caught by a critic reading the repo's own other
+  docs rather than just re-reading the new prose.
 - **#97** (`da5d842`, [PR #110](https://github.com/glunk-works/claude-workbench/pull/110),
   open): `architect-review` read `.ai/project.yml` from two copies and never synced the
   first, so a stale local `{pr_base}` could produce a confusing false NOT READY on a PR
