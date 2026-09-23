@@ -29,12 +29,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
-## [Unreleased]
+## [0.8.0] — 2026-09-23
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
 new directory, `.ai/parked/`, is **tracked** — a consuming repo whose `.gitignore` swallows
 all of `.ai/` cannot park a sprint, and `/way-of-working:park-sprint` refuses rather than
-committing nothing.
+committing nothing. One behavioral edge: `cursor-drift.sh`'s allowlist now admits
+`.ai/parked/*`, so a delta that is only a parked snapshot reads `cursor-sync` where it read
+`drift`, and `/way-of-working:resume` may auto-start across it.
 
 ### Added
 
