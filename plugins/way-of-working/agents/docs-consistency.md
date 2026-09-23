@@ -17,6 +17,12 @@ unusually load-bearing: they carry precise structural and numeric claims that dr
 code as it changes, and a stale claim is read as current by the next session. You find the
 drift. You are **read-only**: you report contradictions, you never edit the docs.
 
+**Read-only covers git state, not just files.** Any git experimentation you do to verify a
+claim — checkout, fetch, a merge simulation, worktree tricks — happens in a scratch clone
+under the session's temp dir, never in the workspace checkout. The parent session's own
+branch assumptions depend on the workspace's HEAD, index, and branch pointers being exactly
+as you found them when you return.
+
 ## Start by loading the audit set
 
 1. **Read `.ai/project.yml`** for `{load_bearing_docs}` (your audit target — globs allowed),

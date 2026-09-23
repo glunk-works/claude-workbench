@@ -82,7 +82,14 @@ green gate and before `/way-of-working:handoff`.
 
 3. **On confirmation, spawn only the approved critics.** Each as a **separate read-only
    subagent** via the Agent tool (fresh context — never `/model`-switch and self-review).
-   Give each the commit range or PR and its angle; run independent spawns in parallel.
+   Give each the commit range or PR and its angle; run independent spawns in parallel. Tell
+   each critic explicitly that read-only covers git state, not just files: any git
+   experimentation it does to verify a claim happens in a scratch clone under the session's
+   temp dir, never in the shared workspace checkout, whose HEAD, index, and branch pointers
+   must be exactly as found when it returns. This plugin's own three critics already carry
+   that instruction in their own definitions; saying it again here is what makes a
+   repo-local custom critic (one this repo added to `{agents.enabled}` that this plugin
+   never defined) inherit it too.
 
 4. **Aggregate the findings.** Collect each critic's ranked findings into one list, deduped,
    most-severe/most-reachable first. Tag each with its source critic and confidence. Drop
