@@ -83,7 +83,7 @@ green gate and before `/way-of-working:handoff`.
 3. **On confirmation, spawn only the approved critics.** Each as a **separate read-only
    subagent** via the Agent tool (fresh context — never `/model`-switch and self-review).
    Give each the commit range or PR and its angle; run independent spawns in parallel.
-   **Every spawn of a repo-local custom critic — including a step-5 re-spawn — repeats the
+   **Every spawn of a repo-local custom critic — including a *Fix and re-gate* re-spawn — repeats the
    git-state instruction in full.** This plugin's own three critics need no repeating: they
    already carry it in their own definitions. For a **repo-local custom critic** (one this
    repo added to `{agents.enabled}` that this plugin never defined), paste both

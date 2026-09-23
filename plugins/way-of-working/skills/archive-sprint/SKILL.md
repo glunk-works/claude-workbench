@@ -109,7 +109,7 @@ If any precondition fails, STOP and report why — do not archive.
    **Survey first, then cut the branch, then edit — in that order.** Work out what would
    move without changing anything yet. If the answer is nothing — no narrative to archive,
    no closed file-kind items, no deletable annotations — say so in one line, `git checkout
-   {pr_base}`, and go to the *Advance `.ai/state.json` to the next sprint* step: no branch,
+   {pr_base}`, and go to the *Advance `.ai/state.json`* step: no branch,
    no commit, no PR, and the *Report* step reports no compaction. Switch to `{pr_base}`
    even on that exit — the *Prune squash-merged local branches* step never prunes the
    branch you are standing on, so staying on the just-merged sprint branch would exempt the
@@ -390,7 +390,7 @@ If any precondition fails, STOP and report why — do not archive.
    {pr_base}` is no use either: it is empty for *every* squash-merged branch, which is the
    premise of the squash trap this prune exists for.
 
-6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. If the *Compact the deep record* step opened a compaction PR, say what it reclaimed and link it, and note it is awaiting the human's merge like any other PR; if nothing moved, say that instead of naming a commit that does not exist. What remains uncommitted is the tracked `next-steps.md` change from the *Seed a fresh `.ai/next-steps.md`* step — remind the user to commit that if they want it durable — unless the *Advance `.ai/state.json` to the next sprint* step handed to unpark, whose PR already carries the ledger. Confirm with `git status --short` that the tree holds only that (or nothing), so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
+6. **Report** what was archived, the new `current_sprint_id`, the next action, and the branches pruned. If the *Compact the deep record* step opened a compaction PR, say what it reclaimed and link it, and note it is awaiting the human's merge like any other PR; if nothing moved, say that instead of naming a commit that does not exist. What remains uncommitted is the tracked `next-steps.md` change from the *Seed a fresh `.ai/next-steps.md`* step — remind the user to commit that if they want it durable — unless the *Advance `.ai/state.json`* step handed to unpark, whose PR already carries the ledger. Confirm with `git status --short` that the tree holds only that (or nothing), so the next session starts from a state `/way-of-working:resume` can classify. If this same session did the sprint's work (so its friction is in context), offer a **`/way-of-working:retro`** pass before moving on — a sprint close is a natural retrospective moment; skip it silently if the working session was elsewhere.
 
 7. **Consider bumping the plugin pin.** A sprint close is the one ritual that reliably
    recurs, which makes it the right moment to check whether `.claude/settings.json` points

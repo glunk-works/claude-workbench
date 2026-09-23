@@ -177,7 +177,7 @@ handoff point. It does **not** archive — that is `/way-of-working:archive-spri
      decide; a `/way-of-working:resume` still expects `last_commit` to match HEAD and a clean tree, and
      unrelated dirty state costs the next session its auto-start.
    - **Keep this PR touching `.ai/next-steps.md` and nothing else — that is load-bearing.**
-     `last_commit` is set (the *Regenerate `.ai/next-steps.md`* step) *before* this commit
+     `last_commit` is set (the *Determine the new cursor* step) *before* this commit
      exists, so once the human merges, HEAD has moved past the cursor.
      `/way-of-working:resume`'s *Check reality vs. the cursor* step's classifier forgives
      the cursor commit as a `cursor-sync` result, and its allowlist is narrow — the ledger

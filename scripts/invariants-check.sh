@@ -98,7 +98,8 @@ fi
 
 # --- 4. /handoff guards WHOSE sprint it is before it determines the new cursor -----
 #
-# Handoff regenerates .ai/state.json and .ai/next-steps.md WHOLESALE (its steps 3-4), so
+# Handoff regenerates .ai/state.json and .ai/next-steps.md WHOLESALE (its *Write
+# `.ai/state.json`* and *Regenerate `.ai/next-steps.md`* steps), so
 # a handoff for work on some other sprint overwrites the cursor's sprint's in-flight
 # state, with nothing left to restore it from. Shipped wrong: the guard-less prose ran in
 # a consuming repo, whose cursor-sync PR would have done exactly that over a `blocked`
@@ -128,7 +129,12 @@ if [ -n "$HANDOFF" ]; then
     report "/handoff has no parked-sprint guard" \
       "  expected: a '**Park the cursor's sprint first**' way out before 'Determine the new cursor'" \
       "Without it a handoff for another sprint's work overwrites the cursor's in-flight state."
-  elif [ -n "$rewrite" ] && [ "$guard" -gt "$rewrite" ]; then
+  elif [ -z "$rewrite" ]; then
+    report "/handoff's 'Determine the new cursor' heading could not be found" \
+      "  expected a numbered list item whose bold text is exactly 'Determine the new cursor'" \
+      "The ordering check below can't run without it -- a silent pass here is worse than a" \
+      "loud one. If the step was renamed, update this anchor to match, deliberately."
+  elif [ "$guard" -gt "$rewrite" ]; then
     report "/handoff determines the new cursor before guarding whose sprint it is" \
       "  park guard at line $guard, 'Determine the new cursor' at line $rewrite" \
       "The guard must come FIRST -- a wholesale rewrite has already lost the state it guards."
@@ -181,15 +187,24 @@ fi
 
 # --- 6. A skill step is cited by name, never by position ---------------------------
 #
-# Skill steps are referenced by position (the word "step" followed by a number), so
-# inserting a step silently breaks every reference to the ones after it -- including
-# references in OTHER files, which the person doing the renumbering never sees. Shipped
-# wrong repeatedly: a recount during Sprint 2 planning found the form in 66 places across
-# 15 files, up from 34 across 8 when first raised, because nothing stopped it from coming
-# back. The fix, approved 2026-09-23: cite a step by its own bolded name in prose (e.g.
-# "the *Prune squash-merged local branches* step"), with no exception for a reference to a
-# step within the SAME file -- a single rule with no exceptions is checkable by grep, and
-# "except when it's the same file" is not.
+# Skill steps are referenced by position (the word "step" or "steps" followed by a
+# number), so inserting a step silently breaks every reference to the ones after it --
+# including references in OTHER files, which the person doing the renumbering never sees.
+# Shipped wrong repeatedly: a recount during Sprint 2 planning found the form in 66 places
+# across 15 files, up from 34 across 8 when first raised, because nothing stopped it from
+# coming back. The fix, approved 2026-09-23: cite a step by its own bolded name in prose
+# (e.g. "the *Prune squash-merged local branches* step"), with no exception for a
+# reference to a step within the SAME file -- a single rule with no exceptions is
+# checkable by grep, and "except when it's the same file" is not.
+#
+# The pattern covers three shapes, not just "step N": "step 5", "steps 3 and 4" (a plural
+# citing more than one position), and "step-5" (a hyphenated form). The first version of
+# this check only caught the singular space-separated form and shipped with a live plural
+# ("steps 3 and 4") and a live hyphenated one ("step-5") still in the tree, caught only by
+# a critic pass reviewing the very PR that added this check -- exactly the shape of defect
+# this check exists to make impossible. No left word-boundary is enforced, so a real
+# compound like "lockstep 2" would also match; no such text exists in this plugin's prose
+# today, and a false positive here just means an unnecessary rename, never a missed one.
 #
 # Comments are NOT stripped here, unlike check 1 -- a bin/ script's own comment is exactly
 # where a cross-file "step N" reference tends to live (it is prose describing another
@@ -199,7 +214,7 @@ fi
 # scope; rewriting its past tense would misrepresent what was actually approved when.
 step_hits=""
 for f in "${SKILLS[@]}" "${AGENTS[@]}" "${BIN_SCRIPTS[@]}" "${HOOK_SCRIPTS[@]}" "${REFERENCE_DOCS[@]}"; do
-  h=$(grep -inE 'step[[:space:]]*#?[0-9]+' "$f" || true)
+  h=$(grep -inE 'steps?[-[:space:]]*#?[0-9]+' "$f" || true)
   [ -n "$h" ] && step_hits+="  $f:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/    /')"$'\n'
 done
 if [ -n "$step_hits" ]; then
