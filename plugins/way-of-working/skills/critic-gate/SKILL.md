@@ -22,8 +22,8 @@ green gate and before `/way-of-working:handoff`.
 
 > **This pass is defense-in-depth that runs EARLIER.** Where `{review.ci_gate}` is set, it
 > is **not** that gate and must never be presented as satisfying it — that gate wants a
-> *fresh-session*, human-triggered review with an attestation, and it still happens after
-> `/way-of-working:handoff`, unchanged.
+> *fresh-session* review carrying the attestation, which `/way-of-working:architect-review <PR>`
+> posts after `/way-of-working:handoff`.
 >
 > Where `{review.ci_gate}` is `null`, this repo has no review CI gate, so **this pass is the
 > only standing critic look the diff gets before the human's merge.** That is not a reason
@@ -124,8 +124,9 @@ green gate and before `/way-of-working:handoff`.
    was accepted-with-reason. **State the round count and which stopping condition fired**
    (converged / cap reached / human called it) — a reader deciding how much to trust the diff
    needs to know whether the loop ended because it was done or because it ran out of rope.
-   - If `{review.ci_gate}` is set, the next step is `/way-of-working:handoff` → fresh session → `/way-of-working:resume` →
-     review the diff → post it. `/way-of-working:critic-gate` never posts that review.
+   - If `{review.ci_gate}` is set, the next step is `/way-of-working:handoff` → fresh session →
+     `/way-of-working:resume` → `/way-of-working:architect-review <PR>`. This skill never
+     posts that review.
    - If `{review.ci_gate}` is `null`, say explicitly that this pass is the only critic look
      the diff has had and that the human's merge is the sole remaining gate.
 

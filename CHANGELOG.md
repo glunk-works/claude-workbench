@@ -38,6 +38,34 @@ committing nothing.
 
 ### Added
 
+- **`/way-of-working:architect-review <PR>`, the fresh-session review gate's satisfier.**
+  One skill for the act `review.ci_gate` enforces, assembled until now from five prose
+  sites and improvised with `/code-review` plus a hand-typed `gh pr review`: it refuses
+  without a gate or inside the authoring session, pins the head SHA and the exemption,
+  runs `/way-of-working:pr-checks` first, reviews by execution in a scratch worktree,
+  pastes the frozen header and attestation out of `.ai/project.yml`, posts with
+  `--comment` only, then does the two things nobody owned — verifies the check went green
+  on that SHA on both surfaces a gate can post to, and files every non-blocking finding
+  as a backlog item instead of into `next_action`. The five sites (`reference/workflow.md`'s
+  review section and both switch-points diagrams, `/way-of-working:resume` step 6,
+  `/way-of-working:ship` step 7, `/way-of-working:critic-gate`'s callouts, the `architect`
+  agent) now point at it instead of carrying the procedure; the frozen-string warning
+  survives in `reference/project-schema.md` only. `/way-of-working:handoff` step 6's
+  next-session block names the skill when the next action is the review. No new schema
+  key; `review.ci_gate.runner_job` is noted as a possible later one.
+  `scripts/coupling-check.sh`'s first tier matched the bare token `architect-review` as a
+  pasted check name, which is now also the skill's own name; the tier now misses the
+  token only after `:`, after `/`, or as a `key: token` value (the three contexts that
+  name occupies) and catches it everywhere else, the gap included, pinned by
+  `tests/coupling-check.test.sh` (`#90`).
+- **`bin/review-gate-state.sh` resolves a review gate from both surfaces GitHub can carry
+  it on.** Fed one SHA's commit statuses and check-runs as `gh api --jq … @tsv` records,
+  it prints `success | pending | failure | absent` — any success on either surface wins,
+  since a posted review cannot be un-posted; pending beats failure; the name match is
+  exact, so a `-runner` job is not the gate — and exits 2 rather than guess on a record
+  it cannot read. `tests/review-gate-state.test.sh` pins both shapes, absent, the mixed
+  case (status success beside a stale check-run failure resolves to `success`), the
+  superseded-run trap, and every refusal. `WB-D10`'s third landing (`#91`).
 - **`/way-of-working:park-sprint <next-id>` and `/way-of-working:unpark-sprint <id>`.**
   One live cursor stays the design; a sprint set aside mid-flight becomes a tracked
   snapshot beside it — `.ai/parked/<id>-state.json`, carrying `parked_at`,
@@ -58,6 +86,12 @@ committing nothing.
 
 ### Changed
 
+- **`/way-of-working:pr-checks` step 3 reads a review gate posted as a commit status.** It
+  queried check-runs only, so on a repo whose gate posts a status from a job named
+  something else the step saw nothing and the STALE-RED verdict could never fire. It now
+  feeds both surfaces to `review-gate-state.sh`, says which shape carried the gate, and
+  chains the two `gh api` calls with `&&` so a call that failed never reads as `absent`
+  (`#91`).
 - **`/way-of-working:handoff`, `/way-of-working:archive-sprint` and `/way-of-working:resume`
   know about parked sprints.** Handoff stops, before it determines the new cursor, when
   the session's work was on a sprint other than `current_sprint_id` — its wholesale

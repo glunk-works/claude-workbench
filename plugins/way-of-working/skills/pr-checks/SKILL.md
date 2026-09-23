@@ -66,26 +66,57 @@ actually enforced.
      branch needs refreshing (merge `{pr_base}` *into* the branch — never force-push).
    - **`isDraft: true`** — checks may be intentionally incomplete; surface it.
 
-3. **Check for the superseded-review-run trap** — only when `{review.ci_gate}` is set. Skip
-   this step entirely when it is `null`; there is no review check to go stale.
+3. **Read the review gate on both surfaces it can post to** — only when `{review.ci_gate}`
+   is set. Skip this step entirely when it is `null`; there is no review check to go stale.
 
-   A repo whose review gate fires on both `pull_request` and `pull_request_review` gets
-   *two* `{review.ci_gate.check}` check-runs on one commit: the first fails correctly (no
-   review posted yet), the second passes once the review is posted — and **the failed one
-   never self-clears**. The signature is `BLOCKED` + a failing rollup + both a `success`
-   **and** a `failure` for that check name on the same SHA:
+   A review gate reaches a commit as a **check-run** (the implicit one a workflow job
+   creates, named after the job) or as a **commit status** (posted explicitly against the
+   resolved head SHA by a job that may be named anything — invisible to a check-runs
+   query, which is how this step used to miss it). Read both and let the tested predicate
+   resolve them; its header carries the rule — any success on either surface is `success`,
+   because a posted review cannot be un-posted; `pending` beats `failure`; `absent` means
+   neither surface carries the name:
 
    ```bash
-   SHA=$(gh pr view <N> --json headRefOid -q .headRefOid)
-   gh api "repos/{repo}/commits/$SHA/check-runs" \
+   SHA=$(gh pr view <N> --json headRefOid -q .headRefOid) && T=$(mktemp -d) &&
+   gh api --paginate "repos/{repo}/commits/$SHA/status" \
+     --jq '.statuses[] | ["status", .context, .state] | @tsv' > "$T/s.tsv" &&
+   gh api --paginate "repos/{repo}/commits/$SHA/check-runs" \
+     --jq '.check_runs[] | ["check-run", .name, .status, (.conclusion // "")] | @tsv' > "$T/c.tsv" &&
+   cat "$T/s.tsv" "$T/c.tsv" > "$T/gate.tsv" &&
+   review-gate-state.sh "{review.ci_gate.check}" < "$T/gate.tsv"
+   ```
+
+   Run it as **one** block: the `&&` chain is load-bearing, because a `gh api` call or a
+   file read that failed must never reach the predicate — a document that never arrived
+   reads as `absent` — and shell state does not survive between tool calls. On exit 0 its
+   stderr line says what each surface carried: **say which shape the gate took** in the
+   report. Exit 2 (nothing on stdout) means it could not answer — treat that as not green.
+
+   **The superseded-run trap.** A repo whose gate fires on both `pull_request` and
+   `pull_request_review` gets *two* `{review.ci_gate.check}` check-runs on one commit: the
+   first fails correctly (no review posted yet), the second passes once the review is
+   posted — and **the failed one never self-clears**. The signature is the predicate
+   reading `success` while `mergeStateStatus` is `BLOCKED` with a failing rollup, a
+   `failure` of the gate's name still on the SHA beside the `success`:
+
+   ```bash
+   SHA=$(gh pr view <N> --json headRefOid -q .headRefOid) &&
+   gh api --paginate "repos/{repo}/commits/$SHA/check-runs" \
      --jq '.check_runs[] | select(.name=="{review.ci_gate.check}") | {id, conclusion, url: .html_url}'
    ```
 
-   If a review is genuinely posted and its own run is green, the fix is to **re-run the
-   stale failed run** — `gh run rerun <old_failed_run_id>` (the run id is in the failed
-   check-run's URL) — and **never a new push**: a push changes the SHA and re-arms the trap.
-   Re-running a stale CI check is not merging, approving, or force-pushing; it is the one
-   sanctioned write this skill makes, and only on this exact, confirmed signature.
+   A status-shaped gate wears the same trap in a different coat: the job that posted the
+   green status keeps its own red check-run, under its *job* name, until re-run. Where that
+   job's name is not in `{ruleset.required_checks}` it blocks nothing and the verdict is
+   READY with a note; where it is, treat it exactly as above. Either way the fix is to
+   **re-run the stale failed run** — `gh run rerun <old_failed_run_id>` (the run id is in
+   the failed check-run's URL) — and **never a new push**: a push changes the SHA and
+   re-arms the trap. Re-running a stale CI check is not merging, approving, or
+   force-pushing; it is the one sanctioned write this skill makes, only on this exact,
+   confirmed signature, and only a run id reached from a check-run whose name is
+   `{review.ci_gate.check}` or in `{ruleset.required_checks}` — a rerun re-executes that
+   whole workflow run, so the name pins which run you may pick, not what runs.
 
 4. **State a single explicit verdict.** One of:
    - **READY** — every check in `{ruleset.required_checks}` is green (or legitimately
@@ -93,8 +124,9 @@ actually enforced.
      ready to merge — merge it yourself; I will not." List every required check with its
      state so the readiness is auditable.
    - **STALE-RED (auto-clearable)** — only possible when `{review.ci_gate}` is set. The
-     *only* red is a superseded `{review.ci_gate.check}` failure on the head SHA (the step-3
-     signature), the review is posted, and its own run is green. This is not a real failure.
+     step-3 predicate reads `success` and the *only* red is a superseded run of the gate's
+     name (or, on a status-shaped gate, its required runner job) on the head SHA — the
+     step-3 signature. This is not a real failure.
      Offer to `gh run rerun <old_failed_run_id>` (or, in a `/loop`/scheduled context, do it
      and re-poll); it clears to READY with no push. Say clearly this is the stale-run
      workaround, not a merge.

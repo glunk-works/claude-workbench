@@ -58,14 +58,14 @@ OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /way-
    |                                                                          |
    v   (fresh session, /model sonnet)                                         |
 SONNET (code)  /way-of-working:resume -> branch sprint/NN-slug -> implement + tests -> green
-   |           gate -> /way-of-working:critic-gate (QA-critic pass) -> commit -> push        |
+   |           gate -> /way-of-working:critic-gate -> commit, push, open PR                  |
    |           -> /way-of-working:handoff                                                    |
    |                                                                          |
    v   *** NEW SESSION (context empty), then /model opus ***                  |
    |   /model alone does NOT clear context — a reviewer holding the authoring |
    |   context proofreads its own reasoning instead of re-deriving it.        |
-OPUS (review)  /way-of-working:resume -> /code-review the diff -> HITL Gate -> update roadmap
-   |           -> open PR (base: pr_base) -> STOP                             |
+OPUS (review)  /way-of-working:resume -> /way-of-working:architect-review <PR> -> file findings
+   |           -> /way-of-working:handoff -> STOP                             |
    |                                                                          |
    v                                                                          |
 HUMAN          review the PR -> merge = approval -> /way-of-working:archive-sprint, plan next
@@ -157,7 +157,7 @@ which of them a repo uses, and `/way-of-working:critic-gate` proposes from that 
   in-session path when a full handoff is overkill.
 - **`architect`** (Opus, read-only) — correctness + structural-invariant review; the
   `/way-of-working:critic-gate` pre-review and a `/code-review` fan-out target. **Not** the
-  fresh-session review gate.
+  fresh-session review gate — `/way-of-working:architect-review` is.
 - **`security-critic`** (Opus, read-only) — threat-model taint-flow on a `code_paths` diff.
 - **`docs-consistency`** (Opus, read-only) — cross-check load-bearing prose against ground
   truth; run before a roadmap-heavy PR or at archive time.
@@ -177,7 +177,8 @@ when their own definition says they apply.
 >
 > An Architect Review going green does **not** pass the HITL Gate; it only unblocks it. The
 > older term "HITL review" meant the first of these and is retired — but note it survives,
-> deliberately and permanently, inside the frozen header string below.
+> deliberately and permanently, inside the frozen header string
+> (`reference/project-schema.md` § `review.ci_gate`).
 
 **Where `review.ci_gate` is configured, it is a CI gate**: any PR touching `code_paths`
 (or the gate's own `triggers_on`) fails the `review.ci_gate.check` check until a review
@@ -210,7 +211,7 @@ SONNET (code)   implement -> green gate -> /way-of-working:critic-gate -> push -
                                    ↓
                         *** NEW SESSION. Context empty. ***
                                    ↓
-OPUS (review)   /way-of-working:resume -> /code-review the diff -> post review -> HITL Gate
+OPUS (review)   /way-of-working:resume -> /way-of-working:architect-review <PR> -> HITL Gate
 ```
 
 `/way-of-working:resume` rehydrates from `.ai/` — the externalized cursor — **not** from a memory of having
@@ -220,62 +221,22 @@ author found obvious has to survive being read cold.
 
 This failed twice in practice before the attestation existed: one review was done by
 `/model opus` inside the authoring session, and another was authored by Opus and would have
-been self-reviewed. The gate now requires the reviewer to attest. **The review body must
-OPEN with these two lines, verbatim — the check matches BOTH by literal `contains()` on
-`review.ci_gate.header` and `.attestation`, so a paraphrase that reads identically to a
-human still fails the gate:**
+been self-reviewed. The gate now requires the reviewer to attest, and the check matches the
+header and the attestation by literal `contains()`. CI cannot observe a session boundary; the
+attestation does not prove one — it makes reviewing your own work a *knowing false statement*
+rather than something that quietly happens. That is as far as a check can go; real
+attribution needs a separate machine identity.
 
-> ⚠️ **The header says "HITL review" and that is deliberate — it is a frozen wire string, not
-> prose.** It predates the Architect Review / HITL Gate vocabulary above and was **knowingly
-> left unrenamed**: where the gate is wired, it is matched byte-for-byte by the CI workflow
-> and often pinned by that repo's own config test. Do **not** "correct" it to say "Architect
-> Review". Renaming it is a deliberate, atomic change to the workflow + the test + every
-> skill that recites it, never a docs tidy-up.
-
-```
-**Opus/Architect HITL review (automated)**
-
-*Fresh-session review: this session did not author the diff.*
-```
-
-⚠️ Paste that block **unchanged** and write the verdict below it. Do **not** reword the
-attestation to "Fresh-session attestation: …", "this review was produced in a new
-session…", or any equivalent — the matcher is a substring test, not an intent test, and
-every such variant fails (this is a recurring, silent mistake: the check goes red 4s after
-you post, not because the review is wrong but because the string drifted). CI cannot
-observe a session boundary; the attestation does not prove one — it makes reviewing your
-own work a *knowing false statement* rather than something that quietly happens. That is as
-far as a check can go; real attribution needs a separate machine identity.
-
-Two distinct artifacts — do not conflate them:
-
-- **The PR *description*** says what the change is and why (scope, links to the
-  `sprint_plan.md`). It is authored, editable prose.
-- **The PR *review*** is the Opus/Architect verdict on the diff, posted with
-  `gh pr review --comment`. It is a timestamped, threadable event — a real audit
-  record that survives edits to the description, and that cannot be mistaken for the
-  human's approval.
-
-Rules:
-
-- **`--comment` only. Never `--approve`, never `--request-changes`.** The merge is the
-  human's approval; a Claude-issued approval would be a gate approving itself. Where the
-  `gh` token authenticates as the same identity that opens the PR — the common solo-repo
-  shape — GitHub also enforces this: you cannot approve your own PR.
-- **Open the review with the verbatim two-line header + attestation block above** —
-  paste it, do not retype or reword it. Where Claude and the repo owner share one
-  identity, a posted review otherwise renders as the owner reviewing their own
-  PR; the header is what makes authorship unambiguous, and the check enforces both lines
-  by literal `contains()` (a paraphrase fails). (A separate machine identity would make
-  attribution *real* rather than declared.)
-- **Inline comments for line-anchored defects; the summary body for the scope verdict.**
-  `/code-review --comment` posts findings inline on the diff — right for concrete bugs.
-  But most of the Architect review is *not* line-anchored ("does this honor the sprint
-  plan's locked decisions?", "is the scope exactly these files?"); that judgment
-  belongs in the review summary.
-
-Nothing here changes on-branch commit hygiene: the repo's own commit rules (signing
-included, where used) still apply, and the green gate still runs locally before the push.
+**The procedure is `/way-of-working:architect-review <PR>`, and only that.** It pins the head
+SHA, checks the exemption, reviews by execution in a scratch worktree, pastes the header and
+attestation out of `.ai/project.yml` (why those two strings are frozen and must never be
+retyped is stated once, in `reference/project-schema.md` § `review.ci_gate`), posts with
+`gh pr review --comment` — never `--approve`: the merge is the human's approval, and a
+Claude-issued approval would be a gate approving itself — then verifies the check went green
+on that SHA on **both** surfaces a gate can post to, and files the non-blocking findings as
+backlog items rather than into the cursor. The posted review is a timestamped, threadable
+event distinct from the PR *description*: an audit record that survives edits to the
+description and cannot be mistaken for the human's approval.
 
 ## The skills
 
@@ -306,6 +267,11 @@ included, where used) still apply, and the green gate still runs locally before 
   dirty. Does **not** archive. Because `/way-of-working:resume` may execute the `next_action` unattended,
   write it as a bounded imperative you would be content to see carried out without you; if
   it genuinely needs a decision, open a `hitl_gate` instead.
+- **`/way-of-working:architect-review <PR>`** — run in the **fresh** session after
+  `/way-of-working:handoff`, where a repo wires `review.ci_gate`. Posts the review that
+  satisfies the gate, verifies it went green on the head SHA on both surfaces a gate can
+  post to, and files the non-blocking findings as backlog items. The only skill that
+  posts a review; never approves.
 - **`/way-of-working:archive-sprint`** — run **only** when a sprint has passed its HITL Gate **and** is committed.
   Moves its `next-steps.md` snapshot into `.ai/archive/`, compacts the deep record
   (completed narrative, and items closed during the sprint — resolved *and* declined —

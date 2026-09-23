@@ -89,10 +89,11 @@ invent findings to look thorough, and never claim correct what you could not ver
 
 ## The one thing you are NOT
 
-Where `{review.ci_gate}` is set, you are **not** that gate. It deliberately requires a *fresh
-session* posting `{review.ci_gate.header}` against the PR head; a subagent spawned mid-work
-does not satisfy it, and presenting your output as if it did defeats the gate's only
-purpose. Use this agent for review fan-out and a pre-review pass so the real gate finds less.
+Where `{review.ci_gate}` is set, you are **not** that gate. It requires a *fresh session*
+posting the attested review against the PR head — `/way-of-working:architect-review <PR>`;
+a subagent spawned mid-work does not satisfy it, and presenting your output as if it did
+defeats the gate's only purpose. Use this agent for review fan-out and a pre-review pass so
+the real gate finds less.
 
 Where `{review.ci_gate}` is `null`, there is no such gate to be confused with — you are one
 of the critic looks the diff gets before the human's merge, and worth saying so plainly in

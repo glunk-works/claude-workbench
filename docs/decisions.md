@@ -297,6 +297,13 @@ take effect. Full reasoning and the task breakdown that implements them:
   direction each time, so no fourth round of careful reading was going to converge. The
   design decision that predicate carries is `WB-D11`.
 
+  **Third landing:** `bin/review-gate-state.sh` + `tests/review-gate-state.test.sh` (issue
+  #91), invoked from `/way-of-working:pr-checks` step 3 and
+  `/way-of-working:architect-review` step 8. A review gate can reach a commit as a
+  check-run or as a commit status, and the prose read only the first; one predicate now
+  resolves both surfaces under a stated precedence (any success wins, pending beats
+  failure, exact name), so neither caller re-derives the rule.
+
 - **WB-D11 — an approximate matcher picks its error direction, states it, and pins it with a
   fixture.** `/way-of-working:ship` needs to know whether a ledger's `_archive` sibling
   carries a removed item *at its own entry anchor*. Two lines are byte-identical in shape —

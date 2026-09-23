@@ -3,7 +3,8 @@
 A [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces.md)
 holding `way-of-working`: a portable Claude Code session-handoff protocol
 (`/way-of-working:resume` → `/way-of-working:handoff` → `/way-of-working:critic-gate` → `/way-of-working:ship` → `/way-of-working:pr-checks` → `/way-of-working:archive-sprint`,
-plus `/way-of-working:retro`, and `/way-of-working:park-sprint` / `/way-of-working:unpark-sprint` for
+plus `/way-of-working:retro`, `/way-of-working:architect-review` for a repo that wires a
+fresh-session review gate, and `/way-of-working:park-sprint` / `/way-of-working:unpark-sprint` for
 setting a sprint aside mid-flight), four general-purpose review/implementation agents (`architect`, `coder`,
 `security-critic`, `docs-consistency`), a `SessionStart` cursor-banner hook, and the
 Global Conventions (Python, OpenTofu/IaC, Conventional Commits, branch names, the
@@ -55,9 +56,10 @@ own `.ai/project.yml` per `reference/project-schema.md`.
 plugins/way-of-working/
   .claude-plugin/plugin.json
   skills/     resume/ handoff/ critic-gate/ ship/ pr-checks/ archive-sprint/ retro/
-              park-sprint/ unpark-sprint/
+              park-sprint/ unpark-sprint/ architect-review/
   agents/     architect.md coder.md security-critic.md docs-consistency.md
-  bin/        cursor-drift.sh entry-anchor.sh — executables, added to the Bash tool's PATH
+  bin/        cursor-drift.sh entry-anchor.sh review-gate-state.sh — executables, added
+              to the Bash tool's PATH
   hooks/      hooks.json + ai-cursor-banner.sh
   reference/  conventions.md  workflow.md  project-schema.md
 docs/decisions.md   # the WB-D* log

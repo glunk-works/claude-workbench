@@ -60,6 +60,44 @@ mkdir -p "$d/plugins/wow/skills"
 echo "portable content" >"$d/plugins/wow/skills/a.md"
 assert_status "clean: a portable plugin passes" 0 "$d"
 
+# --- #90: the skill named architect-review is not the check name -------------
+# The bare token used to be a TIER1 literal (a consuming repo's check name). The
+# pattern now misses the token only after `:`, after `/`, or after `: ` (the three
+# contexts the skill's own name occupies: invocation, path, frontmatter) and catches it
+# everywhere else. The first fixture pins the three allowed contexts; the next six pin
+# placements that must still fail, including the shell-argument shape the plugin
+# itself now teaches (`review-gate-state.sh <gate>`), which the first version of this
+# pattern missed, and a single-space indent, which the second version missed; the last
+# pins the `key: token` gap so the comment's scope claim stays measured. Reverting to
+# the bare token fails the first; dropping any one alternative fails at least one of
+# the caught set.
+d="$(tree skill_name)"
+mkdir -p "$d/plugins/wow/skills/architect-review"
+printf 'name: architect-review\n# /way-of-working:architect-review <PR>\nsee skills/architect-review/SKILL.md\n' \
+  >"$d/plugins/wow/skills/architect-review/SKILL.md"
+assert_status "check name: the architect-review skill's own name, invocation and path pass" 0 "$d"
+
+check_name_caught() { # check_name_caught <desc> <line>
+  d="$(tree "cn_$(printf '%s' "$1" | tr -c 'a-z0-9' _)")"
+  mkdir -p "$d/plugins/wow/skills"
+  printf '%s\n' "$2" >"$d/plugins/wow/skills/a.md"
+  assert_status "check name: $1 is caught" 1 "$d"
+}
+check_name_caught "a quoted check name" 'select(.name=="architect-review")'
+check_name_caught "a job name derived from the check name" 'wait for the architect-review-runner job'
+check_name_caught "the bare token as a shell argument" 'cat gate.tsv | review-gate-state.sh architect-review'
+check_name_caught "the bare token in prose" 'the architect-review check is red'
+check_name_caught "the bare token at line start" 'architect-review is required'
+check_name_caught "the bare token after a single leading space" ' architect-review is required'
+
+# The stated gap: a YAML key's value is the frontmatter's shape, so it cannot be caught
+# without catching the frontmatter. A consuming repo's config carries this shape;
+# plugin prose has no reason to.
+d="$(tree yaml_scalar_gap)"
+mkdir -p "$d/plugins/wow/skills"
+echo 'check: architect-review' >"$d/plugins/wow/skills/a.md"
+assert_status "check name: a YAML key's value is the stated gap and passes" 0 "$d"
+
 # --- the #49 bug: a component directory nobody added to a list --------------
 d="$(tree newdir)"
 mkdir -p "$d/plugins/wow/commands" "$d/plugins/wow/skills"
