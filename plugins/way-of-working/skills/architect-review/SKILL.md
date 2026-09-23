@@ -40,8 +40,8 @@ U=$(git remote get-url origin) && gh repo view "$U" --json nameWithOwner,default
 ```
 
 The call failing, or its first field not `{repo}`, is an unconditional stop: nothing below
-means anything against the wrong repo. The second field is the default branch: equal
-to `{pr_base}`, proceed; not equal — the schema's long-migration case
+means anything against the wrong repo. The second field is the default branch: equal to
+`{pr_base}` proceeds; not equal — the schema's long-migration case
 (`reference/project-schema.md` § `repo`, `pr_base`) — confirm `{ruleset.name}` protects
 `{pr_base}` via `/way-of-working:resume` step 4's ruleset check; proceed only then. Neither
 holds: stop, naming both branch values. Every step fails closed; shell state does not
@@ -49,7 +49,7 @@ survive between calls.
 
 ## Steps
 
-1. **Is there a gate, and is this the right session?** `{review.ci_gate}` `null`: say so and
+1. **Is there a gate, is this the right session?** `{review.ci_gate}` `null`: say so and
    stop — `/way-of-working:critic-gate` is the look such a repo gets. Otherwise compare
    your running model with `{models.architect}`.
 
@@ -58,16 +58,16 @@ survive between calls.
    **stop and do not post.** CI cannot observe a session boundary; the attestation you
    paste in step 7 turns reviewing your own work into a *knowing false statement*.
 
-3. **Pin the target.** `gh pr view <N> --json headRefOid,headRefName,baseRefName,files`;
+3. **Pin the target.** `gh pr view <N> --json headRefOid,baseRefName,files`;
    `baseRefName` must be the anchored `{pr_base}` — any other branch is a stop. Check
-   whether the PR touches `{code_paths}` (or
-   `{review.ci_gate.triggers_on}` where set). An exempt PR (docs, sprint plan, `.ai/`
-   cursor) gets one plain statement and no review posted.
+   whether the PR touches `{code_paths}` (or `{review.ci_gate.triggers_on}`). An exempt PR
+   (docs, sprint plan, `.ai/` cursor) gets one plain statement, no review posted.
 
 4. **Check the other required checks first** — invoke `/way-of-working:pr-checks <N>` via
-   the Skill tool. Expect the gate to read `absent` or `failure`: that is what you're
-   about to satisfy. Review only a PR whose other checks are green, unless the human says
-   otherwise: a fix pushed after review moves the head and re-arms the gate.
+   the Skill tool. The gate reads `absent` or `failure` here: what you're about to satisfy;
+   `success` already means a review satisfied this SHA, so ask why first. Review only a
+   PR whose other checks are green, unless the human says otherwise: a fix pushed after
+   review moves the head and re-arms the gate.
 
 5. **Load context lean.** The PR body; its sprint-plan task row; `{decisions.prefix}`
    ids and `{threat_model}` boundaries it names; the critic-gate outcome. Not the whole
@@ -99,47 +99,49 @@ survive between calls.
    ```
 
    Append to that file, in order: `Reviewed against head <sha>`; the verdict; ranked
-   findings, each with its reproduction; what you independently verified. Post with
+   findings with reproductions; what you independently verified. Post with
    `gh pr review <N> --comment --body-file <that path>`. **Never `--approve`, never
    `--request-changes`, never merge**: the merge is the human's approval, and a
    Claude-issued approval would be a gate approving itself.
 
 8. **Verify the post took.** Poll until `{review.ci_gate.check}` reads `success` on the
    head SHA — bounded, about 90 s — through the tested predicate, reading **both**
-   surfaces it posts to. The `&&` chain is load-bearing: a failed call must never
-   reach it, since a missing document reads as `absent`:
+   surfaces it posts to; name which carried it. The `&&` chain is load-bearing: a failed
+   call must never reach it, since a missing document reads as `absent`:
 
    ```bash
-   SHA=$(gh pr view <N> --json headRefOid -q .headRefOid) && T=$(mktemp -d) &&
-   gh api --paginate "repos/{repo}/commits/$SHA/status" \
-     --jq '.statuses[] | ["status", .context, .state] | @tsv' > "$T/s.tsv" &&
-   gh api --paginate "repos/{repo}/commits/$SHA/check-runs" \
-     --jq '.check_runs[] | ["check-run", .name, .status, (.conclusion // "")] | @tsv' > "$T/c.tsv" &&
-   cat "$T/s.tsv" "$T/c.tsv" > "$T/gate.tsv" &&
-   review-gate-state.sh "{review.ci_gate.check}" < "$T/gate.tsv" && echo "$SHA"
+   for i in $(seq 6); do
+     SHA=$(gh pr view <N> --json headRefOid -q .headRefOid) && T=$(mktemp -d) &&
+     gh api --paginate "repos/{repo}/commits/$SHA/status" \
+       --jq '.statuses[] | ["status", .context, .state] | @tsv' > "$T/s.tsv" &&
+     gh api --paginate "repos/{repo}/commits/$SHA/check-runs" \
+       --jq '.check_runs[] | ["check-run", .name, .status, (.conclusion // "")] | @tsv' > "$T/c.tsv" &&
+     cat "$T/s.tsv" "$T/c.tsv" > "$T/gate.tsv" &&
+     G=$(review-gate-state.sh "{review.ci_gate.check}" < "$T/gate.tsv") && echo "$G $SHA" &&
+     [ "$G" = success ] && break
+     sleep 15
+   done
    ```
 
-   Anything but `success` on stdout — `pending`, `failure`, `absent`, or nothing (exit 2) —
-   is not green. On exit 0 say which shape carried the gate. Still not `success` at the
-   bound: diagnose **in order**. (a) **Head moved** — the
-   printed SHA isn't the one reviewed; repost against the new head. (b) **String
-   mismatch** — `gh api --paginate repos/{repo}/pulls/<N>/reviews --jq '.[].body' | grep
-   -cF` each value (`reference/project-schema.md` § `review.ci_gate`). (c) **Job never
-   posted** — read its log (`gh run view <run-id> --log`); a rerun isn't the fix. The
-   **runner trap**: `success` here while the PR shows red is a status from a job not in
-   `{ruleset.required_checks}` — its check-run stays red until `gh run rerun`, blocking
-   nothing. Report the verdict in `/way-of-working:pr-checks` language: READY, STALE-RED,
-   NOT READY, or PENDING.
+   Any word but `success`, or nothing (exit 2), is not green. Not `success` at the bound:
+   diagnose **in order**. (a) **Head moved** — the printed SHA isn't the one
+   reviewed; repost against the new head. (b) **String mismatch** — `gh api --paginate
+   repos/{repo}/pulls/<N>/reviews --jq '.[].body' | grep -cF` each value
+   (`reference/project-schema.md` § `review.ci_gate`). (c) **Job never posted** — read its
+   log (`gh run view <run-id> --log`); a rerun isn't the fix. The **runner trap**:
+   `success` while the PR shows red comes from a job not in `{ruleset.required_checks}` —
+   its check-run stays red until `gh run rerun`, blocking nothing. Report the verdict in
+   `/way-of-working:pr-checks` language: READY, STALE-RED, NOT READY, or PENDING.
 
-9. **File every non-blocking finding now, one item each,** per `{backlog}`. For
+9. **File every non-blocking finding, one item each,** per `{backlog}`. For
    `github_issues`: `gh issue create`, quoting its reproduction, labeled per
    `reference/conventions.md`; `{backlog.repo}` set: reach first —
    `gh api repos/{backlog.repo} --jq .permissions && gh issue create --repo {backlog.repo} …`.
    For `file`, an entry in `{backlog.path}` under the next `{backlog.item_prefix}` id.
    **Findings never travel in `next_action`.**
 
-10. **End with the pointer:** `/way-of-working:handoff`. The cursor's next action is the
-    human's merge or the fix-and-repost loop — never a second review from this session.
+10. **End with the pointer:** `/way-of-working:handoff`. Next: the human's merge, or the
+    fix-and-repost loop — never a second review from this session.
 
 ## Guardrails
 
@@ -147,5 +149,5 @@ survive between calls.
   the branch, no `--force`.
 - The two frozen strings are copied from `.ai/project.yml` on `{pr_base}`, never typed —
   why: `reference/project-schema.md`.
-- Wrong session, no gate, unreadable schema, a moved head, an uncopyable string: each is a
-  stop, not a best effort.
+- Wrong session, no gate, unreadable schema, a moved head: each is a stop, never a best
+  effort.
