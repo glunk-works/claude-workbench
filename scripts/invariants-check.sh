@@ -124,6 +124,41 @@ if [ -n "$HANDOFF" ]; then
   fi
 fi
 
+# --- 5. The two prune-block copies stay byte-identical ----------------------------
+#
+# docs/decisions.md asserts the branch-prune block in resume/SKILL.md and
+# archive-sprint/SKILL.md is byte-identical, and a future bin/ extraction of that block
+# depends on it staying that way. Nothing enforced it: #60 roughly doubled the block's
+# intricacy, and three critic rounds each verified parity BY HAND -- the third round
+# flagged the invariant as prose-only. A hand check repeated every round is the
+# definition of something to mechanize. See issue #62.
+extract_prune_block() {
+  local file="$1" hit fence_start fence_end
+  hit=$(grep -n 'base=\$(yq -r \.pr_base' "$file" | head -1 | cut -d: -f1 || true)
+  [ -n "$hit" ] || return 1
+  fence_start=$(head -n "$hit" "$file" | grep -n '^ *```bash$' | tail -1 | cut -d: -f1 || true)
+  fence_end=$(tail -n "+$((hit + 1))" "$file" | grep -n '^ *```$' | head -1 | cut -d: -f1 || true)
+  [ -n "$fence_start" ] && [ -n "$fence_end" ] || return 1
+  fence_end=$((hit + fence_end - 1))
+  sed -n "$((fence_start + 1)),$((fence_end - 1))p" "$file"
+}
+RESUME_FILE=$(printf '%s\n' "${SKILLS[@]}" | grep '/resume/SKILL.md$' || true)
+ARCHIVE_FILE=$(printf '%s\n' "${SKILLS[@]}" | grep '/archive-sprint/SKILL.md$' || true)
+if [ -n "$RESUME_FILE" ] && [ -n "$ARCHIVE_FILE" ]; then
+  resume_block=$(extract_prune_block "$RESUME_FILE" || true)
+  archive_block=$(extract_prune_block "$ARCHIVE_FILE" || true)
+  if [ -z "$resume_block" ] || [ -z "$archive_block" ]; then
+    report "could not locate the prune block in resume and/or archive-sprint" \
+      "  expected a fenced bash block containing 'base=\$(yq -r .pr_base' in both files"
+  elif [ "$resume_block" != "$archive_block" ]; then
+    diff_out=$(diff <(printf '%s\n' "$resume_block") <(printf '%s\n' "$archive_block") || true)
+    report "the two prune-block copies have diverged" \
+      "$(printf '%s\n' "$diff_out" | sed 's/^/  /')" \
+      "resume/SKILL.md and archive-sprint/SKILL.md must carry byte-identical prune" \
+      "blocks -- see docs/decisions.md and issue #62."
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   cat >&2 <<'EOF'
 
