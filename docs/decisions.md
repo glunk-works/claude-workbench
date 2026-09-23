@@ -538,6 +538,8 @@ against. Worth recording because the cheaper answer was available from the start
 found by asking "what does this actually cost the people adopting it," not by a new
 requirement arriving.
 
-`WB-D10` and `WB-D11` land unreleased, alongside #23's push-identity fix (`CHANGELOG.md`'s
-`[Unreleased]` section) — they do not yet have a tag. `WB-D12` lands with `#88`, also
-unreleased; `#92` is the release that tags it.
+`WB-D10`'s first landing (`bin/cursor-drift.sh`, #21) shipped in `v0.6.0` alongside #23's
+push-identity fix; its second (`bin/entry-anchor.sh`, #66) and `WB-D11` shipped in `v0.7.0`.
+`v0.8.0` (#92) lands `WB-D12` (#88) and `WB-D10`'s third landing, `bin/review-gate-state.sh`
+(#91), with the park series and `/way-of-working:architect-review`. It is **non-breaking** —
+no `.ai/project.yml` key added, removed, or renamed.
