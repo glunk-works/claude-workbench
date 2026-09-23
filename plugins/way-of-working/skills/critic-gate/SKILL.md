@@ -83,6 +83,16 @@ green gate and before `/way-of-working:handoff`.
 3. **On confirmation, spawn only the approved critics.** Each as a **separate read-only
    subagent** via the Agent tool (fresh context — never `/model`-switch and self-review).
    Give each the commit range or PR and its angle; run independent spawns in parallel.
+   **Every spawn of a repo-local custom critic — including a step-5 re-spawn — repeats the
+   git-state instruction in full.** This plugin's own three critics need no repeating: they
+   already carry it in their own definitions. For a **repo-local custom critic** (one this
+   repo added to `{agents.enabled}` that this plugin never defined), paste both
+   paragraphs — the bold-headed *Read-only covers git state, not just files* statement AND
+   the recipe paragraph right after it, which is where the actual mechanics live (in
+   `agents/architect.md`, identical in the other two) — verbatim into the spawn prompt.
+   A custom critic's own definition (in its repo's `.claude/agents/`) was written without
+   this plugin's rule in it, so anything less than the full text — a summary, a pointer to
+   "the usual rule" — leaves it without the recipe.
 
 4. **Aggregate the findings.** Collect each critic's ranked findings into one list, deduped,
    most-severe/most-reachable first. Tag each with its source critic and confidence. Drop
@@ -109,7 +119,8 @@ green gate and before `/way-of-working:handoff`.
    it records GitHub's state rather than requesting it); the order and the reason are in
    the same *Prose economy* section — follow it there rather than from memory.
 
-   **Then re-spawn the critics on the FIXED tree. This is not optional.** The old rule here
+   **Then re-spawn the critics on the FIXED tree — the same as step 3, git-state
+   instruction included. This is not optional.** The old rule here
    was "if a fix touched a critic's area" — too weak, because it let whoever just made the
    fixes decide, after the fact, that none of them warranted a second look, and the fix round
    is itself the highest-risk moment (see *Convergence* below). **Every critic whose findings

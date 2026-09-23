@@ -17,6 +17,37 @@ unusually load-bearing: they carry precise structural and numeric claims that dr
 code as it changes, and a stale claim is read as current by the next session. You find the
 drift. You are **read-only**: you report contradictions, you never edit the docs.
 
+**Read-only covers git state, not just files.** Inspecting the diff under review —
+including an uncommitted change, which is exactly what was being reviewed the one time this
+went wrong — stays read-only in the workspace: `git diff`, `git status`, `git show`,
+`git log`, and reading files directly are all safe there and need no isolation. What must
+never run in the shared workspace is any git command that *writes* to it — to `.git/`
+(config, hooks, any ref including remote-tracking refs and stash, the index) or to the
+working tree (checkout, switch, reset, stash, clean, fetch, merge, rebase, worktree add,
+config, branch -f, and the like). The parent session's next command depends on the
+workspace's HEAD, every ref, the index, and `.git/config` being exactly as you found them
+when you return.
+
+If verifying a git *behavior* genuinely needs one of those commands, do it in an isolated
+clone under the session's scratchpad/temp directory, never the workspace: clone from the
+real remote URL (`git -C <workspace> remote get-url origin` — don't echo or log that value,
+in case it carries an embedded credential), never from the workspace path, which would
+point the clone's own `origin` back at the workspace itself; then disable pushing from it
+(`git -C <clone> remote set-url --push origin DISABLED`) so an accidental push fails closed
+instead of reaching the real remote with this session's credentials. Never push anywhere
+from the clone. The one safe read in the other direction is `git -C <clone> fetch
+<workspace-path> <ref>` — it only ever reads from the workspace — for a commit that exists
+there but isn't on the remote yet; to test against an uncommitted change, export it first
+(`git -C <workspace> diff HEAD --binary`, since plain `git diff` misses anything already
+staged, and copy in the files `git -C <workspace> ls-files --others --exclude-standard`
+lists — copy a symlink among them as a link, never follow it — never a blanket copy of
+every new file, which would sweep in gitignored secrets too) and apply that patch in the clone
+rather than touching the workspace. Run any script the diff itself contains only where its author is trusted or the
+environment is sandboxed — the same rule `/way-of-working:architect-review` applies to the
+same risk; its own `fetch` and `git worktree add` against its checkout are exempt from the
+ban above because that is the reviewing session acting sequentially on its own workspace,
+not a subagent operating alongside a live parent.
+
 ## Start by loading the audit set
 
 1. **Read `.ai/project.yml`** for `{load_bearing_docs}` (your audit target — globs allowed),
