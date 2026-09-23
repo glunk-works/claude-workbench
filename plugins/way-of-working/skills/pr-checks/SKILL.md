@@ -48,9 +48,9 @@ actually enforced.
    an error; read its output regardless.
 
 2. **Classify each required check.** Report `green` / `red` / `pending` / `absent` for
-   every name in `{ruleset.required_checks}` — the same word step 3's predicate uses for
-   the identical fact on the review-gate check, so a reviewer never sees two words for one
-   state. Then decode the ambiguous states — this is where the value is:
+   every name in `{ruleset.required_checks}` — the same word the *Read the review gate on
+   both surfaces it can post to* step's predicate uses for the identical fact on the
+   review-gate check, so a reviewer never sees two words for one state. Then decode the ambiguous states — this is where the value is:
 
    - **`skipped` ≠ `failure`, but also ≠ a free pass.** A job can report `skipped` two ways:
      (a) a *deliberate condition* — e.g. on a PR touching none of `{code_paths}`, a test
@@ -121,13 +121,15 @@ actually enforced.
 
 4. **State a single explicit verdict.** One of:
    - **READY** — every check in `{ruleset.required_checks}` is green (or legitimately
-     skipped per step 2a) **and** `mergeable` is not `CONFLICTING`. Tell the user "PR #N is
+     skipped per the *Classify each required check* step's (a)) **and** `mergeable` is not
+     `CONFLICTING`. Tell the user "PR #N is
      ready to merge — merge it yourself; I will not." List every required check with its
      state so the readiness is auditable.
    - **STALE-RED (auto-clearable)** — only possible when `{review.ci_gate}` is set. The
-     step-3 predicate reads `success` and the *only* red is a superseded run of the gate's
-     name (or, on a status-shaped gate, its required runner job) on the head SHA — the
-     step-3 signature. This is not a real failure.
+     *Read the review gate on both surfaces it can post to* step's predicate reads
+     `success` and the *only* red is a superseded run of the gate's name (or, on a
+     status-shaped gate, its required runner job) on the head SHA — that step's signature.
+     This is not a real failure.
      Offer to `gh run rerun <old_failed_run_id>` (or, in a `/loop`/scheduled context, do it
      and re-poll); it clears to READY with no push. Say clearly this is the stale-run
      workaround, not a merge.
@@ -142,7 +144,7 @@ actually enforced.
    `gh pr review --approve`, no `git push --force`, ever. If the user asks you to merge,
    confirm the verdict is READY and hand it back — the merge click is theirs. The **only**
    sanctioned write is `gh run rerun <old_failed_run_id>` on a **confirmed** stale review
-   run (step 3).
+   run (the *Read the review gate on both surfaces it can post to* step).
 
 ## Report shape
 
@@ -150,7 +152,8 @@ List every required check by name with its state, then the merge state, then one
 line. The example below is shaped for an 8-check repo with a review gate; the names and the
 count come from `{ruleset.required_checks}`, so a repo with four checks prints four. A
 required check with no run on the head SHA prints as `absent` — never omitted — the same
-word steps 2 and 3 use for the identical fact.
+word the *Classify each required check* and *Read the review gate on both surfaces it can
+post to* steps use for the identical fact.
 
 ```
 PR #94 — "test(core): land the mutation-audit fix verdicts" (sprint/38-t3 → main)

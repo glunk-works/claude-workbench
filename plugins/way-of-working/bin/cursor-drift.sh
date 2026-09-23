@@ -2,7 +2,8 @@
 # Classify .ai/state.json's `last_commit` against the current HEAD.
 #
 # This is a deterministic predicate with a correctness argument, not a judgment
-# call, so it is a tested script that /way-of-working:resume step 2 invokes
+# call, so it is a tested script that /way-of-working:resume's *Check reality vs. the
+# cursor* step invokes
 # rather than a computation described in skill prose -- prose shipped the wrong
 # answer here twice: first by comparing `last_commit` to HEAD with plain SHA
 # equality, then by replacing that with a commit-*range* form that only means

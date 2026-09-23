@@ -79,7 +79,8 @@ means anything against the wrong repo or base. Never guess a gate
 2. **State the integrity precondition, then honor it.** If this context contains
    authoring the diff — you wrote it, then `/clear`ed or `/model`-switched —
    **stop and do not post.** CI cannot observe a session boundary; the attestation you
-   paste in step 7 turns reviewing your own work into a *knowing false statement*.
+   paste in the *Compose and post* step turns reviewing your own work into a *knowing false
+   statement*.
 
 3. **Pin the target.** `gh pr view <N> --json headRefOid,baseRefName,files`;
    `baseRefName` must be the anchored `{pr_base}` — any other branch is a stop. Check
@@ -105,8 +106,8 @@ means anything against the wrong repo or base. Never guess a gate
    fresh session *is* the architect; spawn a critic only for a named angle, its findings
    verified first.
    Line-anchored defects may go inline; the scope verdict goes in the body posted next.
-   `git worktree remove` when done, back at the main checkout's root — step 7 re-reads
-   `.ai/project.yml` from there.
+   `git worktree remove` when done, back at the main checkout's root — the *Compose and
+   post* step re-reads `.ai/project.yml` from there.
 
 7. **Compose and post.** The body **opens** with `{review.ci_gate.header}` and
    `{review.ci_gate.attestation}`, each on its own line, copied byte for byte from the

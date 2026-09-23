@@ -22,8 +22,8 @@ re-verifies it before `/way-of-working:resume` may run it unattended.
    `current_sprint_id` has a snapshot under `.ai/parked/` — the swap case, where
    `/way-of-working:park-sprint` just wrote it and the live copy is a duplicate. Any
    other cursor is in flight — stop and say so.
-3. The tree is clean, except a swap's new snapshots — step 1 overwrites the ledger, losing
-   any uncommitted edit.
+3. The tree is clean, except a swap's new snapshots — the *Restore* step overwrites the
+   ledger, losing any uncommitted edit.
 
 ## Steps
 
@@ -42,7 +42,8 @@ re-verifies it before `/way-of-working:resume` may run it unattended.
    **Just done** line, `unparked <id> at <HEAD>` — in a swap, also `parked <other-id>:
    <parked_reason>`. Never copy the parked list in; the directory is the authority. Leave
    the rest as parked.
-4. **Commit as one docs-only cursor-sync PR** per `/way-of-working:handoff` step 5. The
+4. **Commit as one docs-only cursor-sync PR** per `/way-of-working:handoff`'s *Commit
+   `.ai/next-steps.md` as its own docs-only PR against `{pr_base}`* step. The
    delta — deletions under `.ai/parked/`, a swap's new snapshots, `.ai/next-steps.md` —
    is what `cursor-drift.sh` classifies as `cursor-sync`. Nothing else goes in. **Never
    merge.** Report the PR URL and stop.

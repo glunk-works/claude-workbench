@@ -16,10 +16,11 @@ committing on the base branch, a wrong scope) can't happen. This skill **opens**
 approval.
 
 **Read `.ai/project.yml` first** for `{pr_base}`, `{repo}`, `{code_paths}`,
-`{review.ci_gate}`, and — for the ledger-conflict rule in step 1 — `{backlog}`, `{roadmap}`
-and `{decisions.prefix}`. Commit and PR-title grammar is not repo-specific — it lives in
-`reference/conventions.md`; read it rather than restating it here. Step 5 also reads
-`pointers.sprint_plan` from `.ai/state.json` when a cursor exists.
+`{review.ci_gate}`, and — for the ledger-conflict rule in the *Preflight the branch* step —
+`{backlog}`, `{roadmap}` and `{decisions.prefix}`. Commit and PR-title grammar is not
+repo-specific — it lives in `reference/conventions.md`; read it rather than restating it
+here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_plan` from
+`.ai/state.json` when a cursor exists.
 
 ## Steps
 
@@ -156,8 +157,8 @@ and `{decisions.prefix}`. Commit and PR-title grammar is not repo-specific — i
 
      This only verifies **`gh`'s** identity — `git push` can still resolve a different,
      write-less account through its own credential helper and fail later regardless of a
-     healthy result here (see `reference/conventions.md` § *Push identity*). If the push in
-     step 3 403s despite this check passing, that mismatch is the first thing to check —
+     healthy result here (see `reference/conventions.md` § *Push identity*). If the
+     *Push the branch* step's push 403s despite this check passing, that mismatch is the first thing to check —
      use the workaround documented there — though a 403 can also mean SSO authorization,
      an IP allow-list, or a credential that expired between this check and the push.
 
@@ -227,7 +228,7 @@ and `{decisions.prefix}`. Commit and PR-title grammar is not repo-specific — i
      `/way-of-working:architect-review <N>`.
    - **`{review.ci_gate}` is `null`:** this repo has no review CI gate. Say nothing about
      one — do not invent a review step, and do not describe the PR as exempt from a gate
-     that does not exist. The PR is complete at step 8.
+     that does not exist. The PR is complete at the *Stop at the open PR* step.
 
 8. **Stop at the open PR.** Report the PR URL and, if you want, hand off to `/way-of-working:pr-checks <N>`
    to watch the required checks. **No `gh pr merge`, no `gh pr review --approve`, no

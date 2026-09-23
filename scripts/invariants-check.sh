@@ -15,6 +15,8 @@ fail=0
 SKILLS=(plugins/*/skills/*/SKILL.md)
 AGENTS=(plugins/*/agents/*.md)
 BIN_SCRIPTS=(plugins/*/bin/*.sh)
+HOOK_SCRIPTS=(plugins/*/hooks/*.sh)
+REFERENCE_DOCS=(plugins/*/reference/*.md)
 
 report() {
   echo "INVARIANT FAIL: $1" >&2
@@ -96,7 +98,8 @@ fi
 
 # --- 4. /handoff guards WHOSE sprint it is before it determines the new cursor -----
 #
-# Handoff regenerates .ai/state.json and .ai/next-steps.md WHOLESALE (its steps 3-4), so
+# Handoff regenerates .ai/state.json and .ai/next-steps.md WHOLESALE (its *Write
+# `.ai/state.json`* and *Regenerate `.ai/next-steps.md`* steps), so
 # a handoff for work on some other sprint overwrites the cursor's sprint's in-flight
 # state, with nothing left to restore it from. Shipped wrong: the guard-less prose ran in
 # a consuming repo, whose cursor-sync PR would have done exactly that over a `blocked`
@@ -109,15 +112,29 @@ fi
 # the frontmatter description would pin the first hit above the fold forever, and the
 # guard could then be deleted without tripping the gate. Rewording the bullet means
 # updating this pattern deliberately -- say so in the commit.
+#
+# `rewrite` is anchored to the numbered HEADING itself (a list item whose bold text is
+# exactly "Determine the new cursor"), not a bare substring search: since issue #61's
+# name-based step references (check 6, below), the step's own name is legitimately cited
+# in prose earlier in the file too (the sprint-guard paragraph above it does exactly
+# that), and a bare substring search would grab the first such mention instead of the
+# heading -- reporting "determines before guarding" for a file where the guard is
+# correctly first. The number itself is not pinned -- `[0-9]+` matches whatever position
+# the step currently holds, so renumbering does not retrigger this note.
 HANDOFF=$(printf '%s\n' "${SKILLS[@]}" | grep '/handoff/SKILL.md$' || true)
 if [ -n "$HANDOFF" ]; then
   guard=$(grep -nF '**Park the cursor'"'"'s sprint first**' "$HANDOFF" | head -1 | cut -d: -f1 || true)
-  rewrite=$(grep -n 'Determine the new cursor' "$HANDOFF" | head -1 | cut -d: -f1 || true)
+  rewrite=$(grep -nE '^[0-9]+\.[[:space:]]+\*\*Determine the new cursor\*\*' "$HANDOFF" | head -1 | cut -d: -f1 || true)
   if [ -z "$guard" ]; then
     report "/handoff has no parked-sprint guard" \
       "  expected: a '**Park the cursor's sprint first**' way out before 'Determine the new cursor'" \
       "Without it a handoff for another sprint's work overwrites the cursor's in-flight state."
-  elif [ -n "$rewrite" ] && [ "$guard" -gt "$rewrite" ]; then
+  elif [ -z "$rewrite" ]; then
+    report "/handoff's 'Determine the new cursor' heading could not be found" \
+      "  expected a numbered list item whose bold text is exactly 'Determine the new cursor'" \
+      "The ordering check below can't run without it -- a silent pass here is worse than a" \
+      "loud one. If the step was renamed, update this anchor to match, deliberately."
+  elif [ "$guard" -gt "$rewrite" ]; then
     report "/handoff determines the new cursor before guarding whose sprint it is" \
       "  park guard at line $guard, 'Determine the new cursor' at line $rewrite" \
       "The guard must come FIRST -- a wholesale rewrite has already lost the state it guards."
@@ -166,6 +183,45 @@ else
       "resume/SKILL.md and archive-sprint/SKILL.md must carry byte-identical prune" \
       "blocks -- see docs/decisions.md and issue #62."
   fi
+fi
+
+# --- 6. A skill step is cited by name, never by position ---------------------------
+#
+# Skill steps are referenced by position (the word "step" or "steps" followed by a
+# number), so inserting a step silently breaks every reference to the ones after it --
+# including references in OTHER files, which the person doing the renumbering never sees.
+# Shipped wrong repeatedly: a recount during Sprint 2 planning found the form in 66 places
+# across 15 files, up from 34 across 8 when first raised, because nothing stopped it from
+# coming back. The fix, approved 2026-09-23: cite a step by its own bolded name in prose
+# (e.g. "the *Prune squash-merged local branches* step"), with no exception for a
+# reference to a step within the SAME file -- a single rule with no exceptions is
+# checkable by grep, and "except when it's the same file" is not.
+#
+# The pattern covers three shapes, not just "step N": "step 5", "steps 3 and 4" (a plural
+# citing more than one position), and "step-5" (a hyphenated form). The first version of
+# this check only caught the singular space-separated form and shipped with a live plural
+# ("steps 3 and 4") and a live hyphenated one ("step-5") still in the tree, caught only by
+# a critic pass reviewing the very PR that added this check -- exactly the shape of defect
+# this check exists to make impossible. No left word-boundary is enforced, so a real
+# compound like "lockstep 2" would also match; no such text exists in this plugin's prose
+# today, and a false positive here just means an unnecessary rename, never a missed one.
+#
+# Comments are NOT stripped here, unlike check 1 -- a bin/ script's own comment is exactly
+# where a cross-file "step N" reference tends to live (it is prose describing another
+# skill's procedure, not code), so it must count. Scanned over every prose surface this
+# plugin ships: skills, agents, bin/ and hooks/ scripts, and reference/ -- docs/decisions.md
+# is a historical log of decisions as they read AT THE TIME and is intentionally out of
+# scope; rewriting its past tense would misrepresent what was actually approved when.
+step_hits=""
+for f in "${SKILLS[@]}" "${AGENTS[@]}" "${BIN_SCRIPTS[@]}" "${HOOK_SCRIPTS[@]}" "${REFERENCE_DOCS[@]}"; do
+  h=$(grep -inE 'steps?[-[:space:]]*#?[0-9]+' "$f" || true)
+  [ -n "$h" ] && step_hits+="  $f:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/    /')"$'\n'
+done
+if [ -n "$step_hits" ]; then
+  report "a skill step is cited by number, not by name" \
+    "$step_hits" \
+    "Cite the step's own bolded name instead, e.g. 'the *Prune squash-merged local" \
+    "branches* step' -- never a number, including within the same file. See issue #61."
 fi
 
 if [ "$fail" -ne 0 ]; then

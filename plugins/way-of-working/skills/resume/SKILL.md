@@ -16,40 +16,44 @@ without re-reading the whole repo. This is the counterpart to `/way-of-working:h
 
 **Read `.ai/project.yml` first.** Keys below in braces — `{roadmap}`, `{ruleset.name}` — are
 read from it, never typed as literals. If it is missing or unreadable, say so and skip only
-the steps that need it (step 4 in particular); never guess a ruleset name or a check list.
+the steps that need it (the *Check the branch-protection ruleset for drift* step in
+particular); never guess a ruleset name or a check list.
 See `reference/project-schema.md`.
 
 ## Same-conversation shortcut
 
 If this `/way-of-working:resume` is invoked **within the same live conversation** as an earlier one in
 this repo (no `/clear` in between — e.g. a `/model` switch mid-session, not a fresh
-session), steps 3 (branch prune) and 4 (ruleset check) may cite their **already-known
-result** instead of re-running — but only when you can positively rule out an invalidating
-event since the last check: for step 3, no PR has merged since the last prune scan; for
-step 4, no permissions/ruleset-touching action **and no identity change** has occurred
+session), the *Prune squash-merged local branches* and *Check the branch-protection
+ruleset for drift* steps may cite their **already-known result** instead of re-running —
+but only when you can positively rule out an invalidating event since the last check: for
+the branch-prune step, no PR has merged since the last prune scan; for the ruleset-check
+step, no permissions/ruleset-touching action **and no identity change** has occurred
 since — an account switch invalidates the reach check that step now opens with. Say which you're
 reusing and why (`Ruleset check: still healthy, confirmed earlier this conversation — no
-ruleset-touching action since.`). Step 2 (`git log`/`git status`) should still run — git
+ruleset-touching action since.`). The *Check reality vs. the cursor* step (`git log`/`git
+status`) should still run — git
 state changes routinely mid-session (commits, pushes, merges) — but skip a redundant
 `.ai/state.json` **Read** if you already hold its current content in context and have not
 edited it since.
 
 **Default to the full checklist whenever unsure.** This shortcut exists to cut *provably*
-idempotent re-checks (both steps 3 and 4 are read-only, external, and rarely change), not
-to weaken the fail-closed posture below — if you cannot positively rule out an invalidating
-event, run the check.
+idempotent re-checks (both the branch-prune and ruleset-check steps are read-only,
+external, and rarely change), not to weaken the fail-closed posture below — if you cannot
+positively rule out an invalidating event, run the check.
 
 ## Steps
 
 1. **Read the cursor** (in this order, stop reading once you have enough):
-   - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`). If it is missing, fall back to `.ai/next-steps.md` alone — and note that a `/way-of-working:resume` running on `next-steps.md` alone can never auto-start (step 6): no cursor, no unattended work.
+   - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`). If it is missing, fall back to `.ai/next-steps.md` alone — and note that a `/way-of-working:resume` running on `next-steps.md` alone can never auto-start (the *State the pick-up point* step): no cursor, no unattended work.
    - `.ai/next-steps.md` — the human ledger: what was just done, what's next, which model to use, HITL Gate status.
    - The `pointers.sprint_plan` file (the active `{sprints_dir}/*/sprint_plan.md`) — the task list for the current sprint.
    - `{roadmap}` — read only its **status table** + its **next action** line, not the whole file, unless the next action needs the decisions log (`{decisions.log}`).
    - `.ai/parked/` — always check it, whatever the stop-early rule above left unread; if
-     non-empty, read only `parked_at` off each `<id>-state.json`, for the one line step 6
-     reports. **A parked sprint is never the cursor**: no field of a parked snapshot is read
-     into the auto-start test — `.ai/parked/` bears on *that test* only through step 2:
+     non-empty, read only `parked_at` off each `<id>-state.json`, for the one line the
+     *State the pick-up point* step reports. **A parked sprint is never the cursor**: no
+     field of a parked snapshot is read into the auto-start test — `.ai/parked/` bears on
+     *that test* only through the *Check reality vs. the cursor* step:
      its committed deltas classify as `cursor-sync`, and an uncommitted file under it
      leaves the tree dirty like any other path — and bringing one back is
      `/way-of-working:unpark-sprint <id>`, the human's call, not this skill's.
@@ -224,16 +228,16 @@ event, run the check.
 
 5. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing. The role→model mapping is `{models}` (typically architect for planning/review, coder for implementation — see `reference/workflow.md`).
 
-6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check result, and the branch-prune result — plus, when `.ai/parked/` is non-empty, **at most one line** naming each parked sprint with its `parked_at` (step 1), derived from the directory, which is the authority (`Parked: 41 (2026-09-02), 43 (2026-09-15) — restore with /way-of-working:unpark-sprint <id>.`). Omit the line when there are none.
+6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check result, and the branch-prune result — plus, when `.ai/parked/` is non-empty, **at most one line** naming each parked sprint with its `parked_at` (the *Read the cursor* step), derived from the directory, which is the authority (`Parked: 41 (2026-09-02), 43 (2026-09-15) — restore with /way-of-working:unpark-sprint <id>.`). Omit the line when there are none.
 
    Then **either start the next action or wait**, per the rule below.
 
    **Auto-start** — begin the `next_action` immediately, no "go" needed, only when **all** hold:
    - `hitl_gate` is present and reads `NONE OPEN`;
    - `sprint_status` is `implementing`;
-   - the running model matches `assigned_model` (step 5);
-   - step 2's `cursor-drift.sh` reported `clean` or `cursor-sync` (either is "no drift")
-     **and** the tree is clean.
+   - the running model matches `assigned_model` (the *Adopt the assigned persona/model* step);
+   - the *Check reality vs. the cursor* step's `cursor-drift.sh` reported `clean` or
+     `cursor-sync` (either is "no drift") **and** the tree is clean.
 
    Otherwise **state the pick-up point and wait.** In particular: always wait on
    `planning` (the planning pass is one question at a time — that dialogue *is* the

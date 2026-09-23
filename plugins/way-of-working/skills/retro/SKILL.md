@@ -45,17 +45,19 @@ gh issue list   --repo {backlog.repo} --state open
 gh issue create --repo {backlog.repo} --title "…" --body "…"
 ```
 
-> **Establish reach first, or step 1 lies to you.** A `gh` call against a repo this identity
-> cannot see returns **`404`, not `403`** — so an unreachable backlog reads as an *empty*
-> one, and step 1's whole purpose is reading what's already decided. A retro that believes
+> **Establish reach first, or the *Read what's already decided FIRST* step lies to you.**
+> A `gh` call against a repo this identity cannot see returns **`404`, not `403`** — so an
+> unreachable backlog reads as an *empty* one, and that step's whole purpose is reading
+> what's already decided. A retro that believes
 > an empty list re-proposes everything the hub already rejected. Confirm reach before
 > trusting the result:
 > ```bash
 > gh api repos/{backlog.repo} --jq .permissions
 > ```
 > No `pull` → **stop and report the identity** (`gh api user --jq .login`); do not run the
-> retro against a backlog you could not read. Same failure class as `/way-of-working:resume`
-> step 4's ruleset preflight, on a different surface.
+> retro against a backlog you could not read. Same failure class as `/way-of-working:resume`'s
+> *Check the branch-protection ruleset for drift* step's ruleset preflight, on a
+> different surface.
 
 `{backlog.repo}` is supported only with `kind: github_issues`. If it is set alongside
 `kind: file`, that is a misconfiguration, not a cross-repo file — report it and take the
@@ -77,7 +79,7 @@ Explicitly reject:
 - **Speculative / hypothetical** improvements ("we could add X someday").
 - **New personas/subagents** — the default answer is **no**. The catalog is already rich and
   every added agent adds friction; propose one only for a real, *repeated* task with no owner.
-- Anything **already decided** — see step 1.
+- Anything **already decided** — see the *Read what's already decided FIRST* step.
 
 ## Steps
 
@@ -89,7 +91,8 @@ Explicitly reject:
    existing item if that adds signal. This is the anti-noise step; skipping it turns a retro
    into a re-litigation.
 
-   **"Confirmed again" is for a *live* item only.** Step 1 reads the `_archive` sibling (or
+   **"Confirmed again" is for a *live* item only.** The *Read what's already decided
+   FIRST* step reads the `_archive` sibling (or
    closed issues) as well, so it will sometimes match something already resolved or
    declined — and neither annotating it there nor pulling it back is right. **Never edit an
    archive file**: it is historical record, not a live claim, and a compaction moves text
