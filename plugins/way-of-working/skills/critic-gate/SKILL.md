@@ -83,13 +83,14 @@ green gate and before `/way-of-working:handoff`.
 3. **On confirmation, spawn only the approved critics.** Each as a **separate read-only
    subagent** via the Agent tool (fresh context — never `/model`-switch and self-review).
    Give each the commit range or PR and its angle; run independent spawns in parallel.
-   **Every spawn — including a step-5 re-spawn — repeats the git-state instruction:**
-   read-only covers git state, not just files, so any git command that *writes* to the
-   workspace's `.git/` or working tree is off-limits there; isolate it in a scratch clone
-   instead, per each agent's own contract. This plugin's own three critics already carry
-   that instruction in their own definitions; repeating it here is what makes a repo-local
-   custom critic (one this repo added to `{agents.enabled}` that this plugin never defined)
-   receive it too.
+   **Every spawn — including a step-5 re-spawn — repeats the git-state instruction in full:**
+   this plugin's own three critics already carry it in their own definitions (the
+   *Read-only covers git state, not just files* paragraphs in `agents/architect.md`), so
+   paste that text verbatim into the spawn prompt for a **repo-local custom critic** (one
+   this repo added to `{agents.enabled}` that this plugin never defined) rather than
+   summarizing it — a paraphrase here has already once dropped the detail (the scratch
+   clone's push must be disabled, not just its target repointed) that made the difference
+   between a safe recipe and a new hole.
 
 4. **Aggregate the findings.** Collect each critic's ranked findings into one list, deduped,
    most-severe/most-reachable first. Tag each with its source critic and confidence. Drop
