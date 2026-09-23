@@ -29,6 +29,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [0.9.0] — 2026-09-23
+
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed by any
+of the four fixes below. One behavioral edge, the same shape `v0.7.0` named: an absent key
+is not a `null` key, so a skill that newly reads one reports it as unreadable where it
+previously said nothing. `/way-of-working:architect-review` now also reads
+`{ruleset.rule_types}` (previously only `{ruleset.name}`/`{ruleset.required_checks}`) — the
+key already exists in the schema and in every `.ai/project.yml` that sets `ruleset` at all,
+so this reads as "no migration required" the same way `0.8.0`'s `.ai/parked/` addition did.
+
+### Fixed
+
+- **`/way-of-working:architect-review` now syncs onto `{pr_base}` unconditionally before its
+  first read**, rather than trusting whatever branch the session happened to be on. Critic
+  gate: `architect` + `docs-consistency`, 3 rounds, converged (#97, PR #110).
+- **`/way-of-working:architect-review`'s `{pr_base}` check was self-consistency, not an
+  independent anchor** — a checkout on a branch whose own `.ai/project.yml` named itself as
+  `pr_base` (and named a `repo` it controlled) satisfied every later check. Both `{repo}` and
+  `{pr_base}` are now anchored to `gh repo view` against the checkout's own git remote, with
+  a ruleset-based fallback for the schema's long-migration case. Also fixes an independent
+  bug in `/way-of-working:resume` step 4's ruleset-name lookup found along the way. Critic
+  gate: `architect` + `docs-consistency` + `security-critic`, 4 rounds (human-authorized past
+  the 2-round cap), converged (#98, PR #115).
+- **`/way-of-working:pr-checks` said `missing` where `review-gate-state.sh` says `absent`
+  for the same fact.** Now `absent` everywhere. Critic gate: `architect` +
+  `docs-consistency`, 2 rounds, converged (#100, PR #116).
+- **Four low tightenings in `/way-of-working:architect-review` (steps 3/4/8).** Critic gate:
+  `architect` + `docs-consistency`, 3 rounds, converged — round 1 caught a real, live-
+  verified bug in the fix itself: the new step-8 polling loop broke on
+  `review-gate-state.sh`'s exit code (always `0` for all four words) rather than its printed
+  word, so it never actually polled; fixed to test the captured word instead (#99, PR #117).
+
 ## [0.8.0] — 2026-09-23
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
