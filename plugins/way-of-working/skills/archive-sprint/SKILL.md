@@ -332,23 +332,32 @@ If any precondition fails, STOP and report why — do not archive.
 
    ```bash
    base=$(yq -r .pr_base .ai/project.yml)      # or read it however you like
-   merged=$(gh pr list --state merged --limit 300 --json headRefName,headRefOid \
-              -q '.[] | "\(.headRefName) \(.headRefOid)"') \
-     || { echo "gh call failed -- skipping the prune"; merged=; }
-   cur=$(git branch --show-current)
-   for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
-     case "$b" in "$base"|"$cur") continue;; esac
-     tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$1 == b { print $2; exit }')
-     [ -n "$tip_gh" ] || continue                    # no merged PR -- not a candidate
-     if [ "$(git rev-parse "$b")" = "$tip_gh" ]; then
-       git branch -D "$b" && echo "pruned $b"
-     else
-       echo "skipped $b -- merged, but its tip is not the commit GitHub merged"
-     fi
-   done
+   if [ -z "$base" ] || [ "$base" = "null" ]; then
+     echo "pr_base unreadable from .ai/project.yml -- skipping the prune" >&2
+   else
+     merged=$(gh pr list --state merged --limit 300 --json headRefName,headRefOid \
+                -q '.[] | "\(.headRefName) \(.headRefOid)"') \
+       || { echo "gh call failed -- skipping the prune"; merged=; }
+     cur=$(git branch --show-current)
+     for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
+       case "$b" in "$base"|"$cur") continue;; esac
+       tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$1 == b { print $2; exit }')
+       [ -n "$tip_gh" ] || continue                    # no merged PR -- not a candidate
+       if [ "$(git rev-parse "$b")" = "$tip_gh" ]; then
+         git branch -D "$b" && echo "pruned $b"
+       else
+         echo "skipped $b -- merged, but its tip is not the commit GitHub merged"
+       fi
+     done
+   fi
    ```
+   An unreadable `base` is not a soft failure: `case "$b" in "$base"|"$cur")` is the only
+   **deliberate** guard against the loop ever targeting `{pr_base}` by name, and an empty
+   or `"null"` pattern matches nothing, so a silent fallback would leave `{pr_base}`
+   protected only by accident — by whether some merged PR's `headRefName` happens to equal
+   it and its local tip happens to match. Guard on it before the `gh` call, not after.
 
-   Report which branches were pruned, and every skip the loop printed, with its reason (or "none"). A branch with no merged PR is not a candidate and is correctly silent — it is not a skip and does not belong in the report. Hygiene, not a gate — if the `gh` call fails, skip and say so.
+   Report which branches were pruned, and every skip the loop printed, with its reason (or "none"). A branch with no merged PR is not a candidate and is correctly silent — it is not a skip and does not belong in the report. Hygiene, not a gate — if `pr_base` can't be read or the `gh` call fails, skip and say so.
 
    **Why the deletion is gated on a commit, not on merged-ness.** `-D` is safe only
    **per commit**, not per branch: merged-ness is confirmed out-of-band, but a merged

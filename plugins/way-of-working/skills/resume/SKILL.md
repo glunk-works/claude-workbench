@@ -101,21 +101,31 @@ event, run the check.
 3. **Prune squash-merged local branches** (standard practice — squash-merge is the default here, and `git branch --merged {pr_base}` **cannot** see a squash-merged branch because the squash makes a new commit the branch never became an ancestor of; so ask GitHub which PRs merged). One read-only `gh` call, then a safe `-D` on **only** the branches whose PR GitHub reports `merged` — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
    ```bash
    base=$(yq -r .pr_base .ai/project.yml)      # or read it however you like
-   merged=$(gh pr list --state merged --limit 300 --json headRefName,headRefOid \
-              -q '.[] | "\(.headRefName) \(.headRefOid)"') \
-     || { echo "gh call failed -- skipping the prune"; merged=; }
-   cur=$(git branch --show-current)
-   for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
-     case "$b" in "$base"|"$cur") continue;; esac
-     tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$1 == b { print $2; exit }')
-     [ -n "$tip_gh" ] || continue                    # no merged PR -- not a candidate
-     if [ "$(git rev-parse "$b")" = "$tip_gh" ]; then
-       git branch -D "$b" && echo "pruned $b"
-     else
-       echo "skipped $b -- merged, but its tip is not the commit GitHub merged"
-     fi
-   done
+   if [ -z "$base" ] || [ "$base" = "null" ]; then
+     echo "pr_base unreadable from .ai/project.yml -- skipping the prune" >&2
+   else
+     merged=$(gh pr list --state merged --limit 300 --json headRefName,headRefOid \
+                -q '.[] | "\(.headRefName) \(.headRefOid)"') \
+       || { echo "gh call failed -- skipping the prune"; merged=; }
+     cur=$(git branch --show-current)
+     for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
+       case "$b" in "$base"|"$cur") continue;; esac
+       tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$1 == b { print $2; exit }')
+       [ -n "$tip_gh" ] || continue                    # no merged PR -- not a candidate
+       if [ "$(git rev-parse "$b")" = "$tip_gh" ]; then
+         git branch -D "$b" && echo "pruned $b"
+       else
+         echo "skipped $b -- merged, but its tip is not the commit GitHub merged"
+       fi
+     done
+   fi
    ```
+   An unreadable `base` is not a soft failure: `case "$b" in "$base"|"$cur")` is the only
+   **deliberate** guard against the loop ever targeting `{pr_base}` by name, and an empty
+   or `"null"` pattern matches nothing, so a silent fallback would leave `{pr_base}`
+   protected only by accident — by whether some merged PR's `headRefName` happens to equal
+   it and its local tip happens to match. Guard on it before the `gh` call, not after.
+
    `-D` is safe only **per commit**, not per branch. Merged-ness is confirmed out-of-band,
    but a merged branch whose local tip has moved since the push still deletes without
    complaint — and a squash-merged branch's commits are unreachable, so that work is gone
@@ -142,7 +152,7 @@ event, run the check.
    merged.` / `No stale branches to prune.`). If that will not fit one line, the skips win
    and the line grows — the length rule exists to keep hygiene quiet, not to suppress the
    one thing worth reading. This is hygiene, not a gate — never block the session on it; if
-   the `gh` call fails, skip pruning and say so.
+   `pr_base` can't be read or the `gh` call fails, skip pruning and say so.
 
 4. **Check the branch-protection ruleset for drift.** A scheduled drift job catches drift
    between sessions; this catches it at the moment work resumes, which in a solo repo is
