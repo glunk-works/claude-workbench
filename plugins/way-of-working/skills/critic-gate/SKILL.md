@@ -90,8 +90,9 @@ green gate and before `/way-of-working:handoff`.
    paragraphs — the bold-headed *Read-only covers git state, not just files* statement AND
    the recipe paragraph right after it, which is where the actual mechanics live (in
    `agents/architect.md`, identical in the other two) — verbatim into the spawn prompt.
-   A custom critic has no definition of its own to point to, so anything less than the full
-   text — a summary, a pointer to "the usual rule" — leaves it without the recipe.
+   A custom critic's own definition (in its repo's `.claude/agents/`) was written without
+   this plugin's rule in it, so anything less than the full text — a summary, a pointer to
+   "the usual rule" — leaves it without the recipe.
 
 4. **Aggregate the findings.** Collect each critic's ranked findings into one list, deduped,
    most-severe/most-reachable first. Tag each with its source critic and confidence. Drop
