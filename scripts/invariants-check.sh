@@ -139,12 +139,21 @@ extract_prune_block() {
   fence_start=$(head -n "$hit" "$file" | grep -n '^ *```bash$' | tail -1 | cut -d: -f1 || true)
   fence_end=$(tail -n "+$((hit + 1))" "$file" | grep -n '^ *```$' | head -1 | cut -d: -f1 || true)
   [ -n "$fence_start" ] && [ -n "$fence_end" ] || return 1
-  fence_end=$((hit + fence_end - 1))
+  # fence_end here is a line number in the tail STREAM, whose line 1 is file line
+  # hit+1 -- so file_line = hit + stream_line, not hit + stream_line - 1. Getting
+  # this wrong silently drops the block's last line (its closing `fi`) from the
+  # comparison, which is exactly the shape of divergence this check exists to catch.
+  fence_end=$((hit + fence_end))
   sed -n "$((fence_start + 1)),$((fence_end - 1))p" "$file"
 }
 RESUME_FILE=$(printf '%s\n' "${SKILLS[@]}" | grep '/resume/SKILL.md$' || true)
 ARCHIVE_FILE=$(printf '%s\n' "${SKILLS[@]}" | grep '/archive-sprint/SKILL.md$' || true)
-if [ -n "$RESUME_FILE" ] && [ -n "$ARCHIVE_FILE" ]; then
+if [ -z "$RESUME_FILE" ] || [ -z "$ARCHIVE_FILE" ]; then
+  report "could not find resume/SKILL.md and/or archive-sprint/SKILL.md to compare" \
+    "  resume: ${RESUME_FILE:-<not found>}" \
+    "  archive-sprint: ${ARCHIVE_FILE:-<not found>}" \
+    "A rename or move here would otherwise silently turn this check off."
+else
   resume_block=$(extract_prune_block "$RESUME_FILE" || true)
   archive_block=$(extract_prune_block "$ARCHIVE_FILE" || true)
   if [ -z "$resume_block" ] || [ -z "$archive_block" ]; then
