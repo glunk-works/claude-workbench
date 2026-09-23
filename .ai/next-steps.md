@@ -1,36 +1,33 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 1** — [milestone 1](https://github.com/glunk-works/claude-workbench/milestone/1),
-*stabilize v0.8.0 and close the live-observed gaps*. Status: **awaiting_review** — milestone
-1 has 0 open issues; the closing PR is open, HITL Gate is open on its merge.
+**Now:** **Sprint 2**: [milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2),
+*plan in GitHub, not in files*. Status: **planning**. The build order and the model for
+each phase are in the milestone description.
 
 **Just done (2026-09-23):**
-- Confirmed via `gh` (not assumed) that both conditions the previous HITL Gate named had
-  landed: [PR #119](https://github.com/glunk-works/claude-workbench/pull/119) merged, and
-  `release.yml` was dispatched dry-run-first-then-real, cutting `v0.9.0` at `aa6793f`
-  (published, non-draft, ancestor of `main`).
-- Pruned 3 squash-merged local branches (`chore/release-0.9.0`,
-  `docs/sync-cursor-99-shipped-release-next`, `docs/sync-cursor-101-release-open`) and
-  fast-forwarded local `main`.
-- Ruleset check: healthy (4 rule types, 3 required checks).
-- Opened this repo's own pin-bump PR, `d8982e2`,
-  [PR #121](https://github.com/glunk-works/claude-workbench/pull/121) (bumps
-  `.claude/settings.json`'s plugin ref to `v0.9.0`), per
-  [PR #102](https://github.com/glunk-works/claude-workbench/pull/102)'s precedent.
-  Docs/config-only — touches none of `code_paths`, so no critic-gate pass; local green
-  gate (lint, coupling, invariants) ran clean.
+- Sprint 1 archived (cursor snapshot in `.ai/archive/`, git-ignored; nothing to compact).
+  Its [milestone 1](https://github.com/glunk-works/claude-workbench/milestone/1) was then
+  **closed by hand**. That gap in `archive-sprint` is now
+  [#128](https://github.com/glunk-works/claude-workbench/issues/128).
+- Triaged the unmilestoned backlog:
+  - #127 and #128 went into Sprint 2. #127 comes before #86; #128 comes right after it.
+  - A new [Sprint 3: harden architect-review's trust chain](https://github.com/glunk-works/claude-workbench/milestone/4)
+    holds #126, #113 and #125, and ships as v0.11.0.
+  - The old "record the deferred decisions" sprint was renamed **Sprint 4**
+    (milestone 3).
+  - #124 stays unmilestoned, as its own text asks. The reason is commented on the issue.
+- [PR #123](https://github.com/glunk-works/claude-workbench/pull/123) (#112, trust only the
+  default branch's `migration_base`) merged as `e43a1ff`.
 
-**Next:** Once the human merges [PR #121](https://github.com/glunk-works/claude-workbench/pull/121),
-Sprint 1 is complete. Run `/way-of-working:archive-sprint` to retire sprint-01 and advance
-the cursor to **Sprint 2** ([milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2),
-*plan in GitHub, not in files* — 4 open issues, including #61 and #104). Then begin Sprint 2
-planning on **opus** (`architect`). **Do not start #104 unattended** — it changes the
-`protected-release-tags` ruleset's security surface.
+**Next:** on **fable** (`architect`), by the human's routing of design to Fable in milestone 2:
+write the design specs as comments on **#86** and **#72**. The #86 spec must say how a
+sprint maps to a milestone, because #128 builds on it. Output is issue comments only.
+#61 and #127 need no spec and can go straight to a Sonnet `coder`.
+**Do not start #104 unattended**, since it changes the release-tag ruleset's security surface.
 
-**HITL Gate: OPEN.** The human must merge
-[PR #121](https://github.com/glunk-works/claude-workbench/pull/121), which closes Sprint 1.
+**HITL Gate: NONE OPEN.** The next gate: the human approves the #86 and #72 specs before
+build starts.
 
-**Pointers:** [docs/decisions.md](../docs/decisions.md) (`WB-D12`) ·
-[milestone 1](https://github.com/glunk-works/claude-workbench/milestone/1) ·
+**Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2) ·
-[open issues by milestone](https://github.com/glunk-works/claude-workbench/milestones)
+[all milestones](https://github.com/glunk-works/claude-workbench/milestones)
