@@ -39,7 +39,9 @@ from the clone. The one safe read in the other direction is `git -C <clone> fetc
 <workspace-path> <ref>` — it only ever reads from the workspace — for a commit that exists
 there but isn't on the remote yet; to test against an uncommitted change, export it first
 (`git -C <workspace> diff HEAD --binary`, since plain `git diff` misses anything already
-staged, and copy in any new untracked file directly) and apply that patch in the clone
+staged, and copy in the files `git -C <workspace> ls-files --others --exclude-standard`
+lists — copy a symlink among them as a link, never follow it — rather than "any new file",
+which would sweep in gitignored secrets too) and apply that patch in the clone
 rather than touching the workspace. Run any script the diff itself contains only where its author is trusted or the
 environment is sandboxed — the same rule `/way-of-working:architect-review` applies to the
 same risk; its own `fetch` and `git worktree add` against its checkout are exempt from the

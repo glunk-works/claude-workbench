@@ -85,15 +85,13 @@ green gate and before `/way-of-working:handoff`.
    Give each the commit range or PR and its angle; run independent spawns in parallel.
    **Every spawn of a repo-local custom critic — including a step-5 re-spawn — repeats the
    git-state instruction in full.** This plugin's own three critics need no repeating: they
-   already carry it in their own definitions, both
+   already carry it in their own definitions. For a **repo-local custom critic** (one this
+   repo added to `{agents.enabled}` that this plugin never defined), paste both
    paragraphs — the bold-headed *Read-only covers git state, not just files* statement AND
    the recipe paragraph right after it, which is where the actual mechanics live (in
-   `agents/architect.md`, identical in the other two) — so paste that text verbatim into
-   the spawn prompt for a **repo-local custom critic** (one this repo added to
-   `{agents.enabled}` that this plugin never defined) rather than summarizing it. This
-   sentence itself is the fix for the earlier gap: the first version of this step gave a
-   custom critic no recipe at all, only a pointer to "each agent's own contract" that a
-   custom critic doesn't have.
+   `agents/architect.md`, identical in the other two) — verbatim into the spawn prompt.
+   A custom critic has no definition of its own to point to, so anything less than the full
+   text — a summary, a pointer to "the usual rule" — leaves it without the recipe.
 
 4. **Aggregate the findings.** Collect each critic's ranked findings into one list, deduped,
    most-severe/most-reachable first. Tag each with its source critic and confidence. Drop
