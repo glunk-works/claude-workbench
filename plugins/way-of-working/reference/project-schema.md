@@ -66,6 +66,7 @@ a smaller plugin, not a bigger schema.
 # ── identity ─────────────────────────────────────────────────────────────────
 repo: glunk-works/bounty-infra   # owner/name. Also the namespace for labels a skill emits.
 pr_base: main                    # branch every PR is cut from and based on.
+migration_base: null             # optional; read only from the default branch. See below.
 
 # ── the deep record ──────────────────────────────────────────────────────────
 roadmap: docs/hardening_roadmap.md   # reference of record: status + next action.
@@ -126,7 +127,7 @@ models:
 
 ## Key reference
 
-### `repo`, `pr_base`
+### `repo`, `pr_base`, `migration_base`
 
 `repo` is `owner/name`. Skills use it for `gh api repos/{repo}/…` calls and as the namespace
 for the machine-emitted labels **they themselves** apply (`{repo-name}/*`) — correct because
@@ -137,9 +138,36 @@ applied, not an exception to it. See `reference/conventions.md` § *Issue + labe
 
 `pr_base` is the branch work is cut **from** and based **on**. Normally the repo's default
 branch — the key exists because it does not have to be. A repo mid a large multi-sprint
-migration may stage on a long-lived integration branch, point `pr_base` at it for the
-duration, and revert once the migration lands as one deliberate merge commit. Never assume
-`main`; `{pr_base}` is always the answer.
+migration may stage on a long-lived integration branch, set **that branch's own copy** of
+`pr_base` to itself for the duration, and land the migration as one deliberate merge commit.
+Never assume `main`; `{pr_base}` is always the answer.
+
+`migration_base` (a branch name, or `null`) declares that migration, and is read **only from
+the default branch's copy**. Optional: absent or `null` means no migration is under way, the
+common case. Set it to the integration branch's name on the default branch when the
+migration starts. The default branch keeps `pr_base` set to itself, so hotfixes and the
+migration's landing merge stay ordinary PRs to it. A `migration_base` on any other branch is
+ignored. Sessions working on the migration start from the integration branch, where their
+cursor PRs land too.
+
+**Closing the migration resets each key where it was changed.** The last PR into the
+integration branch sets its `pr_base` back to the default branch. Otherwise the landing
+merge carries `pr_base: <integration branch>` onto the default branch, and every skill run
+there cuts from, and PRs to, a branch about to go away. `migration_base` is cleared by its
+own PR to the default branch, **only after that last PR into the integration branch has
+merged**, since that PR's review still needs the declaration; just before or just after the
+landing PR both work. Resetting it on the
+integration branch usually does nothing: when that branch was cut before the declaration,
+the three-way merge keeps the default branch's value. Clearing it before the landing PR is
+safe, because that PR's base is the default branch and never needs the declaration.
+
+`/way-of-working:architect-review` accepts a PR based on a branch other than the default
+branch only when the default branch's `migration_base` names it, or when the human confirms
+that base for one review. The base branch's own copy was written by whoever can push there,
+so it can't vouch for itself. The default branch's copy can only change by passing that
+branch's gate, **provided the default branch is protected**. Nothing checks that during
+review, and `/way-of-working:resume` step 4 checks the ruleset on `pr_base`, which on the
+integration branch is not the default branch.
 
 ### `roadmap`, `sprints_dir`, `decisions`, `backlog`, `threat_model`
 

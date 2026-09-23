@@ -90,9 +90,11 @@ without it. Claude commits and pushes freely on a sprint branch, opens the PR, a
 - **PR base is `pr_base`.** Every sprint PR merges into that branch — normally the repo's
   default branch, but the schema key exists because it does not have to be: a repo mid a
   large, multi-sprint migration may stage work on a long-lived integration branch instead,
-  pointing `pr_base` at it for the duration and reverting to the default branch once the
-  migration lands as **one deliberate merge commit** (never a squash — squashing would
-  collapse the whole migration's history into one). That is a repo-local event with its own
+  with that branch's own `pr_base` pointing at itself for the duration and the default
+  branch naming it as `migration_base` (`project-schema.md` § `repo`, `pr_base`,
+  `migration_base`). When the migration closes, each key is reset on the branch that set
+  it, and the migration lands as **one deliberate merge commit** (never a squash —
+  squashing would collapse the whole migration's history into one). That is a repo-local event with its own
   local record; this doc states the rule, not the war story.
 - **CI runs on the PR.** The CI workflow triggers on `pull_request:` with no branch filter
   — so a sprint branch pushed *without* a PR gets **no CI at all**. The PR is what turns the
