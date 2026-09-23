@@ -82,14 +82,14 @@ green gate and before `/way-of-working:handoff`.
 
 3. **On confirmation, spawn only the approved critics.** Each as a **separate read-only
    subagent** via the Agent tool (fresh context — never `/model`-switch and self-review).
-   Give each the commit range or PR and its angle; run independent spawns in parallel. Tell
-   each critic explicitly that read-only covers git state, not just files: any git
-   experimentation it does to verify a claim happens in a scratch clone under the session's
-   temp dir, never in the shared workspace checkout, whose HEAD, index, and branch pointers
-   must be exactly as found when it returns. This plugin's own three critics already carry
-   that instruction in their own definitions; saying it again here is what makes a
-   repo-local custom critic (one this repo added to `{agents.enabled}` that this plugin
-   never defined) inherit it too.
+   Give each the commit range or PR and its angle; run independent spawns in parallel.
+   **Every spawn — including a step-5 re-spawn — repeats the git-state instruction:**
+   read-only covers git state, not just files, so any git command that *writes* to the
+   workspace's `.git/` or working tree is off-limits there; isolate it in a scratch clone
+   instead, per each agent's own contract. This plugin's own three critics already carry
+   that instruction in their own definitions; repeating it here is what makes a repo-local
+   custom critic (one this repo added to `{agents.enabled}` that this plugin never defined)
+   receive it too.
 
 4. **Aggregate the findings.** Collect each critic's ranked findings into one list, deduped,
    most-severe/most-reachable first. Tag each with its source critic and confidence. Drop
@@ -116,7 +116,8 @@ green gate and before `/way-of-working:handoff`.
    it records GitHub's state rather than requesting it); the order and the reason are in
    the same *Prose economy* section — follow it there rather than from memory.
 
-   **Then re-spawn the critics on the FIXED tree. This is not optional.** The old rule here
+   **Then re-spawn the critics on the FIXED tree — the same as step 3, git-state
+   instruction included. This is not optional.** The old rule here
    was "if a fix touched a critic's area" — too weak, because it let whoever just made the
    fixes decide, after the fact, that none of them warranted a second look, and the fix round
    is itself the highest-risk moment (see *Convergence* below). **Every critic whose findings
