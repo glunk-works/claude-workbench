@@ -14,7 +14,8 @@ One live cursor is the design. A parked sprint is a tracked snapshot beside it:
 in-flight state. `/way-of-working:unpark-sprint` brings it back.
 
 **Read `.ai/project.yml` first** for `{pr_base}`, `{sprints_dir}`, `{roadmap}`, `{models}`,
-`{code_paths}`, `{ruleset.required_checks}`, `{review.ci_gate}`.
+`{code_paths}`, `{ruleset.required_checks}`, `{review.ci_gate}`, `{planning.kind}`, and —
+under `github_milestones` — `{backlog.repo}`.
 
 ## Preconditions — fail closed, stop at the first that fails
 
@@ -42,11 +43,30 @@ in-flight state. `/way-of-working:unpark-sprint` brings it back.
    a **swap**: seed nothing, run `/way-of-working:unpark-sprint <next-sprint-id>` now, and
    let it open the one PR for both. Otherwise follow `/way-of-working:handoff`'s
    *Determine the new cursor* through *Regenerate `.ai/next-steps.md`* steps by
-   reference — same fields, wholesale rewrite, `hitl_gate` always written.
-   `sprint_status` is `planning` unless `{sprints_dir}/<next-sprint-id>*/sprint_plan.md`
-   exists, then `implementing`. In the ledger, **Just done** is one line, `parked <id>:
-   <parked_reason>`. The directory is the authority for what is parked and the session
-   banner derives its `Parked:` line from it; never copy the list into the ledger.
+   reference — same fields, wholesale rewrite, `hitl_gate` always written — **with one
+   deliberate override: this step never writes a `plan_anchor`**, whatever
+   `{planning.kind}` is. Anchoring a spec is a judgment call about an approved plan, and
+   this skill is mechanical, run by any model; seeding one here would let a non-judgment
+   step manufacture the human gate `/way-of-working:handoff`'s own re-anchor rule exists to
+   require.
+
+   `sprint_status` branches on `{planning.kind}`, unchanged from before this key existed for
+   `files` or absent: `planning` unless `{sprints_dir}/<next-sprint-id>*/sprint_plan.md`
+   exists, then `implementing` — a file already on disk is itself the mechanical, no-judgment
+   signal this skill is allowed to act on. **Under `github_milestones` there is no file to
+   test, so `sprint_status` is always `planning` here** — never auto-detect `implementing`
+   from a milestone's mere existence or its issue count, because unlike a file landing via a
+   reviewed PR, a milestone or its issues can exist without anyone having approved them as
+   *this* sprint's plan, and this mechanical skill does not make that judgment call. Also
+   under `github_milestones`: ask the human which milestone number is the next sprint (never
+   scan open milestones — that cannot tell the live sprint from a parked one,
+   `reference/project-schema.md` § `planning`) and write it as `pointers.sprint_plan:
+   https://github.com/{backlog.repo}/milestone/<number>`, or `null` with `plan_anchor: null`
+   if none is picked yet — the legal "no milestone picked yet" state the schema names.
+
+   In the ledger, **Just done** is one line, `parked <id>: <parked_reason>`. The directory is
+   the authority for what is parked and the session banner derives its `Parked:` line from
+   it; never copy the list into the ledger.
 4. **Commit as one docs-only cursor-sync PR** per `/way-of-working:handoff`'s *Commit
    `.ai/next-steps.md` as its own docs-only PR against `{pr_base}`* step, with
    three files staged: both snapshots and `.ai/next-steps.md`. That delta is what
