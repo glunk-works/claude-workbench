@@ -95,8 +95,16 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The actual bypass boundary is this environment, not the job's own token: its
+    # deployment branch policy allows only `main`, and it has a required reviewer. The
+    # `release-tag-creation` ruleset's only bypass actor is the App below, and the App's
+    # private key lives in this environment's secret -- so the App can mint a tag-creating
+    # token only inside a reviewed run of this job. Dry runs go through the same gate on
+    # purpose: it is how each one also exercises the approval and the token minting, not
+    # only the tag-creation logic.
+    environment: release
     permissions:
-      contents: write # create the tag ref and the GitHub Release; nothing else
+      contents: read # tag/release creation goes through the App token below, not this one
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -266,10 +274,33 @@ jobs:
           echo "DRY RUN -- nothing was created."
           echo "Would tag $GITHUB_SHA as $TAG (previous: ${PREVIOUS:-none})."
 
+      # Minted here, not at the top of the job -- this is its only consumer, so this is
+      # the whole window it needs to exist in. Still unconditional (no `if:`): a dry run
+      # mints it too, which is how a dry run exercises the environment approval and the
+      # token minting even though the write call in the next step never runs on dry runs.
+      - name: Mint a release token from the claude-workbench-release App
+        # SHA-pinned like every other action here. The App is installed only on this repo
+        # with Contents read/write + Metadata read -- nothing else. `permission-contents`
+        # narrows the minted token to that one permission explicitly, so a later, broader
+        # grant on the App's installation would not silently widen this token too. The
+        # rulesets stop this token moving or deleting `v*` tags -- but that's ALL they
+        # stop; Contents write still lets it edit or delete releases and write other refs.
+        # What actually contains it there is operational, not the rulesets: it lives for
+        # one fixed-argv step, that step runs only pinned code, and it is revoked at job
+        # end.
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
       - name: Create the tag and the release
         if: ${{ !inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          # The App token, not `github.token` -- this job's own GITHUB_TOKEN is read-only
+          # (see `permissions:` above), so `contents: write` for this one call comes only
+          # from a token scoped to the App, minted only inside this reviewed environment.
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ steps.resolve.outputs.tag }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
