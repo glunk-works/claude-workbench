@@ -57,13 +57,20 @@ positively rule out an invalidating event, run the check.
 1. **Read the cursor** (in this order, stop reading once you have enough):
    - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`). If it is missing, fall back to `.ai/next-steps.md` alone — and note that a `/way-of-working:resume` running on `next-steps.md` alone can never auto-start (the *State the pick-up point* step): no cursor, no unattended work.
    - `.ai/next-steps.md` — the human ledger: what was just done, what's next, which model to
-     use, HITL Gate status. **Under `{planning.kind}: github_milestones`, this read is
+     use, HITL Gate status, and — whenever `/way-of-working:critic-gate` ran a round on
+     `{models.second_opinion}` — which model that round was confirmed to run on, or that its
+     provenance could not be confirmed. **This read is
      unconditional** — never skipped by the stop-early rule above, whatever else was already
-     enough — because the auto-start test's leading-token cross-check (below) needs its
-     **Next:** line, and a conditional read whose own trigger lives inside the file it
-     conditions is circular. Under `files` or absent, this changes nothing: the file was
-     already read at this point in every practical case, since a cursor's next action is
-     rarely legible from `state.json` alone.
+     enough. Two independent reasons make it so, not one: under
+     `{planning.kind}: github_milestones`, the auto-start test's leading-token cross-check
+     (below) needs its **Next:** line, and a conditional read whose own trigger lives inside
+     the file it conditions is circular; and, whatever `{planning.kind}` is, the critic
+     pass's model provenance lives **only** in this file (`/way-of-working:handoff`'s ledger
+     clause) — a read that is mandatory only "when the cursor records a critic pass" is the
+     same circularity one layer down, since nothing outside this file says whether one was
+     recorded. Under `files` or absent, this was already true in every practical case (a
+     cursor's next action is rarely legible from `state.json` alone); it is now true by rule,
+     not by accident.
    - **The task list for the current sprint**, branching on `{planning.kind}`:
      - **`files` or absent** — the `pointers.sprint_plan` file (the active
        `{sprints_dir}/*/sprint_plan.md`), unchanged.

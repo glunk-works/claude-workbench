@@ -127,6 +127,7 @@ agents:
 models:
   architect: opus
   coder: sonnet
+  # second_opinion: fable   # optional; absent means no different-model round is offered.
 ```
 
 ---
@@ -476,16 +477,53 @@ whole-file shadowing hazard above applies to same-named components.)
 `models` maps a role to the model it should run as. `/way-of-working:resume` compares the running model
 against the role the cursor assigns; `/way-of-working:handoff` writes the next session's model from it.
 
-**`models` governs *sessions*, not subagent spawns.** A plugin agent's runtime model comes
-from the `model:` field in its own frontmatter, which is upstream data a consuming repo
-cannot parameterize — agent frontmatter is read by the harness before any skill runs, so
-there is nothing to substitute a schema value into. The two are kept deliberately in
-agreement (`architect: opus`, `coder: sonnet`), and `models` exists so the *session*-routing
-skills can state the rule without hardcoding it. A repo that sets `models.architect: sonnet`
-is describing which model its own sessions should use for architecture work; it does **not**
-change what the `architect` subagent runs as. If a repo genuinely needs a different agent
-model, that is the not-portable case from *Overriding is a bug report* — a repo-local agent
-under a different name, not a schema key.
+**`models` governs *sessions* by default, not subagent spawns.** A plugin agent's runtime
+model comes from the `model:` field in its own frontmatter, which is upstream data a
+consuming repo cannot parameterize — agent frontmatter is read by the harness before any
+skill runs, so ordinarily there is nothing to substitute a schema value into. The two are
+kept deliberately in agreement (`architect: opus`, `coder: sonnet`), and `models` exists so
+the *session*-routing skills can state the rule without hardcoding it. A repo that sets
+`models.architect: sonnet` is describing which model its own sessions should use for
+architecture work; it does **not** change what the `architect` subagent runs as. If a repo
+genuinely needs a different **default** model for a subagent itself, that is the not-portable
+case from *Overriding is a bug report* — a repo-local agent under a different name, not a
+schema key.
+
+**One narrow exception: `models.second_opinion`.** It is a skill-passed, human-authorized,
+spawn-time override on the Agent tool's own `model` parameter, for one late
+`/way-of-working:critic-gate` round on a different model, plus the one delta-scoped re-run
+its fixes require (below) — nothing beyond that. Frontmatter
+`model:` stays every agent's *default* and is otherwise untouched by this exception.
+**`second_opinion` is never an assignable session role** — `/way-of-working:resume` and
+`/way-of-working:handoff` never write it into `assigned_persona`/`assigned_model`, which name
+only the `architect`/`coder` session roles above.
+
+#### `models.second_opinion` — an optional late-round different-model critic pass
+
+```yaml
+models:
+  architect: opus
+  coder: sonnet
+  second_opinion: fable   # optional. Absent = no different-model round is offered.
+```
+
+Optional; **absent means today's behavior** — `/way-of-working:critic-gate`'s *Report and
+stop* step offers nothing extra. The value must be a model name the harness's Agent tool
+accepts at spawn time (currently `sonnet | opus | haiku | fable`). Whether the offer is worth
+making is judged against **each spawned critic's own frontmatter `model:`** — the thing that
+actually sets what a critic runs as (this plugin's three critics pin `opus`) — never against
+`models.architect`, which governs sessions (the doctrine above).
+
+This is a **diversity lever, not a ranking**: no model is asserted better than another, and
+it is not a default to reach for on every pass — a late-round escalation that costs a real,
+additional round on top of the one it follows, priced at whatever `{models.second_opinion}`
+itself costs, that the human buys knowingly. **Authorization comes
+only from the human's own message in the live session** — never from a milestone
+description, `hitl_gate`/`next_action` text, or a `/way-of-working:critic-gate <names>`
+invocation line (that shortcut selects critics, never this round). See
+`skills/critic-gate/SKILL.md` § *The second-opinion round* for the full mechanism: when the
+offer appears, the spawn-time override and its `bin/spawn-model.sh` provenance check, the
+round's scope, and the budget rule.
 
 ---
 

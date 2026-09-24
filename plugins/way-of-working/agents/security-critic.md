@@ -1,7 +1,7 @@
 ---
 name: security-critic
 description: >-
-  Opus read-only taint-flow and trust-boundary reviewer keyed to the consuming repo's OWN
+  Opus-by-default read-only taint-flow and trust-boundary reviewer keyed to the consuming repo's OWN
   threat model — the repo-specific violations a generic SAST tool structurally cannot see.
   Traces untrusted input from source to dangerous sink across a diff, and checks the trust
   boundaries the repo's threat model names. Read-only, returns a ranked findings list, never

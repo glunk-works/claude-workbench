@@ -70,7 +70,9 @@ github_milestones` — `{backlog.repo}`.
      cannot reach, say "hermetically verified; live smoke deferred → <tracked item>," never
      "done/working end-to-end." Claim only what the evidence covers.
    - `assigned_model` / `assigned_persona` for the **next** session, per `{models}` (see
-     `reference/workflow.md`).
+     `reference/workflow.md`) — always one of the session roles there (`architect`/`coder`);
+     `second_opinion` is never a session role and is never written into either field
+     (`reference/project-schema.md` § `agents`, `models`).
    - `last_commit` = current `git rev-parse --short HEAD`.
    - `next_action` = the single most important next step, phrased as an imperative. **Under
      `{planning.kind}: github_milestones`, on an `implementing` cursor**, it begins with the
@@ -196,8 +198,15 @@ github_milestones` — `{backlog.repo}`.
    fields — status, commit hashes, the assigned model — which are `next-steps.md`'s job
    as the git-tracked ledger behind git-ignored `.ai/state.json`, and the critic pass's
    round count + stopping condition, which no command can re-derive and which the next
-   session cannot otherwise learn. The rule bars restating what a command or another file
-   already answers.
+   session cannot otherwise learn. **The critic pass's model provenance joins that second
+   item** — in the same form `/way-of-working:critic-gate`'s report uses (e.g. "2 rounds,
+   converged; +1 on `{models.second_opinion}` (second_opinion), converged") whenever any
+   round ran on a model other than a critic's own frontmatter default; when a second-opinion
+   round was **attempted** but `spawn-model.sh` answered `mismatch` or `unconfirmed`, record
+   that outcome in those words instead (e.g. "+1 attempted on `{models.second_opinion}`
+   (second_opinion): unconfirmed") — do not write it as if the round simply didn't happen.
+   Say nothing extra when no second-opinion round was attempted at all. The rule bars
+   restating what a command or another file already answers.
 
 5. **Commit `.ai/next-steps.md` as its own docs-only PR against `{pr_base}`.** The cursor
    sync travels as a small, standalone, docs-only PR, separate from whatever code PR this

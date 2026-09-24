@@ -46,8 +46,11 @@ delta as `cursor-sync`, so parking costs the next session nothing.
 
 Which concrete model fills each role is per-repo configuration — the `models` key in
 `.ai/project.yml`; Opus and Sonnet are the defaults this doc's diagrams use. (`models`
-governs *sessions*, not subagent spawns — the plugin's agents each fix their own model;
-see `project-schema.md`.) Routing is
+governs *sessions* by default, not subagent spawns — the plugin's agents each fix their own
+default model via frontmatter, with one narrow exception: `models.second_opinion`, a
+human-authorized, spawn-time override for a single late `/way-of-working:critic-gate` round
+on a different model, plus its one delta-scoped re-run; see `project-schema.md` § `agents`,
+`models`.) Routing is
 **manual and persona-driven** — the human picks the model. Automated routing (a
 proxy/router) is explicitly out of scope.
 
@@ -156,14 +159,20 @@ newly-added-doc row; this is the overview.)
 The plugin ships four, in its own `agents/`; `agents.enabled` in `.ai/project.yml` picks
 which of them a repo uses, and `/way-of-working:critic-gate` proposes from that list only.
 
-- **`coder`** (Sonnet, read/write) — implement one defined sprint task; the secondary
-  in-session path when a full handoff is overkill.
-- **`architect`** (Opus, read-only) — correctness + structural-invariant review; the
-  `/way-of-working:critic-gate` pre-review and a `/code-review` fan-out target. **Not** the
-  fresh-session review gate — `/way-of-working:architect-review` is.
-- **`security-critic`** (Opus, read-only) — threat-model taint-flow on a `code_paths` diff.
-- **`docs-consistency`** (Opus, read-only) — cross-check load-bearing prose against ground
-  truth; run before a roadmap-heavy PR or at archive time.
+- **`coder`** (Sonnet by default, read/write) — implement one defined sprint task; the
+  secondary in-session path when a full handoff is overkill.
+- **`architect`** (Opus by default, read-only) — correctness + structural-invariant review;
+  the `/way-of-working:critic-gate` pre-review and a `/code-review` fan-out target. **Not**
+  the fresh-session review gate — `/way-of-working:architect-review` is.
+- **`security-critic`** (Opus by default, read-only) — threat-model taint-flow on a
+  `code_paths` diff.
+- **`docs-consistency`** (Opus by default, read-only) — cross-check load-bearing prose
+  against ground truth; run before a roadmap-heavy PR or at archive time.
+
+  Three of these four are `/way-of-working:critic-gate`'s critics (`coder` implements, it is
+  never proposed as one); each pins its default in its own frontmatter, and
+  `models.second_opinion` is the one spawn-time override on it (`project-schema.md` §
+  `agents`, `models`).
 
 A repo may define **additional** agents locally in `.claude/agents/` (a guard-surface
 auditor, a mutation-triage shard runner, a live-verification runner are shapes that have
