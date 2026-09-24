@@ -3,14 +3,17 @@ repo: glunk-works/claude-workbench
 pr_base: main
 
 # ── the deep record ──────────────────────────────────────────────────────────
-# This repo has no separate roadmap-with-status-table and no sprint cadence — it
-# ships as small, single-task PRs (#22, #24-27), and docs/decisions.md's own
-# "Status" section is the closest thing to a live status + next-action record.
-# sprints_dir is declared per the schema's expectation but starts empty: used
-# only if/when a task is genuinely sprint-sized, not as the default unit of work.
+# This repo has no separate roadmap-with-status-table — it ships as small,
+# single-task PRs (#22, #24-27), and docs/decisions.md's own "Status" section is
+# the closest thing to a live status + next-action record. sprints_dir is
+# declared per the schema's expectation but stays empty: sprint plans live as
+# GitHub milestones (planning.kind below), never as sprints_dir/*/sprint_plan.md.
 roadmap: docs/decisions.md
 sprints_dir: sprints
 threat_model: docs/decisions.md
+
+planning:
+  kind: github_milestones   # each sprint is one milestone; #86 is what makes this readable.
 
 decisions:
   log: docs/decisions.md
