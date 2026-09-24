@@ -304,7 +304,52 @@ take effect. Full reasoning and the task breakdown that implements them:
   resolves both surfaces under a stated precedence (any success wins, pending beats
   failure, exact name), so neither caller re-derives the rule.
 
-- **WB-D11 — an approximate matcher picks its error direction, states it, and pins it with a
+  **Fourth landing:** `bin/review-base-anchor.sh` + `tests/review-base-anchor.test.sh`
+  (issue #126), replacing the ~20-line preflight chain PR #123 first wrote inline in
+  `/way-of-working:architect-review`. That chain's own critic gate needed four hand-verified
+  rounds, plus throwaway scratch scripts, before it shipped — each round finding a *new* git
+  edge case (a tag shadowing the remote-tracking ref, a tag hijacking a short-name fetch, a
+  PR base reaching `git switch` as an option, a failure path printing nothing with a stale
+  value on the `STOP` line, a fork with two remotes carrying the same branch) rather than
+  converging, the same shape `WB-D11`'s predicate went through. The script also keeps the one
+  behavior the inline chain had that the issue's own proposal didn't ask for back:
+  `REVIEW_BASE_ANCHOR_ALLOW_UNDECLARED_BASE`, the human override for an undeclared
+  `migration_base` base — still a deliberate re-run after reading an unmodified `STOP` line,
+  never read from PR content.
+
+  This extraction's own pre-handoff critic pass (architect + security-critic) then found
+  four more edge cases in the *new* script, each reproduced live rather than taken on a
+  critic's word: `-Cmain` reaching `git switch` parses as `-C main`, a force-reset of
+  whatever branch is named `main`, not a switch to a branch literally named `-Cmain` — the
+  `check-ref-format` guard is what stands in front of this, so its output is now compared
+  back to the value it was given, not just its exit status; a local branch already AHEAD of
+  `origin`'s tip passed `--ff-only` as a silent no-op, so "verified synced" was not, in
+  fact, always true; the `git show <rev>:./.ai/project.yml` read resolved relative to the
+  CURRENT directory rather than the repo root, so the script now `cd`s to
+  `git rev-parse --show-toplevel` before doing anything else; and the override above was
+  first shipped as a bare on/off switch, which a PR author could silently ride past by
+  retargeting the base between the human's read of an unmodified `STOP` line and the
+  deliberate rerun — it was pinned, in that first fix, to the exact base name the human
+  saw, printed and reread, not a boolean.
+
+  A second, human-authorized round on the same pass (past its own stated 2-round cap, on
+  the human's explicit go-ahead — the *Convergence* rule that crossing it is their call,
+  not a reason to keep looping unasked) closed what the first round's own fixes had left
+  open. The re-spawned critics independently converged on the same shell-portability edge
+  case — `cd "$(cmd)" || stop` tests only what `cd` does with an empty string on `cmd`'s
+  failure, not `cmd`'s own exit status, and some shells treat `cd ""` as a no-op rather
+  than an error — now split into `TOP=$(cmd) || stop; cd "$TOP" || stop`. The architect
+  round also caught a gap in its OWN round-1 fixture: the `-Cmain` regression test asserted
+  `main`'s tip was unmoved, but with `HEAD` already on `main` in that fixture, a `-C main`
+  force-reset lands on the same commit it started from — a no-op that the equality check
+  could never have told apart from the guard actually working. Reproduced live with `HEAD`
+  moved to a throwaway branch first: `main` visibly moves under the guard's removal, and
+  the strengthened fixture now catches it (confirmed by mutation). Security-critic's own
+  round 2 found the base-name-only override was still too wide: pinned to a NAME, one
+  human's approval for one review could be replayed by ANY other PR, in any other repo,
+  whose base happened to share that name — a long-lived branch name like `release/2` is
+  easy to guess, and nothing tied the string to the specific review it was typed for. The
+  override is now `repo#N:base`, scoped to the one review it was actually decided for.
   fixture.** `/way-of-working:ship` needs to know whether a ledger's `_archive` sibling
   carries a removed item *at its own entry anchor*. Two lines are byte-identical in shape —
   a wrapped citation continuing onto a new line, and an unmarked sub-entry — so the question
