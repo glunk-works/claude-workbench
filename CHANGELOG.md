@@ -29,6 +29,67 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [0.10.0] — 2026-09-24
+
+**⚠️ Migration:** `migration_base` is the only `.ai/project.yml` key this release adds,
+removes, or renames, and it matters only for a repo currently mid-migration under the *old*,
+undeclared behavior — where only the integration branch's own `pr_base` named the migration,
+with no declaration on the default branch. Such a repo will now see
+`/way-of-working:architect-review` stop on PRs to that integration branch. **Fix:** merge
+`migration_base: <integration branch>` into the *default* branch's `.ai/project.yml`.
+`planning.kind` and `models.second_opinion` (also new since `0.9.0`) are both optional and
+additive — absent means today's behavior for each, so neither needs a change.
+
+### Added
+
+- **`planning.kind: github_milestones`.** Sprint planning can now live in a GitHub
+  milestone's description plus a task issue's body and an approved spec comment, instead of
+  a git-tracked `sprint_plan.md`. Adds `bin/plan-anchor.sh`, the deterministic write/verify
+  predicate over a `plan_anchor` cursor field that binds the milestone description, the task
+  issue, and its spec comment against tampering, mirroring `cursor-drift.sh`'s contract.
+  Wires `resume`, `handoff`, and the remaining touchpoints to branch on `{planning.kind}`
+  while `files` behavior is unchanged. Critic gate: `architect` + `security-critic` +
+  `docs-consistency`, 3 rounds, converged (#86, PR #135).
+- **`archive-sprint` now closes a sprint's GitHub milestone** under
+  `planning.kind: github_milestones` — gated on 0 open true issues (PRs excluded) and a
+  `plan-anchor.sh verify --plan` match on a known-usable anchor. Stages the close for the
+  human instead of running it on drift, an unreadable anchor, a harness refusal, or an
+  unconfirmed read-back, and reports an already-closed milestone or a blocked open issue
+  distinctly rather than silently. Critic gate: 3 rounds, converged (#128, PR #137).
+- **`models.second_opinion`** — an optional, human-authorized, spawn-time override on the
+  Agent tool's `model` parameter for one late `/way-of-working:critic-gate` round on a
+  different model, so a diff gets fresh eyes from a model that did not already accept it.
+  Provenance is verified from harness-written transcript evidence (never the subagent's own
+  report text) via a new `bin/spawn-model.sh`, fail-closed to `unconfirmed`/`mismatch` on
+  anything it cannot verify. Critic gate: 2 rounds, converged (#72, PR #139).
+
+### Fixed
+
+- **`/way-of-working:architect-review`'s long-migration fallback trusted a non-default
+  `pr_base`** gated only by ruleset criteria a PR author could write, from the same
+  `.ai/project.yml` a PR author controls. The base now comes from the PR on GitHub and is
+  accepted only if it is the default branch, or the default branch's own `.ai/project.yml`
+  names it as the new key `migration_base` above. Refs are spelled in full, closing a
+  shadowing bug where a pushed tag named `origin/<branch>` won over the real branch
+  (reproduced); the base name passes `check-ref-format` before reaching git; a failed chain
+  stops and prints the values a human override needs, and an unattended run stops rather
+  than guessing. Critic gate: `security-critic` + `architect` + `docs-consistency`, an
+  initial pass plus 3 fix rounds (round 3 human-authorized past the 2-round cap), converged
+  (#112, #114, PR #123).
+- **66 "step N" cross-references across the plugin — silently broken by any later
+  renumbering — now cite the step's own bolded name instead.** `invariants-check.sh` gains a
+  guard against the form coming back, verified by a deliberate regression. A fix round
+  closed gaps the critic gate found: the guard missed plural/hyphenated forms ("steps 3 and
+  4", "step-5"), leaving one live reference uncaught, plus a misattributed citation and a
+  grammar slip (#61, PR #131).
+- **`.ai/project.yml` never declared `planning.kind` explicitly**, though this repo's own
+  cursor had pointed at GitHub milestones since #86/#135 shipped — it defaulted to `files`,
+  contradicting what the cursor already did. Declares the key and drops the now-stale "no
+  sprint cadence" comment that predated the milestone adoption (PR #141).
+- **The absent-is-unreadable rule contradicted three keys that already document their own
+  absent-means-X meaning** (`backlog.repo`, `review.ci_gate.triggers_on`, `migration_base`) —
+  qualifies the general rule with the exception (#127, PR #133).
+
 ## [0.9.0] — 2026-09-23
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed by any
