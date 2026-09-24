@@ -1,35 +1,30 @@
 # Cursor — claude-workbench
 
 **Now:** **Sprint 3** — [milestone 4](https://github.com/glunk-works/claude-workbench/milestone/4),
-*harden architect-review's trust chain*, ships as **v0.11.0**. Status: **planning** — the
-milestone description lays out the build order and model-per-phase note; this phase
-reviews and confirms it before build starts.
+*harden architect-review's trust chain*, ships as **v0.11.0**. Status: **implementing** —
+the build order is the milestone description; step 1 needs no plan, step 2 waits on a pick.
 
 **Just done (2026-09-24, Fable):**
-- Triage landed. The human ran the staged milestone writes: milestone 4 now lists #150 as
-  build-order step 4 and is dated 2026-10-27; milestone 3's stale "#104 if late" clause is
-  gone; milestone 5 is dated 2026-12-08; **Sprint 6**
-  ([milestone 6](https://github.com/glunk-works/claude-workbench/milestone/6), trigger-gated,
-  undated) exists with #124 in it; milestone 2 is closed. The open milestones now sort
-  3 → 4 → 5 → 6. Cursor sync merged as [PR #151](https://github.com/glunk-works/claude-workbench/pull/151).
-- Filed [#152](https://github.com/glunk-works/claude-workbench/issues/152) (`plan-sprint`
-  skill: the planning pass, mechanized; ranking stays human) → Sprint 5, and
-  [#153](https://github.com/glunk-works/claude-workbench/issues/153) (archive-sprint's
-  milestone close reached neither the ledger nor the gate; second occurrence, #128's prose
-  did not prevent it) → Sprint 3 as build-order step 5, since that is the next sprint to
-  run an archive (assigned on the human's call, 2026-09-24).
+- #113's isolation-mechanism design spec is on the issue
+  ([comment](https://github.com/glunk-works/claude-workbench/issues/113#issuecomment-5815745651)):
+  options A (throwaway clone + credential-stripped env), B (container, needs a schema key),
+  C (no local execution for untrusted authors, CI as witness), D (re-verify, rejected),
+  E (container for everyone). Recommendation: A + C now, B filed as a follow-up. The
+  mechanism A rests on was probed live on this machine before it was written up.
+- Both staged milestone writes landed (milestone 5 lists #152, milestone 4 lists #153);
+  that gate is cleared. Cursor sync from the triage merged as
+  [PR #154](https://github.com/glunk-works/claude-workbench/pull/154).
+- First anchor for milestone 4, description sha
+  `fbd0041b9b6171fb9e0d22ceefb1cb927535ed98d1de83833b03f21739f95e07`.
 
-**Next:** on **fable** (`architect` — the milestone's own model-per-phase note and the human's
-standing Fable routing for design put #113's spec on Fable, not the `models:` map's opus):
-write #113's isolation-mechanism design spec on the issue (options + recommendation, human
-picks). Then `/way-of-working:handoff` → sonnet `coder` starts build order step 1, #126
-(design settled in the issue, no plan needed).
+**Next:** task #126 — on **sonnet** (`coder`): extract `architect-review`'s preflight chain
+to `bin/review-base-anchor.sh` with `tests/review-base-anchor.test.sh` covering every case
+the issue lists; `SKILL.md` calls it by bare name. Design settled in the issue body. Then
+the green gate, `/way-of-working:critic-gate` (architect + security-critic), `/way-of-working:ship`.
 
-**HITL Gate: OPEN** — two staged milestone writes: Sprint 5's description gains #152 as
-build-order step 2, and Sprint 3's gains #153 as step 5. Run
-`sh "$LOCALAPPDATA/Temp/claude/c--Users-SR116-projects-personal-claude-workbench/1fbccbaa-7e1a-40ed-b0a2-f011244e846e/scratchpad/milestone-writes-2.sh"`;
-the proposed texts are also on #152 and #153 as the 2026-09-24 comments. Small, and they do not block
-Sprint 3's next action; clear it whenever convenient.
+**HITL Gate: OPEN** — (1) first anchor for milestone 4 (above): a human "go" at the next
+resume confirms the milestone description is the plan. (2) Pick #113's isolation mechanism
+from the spec comment; needed before build-order step 2, not before #126.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 4](https://github.com/glunk-works/claude-workbench/milestone/4) ·
