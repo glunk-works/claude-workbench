@@ -1,48 +1,43 @@
 # Cursor — claude-workbench
 
 **Now:** **Sprint 2**: [milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2),
-*plan in GitHub, not in files*. Status: **implementing**. Build order and model per phase
-are in the milestone description.
+*plan in GitHub, not in files*. Status: **implementing**. 0 open issues remain in the
+milestone, but build order step 7 (the release itself) isn't fully closed out yet.
 
-**Just done (2026-09-23, sonnet coder session):**
-- Built **#72** (build order step 5): added the optional `models.second_opinion` schema key
-  — a human-authorized, spawn-time override on the Agent tool's `model` parameter for one
-  late `/way-of-working:critic-gate` round on a different model, plus the one delta-scoped
-  re-run its fixes require. Provenance is verified from harness-written transcript evidence
-  (never the subagent's own report text) via a new `bin/spawn-model.sh`, fail-closed to
-  `unconfirmed`/`mismatch` on anything it cannot verify. Rewrote `project-schema.md`'s and
-  `workflow.md`'s prior absolute "models never touches subagent spawns" claim to state this
-  one narrow exception; reworded "(Opus)"/"(Sonnet)" wording across the four agent files to
-  "by default".
-- Ran the local green gate (`lint.sh`, `coupling-check.sh`, `invariants-check.sh`, all
-  `tests/*.test.sh` including the new `tests/spawn-model.test.sh`) — all passed.
-- Ran `/way-of-working:critic-gate` (architect + security-critic + docs-consistency, all
-  three confirmed by the human): **2 rounds, converged**. Round 1 found real,
-  severity-bearing issues in all three lanes — a reproducible bug where a subagent's own
-  tool-call input could smuggle a `model` key past a greedy match and forge provenance, a
-  fail-open on a transcript's last line missing a trailing newline, an unvalidated
-  `CLAUDE_CODE_SESSION_ID` allowing path traversal, a missing executable bit, a
-  second-opinion offer that could repeat indefinitely, and several schema/skill
-  contradictions (budget rule, a false "never searches directories" claim, a
-  falsely-attributed prefix table, an unsupported cost multiplier, a sweep miss in
-  `workflow.md`'s agent catalog). All fixed; round 2 converged clean (5 low-confidence
-  tightenings total, 2 applied). `{models.second_opinion}` is not set in this repo, so no
-  round ran on a different model this pass.
-- Shipped as [PR #139](https://github.com/glunk-works/claude-workbench/pull/139).
+**Just done (2026-09-24, sonnet coder session):**
+- Built **#104** (build order step 6): `release.yml`'s `release` job now runs under a
+  `release` environment (main-only, required reviewer) and mints its write token from a
+  dedicated GitHub App instead of `github.token`, narrowed to `contents: read` at the job
+  level. Shipped as [PR #143](https://github.com/glunk-works/claude-workbench/pull/143).
+  Critic gate: `architect` + `security-critic` + `docs-consistency`, 2 rounds, converged —
+  round 1 found and fixed real issues in all three lanes (a false claim about what a dry
+  run proves, ruleset-verify commands querying the wrong endpoint, a probe that could read
+  "rejected" for an unrelated auth-scope reason, a token-scope overclaim, plus a deferred
+  `create-github-app-token` deprecation); round 2 converged clean, tightenings only.
+- Shipped the version bump as [PR #144](https://github.com/glunk-works/claude-workbench/pull/144)
+  (`chore(release): bump the plugin to 0.10.0`) — critic gate not run, changelog/version
+  mechanics alone, per #119's own precedent.
+- Fixed the deferred `create-github-app-token` deprecation *before* the real release rather
+  than after, as [PR #145](https://github.com/glunk-works/claude-workbench/pull/145) — critic
+  gate not run, one-line swap both critics from #104's round already suggested.
+- Ran the full remaining order live: dry run (approved) → admin created the
+  `release-tag-creation` ruleset (verified: `creation` only, App as sole bypass actor,
+  `protected-release-tags` confirmed untouched) → real release, **`v0.10.0` published** →
+  both probes rejected (`GH013` on the hand push, `422` on the branch-workflow attempt,
+  reproduced under a non-bypassable admin identity to rule out an auth-scope false pass) →
+  no stray tags or branches left behind.
+- Closed **#104** with the full verification writeup.
 
-**Next:** on **sonnet** (`coder`): task #104 — build order step 6, only `release.yml` may
-create `v*` tags. The human already decided the bypass mechanism on 2026-09-23 (a GitHub App
-`claude-workbench-release`, key held by a main-only `release` environment with a required
-reviewer; App and environment already set up) —
-[read the full decision record](https://github.com/glunk-works/claude-workbench/issues/104#issuecomment-5801462976)
-before starting. Build the `release.yml` workflow gate and stage the
-`release-tag-creation` ruleset-creation `gh api` command(s) for the admin to run — the
-harness's own classifier blocks `gh api` writes to org-level settings, and this session must
-not attempt that write itself. Then the green gate, `/way-of-working:critic-gate`, and ship.
+**Next:** on **sonnet** (`coder`): finish build order step 7 — bump *this repo's own*
+plugin pin (`.claude/settings.json` → `extraKnownMarketplaces.claude-workbench.source.ref`)
+from `v0.9.0` to `v0.10.0`, following `CHANGELOG.md`'s bump procedure (edit ref → re-register
+the marketplace → uninstall/reinstall → restart → verify by commit SHA, not version string).
+Ship it as its own `chore(release)` PR, mirroring PR #121's precedent. Then flag to the human
+that build order step 7 also says "tell bounty-infra" — #86 recorded them as waiting on this
+tag — which is a human communication call, not something to act on unattended.
 
-**HITL Gate: OPEN.** Confirm #104's decision-record comment is read in full before starting —
-this is a release-tag security surface (a new GitHub App plus a ruleset bypass actor).
-Staged commands go to the human; never auto-run a ruleset or environment change.
+**HITL Gate: NONE OPEN** for the pin-bump itself. The bounty-infra notification is the
+human's call (see above) — next `/way-of-working:resume` should surface it, not skip it.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2) ·
