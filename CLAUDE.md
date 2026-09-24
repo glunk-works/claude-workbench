@@ -37,6 +37,8 @@ sh tests/review-gate-state.test.sh  # review-gate predicate fixtures, both surfa
 sh tests/ai-cursor-banner.test.sh  # SessionStart banner fixtures, incl. the Parked: line (not yet required)
 sh tests/plan-anchor.test.sh    # planning.kind: github_milestones anchor predicate fixtures (not yet required)
 sh tests/spawn-model.test.sh    # models.second_opinion provenance predicate fixtures (not yet required)
+sh tests/review-base-anchor.test.sh  # architect-review's preflight-chain script fixtures (not yet required)
 ```
 
-`scripts/lint.sh` needs the `claude` CLI and `jq` on PATH.
+`scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `tests/review-base-anchor.test.sh`
+needs `yq` on PATH too (skips itself, loudly, if absent).
