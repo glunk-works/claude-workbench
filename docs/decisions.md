@@ -543,3 +543,23 @@ push-identity fix; its second (`bin/entry-anchor.sh`, #66) and `WB-D11` shipped 
 `v0.8.0` (#92) lands `WB-D12` (#88) and `WB-D10`'s third landing, `bin/review-gate-state.sh`
 (#91), with the park series and `/way-of-working:architect-review`. It is **non-breaking** —
 no `.ai/project.yml` key added, removed, or renamed.
+
+`v0.9.0` lands four `/way-of-working:architect-review`/`/way-of-working:pr-checks` fixes
+(#97, #98, #99, #100) — no `.ai/project.yml` key touched. `v0.10.0` adds `planning.kind:
+github_milestones` (#86) and its `archive-sprint` milestone-close wiring (#128), `bin/plan-
+anchor.sh`; `models.second_opinion` (#72) and `bin/spawn-model.sh`; fixes 66 broken
+"step N" cross-references to cite step names instead (#61) and qualifies the
+absent-is-unreadable rule for the keys that already document their own absent-means-X
+meaning (#127); and adds `migration_base`, the one breaking-shaped key it adds
+(non-default-`pr_base` repos only — see the changelog migration note). Sprint 2 (milestone
+2, all 6 issues closed) also lands this repo's own release-tag hardening (#104): `release.yml`
+mints its write token from the `claude-workbench-release` GitHub App under a `main`-only,
+human-reviewed `release` environment, and a new `release-tag-creation` ruleset (`creation`
+only, the App as its sole bypass actor) closes the gap where any writer could hand-push a
+`v*` tag past every check `release.yml` runs. Verified live, not just staged: the real
+`v0.10.0` release minted its tag through the App, and both probes — a hand-pushed
+`v0.0.0-probe` tag and a throwaway `on: push` workflow minting a tag via `GITHUB_TOKEN` —
+were rejected (`GH013`/`422`), the second reproduced under an admin identity the ruleset
+marks `current_user_can_bypass: never` to rule out a scope explanation. Sprint 2 closed at
+`4bf7c7c` (the `v0.10.0` tag, PR #145), with this repo's own plugin pin bump to `v0.10.0`
+(PR #147) as the sprint's last, non-blocking step.
