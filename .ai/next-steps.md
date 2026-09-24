@@ -16,8 +16,8 @@ reviews and confirms it before build starts.
   skill: the planning pass, mechanized; ranking stays human) → Sprint 5, and
   [#153](https://github.com/glunk-works/claude-workbench/issues/153) (archive-sprint's
   milestone close reached neither the ledger nor the gate; second occurrence, #128's prose
-  did not prevent it) → unmilestoned for the next triage. #153 is worth pulling into
-  Sprint 3 since that is the next sprint to run an archive.
+  did not prevent it) → Sprint 3 as build-order step 5, since that is the next sprint to
+  run an archive (assigned on the human's call, 2026-09-24).
 
 **Next:** on **fable** (`architect` — the milestone's own model-per-phase note and the human's
 standing Fable routing for design put #113's spec on Fable, not the `models:` map's opus):
@@ -25,10 +25,10 @@ write #113's isolation-mechanism design spec on the issue (options + recommendat
 picks). Then `/way-of-working:handoff` → sonnet `coder` starts build order step 1, #126
 (design settled in the issue, no plan needed).
 
-**HITL Gate: OPEN** — one staged milestone write: Sprint 5's description gains #152 as
-build-order step 2. Run
+**HITL Gate: OPEN** — two staged milestone writes: Sprint 5's description gains #152 as
+build-order step 2, and Sprint 3's gains #153 as step 5. Run
 `sh "$LOCALAPPDATA/Temp/claude/c--Users-SR116-projects-personal-claude-workbench/1fbccbaa-7e1a-40ed-b0a2-f011244e846e/scratchpad/milestone-writes-2.sh"`;
-the proposed text is also on #152 as the 2026-09-24 comment. Small, and it does not block
+the proposed texts are also on #152 and #153 as the 2026-09-24 comments. Small, and they do not block
 Sprint 3's next action; clear it whenever convenient.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
