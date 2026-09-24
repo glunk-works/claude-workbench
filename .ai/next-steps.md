@@ -5,12 +5,14 @@
 the build order is the milestone description; step 1 needs no plan, step 2 waits on a pick.
 
 **Just done (2026-09-24, Fable):**
-- #113's isolation-mechanism design spec is on the issue
-  ([comment](https://github.com/glunk-works/claude-workbench/issues/113#issuecomment-5815745651)):
-  options A (throwaway clone + credential-stripped env), B (container, needs a schema key),
-  C (no local execution for untrusted authors, CI as witness), D (re-verify, rejected),
-  E (container for everyone). Recommendation: A + C now, B filed as a follow-up. The
-  mechanism A rests on was probed live on this machine before it was written up.
+- #113's isolation-mechanism design spec is on the issue, revision 2
+  ([comment](https://github.com/glunk-works/claude-workbench/issues/113#issuecomment-5816327570)):
+  options A (throwaway repo + stripped env: accident containment only), B (container, needs
+  a schema key), C (no local execution for an untrusted PR, step 4 as witness), D (transcript-
+  held belt at step 7), E (container for everyone). Recommendation: A + C + D now, B scheduled
+  for Sprint 5. Critic pass on the spec: security-critic + architect, 1 round, human called it;
+  three findings reproduced live (keyring token reachable, PATH writable, clone leaks the
+  workspace path) and folded into revision 2; revision 1 is marked superseded.
 - Both staged milestone writes landed (milestone 5 lists #152, milestone 4 lists #153);
   that gate is cleared. Cursor sync from the triage merged as
   [PR #154](https://github.com/glunk-works/claude-workbench/pull/154).
@@ -24,7 +26,7 @@ the green gate, `/way-of-working:critic-gate` (architect + security-critic), `/w
 
 **HITL Gate: OPEN** — (1) first anchor for milestone 4 (above): a human "go" at the next
 resume confirms the milestone description is the plan. (2) Pick #113's isolation mechanism
-from the spec comment; needed before build-order step 2, not before #126.
+from the revision-2 spec comment; needed before build-order step 2, not before #126.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 4](https://github.com/glunk-works/claude-workbench/milestone/4) ·
