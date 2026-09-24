@@ -362,9 +362,9 @@ shape: `write <repo> <milestone> <N|-> [<comment-id|->]` produces the anchor; `v
 answers `match | drift | unreadable`, always exiting 0 — the verdict is stdout, the caller
 decides policy. `--plan` mode checks only the milestone (open, number, description hash) and
 ignores `task_issue`/`spec_comment` — `/way-of-working:handoff`'s baseline re-anchor check uses
-it, since `#N` may not exist yet or may have just changed; a milestone-closing check (reserved,
-not yet built — `/way-of-working:archive-sprint`'s own closing step is separate future work)
-would use it too, for the same reason `#N` is legitimately null or closed by close time. Full
+it, since `#N` may not exist yet or may have just changed; `/way-of-working:archive-sprint`'s
+*Close the sprint's milestone* step uses it too, for the same reason `#N` is legitimately null
+or closed by close time. Full
 mode additionally requires `#N` open, a true issue (no `pull_request` key),
 living in `{backlog.repo}` at that number, on that milestone, unedited since the anchor, and
 (when anchored) the spec comment unedited and still on `#N`. Read the script's own header for

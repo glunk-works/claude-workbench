@@ -3,9 +3,10 @@
 # (reference/project-schema.md § `planning`) -- whether a cursor's `plan_anchor`
 # still describes the LIVE milestone description, task issue, and spec comment.
 # Mirrors cursor-drift.sh's shape and reasoning: a predicate with a correctness
-# argument, not a judgment call, so /way-of-working:resume's auto-start test and
-# /way-of-working:handoff's re-anchor check both call this script rather than
-# recomputing the comparison in skill prose.
+# argument, not a judgment call, so /way-of-working:resume's auto-start test,
+# /way-of-working:handoff's re-anchor check, and /way-of-working:archive-sprint's
+# milestone-close check all call this script rather than recomputing the
+# comparison in skill prose.
 #
 # Usage:
 #   plan-anchor.sh write  <repo> <milestone> <N|-> [<comment-id|->]
@@ -26,8 +27,8 @@
 #
 # `verify --plan` checks only: milestone open, number equality, description
 # hash. It ignores `task_issue` and `spec_comment` entirely -- the mode
-# handoff's baseline re-anchor check uses, and that a milestone-closing check
-# would use too, since `#N` is legitimately null or closed by the time a
+# handoff's baseline re-anchor check uses, and archive-sprint's milestone-close
+# check uses too, since `#N` is legitimately null or closed by the time a
 # milestone closes.
 #
 # The anchor JSON's shape is fixed and produced only by this script's own
