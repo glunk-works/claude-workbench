@@ -300,10 +300,12 @@ It is not a deliverable. It gates one.
 Two rules, and they are cheap:
 
 - **Mark it.** In a sprint plan, prefix the criterion with the literal word **`BLOCKING:`**
-  and name the step it gates. A convention that can be recognised mechanically is what lets a
-  later check find every one of them without re-reading the plan for intent — and "read the
-  plan and use judgment" is precisely what fails, because a satisfied criterion and a skipped
-  one look identical in hindsight.
+  and name the step it gates. Under `{planning.kind}: github_milestones` there is no
+  `sprint_plan.md` file — the marker lives in the **milestone description** instead, in the
+  same shape (`reference/project-schema.md` § `planning`). A convention that can be
+  recognised mechanically is what lets a later check find every one of them without
+  re-reading the plan for intent — and "read the plan and use judgment" is precisely what
+  fails, because a satisfied criterion and a skipped one look identical in hindsight.
 
   ```markdown
   - BLOCKING: <state is copied out-of-band and verified restorable>

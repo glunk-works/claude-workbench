@@ -8,7 +8,7 @@ inheriting a bloated context window.
 ## The two state layers (do not conflate)
 
 - **`.ai/`** — *this* dev-workflow's state (how Claude Code sessions hand off).
-  - `.ai/next-steps.md` (git-tracked) — the human-readable cursor: current phase/sprint, status, next action, which model to use, HITL Gate state. A **thin pointer** into the roadmap + the active sprint file; not a second copy of them.
+  - `.ai/next-steps.md` (git-tracked) — the human-readable cursor: current phase/sprint, status, next action, which model to use, HITL Gate state. A **thin pointer** into the roadmap + the active sprint plan (a file, or — under `planning.kind: github_milestones` — a GitHub milestone); not a second copy of them.
   - `.ai/state.json` (git-ignored) — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`).
   - `.ai/context/` (git-tracked) — heavy reference loaded on demand, where a repo keeps any.
   - `.ai/archive/` (git-ignored) — retired sprint snapshots. Disposable: a retired sprint's
@@ -55,7 +55,8 @@ proxy/router) is explicitly out of scope.
 
 ```
 OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /way-of-working:handoff
-   |                                                                          |
+   |           (or, under planning.kind: github_milestones, the milestone description +      |
+   |            an approved spec comment on the task issue -- project-schema.md § `planning`) |
    v   (fresh session, /model sonnet)                                         |
 SONNET (code)  /way-of-working:resume -> branch sprint/NN-slug -> implement + tests -> green
    |           gate -> /way-of-working:critic-gate -> commit, push, open PR                  |
@@ -250,11 +251,14 @@ description and cannot be mistaken for the human's approval.
   Defense-in-depth that runs *earlier* — **not** the `review.ci_gate` review, which still
   runs fresh after handoff where a repo wires one.
 - **`/way-of-working:resume`** — run at the **start** of a session. Reads `.ai/state.json` +
-  `.ai/next-steps.md` + the pointed sprint_plan + roadmap NEXT ACTION, states the exact
+  `.ai/next-steps.md` + the pointed sprint plan (a `sprint_plan.md` file, or — under
+  `planning.kind: github_milestones` — the pointed milestone's description and open issues,
+  `project-schema.md` § `planning`) + roadmap NEXT ACTION, states the exact
   pick-up point, and adopts the assigned persona/model.
   **It may then start the `next_action` unattended** — but only on a clean, unambiguous
   cursor: `hitl_gate` reading `NONE OPEN`, `sprint_status` `implementing`, the model
-  matching `assigned_model`, and no cursor/HEAD drift. Anything else — a `planning`
+  matching `assigned_model`, no cursor/HEAD drift, and — under `github_milestones` — the plan
+  anchor verified and the task issue's author trusted. Anything else — a `planning`
   status, an open gate, an unreadable one, a wrong model, a dirty tree — and it states the
   pick-up point and waits. The rule **fails closed**: not being able to tell whether a
   gate is open counts as open. The approval that carries signal is the `hitl_gate`, which

@@ -35,6 +35,7 @@ sh tests/coupling-check.test.sh # coupling gate fixtures (not yet a required che
 sh tests/entry-anchor.test.sh   # ledger entry-anchor matcher fixtures (not yet required)
 sh tests/review-gate-state.test.sh  # review-gate predicate fixtures, both surfaces (not yet required)
 sh tests/ai-cursor-banner.test.sh  # SessionStart banner fixtures, incl. the Parked: line (not yet required)
+sh tests/plan-anchor.test.sh    # planning.kind: github_milestones anchor predicate fixtures (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH.

@@ -30,7 +30,11 @@ re-verifies it before `/way-of-working:resume` may run it unattended.
 1. **Restore.** Move `.ai/parked/<id>-state.json` over `.ai/state.json` and
    `.ai/parked/<id>-next-steps.md` over `.ai/next-steps.md`, deleting the parked copies —
    one copy of a cursor, ever. Read `parked_at` and `parked_from_commit` off the snapshot,
-   then drop the three `parked_*` fields from the live cursor.
+   then drop the three `parked_*` fields from the live cursor. Under `{planning.kind}:
+   github_milestones`, this restores `pointers.plan_anchor` **as it was at park time** — it
+   is not re-verified here, and may already be stale against whatever moved on GitHub since.
+   That is safe only because this skill never leaves `hitl_gate` reading `NONE OPEN` (the
+   *Re-point and gate* step) — the human re-verifies before anything auto-starts against it.
 2. **Re-point and gate.** Set `last_commit` to `git rev-parse --short HEAD`. Write
    `hitl_gate` as: `parked <parked_at> at <parked_from_commit>; re-verify next_action
    against what merged since: git log <parked_from_commit>..HEAD --oneline`. That range
