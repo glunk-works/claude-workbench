@@ -281,8 +281,13 @@ description and cannot be mistaken for the human's approval.
 - **`/way-of-working:archive-sprint`** — run **only** when a sprint has passed its HITL Gate **and** is committed.
   Moves its `next-steps.md` snapshot into `.ai/archive/`, compacts the deep record
   (completed narrative, and items closed during the sprint — resolved *and* declined —
-  move to archive files: move, don't rewrite, on its own PR), advances `.ai/state.json`
-  to the next sprint, and seeds a fresh `.ai/next-steps.md`.
+  move to archive files: move, don't rewrite, on its own PR), closes the sprint's GitHub
+  milestone under `planning.kind: github_milestones` (an open true issue is listed for a
+  human call and blocks the close; an already-closed milestone or a failed read is just
+  reported; otherwise a `plan-anchor.sh verify --plan match` on a known-usable anchor is
+  required, or the close is staged for the human instead), advances `.ai/state.json` to
+  the next sprint, and seeds a fresh
+  `.ai/next-steps.md`.
 - **`/way-of-working:park-sprint <next-id>`** — set the live sprint aside mid-flight:
   snapshot its cursor into tracked `.ai/parked/<id>-*`, seed the live cursor for the next
   sprint, and open the docs-only cursor-sync PR. Mechanical; any model.
