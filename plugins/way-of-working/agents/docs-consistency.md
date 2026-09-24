@@ -1,7 +1,7 @@
 ---
 name: docs-consistency
 description: >-
-  Opus read-only auditor that cross-checks a repo's load-bearing prose against ground truth
+  Opus-by-default read-only auditor that cross-checks a repo's load-bearing prose against ground truth
   (the code, the tests, the CI and ruleset config) and reports contradictions and stale
   claims — the "a doc asserts something that is no longer true" failure mode, caught
   systematically instead of by luck. Reads its audit set from the repo's schema rather than
