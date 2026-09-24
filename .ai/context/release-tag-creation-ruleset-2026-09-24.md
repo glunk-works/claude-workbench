@@ -112,13 +112,14 @@ Delete the probe tag or branch if either gets through.
    the attack option A (an Actions-app bypass) would not have stopped — it's the probe that
    actually distinguishes B from A.
 
-## Known follow-up, not blocking: `create-github-app-token`'s `app-id` input is deprecated
+## Resolved: `create-github-app-token`'s `app-id` input was deprecated
 
-`release.yml`'s App-token step uses `app-id: ${{ vars.RELEASE_APP_ID }}`. At
+`release.yml`'s App-token step originally used `app-id: ${{ vars.RELEASE_APP_ID }}`. At
 `actions/create-github-app-token@bcd2ba4…` (`v3.2.0`), `app-id` still works but is marked
-deprecated in favor of `client-id`, and a future major version could remove it — loudly, not
-silently, since minting would then fail outright. Migrating means adding a new environment
-variable (the App's Client ID, `Iv23liiXFVp3ZyvLFJ5j`, e.g. as `RELEASE_APP_CLIENT_ID`) to the
-`release` environment — an admin action, same as the ruleset above — so it's recorded here
-rather than fixed in this PR. Worth doing before `v3.2.0`'s successor drops `app-id`, not
-before this ships.
+deprecated in favor of `client-id` — surfaced as a warning annotation on the first dry run.
+Fixed 2026-09-24, after the ruleset above was created and the dry run confirmed working but
+before the real release: the admin added environment variable `RELEASE_APP_CLIENT_ID`
+(the App's Client ID, `Iv23liiXFVp3ZyvLFJ5j`) to the `release` environment, and the step now
+uses `client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}` instead. `RELEASE_APP_ID` is no longer
+read by `release.yml` but is left in place rather than removed, since nothing depends on
+tidying it up.
