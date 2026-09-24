@@ -1,44 +1,38 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 2**: [milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2),
-*plan in GitHub, not in files*. Status: **done** — 0 open issues remain in the milestone and
-build order step 7, the last piece, is merged. Not yet archived.
+**Now:** **Sprint 3** — [milestone 4](https://github.com/glunk-works/claude-workbench/milestone/4),
+*harden architect-review's trust chain*, ships as **v0.11.0**. Status: **planning** — the
+milestone description lays out the build order and model-per-phase note; this phase
+reviews and confirms it before build starts.
 
-**Just done (2026-09-24, sonnet coder session):**
-- Finished build order step 7's own-repo half: bumped this repo's plugin pin
-  (`.claude/settings.json` → `extraKnownMarketplaces.claude-workbench.source.ref`) from
-  `v0.9.0` to `v0.10.0`, following the corrected procedure in
-  `reference/conventions.md` § *Bumping a pinned plugin* / the v0.10.0 release notes —
-  **not** the stale generic blurb at the top of `CHANGELOG.md`, which still describes the
-  superseded `claude plugin update` approach. Verified by commit SHA
-  (`gitCommitSha` in `installed_plugins.json` against `git ls-remote --tags` for
-  `v0.10.0`), not version string.
-- Along the way, hit and recovered from the known drive-letter-case trap
-  (`installed_plugins.json` keys `projectPath` as an exact string): mirroring the entry
-  onto both casings via a bad `jq` edit corrupted it, and the follow-up
-  `uninstall`/`install` then wiped the tracked entries for four *other* repos sharing this
-  file (`infrastructure-core`, `bedrock-serverless-rag`, `jrg-consulting-site`,
-  `bounty-infra`). Restored all four from a same-week backup
-  (`installed_plugins.json.bak-20260923072031`, confirmed unchanged since) merged
-  alongside the correct new `claude-workbench` entries. File is valid JSON, all 8 original
-  entries present, nothing lost.
-- Shipped the pin bump as [PR #147](https://github.com/glunk-works/claude-workbench/pull/147)
-  (`chore(release): bump this repo's own pin to v0.10.0`) — critic gate not required,
-  `.claude/settings.json` is not in `code_paths`, mirrors PR #121's precedent.
-- Human restarted the session and confirmed the plugin loads correctly at the new pin, and
-  separately bumped bounty-infra's own pin to `v0.10.0` — confirmed locally
-  (`bounty-infra/.claude/settings.json` → `ref: v0.10.0`). This was the "tell bounty-infra"
-  follow-up `#86` recorded them as waiting on; it's done, not just flagged.
+**Just done (2026-09-24):**
+- Archived Sprint 2 ([milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2));
+  the Status-section update merged as [PR #149](https://github.com/glunk-works/claude-workbench/pull/149)
+  (`3bdf226`). The archive run did **not** close milestone 2 on GitHub — that close is staged below.
+- Triaged the open issues (Fable, at the human's request). Done on GitHub: **#150**
+  (archive-sprint precondition 3 has no branch procedure) → Sprint 3, labelled `bug` +
+  `area/way-of-working`. Decided, but **staged for the human** because the auto-mode
+  classifier denies `gh api` writes to this org: #150 becomes Sprint 3 build-order step 4
+  (before the release); **#124** → a new trigger-gated **Sprint 6** (starts when a gated
+  repo is about to declare `migration_base`, no due date, sorts last); Sprint 4's stale
+  "#104 if late" clause dropped; due dates on Sprints 3 and 5 so the milestone list sorts
+  3 → 4 → 5 → 6 (it currently shows Sprint 4 first — only it has a date). Sprint sequence
+  itself confirmed unchanged: trust chain → decisions → schema → trigger-gated.
 
-**Next:** on **sonnet** (`coder`, mechanical task — any model would do): run
-`/way-of-working:archive-sprint` to close out Sprint 2 / milestone 2 and seed the cursor
-for whatever comes next.
+**Next:** after the gate clears, on **fable** (`architect` — the milestone's own model-per-phase
+note and the human's standing Fable routing for design put #113's spec on Fable, not the
+`models:` map's opus): write #113's isolation-mechanism design spec on the issue (options +
+recommendation, human picks). Then `/way-of-working:handoff` → sonnet `coder` starts build
+order step 1, #126 (design settled in the issue, no plan needed).
 
-**HITL Gate: OPEN** — human sign-off that Sprint 2 is actually done and ready to archive.
-Evidence: 0 open issues in [milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2),
-PR #147 merged, bounty-infra's pin confirmed at `v0.10.0`. Archiving closes the milestone
-and rewrites the cursor, so the next `/way-of-working:resume` waits rather than auto-running it.
+**HITL Gate: OPEN** — run the staged milestone writes:
+`sh "$LOCALAPPDATA/Temp/claude/c--Users-SR116-projects-personal-claude-workbench/1fbccbaa-7e1a-40ed-b0a2-f011244e846e/scratchpad/milestone-writes.sh"`
+(five `gh api` calls plus one `gh issue edit`; the new milestone texts sit beside it). Until
+it runs, milestone 4's description does not list #150, Sprint 6 does not exist, #124 is
+unmilestoned, and milestone 2 is still open. If the scratchpad is gone, the Sprint 6 text is
+on [#124](https://github.com/glunk-works/claude-workbench/issues/124) as the 2026-09-24
+triage comment.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
-[milestone 2](https://github.com/glunk-works/claude-workbench/milestone/2) ·
+[milestone 4](https://github.com/glunk-works/claude-workbench/milestone/4) ·
 [all milestones](https://github.com/glunk-works/claude-workbench/milestones)
