@@ -2,7 +2,7 @@
 #
 # SCOPE, stated because it is easy to assume this covers more than it does: this repo has
 # NO package manifests -- no package.json, no requirements.txt, no go.mod, no Dockerfile.
-# The whole dependency surface is the two actions used by `ci.yml` and `release.yml`, so
+# The whole dependency surface is the actions used by `ci.yml` and `release.yml`, so
 # `github-actions` is the only ecosystem that applies. Adding another entry here would
 # silently do nothing, which is worse than no entry: it reads as coverage.
 #
@@ -32,7 +32,7 @@ updates:
     # reference/conventions.md is explicit that nothing auto-merges, and an action bump is
     # a change to the code that runs every gate in this repo.
 
-    # One PR for all action bumps rather than one per action. With two actions the noise
+    # One PR for all action bumps rather than one per action. With few actions the noise
     # saving is small; the reason that matters is the PR TITLE. A squash merge makes the
     # title the commit subject on the base branch, so it is the enforced surface
     # (reference/conventions.md, "PR titles use the same grammar", <= 72 chars), and a
