@@ -853,3 +853,13 @@ branch's own protection while a `migration_base` is live (#125, PR #163). Two
 procedure (#150, PR #165), and the milestone-close outcome gets a fixed ledger line checked
 by `bin/milestone-close-line.sh` (#153, PR #167). Sprint 3 closed at `60fa315` (the `v0.11.0`
 tag, PR #169), with this repo's own pin bump to `v0.11.0` (PR #170) as its last step.
+
+`v0.12.0` closes Sprint 4 (milestone 3, *record the deferred decisions*, both issues closed)
+and adds no `.ai/project.yml` key. `WB-D14` (#48, PR #174) keeps `TIER2` in
+`scripts/coupling-check.sh` hand-maintained. `WB-D15` (#45, PR #176) adds a `zizmor` job to
+`ci.yml`, verified live to fail on a finding. It does not enable CodeQL on
+`bedrock-serverless-rag`: that toggle is a repo setting this harness cannot flip, and it is
+tracked as `bedrock-serverless-rag#134`. `WB-D16` (#177, PR #178) was not a milestone item.
+It raises `/way-of-working:critic-gate`'s round cap from 2 to 4, at the maintainer's
+request. Sprint 4 closed at `bc4237a` (the `v0.12.0` tag, PR #179), with this repo's own pin
+bump to `v0.12.0` (PR #180) as its last step.
