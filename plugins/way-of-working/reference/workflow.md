@@ -240,7 +240,11 @@ rather than something that quietly happens. That is as far as a check can go; re
 attribution needs a separate machine identity.
 
 **The procedure is `/way-of-working:architect-review <PR>`, and only that.** It pins the head
-SHA, checks the exemption, reviews by execution in a scratch worktree, pastes the header and
+SHA, checks the exemption, reviews a trusted PR by execution in an isolated sandbox
+(`bin/review-sandbox.sh`, no link to the reviewer's own `.git` and no credential *handle* in
+its environment — accident containment, not a container; see the script's own header for
+what it does and does not close) and an untrusted
+one from the required checks' own witness alone, with no local execution at all, pastes the header and
 attestation out of `.ai/project.yml` (why those two strings are frozen and must never be
 retyped is stated once, in `reference/project-schema.md` § `review.ci_gate`), posts with
 `gh pr review --comment` — never `--approve`: the merge is the human's approval, and a

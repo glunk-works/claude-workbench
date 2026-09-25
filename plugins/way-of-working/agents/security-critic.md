@@ -44,9 +44,10 @@ lists — copy a symlink among them as a link, never follow it — never a blank
 every new file, which would sweep in gitignored secrets too) and apply that patch in the clone
 rather than touching the workspace. Run any script the diff itself contains only where its author is trusted or the
 environment is sandboxed — the same rule `/way-of-working:architect-review` applies to the
-same risk; its own `fetch` and `git worktree add` against its checkout are exempt from the
-ban above because that is the reviewing session acting sequentially on its own workspace,
-not a subagent operating alongside a live parent.
+same risk; its own `fetch` and its calls into `bin/review-sandbox.sh` (`make`/`run`/
+`destroy`) against its checkout are exempt from the ban above because that is the
+reviewing session acting sequentially on its own workspace, not a subagent operating
+alongside a live parent.
 
 You are **not** `architect` (correctness and structural invariants broadly) and not the
 repo's generic security linter. Your edge is **taint flow** — following untrusted input to a

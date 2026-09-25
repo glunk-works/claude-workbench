@@ -78,10 +78,16 @@ guess a gate (`reference/project-schema.md`).
    paste in the *Compose and post* step turns reviewing your own work into a *knowing false
    statement*.
 
-3. **Pin the target.** `gh pr view <N> --json headRefOid,baseRefName,files`;
-   `baseRefName` must be the anchored `{pr_base}` — any other branch is a stop. Check
-   whether the PR touches `{code_paths}` (or `{review.ci_gate.triggers_on}`). An exempt PR
-   (docs, sprint plan, `.ai/` cursor) gets one plain statement, no review posted.
+3. **Pin the target.** `review-sandbox.sh trust <N>` — one read, `{repo}` resolved from
+   this checkout's own `origin` (never a script argument): prints `sha=<40hex>
+   head_repo=<owner/name> base=<branch> assoc=<association> trusted=0|1`. `base` must
+   be the anchored `{pr_base}` — any other branch is a stop. Pin the head SHA from
+   THIS line, never a second, separate read. `trusted=1` only when `assoc` is on
+   `/way-of-working:resume`'s own author-trust allowlist (point at it, never restate it
+   a third time) and `head_repo` equals `{repo}` — a fork head is untrusted whoever
+   opened the PR. Then `gh pr view <N> --json files` for `{code_paths}` (or
+   `{review.ci_gate.triggers_on}`). An exempt PR (docs, sprint plan, `.ai/` cursor)
+   gets one plain statement, no review posted.
 
 4. **Check the other required checks first** — invoke `/way-of-working:pr-checks <N>` via
    the Skill tool. The gate reads `absent` or `failure` here: what you're about to satisfy;
@@ -96,19 +102,75 @@ guess a gate (`reference/project-schema.md`).
    ids and `{threat_model}` boundaries it names; the critic-gate outcome. Not the whole
    plan, not the whole repo.
 
-6. **Review by execution, in a scratch worktree.** Fetch the head, `git worktree add
-   <tmp> <sha>`, and reproduce each claim: the added test, the gate it says is
-   green, the command it says now fails. Plant a mutation to witness a guard go red,
-   then remove it. This runs the PR's code with your credentials: do it
-   only where the author is trusted or the worktree is sandboxed, and read no config from
-   it — the worktree shares this checkout's `.git`. No subagent fan-out by default — the
-   fresh session *is* the architect; spawn a critic only for a named angle, its findings
-   verified first.
-   Line-anchored defects may go inline; the scope verdict goes in the body posted next.
-   `git worktree remove` when done, back at the main checkout's root — the *Compose and
-   post* step re-reads `.ai/project.yml` from there.
+6. **Review by execution, in an isolated sandbox.** Before anything touches PR code,
+   print and keep in this transcript: `git rev-parse refs/remotes/origin/{pr_base}`,
+   `git hash-object .ai/project.yml`, `git hash-object .git/config`, `ls .git/hooks` —
+   the *Compose and post* step re-verifies against these exact values, not against the
+   disk, since this step is itself the risk they exist to catch.
 
-7. **Compose and post.** The body **opens** with `{review.ci_gate.header}` and
+   **Trusted** (`trusted=1` from the *Pin the target* step): `review-sandbox.sh make <N>
+   <sha>` builds a checkout with no link to this checkout's `.git` — no shared history,
+   no shared config, no credential handle in its environment (the script's own header
+   states plainly what this does and does not close: accident containment, not a
+   container). Reproduce each claim — the added test, the gate it says is green, the
+   command it says now fails — every touch through `review-sandbox.sh run <path> --
+   <cmd>`, **never `cd` into `<path>` directly**, the reviewer's own git included. Plant
+   a mutation to witness a guard go red, then remove it, also through `run`. No
+   subagent fan-out by default — the fresh session *is* the architect; spawn a critic
+   only for a named angle, its findings verified first. Line-anchored defects may go
+   inline; the scope verdict goes in the body posted next. `review-sandbox.sh destroy
+   <path>` when done, back at the main checkout's root — the *Compose and post* step
+   re-reads `.ai/project.yml` from there.
+
+   **Untrusted** (`trusted=0`): **no local execution.** The verdict comes from a
+   witness read, not the *Check the other required checks first* step's own read (that
+   step answers a different question — is the gate currently green? — and carries
+   neither `event` nor the SHA a run actually executed against):
+
+   ```bash
+   gh run list --commit <sha> --json databaseId,event,headSha,conclusion,workflowName
+   ```
+
+   This is a **workflow-run** conclusion, not a job one — a run can read `success`
+   overall while the specific job backing a required check was `skipped` by its own
+   `if:` (`{ruleset.required_checks}` matches by job name; `skipped` is not a pass,
+   the same rule `agents/architect.md` names for the CI gate model generally). Keep
+   only rows where `headSha` equals the pinned SHA and `event` equals `pull_request`
+   exactly — a `pull_request_target` run executes the BASE branch's workflow (and, by
+   default, the base code), so a green one witnesses nothing about the PR's own code,
+   whatever SHA it lists. For each surviving row, resolve to job level before
+   trusting it:
+
+   ```bash
+   gh run view <databaseId> --json jobs --jq '.jobs[] | [.name, .conclusion] | @tsv'
+   ```
+
+   A claim is *witnessed (run `<databaseId>`, job `<name>`)* only when the job whose
+   name is in `{ruleset.required_checks}` has `conclusion == success` in THIS read —
+   `skipped`, `action_required`, pending, or a missing job is *not witnessed*, never
+   silently treated as verified. A witness counts at all only when the PR's `files`
+   (already read in *Pin the target*) touch
+   nothing under `.github/` — a `pull_request`-triggered run executes the PR's own
+   workflow YAML. **State the limit, not just the witness:** `.github/` untouched only
+   proves the workflow DEFINITION didn't change; a PR that edits the very script or
+   config a required check runs (not the YAML that invokes it) can still show green
+   without that specific claim having been exercised, and this plugin has no portable
+   way to know what a given repo's gated jobs execute beyond `.github/` itself. Say so
+   in the body rather than let a green witness imply more than it does. State plainly
+   in the body that this PR was reviewed without local execution.
+
+7. **Compose and post.** Re-verify freshness first: recompute the four values the
+   *Review by execution, in an isolated sandbox* step printed and require byte-for-byte
+   equality against them, chained with `git diff --quiet refs/remotes/origin/{pr_base}
+   -- :/.ai/project.yml`. Spell the ref with `{pr_base}` directly here, never `$T` —
+   this step reuses `T` a few lines below for its own `mktemp -d`, unrelated to the
+   preflight's own `T` (removed in #126) that `$T` used to mean here; on a repost
+   within the same session, this step's own prior `T` can still be live, so a stray
+   `$T` risks silently resolving to that leftover value rather than failing outright.
+   Any mismatch is a stop: PR code had a path to rewrite something this step was about
+   to trust, whatever ran it.
+
+   The body **opens** with `{review.ci_gate.header}` and
    `{review.ci_gate.attestation}`, each on its own line, copied byte for byte from the
    synced `.ai/project.yml` — `yq -er`, or any reader that emits the scalar unchanged and
    fails on a missing one — never typed from memory. A chain that stops before printing
@@ -121,7 +183,11 @@ guess a gate (`reference/project-schema.md`).
    [ "$(grep -c . "$T/review.md")" -eq 2 ] && echo "$T/review.md"
    ```
 
-   Append to that file, in order: `Reviewed against head <sha>`; the verdict; ranked
+   Append to that file, in order: `Reviewed against head <sha>`; how the PR was
+   reviewed — trusted, executed under accident containment (an isolated sandbox, not a
+   container — see `bin/review-sandbox.sh`'s own header for what that does and does
+   not close), or untrusted, reviewed without local execution and marked per claim
+   from the *Review by execution, in an isolated sandbox* step; the verdict; ranked
    findings with reproductions; what you independently verified. Post with
    `gh pr review <N> --comment --body-file <that path>`. **Never `--approve`, never
    `--request-changes`, never merge**: the merge is the human's approval, and a
@@ -148,7 +214,9 @@ guess a gate (`reference/project-schema.md`).
 
    Any word but `success`, or nothing (exit 2), is not green. Not `success` at the bound:
    diagnose **in order**. (a) **Head moved** — the printed SHA isn't the one
-   reviewed; repost against the new head. (b) **String mismatch** — `gh api --paginate
+   reviewed; rerun the *Pin the target* step and, for a trusted PR,
+   `review-sandbox.sh make` afresh against the new head before reposting. (b) **String
+   mismatch** — `gh api --paginate
    repos/{repo}/pulls/<N>/reviews --jq '.[].body' | grep -cF` each value
    (`reference/project-schema.md` § `review.ci_gate`). (c) **Job never posted** — read its
    log (`gh run view <run-id> --log`); a rerun isn't the fix. The **runner trap**:
