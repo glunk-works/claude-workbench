@@ -745,3 +745,15 @@ were rejected (`GH013`/`422`), the second reproduced under an admin identity the
 marks `current_user_can_bypass: never` to rule out a scope explanation. Sprint 2 closed at
 `4bf7c7c` (the `v0.10.0` tag, PR #145), with this repo's own plugin pin bump to `v0.10.0`
 (PR #147) as the sprint's last, non-blocking step.
+
+`v0.11.0` is Sprint 3 (milestone 4, *harden architect-review's trust chain*, all 5 issues
+closed) and adds no `.ai/project.yml` key. `WB-D10`'s fourth landing,
+`bin/review-base-anchor.sh` (#126, PR #156), moves `/way-of-working:architect-review`'s
+PR-base chain onto fixtures. `WB-D13` (#113, PR #160) replaces that skill's shared-`.git`
+worktree execution with `bin/review-sandbox.sh`. This is accident containment, not isolation;
+a full container is #158, in Sprint 5. `/way-of-working:resume` now verifies the default
+branch's own protection while a `migration_base` is live (#125, PR #163). Two
+`archive-sprint` fixes found at Sprint 2's close also land: precondition 3 gets a branch
+procedure (#150, PR #165), and the milestone-close outcome gets a fixed ledger line checked
+by `bin/milestone-close-line.sh` (#153, PR #167). Sprint 3 closed at `60fa315` (the `v0.11.0`
+tag, PR #169), with this repo's own pin bump to `v0.11.0` (PR #170) as its last step.
