@@ -23,6 +23,14 @@ updates:
       interval: weekly
       day: monday
 
+    # A newly published action version is a newly published action version -- give it a
+    # week before Dependabot proposes it, so a same-day supply-chain compromise or an
+    # under-tested release has time to surface before this repo pulls it in. 7 is
+    # zizmor's own `dependabot-cooldown` default; keeping it there rather than picking a
+    # different number means one less thing to justify diverging from.
+    cooldown:
+      default-days: 7
+
     # The actions are pinned by full commit SHA with a trailing `# v5` comment. That is
     # the supply-chain-safe form -- a tag is mutable, a SHA is not -- and Dependabot
     # updates BOTH the SHA and the version comment together, so the pin style survives
