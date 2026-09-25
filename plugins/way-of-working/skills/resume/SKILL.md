@@ -311,6 +311,170 @@ positively rule out an invalidating event, run the check.
      in miniature; one that cannot tell "couldn't look" from "isn't there" is that same
      defect one layer down.
 
+   **When a migration is live, also check the default branch.** `/way-of-working:architect-review`
+   accepts a non-default PR base only because the **default branch's own** `.ai/project.yml`
+   names it as `migration_base` (`reference/project-schema.md` § `repo`, `pr_base`,
+   `migration_base`) — the base branch's own copy is the author's claim and can't vouch for
+   itself. That trust holds only if the default branch itself cannot be written to directly,
+   and nothing above checks that.
+
+   **The trigger is `migration_base` itself, read from the default branch, never `{pr_base}`
+   differing from it.** A first draft of this check gated on `{pr_base} != <default>`, which
+   misses the session that resumes **on the default branch** while a migration is still open:
+   the schema keeps that branch's own `pr_base` equal to itself throughout ("hotfixes and the
+   migration's landing merge stay ordinary PRs to it"), so `{pr_base}` never differs there even
+   though `migration_base` is live and exactly as unprotected. Gating on `migration_base`
+   catches both shapes with one read.
+
+   **Read `migration_base` (and, below, the ci_gate check name) only from the default
+   branch's own committed copy — never from this checkout's local `.ai/project.yml`.** A
+   session resuming on the integration branch is, by the same logic as `migration_base`
+   itself, reading a **potentially adversary-controlled** copy of that file: if this step
+   asked *that* copy whether `{review.ci_gate}` is set, an attacker who can push the
+   integration branch could blank it there and silently drop the `required_status_checks`
+   half of the check below, on the one branch where it matters most. `bin/review-base-anchor.sh`
+   already solves exactly this for `migration_base` (`git fetch` the default branch, `git show`
+   its tree's `.ai/project.yml`, never the working tree's); reuse the same technique here
+   rather than inventing a second one, and read the ci_gate check name from that same fetched
+   copy for the same reason. Reset every value this block can set first — the same lesson
+   `bin/review-base-anchor.sh`'s own header names for a stale value inherited from the calling
+   shell's environment — and resolve the repo root explicitly rather than `cd`-ing there,
+   since `git show <rev>:./path` resolves `.` against the **current directory**, not the repo
+   root (the exact bug `review-base-anchor.sh`'s own header lists as found and fixed there;
+   `-C "$TOPLEVEL"` gets the same correctness without changing this step's own cwd for
+   whatever runs after it).
+
+   **Resolve the repo from `origin`, not from `{repo}`, for this block specifically.** Naming
+   `D` via `gh api repos/{repo} --jq .default_branch` would still let the same untrusted local
+   copy decide *which branch* gets treated as "the default branch" — a `{repo}:` pointed at an
+   attacker-controlled repo whose own default branch happens to share the integration branch's
+   name would make this block dutifully fetch `refs/heads/<that name>` from the *real* `origin`
+   (the fetch target is a name, not an identity) and read the integration branch's own copy
+   right back, defeating the redesign above through a different door. `bin/review-base-anchor.sh`
+   already avoids this by deriving the repo from the checkout's own `origin` remote
+   (`git remote get-url origin` → `gh repo view`) rather than from any schema value — reuse
+   that, and treat a mismatch against `{repo}` as a failure, not a tie-break in either value's
+   favor:
+   ```bash
+   MB= MB_ERR= DB= HAS_PR= APPROVALS= CHECK= HAS_CHECK= R= D= TOPLEVEL= U= DEF_YML=
+   TOPLEVEL=$(git rev-parse --show-toplevel) &&
+   U=$(git -C "$TOPLEVEL" remote get-url origin) &&
+   R=$(gh repo view "$U" --json nameWithOwner --jq .nameWithOwner) &&
+   D=$(gh repo view "$U" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') &&
+   [ -n "$D" ] || MB_ERR=1
+   if [ -z "$MB_ERR" ] && [ "$R" != "{repo}" ]; then
+     MB_ERR=repo-mismatch
+   fi
+   if [ -z "$MB_ERR" ]; then
+     git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
+     DEF_YML=$(git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml") &&
+     MB=$(printf '%s' "$DEF_YML" | yq -r '.migration_base // ""') || MB_ERR=1
+   fi
+   ```
+   This is a **different** reach than the `gh api` calls above — local `git` access to
+   `origin`, plus `gh repo view` against whatever `origin` names, not a GitHub-token
+   permissions check on `{repo}` — so it is not "the same reach check reused"; say so if it
+   fails rather than folding it into the `gh api` reach story above. A redirected `origin` in
+   `.git/config` is a pre-existing, accepted residual (`docs/decisions.md` `WB-D13`) that needs
+   local write access to set up in the first place — out of scope here, same as there.
+   `$MB_ERR` is set explicitly at each stage that can fail — never inferred from the bare
+   success/failure of whichever command happened to run last — which is what separates "the
+   chain broke" from "yq legitimately answered empty", the same distinction the primary
+   check's own `$RID` empty-after-success case draws. **A `{repo}` mismatch gets its own value,
+   `MB_ERR=repo-mismatch`, rather than the bare `1` a network/git/yq failure sets** — the one
+   failure here that may mean the local copy was tampered with, not merely unreachable, and
+   worth naming as such in the report rather than folding into the same generic
+   "inconclusive" every other failure gets. **`$R`, once the chain past its own check has
+   succeeded, replaces `{repo}` for the rest of this block** — they're now known equal, but
+   using the derived value throughout, rather than reverting to the literal token, keeps that
+   guarantee legible instead of silently assumed again a few lines later.
+
+   Only when `$MB` is non-empty **and no step above failed**, ask for the default branch's
+   own rules — one read-only call, same GitHub-token reach as `rules/branches/{pr_base}`
+   above — and thread the same failure tracking through it, since a `gh api` or `yq` failure
+   here must read the same as one above, never as "no migration":
+   ```bash
+   if [ -n "$MB_ERR" ]; then
+     :   # the chain above failed -- inconclusive below, never "no migration"
+   elif [ -n "$MB" ]; then
+     DB=$(gh api --paginate "repos/$R/rules/branches/$D") &&
+     HAS_PR=$(printf '%s' "$DB" | jq 'any(.[]; .type=="pull_request")') &&
+     APPROVALS=$(printf '%s' "$DB" | jq '[.[] | select(.type=="pull_request") | .parameters.required_approving_review_count] | max // 0') &&
+     CHECK=$(printf '%s' "$DEF_YML" | yq -r '.review.ci_gate.check // ""') || MB_ERR=1
+     if [ -z "$MB_ERR" ] && [ -n "$CHECK" ]; then
+       HAS_CHECK=$(printf '%s' "$DB" | jq --arg c "$CHECK" \
+         'any(.[]; .type=="required_status_checks"
+               and any(.parameters.required_status_checks[]?; .context==$c))') || MB_ERR=1
+     fi
+   fi
+   ```
+   `max`, not `first`: when more than one ruleset applies, GitHub enforces the strictest
+   `pull_request` rule, and `first` would report whichever the API happened to list first —
+   under-reporting the true requirement is the safe direction (a false alarm, never false
+   comfort), but `max` reports the actual answer instead of a coin flip that merely fails
+   safe.
+   `$CHECK` is bound with `jq --arg`, the same as `{ruleset.name}` above — never interpolated
+   into the filter string, and never the literal `{review.ci_gate.check}` token spliced in
+   directly, since (per the paragraph above) its value came from a variable, not a
+   compile-time schema constant. **The report below must key off `$CHECK`/`$HAS_CHECK` for the
+   same reason it must not be interpolated: branching the *report* on the local `{review.ci_gate}`
+   token, even only to pick a message, reopens the exact trust inversion this redesign exists
+   to close — an attacker who blanks `review.ci_gate` on the branch being resumed from would
+   make the report silently take the "no ci_gate configured" case even when the trusted
+   default-branch copy requires one and this check found it missing.**
+
+   This runs **independently** of the check above — it does not depend on `$RID` or `$B`, and,
+   **once the reach check has passed**, fires whenever `$MB` is non-empty regardless of
+   whether the check above came back healthy, weakened, or inconclusive. (If the reach check
+   itself failed, this whole *Check the branch-protection ruleset for drift* step already
+   stopped per the paragraph above it — this check never runs either, and both fold into that
+   same "could not run" line; "independent of the check above"
+   means independent of its *ruleset-lookup* outcome, never a license to run past a failed
+   reach check.) It has to run independent of that outcome: it does not need the default
+   branch's rule to come from `{ruleset.name}` specifically, only that *some* ruleset there
+   requires it, so a repo whose `{ruleset.rule_types}` doesn't happen to list `pull_request`
+   would otherwise read "healthy" above while `migration_base` stayed exposed. For the same
+   reason it asks for generic GitHub rule types only — `pull_request`,
+   `required_status_checks` — never a repo-specific ruleset name, so `coupling-check.sh` stays
+   clean either way.
+
+   **State plainly what this does and does not establish** — "requires `pull_request`" is
+   narrower than "cannot be written to directly", and overclaiming the second from the first
+   is its own defect: a rule with `required_approving_review_count: 0` still lets anyone with
+   push access open and self-merge a PR that rewrites `migration_base`, gaining an audit trail
+   but no actual review, and this check cannot see a ruleset's bypass actors (an "always"
+   admin/role/app bypass on an otherwise-correct rule) at all. Report `$APPROVALS` alongside
+   `pull_request` rather than treating the bare presence of the rule type as the whole answer.
+   Like the check above, this one also sees **rulesets only** — classic (non-ruleset) branch
+   protection on the default branch would read as "does NOT require pull_request," which is
+   the safe direction (a false alarm, not false comfort) but still worth naming so a reader
+   knows which kind of gap they're looking at.
+
+   Fold the result into the check above's **same single line**, never a second one — and
+   whenever `$MB` is non-empty, that line must say something about the default branch, so a
+   bare `Ruleset check: healthy ({N} rule types, {M} required checks).` with nothing else can
+   only mean "no migration is live," never "migration live, default-branch half silently
+   skipped":
+   Every branch below keys on `$MB`/`$MB_ERR`/`$HAS_PR`/`$CHECK`/`$HAS_CHECK` — the values
+   this block itself just derived from the *default branch's* trusted copy — **never** on the
+   local `{review.ci_gate}` token, and the printed check name is `$CHECK` (the real value),
+   never the literal text `{review.ci_gate.check}`:
+   - `$MB_ERR` set → **inconclusive**, same as the check above's own inconclusive case, folded
+     onto the same line rather than a second one — never silently treated as "no migration."
+   - `$MB` empty, no error (the common, non-migration case) → say nothing extra; nothing to
+     check.
+   - `$MB` non-empty, no error, `$HAS_PR` false → impossible to miss, whatever `$CHECK` is:
+     `...; migration_base (default branch) can be written with NO pull_request required.`
+   - `$MB` non-empty, no error, `$HAS_PR` true, `$CHECK` empty (no ci_gate configured on the
+     *default branch's* copy — not the local one) → `...; migration_base (default branch)
+     requires pull_request ($APPROVALS approvals) — no ci_gate configured there to also
+     require.`
+   - `$MB` non-empty, no error, `$HAS_PR` true, `$CHECK` non-empty, `$HAS_CHECK` true → `...;
+     migration_base (default branch) requires pull_request ($APPROVALS approvals) + $CHECK.`
+   - `$MB` non-empty, no error, `$HAS_PR` true, `$CHECK` non-empty, `$HAS_CHECK` false → `...;
+     migration_base (default branch) requires pull_request ($APPROVALS approvals) but not
+     $CHECK — a change there ships without that review.`
+
    This is a report, not a gate — never block or fail the session on its result.
 
 5. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing. The role→model mapping is `{models}` (typically architect for planning/review, coder for implementation — see `reference/workflow.md`).
