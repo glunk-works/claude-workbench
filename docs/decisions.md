@@ -770,6 +770,30 @@ take effect. Full reasoning and the task breakdown that implements them:
   - `loop-orchestrator` — quiet since 2026-08-10 despite heavy earlier activity. Revisit
     when activity resumes; it is the next candidate (Python plus workflows).
 
+- **WB-D16 (`#177`) — `/way-of-working:critic-gate`'s hard cap moves from 2 to 4
+  fix-and-re-run rounds; critic selection goes through a pick-list wherever the host can
+  present one, instead of free text.** Requested directly by the maintainer on 2026-09-25,
+  in the same session that ran `WB-D15`'s critic-gate pass (2 fix-and-re-run rounds,
+  converged — under the cap being raised here, not an example of needing it raised). Two
+  independent choices, one entry because both are the same interaction surface:
+  - **Cap 2 → 4.** More headroom before a still-open diff is handed back for a human
+    decision. Not a fix for an observed failure of 2 — none was found. A first draft of
+    this entry's own skill-prose edit tried to give the raise a technical justification (a
+    scenario that supposedly exceeded the old cap); `architect`, reviewing that draft
+    during this same decision's own critic pass, verified the arithmetic and found the
+    scenario actually converged safely inside the old cap. The invented rationale was
+    removed rather than kept. This is a plain preference call, not a technically-forced
+    one, and the skill records it as such.
+  - **Pick-list wherever available.** The proposal step (and the second-opinion offer)
+    must collect the human's confirmation through a structured multi-select UI (e.g.
+    `AskUserQuestion`) whenever the host has one and the candidate list fits it, never a
+    typed reply — removes an avoidable source of confusion once more than one critic is on
+    the list, which is the common case. The recommendation logic itself (which critics, in
+    what order, why) is unchanged.
+
+  **Accepted gap:** a host with no pick-list tool, or a candidate list too long for one,
+  falls back to a plain enumerated list — same as before this decision, not a regression.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
