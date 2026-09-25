@@ -59,8 +59,8 @@ plugins/way-of-working/
               park-sprint/ unpark-sprint/ architect-review/
   agents/     architect.md coder.md security-critic.md docs-consistency.md
   bin/        cursor-drift.sh entry-anchor.sh review-gate-state.sh plan-anchor.sh
-              spawn-model.sh review-base-anchor.sh review-sandbox.sh — executables,
-              added to the Bash tool's PATH
+              spawn-model.sh review-base-anchor.sh review-sandbox.sh
+              milestone-close-line.sh — executables, added to the Bash tool's PATH
   hooks/      hooks.json + ai-cursor-banner.sh
   reference/  conventions.md  workflow.md  project-schema.md
 docs/decisions.md   # the WB-D* log

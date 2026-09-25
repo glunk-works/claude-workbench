@@ -191,6 +191,27 @@ github_milestones` — `{backlog.repo}`.
      non-empty — the directory, never its listing. A park's **Just done** line is written by
      one pass over this file and gone at the next regeneration; the directory and the
      banner's `Parked:` line are the durable record (`/way-of-working:park-sprint`).
+   - **Milestone close** — under `{planning.kind}: github_milestones`, **and only when the
+     `sprint_status` this step is about to write (the *Determine the new cursor* step above)
+     is ALSO `planning`**: if the `.ai/next-steps.md` this step is about to overwrite already
+     carries a `**Milestone close:**` line, **carry it forward verbatim** into the regenerated
+     file, at column 0, never as a list item. Issue #153: this wholesale regeneration is not
+     itself the event that produces a close outcome (`/way-of-working:archive-sprint`'s Seed
+     step and its own unpark-branch note, `/way-of-working:park-sprint`'s own override, this
+     rule's own carry-forward, and `/way-of-working:unpark-sprint`'s Restore step are what
+     produce or preserve one) — but a sprint can stay in `sprint_status: planning` across more
+     than one handoff (a model switch mid-planning-dialogue, or planning spanning several
+     sessions), and `bin/milestone-close-line.sh` checks *every* `planning`-status cursor, not
+     only a just-seeded one. Dropping the line here, the way this step drops everything else it
+     doesn't explicitly carry, would turn a genuinely-recorded outcome into a false `missing`
+     at the very next `/way-of-working:resume`. **The moment `sprint_status` leaves `planning`
+     — the plan got approved and work is starting, or any other transition — DROP the line,
+     never carry it into that regeneration.** It describes the *previous* close, `resume`
+     never looks for it again once status is not `planning`, and a copy left sitting in the
+     ledger through a whole implementing sprint is exactly the stale line a later park + unpark
+     cycle can turn into a duplicate (`/way-of-working:archive-sprint`'s unpark-branch note).
+     **Never fabricate one** — a cursor that never had the line (this sprint's first handoff,
+     or a `files`/absent repo) gets none; this is a carry-forward, not a write.
    Regenerate the whole file (it is a cursor, not an append log — history lives in git + the roadmap).
    State no **regenerable aggregates**: no counts, no check inventories, no lists a
    command can re-emit — name the deriving command or the authority instead

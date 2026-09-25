@@ -39,6 +39,7 @@ sh tests/plan-anchor.test.sh    # planning.kind: github_milestones anchor predic
 sh tests/spawn-model.test.sh    # models.second_opinion provenance predicate fixtures (not yet required)
 sh tests/review-base-anchor.test.sh  # architect-review's preflight-chain script fixtures (not yet required)
 sh tests/review-sandbox.test.sh # architect-review's PR-execution sandbox fixtures (not yet required)
+sh tests/milestone-close-line.test.sh  # archive-sprint's Milestone close: ledger-line predicate fixtures (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `tests/review-base-anchor.test.sh`

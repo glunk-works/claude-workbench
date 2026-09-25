@@ -488,7 +488,12 @@ If any precondition fails, STOP and report why — do not archive.
 
    Name the outcome — no milestone to close, closed, already closed, blocked on an open
    issue, a failed read, or pending — plus the milestone's number and title when there is
-   one, in the "Just done" line the *Seed a fresh `.ai/next-steps.md`* step below writes.
+   one, in a fixed `**Milestone close:**` line: the *Seed a fresh `.ai/next-steps.md`* step
+   below writes it on the blank-seed path, and the *Advance `.ai/state.json`* step's own
+   unpark-branch note writes it on the parked-sprint path (issue #153: a "Just done" prose
+   sentence is how this reached neither the ledger nor the gate the first two times — a
+   fixed, greppable line is what `bin/milestone-close-line.sh` and `/way-of-working:resume`
+   check for).
    **A pending close's `hitl_gate` must reach the new cursor** — see the note in the
    *Advance `.ai/state.json`* step below; it is not automatic.
 
@@ -520,11 +525,27 @@ If any precondition fails, STOP and report why — do not archive.
    pending-close `hitl_gate` the Close step wrote is gone the instant that runs), and its
    *Update the ledger* / *Commit* steps write and push `.ai/next-steps.md` with only
    unpark's own re-verify gate — the milestone outcome was never in scope for that skill.
-   So, still on unpark's docs branch, still before running the *Prune* step below: append
-   one line to `.ai/next-steps.md`'s **Just done** section naming the milestone outcome
-   (number, title, and which of the six cases fired), and — for a **pending** close only —
-   append the pending-close note to the **HITL Gate** line, after unpark's own text, never
-   replacing it. Commit that as a second commit on the same branch and push it, updating
+   So, still on unpark's docs branch, still before running the *Prune* step below: **write a
+   fixed `**Milestone close:**` line to `.ai/next-steps.md`, at column 0, never as a list
+   item, REPLACING any `**Milestone close:**` line already there** (the same shape the *Seed
+   a fresh `.ai/next-steps.md`* step below writes on the blank-seed path) naming the
+   milestone outcome (number, title, and which of the six cases fired). **Replace, never
+   append** — the ledger unpark's own *Restore* step just moved over `.ai/next-steps.md`
+   ("leave the rest as parked," `unpark-sprint/SKILL.md`'s *Update the ledger* step) can
+   already carry a `**Milestone close:**` line of its own, describing an unrelated close from
+   when the parked sprint was itself seeded (or carried forward across a planning-phase
+   handoff before it was parked) — that line names a *different* event than this one, and two
+   lines would leave `/way-of-working:resume`'s "echo the ledger's line" with no way to know
+   which is current, silently reintroducing #153's exact failure through a fourth path.
+   Then — for a **pending** close only — append the pending-close note to the **HITL Gate**
+   line, after unpark's own text, never replacing it (the HITL Gate line has no duplicate-line
+   risk — unpark writes exactly one, and this only ever adds to that one). `bin/milestone-close-line.sh`
+   does **not necessarily** check this branch's cursor — it gates on `sprint_status: planning`,
+   and a restored parked sprint's status need not be that (a sprint is ordinarily parked while
+   `implementing`); when it does happen to be `planning` (parked mid-planning), the script
+   checks this cursor like any other and finds the (now singular, replaced) line `present`,
+   which is correct, not coincidental. Either way this line is written for the same
+   human-legibility reason. Commit that as a second commit on the same branch and push it, updating
    unpark's already-open PR rather than opening a second one — the delta is still
    `.ai/next-steps.md` only, so `cursor-drift.sh` still classifies it `cursor-sync`. **Also
    append the same pending-close note to `.ai/state.json`'s `hitl_gate`** (local, not
@@ -538,7 +559,39 @@ If any precondition fails, STOP and report why — do not archive.
 
    Otherwise seed a blank next unit: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>". Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet) — **under `{planning.kind}: github_milestones`, instead ask the human which milestone number is the next sprint (never scan — a scan cannot tell a new sprint from a parked one) and write `https://github.com/{backlog.repo}/milestone/<number>`, or `null` with `pointers.plan_anchor: null` if none is picked yet**, the legal "no milestone picked yet" state `reference/project-schema.md` § `planning` names. **Set `hitl_gate` too** — this branch is the one place in this step that actually writes it: `NONE OPEN` normally, or the *Close the sprint's milestone* step's pending-close note (verbatim, this step never opened one of its own here) when there is one. The *Seed a fresh `.ai/next-steps.md`* step below carries both the outcome line and this gate into the ledger it writes.
 
-5. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in `planning`; **Just done** = one line noting the prior sprint archived + its commit, plus — under `{planning.kind}: github_milestones` — the closed sprint's milestone (number and title, when there was one) and which of the *Close the sprint's milestone* step's outcomes fired (no milestone, closed, already closed, blocked, failed read, or pending); **Next** = "plan <next unit>" + the planning model + any open HITL Gate (the *Advance `.ai/state.json`* step's blank-seed branch is what sets it); **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written"), plus `.ai/parked/` while it is non-empty, per `/way-of-working:handoff`'s *Regenerate `.ai/next-steps.md`* step. **This step runs only on the blank-seed branch** — the parked-sprint branch replaces it with `/way-of-working:unpark-sprint` plus the milestone-outcome follow-up commit the *Advance* step's unpark branch describes.
+5. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in
+   `planning`; **Just done** = one line noting the prior sprint archived + its commit;
+   **Milestone close** — under `{planning.kind}: github_milestones` **only**, a fixed line of
+   its own, at column 0, never as a list item, written **unconditionally**, never folded into
+   the **Just done** prose:
+   ```
+   **Milestone close:** <outcome>
+   ```
+   `<outcome>` names which of the *Close the sprint's milestone* step's six cases fired (no
+   milestone to close, closed, already closed, blocked on an open issue, a failed read, or
+   pending), plus the milestone's number and title when there was one, and must be **filled
+   in** — `bin/milestone-close-line.sh` reads `**Milestone close:**` with nothing (or only
+   whitespace) after it the same as an absent line, so a copied-but-unfilled template line is
+   not a substitute for actually naming the outcome. **"no milestone to close" is a legal
+   value and is written just as unconditionally as any other** — this line exists precisely
+   so a session that skipped or was refused the close cannot leave the ledger silent about
+   it, so the absence of a close is never indistinguishable from the absence of the *line*.
+   Under `{planning.kind}: files` or absent, this line is not written at all — there is no
+   milestone to have an outcome. `bin/milestone-close-line.sh` is the deterministic predicate
+   `/way-of-working:resume` runs against this line, mirroring `cursor-drift.sh`'s and
+   `plan-anchor.sh`'s shape; it checks **every** `planning`-status cursor under
+   `github_milestones`, not only one this step just seeded — this step's own unpark-branch
+   note (above), `/way-of-working:park-sprint`'s own seed override,
+   `/way-of-working:handoff`'s carry-forward rule, and `/way-of-working:unpark-sprint`'s
+   Restore step are the other producers or preservers of a `planning` cursor the same check
+   applies to (see each skill's own note).
+   **Next** = "plan <next unit>" + the planning
+   model + any open HITL Gate (the *Advance `.ai/state.json`* step's blank-seed branch is
+   what sets it); **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written"),
+   plus `.ai/parked/` while it is non-empty, per `/way-of-working:handoff`'s *Regenerate
+   `.ai/next-steps.md`* step. **This step runs only on the blank-seed branch** — the
+   parked-sprint branch replaces it with `/way-of-working:unpark-sprint` plus the
+   milestone-outcome follow-up commit the *Advance* step's unpark branch describes.
 
 6. **Prune squash-merged local branches** (a sprint boundary is when the just-merged `sprint/NN-*` branch becomes dead — the "squash trap"). With squash merges, `git branch --merged {pr_base}` **cannot** see these branches; ask GitHub which PRs merged and `-D` **only** those — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
 

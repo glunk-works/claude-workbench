@@ -43,12 +43,33 @@ under `github_milestones` — `{backlog.repo}`.
    a **swap**: seed nothing, run `/way-of-working:unpark-sprint <next-sprint-id>` now, and
    let it open the one PR for both. Otherwise follow `/way-of-working:handoff`'s
    *Determine the new cursor* through *Regenerate `.ai/next-steps.md`* steps by
-   reference — same fields, wholesale rewrite, `hitl_gate` always written — **with one
-   deliberate override: this step never writes a `plan_anchor`**, whatever
+   reference — same fields, wholesale rewrite, `hitl_gate` always written — **with two
+   deliberate overrides.** First: **this step never writes a `plan_anchor`**, whatever
    `{planning.kind}` is. Anchoring a spec is a judgment call about an approved plan, and
    this skill is mechanical, run by any model; seeding one here would let a non-judgment
    step manufacture the human gate `/way-of-working:handoff`'s own re-anchor rule exists to
-   require.
+   require. Second, **under `{planning.kind}: github_milestones`, this step ensures the new
+   cursor carries exactly one `**Milestone close:**` line.** `/way-of-working:handoff`'s own
+   carry-forward rule (one of the steps this one follows by reference) already fires here —
+   this step's new cursor's `sprint_status` is always `planning` under this kind, exactly the
+   condition that rule carries forward under — so **let it**: if the ledger being overwritten
+   already has a line, it carries forward **verbatim**, unchanged from that rule. Do not
+   replace it. The line names the most recent *Close the sprint's milestone* outcome, and
+   parking `<next-sprint-id>`'s predecessor changes nothing about whether that milestone
+   actually closed — a blocked, failed-read, or pending outcome recorded there is exactly as
+   true after the park as before it, and overwriting it with a placeholder would silently
+   drop the one live record of an outstanding close, which is #153's failure again, freshly
+   introduced by this very fix. **Only when no line exists yet** does this step write one:
+   ```
+   **Milestone close:** no milestone to close (previous sprint parked, not archived)
+   ```
+   — the shape a sprint parked before `/way-of-working:archive-sprint` ever ran against it
+   takes: nothing has closed yet, so there is nothing to carry forward. Contrast
+   `/way-of-working:archive-sprint`'s own unpark-branch note, which **does** replace
+   unconditionally — there, a close genuinely just happened, so the old line is stale by
+   definition, never merely unresolved.
+   At column 0, never as a list item — the same paragraph shape `**Now:**`/`**Next:**`
+   already use in this ledger.
 
    `sprint_status` branches on `{planning.kind}`, unchanged from before this key existed for
    `files` or absent: `planning` unless `{sprints_dir}/<next-sprint-id>*/sprint_plan.md`
