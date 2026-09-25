@@ -261,8 +261,11 @@ call — the raised number only moves where the line falls.
 
 ## The second-opinion round — `{models.second_opinion}`
 
-Optional. When absent, this section does not apply and the *Report and stop* step never
-makes the offer above. When set, it names one model the Agent tool's spawn-time `model`
+`null` means this section does not apply and the *Report and stop* step never makes the
+offer above. The key must always be present — `/way-of-working:resume`'s *Ensure the schema
+is complete* step is what asks for it if it's absent; this skill just reports it unreadable,
+same as any other missing key, and adds *run `/way-of-working:resume` to be asked for it*.
+When set to a model name, it names one model the Agent tool's spawn-time `model`
 parameter accepts (currently `sonnet | opus | haiku | fable`) — a **diversity lever, not a
 ranking**: no model is asserted better than another, and this is a late-round escalation the
 human buys knowingly, not a default to reach for on every pass.

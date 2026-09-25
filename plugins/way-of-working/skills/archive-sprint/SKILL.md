@@ -374,7 +374,7 @@ If any precondition fails, STOP and report why — do not archive.
    that key is a glob wide enough to sweep them in, narrow the glob.
 
 3. **Close the sprint's milestone** — `{planning.kind}: github_milestones` only; under
-   `files` or absent, skip this step entirely, nothing here runs. This is the gap that
+   `files`, skip this step entirely, nothing here runs. This is the gap that
    prompted this step to exist: after an earlier sprint's archive, its milestone stayed
    open with 0 open issues until a human noticed it in backlog triage and closed it by
    hand. Read `pointers.sprint_plan` and `pointers.plan_anchor` for the milestone being
@@ -576,7 +576,7 @@ If any precondition fails, STOP and report why — do not archive.
    value and is written just as unconditionally as any other** — this line exists precisely
    so a session that skipped or was refused the close cannot leave the ledger silent about
    it, so the absence of a close is never indistinguishable from the absence of the *line*.
-   Under `{planning.kind}: files` or absent, this line is not written at all — there is no
+   Under `{planning.kind}: files`, this line is not written at all — there is no
    milestone to have an outcome. `bin/milestone-close-line.sh` is the deterministic predicate
    `/way-of-working:resume` runs against this line, mirroring `cursor-drift.sh`'s and
    `plan-anchor.sh`'s shape; it checks **every** `planning`-status cursor under
@@ -679,7 +679,7 @@ If any precondition fails, STOP and report why — do not archive.
    That is precisely how this hides.
 
 ## Guardrails
-- Compaction (the *Compact the deep record* step) may remove a line from `{roadmap}` or `{backlog}` **only when the identical bytes appear in an archive file staged, and then committed, in the same change** — verify before reporting, per that step's checks. That is the bright line, and it is checkable before the commit rather than a claim about intent: a move that cannot show its destination is a deletion, whatever it was meant to be. The single exception is a correction annotation, which by definition has no destination — so it is fenced instead by a narrower test (the annotation must name the action it gates, and that action must be confirmably closed **as completed**, not merely `CLOSED`) plus the requirement that every removal claiming it is enumerated with its evidence in the commit and PR body. Self-certification with nothing to grep for afterwards is exactly why that enumeration is not optional. Compaction never rewrites what it moves; under `{planning.kind}: files` or absent, the
+- Compaction (the *Compact the deep record* step) may remove a line from `{roadmap}` or `{backlog}` **only when the identical bytes appear in an archive file staged, and then committed, in the same change** — verify before reporting, per that step's checks. That is the bright line, and it is checkable before the commit rather than a claim about intent: a move that cannot show its destination is a deletion, whatever it was meant to be. The single exception is a correction annotation, which by definition has no destination — so it is fenced instead by a narrower test (the annotation must name the action it gates, and that action must be confirmably closed **as completed**, not merely `CLOSED`) plus the requirement that every removal claiming it is enumerated with its evidence in the commit and PR body. Self-certification with nothing to grep for afterwards is exactly why that enumeration is not optional. Compaction never rewrites what it moves; under `{planning.kind}: files`, the
 sprint_plan files stay in place; under `github_milestones`, there is no sprint_plan file to
 move — the milestone description stays on GitHub, untouched by this step. Nothing here ever
 touches git history.

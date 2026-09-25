@@ -43,8 +43,11 @@ jobs:
         run: bash scripts/coupling-check.sh
 
   # Also its own job, for the same reason `coupling` is: it answers a third question --
-  # has a specific already-shipped defect come back? -- needs no toolchain, and should
-  # report a verdict independently of the other two.
+  # has a specific already-shipped defect come back? -- and should report a verdict
+  # independently of the other two. No toolchain to INSTALL (ubuntu-latest ships mikefarah
+  # yq already), but WB-D17 (#142) made yq a hard dependency of this job's own
+  # schema-completeness assertions -- a runner image without it must fail this gate, not
+  # silently skip them.
   invariants:
     runs-on: ubuntu-latest
     steps:
@@ -78,6 +81,8 @@ jobs:
         run: sh tests/review-gate-state.test.sh
       - name: ai-cursor-banner.sh fixtures
         run: sh tests/ai-cursor-banner.test.sh
+      - name: schema-complete.sh fixtures
+        run: sh tests/schema-complete.test.sh
 
   # WB-D15 (#45): workflow security scanner, modeled on bounty-infra's own `zizmor` job
   # (`ci.yml`). Unchained like `coupling`/`invariants` above -- a future required check

@@ -34,11 +34,13 @@ required-check list reports a confident verdict on the wrong set, which is preci
 failure the skill exists to prevent.
 
 Same rule for an individual key: a key that is absent is not a key that is `null`. `null` is
-a decision ("this repo has no review CI gate"); absent is an unanswered question. Treat
-absent as unreadable — report it, don't infer it — **unless the key's own reference below
-marks it Optional and states what absent means**, as `backlog.repo`, `review.ci_gate.triggers_on`,
-and `migration_base` each do. There, absence is itself the documented answer, not a gap; the
-general rule is for every other key, where no such default exists to fall back on.
+a decision ("this repo has no review CI gate"); **absent is an unanswered question, always —
+no key has a default any more** (`WB-D17`, `#142`, reversing `#127`'s Optional-key clause).
+`/way-of-working:resume` is the one place a missing key is asked for, once per session, at
+its own *Ensure the schema is complete* step (`bin/schema-complete.sh`) — every other skill
+and every agent still reports an absent key unreadable and does only the part of its job
+that needs no schema value, as before. A skill hitting an unreadable key outside `resume`
+says so and adds: *run `/way-of-working:resume` to be asked for it.*
 
 ## Overriding is a bug report, not a fix
 
@@ -69,7 +71,8 @@ a smaller plugin, not a bigger schema.
 # ── identity ─────────────────────────────────────────────────────────────────
 repo: glunk-works/bounty-infra   # owner/name. Also the namespace for labels a skill emits.
 pr_base: main                    # branch every PR is cut from and based on.
-migration_base: null             # optional; read only from the default branch. See below.
+migration_base: null             # null means no migration is under way; absent prompts.
+                                  # Read only from the default branch. See below.
 
 # ── the deep record ──────────────────────────────────────────────────────────
 roadmap: docs/hardening_roadmap.md   # reference of record: status + next action.
@@ -77,7 +80,7 @@ sprints_dir: sprints                 # sprint plans live at <sprints_dir>/*/spri
 threat_model: docs/hardening_roadmap.md   # security-critic's ground truth.
 
 planning:
-  kind: files                      # github_milestones | files. Optional; absent means files.
+  kind: files                      # github_milestones | files. No default; absent prompts.
 
 decisions:
   log: docs/hardening_roadmap.md   # where locked decisions are recorded.
@@ -85,10 +88,12 @@ decisions:
 
 backlog:
   kind: github_issues              # github_issues | file
-  repo: null                       # optional; defaults to `repo` above. See below —
+  repo: null                       # null means `repo` above; absent prompts. See below —
                                    # only supported with kind: github_issues.
-  path: null                       # required when kind: file (e.g. docs/backlog.md)
-  item_prefix: null                # required when kind: file (e.g. BL-)
+  path: null                       # present always; null unless kind: file, where it is
+                                   # required (e.g. docs/backlog.md)
+  item_prefix: null                # present always; null unless kind: file, where it is
+                                   # required (e.g. BL-)
 
 load_bearing_docs:                 # docs-consistency's audit set. Globs allowed.
   - CLAUDE.md
@@ -119,7 +124,8 @@ ruleset:
 
 # ── the fresh-session review gate ────────────────────────────────────────────
 review:
-  ci_gate: null                    # this repo has no review CI gate. See below.
+  ci_gate: null                    # null means this repo has no review CI gate; absent
+                                   # prompts. See below.
 
 # ── agents ───────────────────────────────────────────────────────────────────
 agents:
@@ -127,7 +133,7 @@ agents:
 models:
   architect: opus
   coder: sonnet
-  # second_opinion: fable   # optional; absent means no different-model round is offered.
+  second_opinion: null           # null means no different-model round is offered; absent prompts.
 ```
 
 ---
@@ -150,23 +156,24 @@ migration may stage on a long-lived integration branch, set **that branch's own 
 Never assume `main`; `{pr_base}` is always the answer.
 
 `migration_base` (a branch name, or `null`) declares that migration, and is read **only from
-the default branch's copy**. Optional: absent or `null` means no migration is under way, the
-common case. Set it to the integration branch's name on the default branch when the
-migration starts. The default branch keeps `pr_base` set to itself, so hotfixes and the
-migration's landing merge stay ordinary PRs to it. A `migration_base` on any other branch is
+the default branch's copy**. `null` means no migration is under way, the common case;
+**absent prompts** — the key must always be present. Set it to the integration branch's name
+on the default branch when the migration starts. The default branch keeps `pr_base` set to
+itself, so hotfixes and the migration's landing merge stay ordinary PRs to it. A `migration_base` on any other branch is
 ignored. Sessions working on the migration start from the integration branch, where their
 cursor PRs land too.
 
 **Closing the migration resets each key where it was changed.** The last PR into the
 integration branch sets its `pr_base` back to the default branch. Otherwise the landing
 merge carries `pr_base: <integration branch>` onto the default branch, and every skill run
-there cuts from, and PRs to, a branch about to go away. `migration_base` is cleared by its
-own PR to the default branch, **only after that last PR into the integration branch has
-merged**, since that PR's review still needs the declaration; just before or just after the
-landing PR both work. Resetting it on the
+there cuts from, and PRs to, a branch about to go away. `migration_base` is **set to `null`**
+by its own PR to the default branch, **only after that last PR into the integration branch
+has merged**, since that PR's review still needs the declaration; just before or just after
+the landing PR both work. Resetting it on the
 integration branch usually does nothing: when that branch was cut before the declaration,
-the three-way merge keeps the default branch's value. Clearing it before the landing PR is
-safe, because that PR's base is the default branch and never needs the declaration.
+the three-way merge keeps the default branch's value. Setting it to `null` before the
+landing PR is safe, because that PR's base is the default branch and never needs the
+declaration.
 
 `/way-of-working:architect-review` accepts a PR based on a branch other than the default
 branch only when the default branch's `migration_base` names it, or when the human confirms
@@ -226,9 +233,9 @@ named repo-local memory), and the first two are structural.
 
 #### `backlog.repo` — when the backlog lives in a sibling repo
 
-Optional. Absent or `null` means *this repo* — `{repo}` above — which is the common case and
-needs no thought. Set it to an `owner/name` when the findings for this repo are tracked
-somewhere else.
+`null` means *this repo* — `{repo}` above — which is the common case and needs no thought;
+**absent prompts** — the key must always be present. Set it to an `owner/name` when the
+findings for this repo are tracked somewhere else.
 
 That shape is real and not exotic: a **hub** repo holding the roadmap and backlog for a small
 family of satellite module repos, where a finding about a satellite is filed against the hub
@@ -277,17 +284,18 @@ honest. Do not invent a path that escapes the repo.
 
 ### `planning`
 
-Optional; **absent means `files`**: sprint plans live at `{sprints_dir}/*/sprint_plan.md` and
-every skill behaves exactly as today. Writing `kind: files` explicitly means the same thing.
+`files | github_milestones`, no default — **absent prompts** — the key must always be
+present. `kind: files` means sprint plans live at `{sprints_dir}/*/sprint_plan.md` and every
+skill behaves exactly as the plugin's original shape.
 
 ```yaml
 planning:
-  kind: github_milestones   # github_milestones | files. Optional; absent means files.
+  kind: github_milestones   # github_milestones | files. No default; absent prompts.
 ```
 
 - The kind is `files` (plural), deliberately unlike `backlog.kind: file` (singular): a
   file-kind backlog is one file; files-kind planning is one file per sprint.
-- **Milestones live in `{backlog.repo}`**, which already defaults to `{repo}` — no new
+- **Milestones live in `{backlog.repo}`**, which is `{repo}` when `null` — no new
   `planning.repo` key. A GitHub issue can only join a milestone in its own repo, so a
   hub/satellite repo's task milestones necessarily live where its issues do. Where
   `{backlog.repo}` differs from `{repo}`, tasks are cited `{backlog.repo}#N`, and every `gh`
@@ -440,7 +448,8 @@ review:
     check: architect-review
     header: "**Opus/Architect HITL review (automated)**"
     attestation: "*Fresh-session review: this session did not author the diff.*"
-    triggers_on: [src/]        # optional; defaults to code_paths
+    triggers_on: [src/]        # null means code_paths; required (may be null) whenever
+                               # ci_gate is a map — absent then prompts.
 ```
 
 `check` must also appear in `ruleset.required_checks` — a review gate that does not gate is
@@ -476,6 +485,9 @@ whole-file shadowing hazard above applies to same-named components.)
 
 `models` maps a role to the model it should run as. `/way-of-working:resume` compares the running model
 against the role the cursor assigns; `/way-of-working:handoff` writes the next session's model from it.
+`models.architect` and `models.coder` must each be a model name the harness's `/model` accepts
+(currently `sonnet | opus | haiku | fable`) — the same set `models.second_opinion` below is
+checked against, since all three name a real model to run as, not free text.
 
 **`models` governs *sessions* by default, not subagent spawns.** A plugin agent's runtime
 model comes from the `model:` field in its own frontmatter, which is upstream data a
@@ -504,12 +516,13 @@ only the `architect`/`coder` session roles above.
 models:
   architect: opus
   coder: sonnet
-  second_opinion: fable   # optional. Absent = no different-model round is offered.
+  second_opinion: fable   # null means no different-model round is offered; absent prompts.
 ```
 
-Optional; **absent means today's behavior** — `/way-of-working:critic-gate`'s *Report and
-stop* step offers nothing extra. The value must be a model name the harness's Agent tool
-accepts at spawn time (currently `sonnet | opus | haiku | fable`). Whether the offer is worth
+`null` means today's behavior — `/way-of-working:critic-gate`'s *Report and stop* step
+offers nothing extra; **absent prompts** — the key must always be present. The value must be
+a model name the harness's Agent tool accepts at spawn time (currently `sonnet | opus |
+haiku | fable`). Whether the offer is worth
 making is judged against **each spawned critic's own frontmatter `model:`** — the thing that
 actually sets what a critic runs as (this plugin's three critics pin `opus`) — never against
 `models.architect`, which governs sessions (the doctrine above).
@@ -536,10 +549,14 @@ same schema differently — and no skill body changes:
 ```yaml
 repo: glunk-works/loop-orchestrator
 pr_base: main
+migration_base: null
 
 roadmap: docs/migration_roadmap.md
 sprints_dir: sprints
 threat_model: docs/threat_model.md
+
+planning:
+  kind: files
 
 decisions:
   log: docs/migration_roadmap.md
@@ -547,6 +564,7 @@ decisions:
 
 backlog:
   kind: file
+  repo: null
   path: docs/backlog.md
   item_prefix: BL-
 
@@ -577,12 +595,14 @@ review:
     check: architect-review
     header: "**Opus/Architect HITL review (automated)**"
     attestation: "*Fresh-session review: this session did not author the diff.*"
+    triggers_on: null
 
 agents:
   enabled: [architect, coder, security-critic, docs-consistency]
 models:
   architect: opus
   coder: sonnet
+  second_opinion: null
 ```
 
 The two configurations differ in every value and in one *shape* (`backlog.kind`,
@@ -594,9 +614,12 @@ must be a clean path through every skill, or the seam is in the wrong place.
 A new key is justified when a skill would otherwise name a repo-specific value. Before
 adding one, check the two cheaper answers first: the value may already be derivable from an
 existing key (a skill's own label namespace comes from `repo`; the review gate's trigger
-paths default to `code_paths`), or the behavior may not be portable at all, in which case
-it leaves the plugin instead of growing the schema.
+paths are `code_paths` when `triggers_on` is `null`), or the behavior may not be portable at
+all, in which case it leaves the plugin instead of growing the schema.
 
-When you do add one: define it here with its type and its default, state what happens when
-it is absent, and update every skill that reads it in the same change. A key documented but
-unread is worse than no key — it reads as configured behavior that silently does nothing.
+When you do add one: define it here with its type, state what `null` means if `null` is
+legal for it — absent always prompts, never a default — and update every skill that reads it
+in the same change. **Add it to `bin/schema-complete.sh`'s key set in the same change** —
+`scripts/invariants-check.sh` fails until the script's `keys` output and this doc's two
+examples agree. A key documented but unread is worse than no key — it reads as configured
+behavior that silently does nothing.

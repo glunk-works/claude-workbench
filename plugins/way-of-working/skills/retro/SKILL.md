@@ -35,8 +35,8 @@ Branch on `{backlog.kind}` and never assume a backlog file exists:
   the sibling is what `--state closed` is above: without it you will re-propose something
   already done.
 
-**The backlog may not live in this repo.** `{backlog.repo}` — absent or `null` means
-`{repo}`, the common case — names the repo that actually holds the findings, for the
+**The backlog may not live in this repo.** `{backlog.repo}` — `null` means `{repo}`, the
+common case — names the repo that actually holds the findings, for the
 hub-and-spoke shape where one repo carries the record for a family of sibling repos. When it
 is set, pass `--repo {backlog.repo}` to **every** `gh issue` call, read and write alike:
 

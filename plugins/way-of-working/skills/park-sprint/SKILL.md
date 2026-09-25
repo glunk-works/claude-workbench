@@ -72,7 +72,7 @@ under `github_milestones` — `{backlog.repo}`.
    already use in this ledger.
 
    `sprint_status` branches on `{planning.kind}`, unchanged from before this key existed for
-   `files` or absent: `planning` unless `{sprints_dir}/<next-sprint-id>*/sprint_plan.md`
+   `files`: `planning` unless `{sprints_dir}/<next-sprint-id>*/sprint_plan.md`
    exists, then `implementing` — a file already on disk is itself the mechanical, no-judgment
    signal this skill is allowed to act on. **Under `github_milestones` there is no file to
    test, so `sprint_status` is always `planning` here** — never auto-detect `implementing`

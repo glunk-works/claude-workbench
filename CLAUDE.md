@@ -40,7 +40,10 @@ sh tests/spawn-model.test.sh    # models.second_opinion provenance predicate fix
 sh tests/review-base-anchor.test.sh  # architect-review's preflight-chain script fixtures (not yet required)
 sh tests/review-sandbox.test.sh # architect-review's PR-execution sandbox fixtures (not yet required)
 sh tests/milestone-close-line.test.sh  # archive-sprint's Milestone close: ledger-line predicate fixtures (not yet required)
+sh tests/schema-complete.test.sh  # WB-D17 .ai/project.yml completeness-checker fixtures (not yet required)
 ```
 
-`scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `tests/review-base-anchor.test.sh`
-needs `yq` on PATH too (skips itself, loudly, if absent).
+`scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `scripts/invariants-check.sh` needs
+`yq` (mikefarah v4) on PATH too — it fails the gate, never skips it, when `yq` is missing.
+`tests/review-base-anchor.test.sh` and `tests/schema-complete.test.sh` need `yq` on PATH as
+well (each skips itself, loudly, if absent).
