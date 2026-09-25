@@ -29,6 +29,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [0.11.0] — 2026-09-25
+
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
+behavioral change a reviewer will notice: `/way-of-working:architect-review` no longer runs
+an untrusted-author PR's code locally at all — a required-check witness stands in — and runs
+a trusted one only inside the new `bin/review-sandbox.sh`, never a `git worktree add`.
+
+### Added
+
+- **`bin/review-base-anchor.sh`** — `/way-of-working:architect-review`'s PR-base
+  resolution chain (anchor the repo and default branch, take the base from GitHub, check it
+  against `migration_base`, sync on full refnames), extracted from inline SKILL.md prose into
+  a tested script with `tests/review-base-anchor.test.sh`. The extraction also closed a
+  local branch ahead of origin passing `--ff-only` as a silent no-op, a `.ai/project.yml`
+  read resolved against the current directory instead of the repo root, an untested
+  `check-ref-format` guard (a `-Cmain` base reaching `git switch` parses as `-C main`), and a
+  human override replayable against another PR — now scoped to the exact `repo#N:base`.
+  Critic gate: `architect` + `security-critic`, 3 rounds, converged (#126, PR #156).
+- **`/way-of-working:resume` verifies the default branch's own protection while a migration
+  is live.** `architect-review` accepts a non-default base only because the default branch's
+  `.ai/project.yml` names it as `migration_base`, which is sound only if that branch cannot
+  be pushed to directly. Triggered by `migration_base` read from the default branch's
+  committed copy (never by `{pr_base}` drift, which misses a session resuming on the default
+  branch), with repo and branch derived from `origin` rather than the local, untrusted copy.
+  Critic gate: `architect` + `security-critic`, 3 rounds, converged (#125, PR #163).
+- **`bin/milestone-close-line.sh`** — `archive-sprint`'s milestone-close outcome now always
+  reaches a fixed `**Milestone close:**` line in `.ai/next-steps.md`, carried by whichever
+  of `archive-sprint`, `park-sprint`, `handoff`, or `unpark-sprint` last wrote the ledger;
+  `resume` echoes a recorded outcome and flags a missing one. Critic gate: `architect` +
+  `docs-consistency`, 3 rounds, converged (#153, PR #167).
+
+### Fixed
+
+- **`/way-of-working:architect-review`'s *Review by execution* step ran the PR's code with
+  the reviewer's credentials in a worktree sharing the main checkout's `.git`**, where it
+  could rewrite `.ai/project.yml` or `origin` before the posting step re-read them. Replaced
+  by `bin/review-sandbox.sh` (`trust`/`make`/`run`/`destroy`): a fresh `git init` with an
+  empty template and a single-ref fetch, a stripped `env -i`, and no local execution for an
+  untrusted PR. Stated as **accident containment, not isolation** from a deliberately hostile
+  trusted author; a full container is tracked as #158. New decision `WB-D13`. Critic gate:
+  `architect` + `security-critic` + `docs-consistency`, 6 rounds, converged; suite verified
+  on both Git Bash and WSL Ubuntu/dash (#113, PR #160).
+- **`archive-sprint` precondition 3's roadmap fix had no branch procedure**, and at Sprint
+  2's close landed on an already squash-merged branch. It now checks `origin/{pr_base}`,
+  cuts a fresh branch with the *Compact the deep record* step's chain, and ships the fix as
+  its own PR, the precondition staying unmet until it merges. Critic gate: `architect` +
+  `docs-consistency`, 3 rounds, converged (#150, PR #165).
+
 ## [0.10.0] — 2026-09-24
 
 **⚠️ Migration:** `migration_base` is the only `.ai/project.yml` key this release adds,
