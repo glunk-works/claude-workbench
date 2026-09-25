@@ -1,25 +1,34 @@
 # Cursor — claude-workbench
 
 **Now:** **Sprint 5** — [milestone 5](https://github.com/glunk-works/claude-workbench/milestone/5),
-*every config key is an explicit decision*. Status: **implementing**.
+*every config key is an explicit decision*. Status: **awaiting_review**.
 
-**Just done (2026-09-25, Opus, architect):**
-- Plugin update to `0.12.0` verified with `claude plugin list`.
-- Sprint 4 archived: Status recorded in `docs/decisions.md`
-  ([PR #182](https://github.com/glunk-works/claude-workbench/pull/182), `f252d0d`);
-  milestone 3 closed (read-back `closed`, 0 open issues).
-- Sprint 5 planned: the plan of record (milestone 5's description, from the 2026-09-24
-  triage) stands. One edit: its release line said `v0.12.0`, already Sprint 4's release;
-  corrected to **`v0.13.0`** in both places.
+**Just done (2026-09-25, Sonnet, coder):**
+- Task #142 built: `bin/schema-complete.sh` (the `.ai/project.yml` completeness checker),
+  `/way-of-working:resume`'s new *Ensure the schema is complete* step (interview → completion
+  PR, never a believed working-tree value), the `migration_base` absent-vs-null fix in both
+  readers, the 14 default-removal prose sites, `project-schema.md`, two new
+  `scripts/invariants-check.sh` assertions, and `WB-D17` in `docs/decisions.md`. Local green
+  gate and all 12 `tests/*.test.sh` suites pass.
+- Critic gate: `architect` + `security-critic` + `docs-consistency`, 5 rounds (1 initial + 4
+  fix-and-re-run, the round cap), converged. Real, fixed findings across rounds: a
+  shell-metacharacter gap in the four routing-key shape checks, a `..` path-traversal bypass
+  in the owner/name check (confirmed live against the real GitHub API), a YAML type-tag gap,
+  a regression in `review-base-anchor.sh`'s human override for an absent `migration_base`,
+  and a git branch-tracking bug in the completion-PR mechanism's happy path — the last one
+  independently reproduced and verified before landing. Offered one more round on
+  `models.second_opinion` (`fable`) per the round-cap rule; the human declined it, finalize
+  as-is.
+- Shipped as [PR #185](https://github.com/glunk-works/claude-workbench/pull/185)
+  (`sprint/05-schema-complete`, `23c43b2`) — **not yet merged**.
 
-**Next:** task #142 — write the design spec as a comment on #142: options plus a
-recommendation settling every point in #142's 2026-09-24 review comment, plus a draft
-`WB-D` entry for reversing absent-means-default. Design only, no build; the human approves
-the spec before any coder session. On **fable** (`architect`) — the human's deliberate
-routing for this design pass; `models.architect` is opus.
+**Next:** review and merge PR #185. Once merged, pick the next milestone 5 task — #158
+(container the PR-execution sandbox) or #152 (add a plan-sprint skill) — no ordering between
+them; a human call, not a mechanical one. On **sonnet** (`coder`) for the build once a task
+is picked; a planning pass first if either needs one.
 
-**HITL Gate: OPEN** — first anchor for milestone 5, description sha `c1f7c878…` (edited
-this session: `v0.12.0` → `v0.13.0`). Confirm the anchored plan, then say go.
+**HITL Gate: OPEN** — review and merge PR #185, then pick #158 or #152.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
-[milestone 5](https://github.com/glunk-works/claude-workbench/milestone/5)
+[milestone 5](https://github.com/glunk-works/claude-workbench/milestone/5) ·
+[PR #185](https://github.com/glunk-works/claude-workbench/pull/185)
