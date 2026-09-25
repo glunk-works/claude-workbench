@@ -1,35 +1,45 @@
 # Cursor — claude-workbench
 
 **Now:** **Sprint 4** — [milestone 3](https://github.com/glunk-works/claude-workbench/milestone/3),
-*record the deferred decisions*. Status: **implementing**, no release planned.
+*record the deferred decisions*. Status: **done**.
 
 **Just done (2026-09-25, Sonnet, coder):**
-- Task #48 shipped and merged: [PR #174](https://github.com/glunk-works/claude-workbench/pull/174)
-  (`eb733c9`) — `WB-D14` recorded in `docs/decisions.md` (TIER2 stays hand-maintained), and
-  `scripts/coupling-check.sh`'s comment retargeted from "see #48" to `WB-D14`. No pattern
-  change to the gate.
-- `/way-of-working:critic-gate` ran (`architect` + `docs-consistency`): 1 fix-and-re-run round,
-  **converged**. Round 1 found two optional wording nits (missing `#48` citation; "fails
-  open" wording implying a private repo exists today); both fixed, re-check came back
-  tightenings-only. No second-opinion round (human declined; `{review.ci_gate}` is `null`,
-  so this was the only critic look the diff got before merge).
+- Task #45 shipped and merged: [PR #176](https://github.com/glunk-works/claude-workbench/pull/176)
+  (`5b73f8b`) — `WB-D15` recorded in `docs/decisions.md`: a `zizmor` job added to
+  `ci.yml` (two runs — a real gate plus a SARIF upload; a single default-mode run, as
+  first drafted, never actually fails on a finding), the `dependabot-cooldown` finding
+  fixed, two `adhoc-packages` findings suppressed with justification, and
+  [bedrock-serverless-rag#134](https://github.com/glunk-works/bedrock-serverless-rag/issues/134)
+  filed asking a human to enable CodeQL default setup there. `/way-of-working:critic-gate`
+  (`architect` + `security-critic` + `docs-consistency`): 3 rounds, converged — caught the
+  zizmor-never-fails defect and a leftover stray step from fixing it.
+- Unplanned, at the maintainer's direct request (not a milestone-3 item): issue
+  [#177](https://github.com/glunk-works/claude-workbench/issues/177) →
+  [PR #178](https://github.com/glunk-works/claude-workbench/pull/178) (`4f58026`) —
+  `WB-D16`: `/way-of-working:critic-gate`'s hard cap raised from 2 to 4 fix-and-re-run
+  rounds, critic selection now goes through a structured pick-list wherever the host can
+  present one. Critic gate: `architect`, 3 rounds, converged — caught an invented,
+  arithmetically-wrong rationale for the cap raise (removed rather than kept) and a false
+  round-count claim in the skill's own worked example.
+- Unplanned, at the maintainer's explicit call ("despite what this sprint said"): cut
+  release **v0.12.0** — [PR #179](https://github.com/glunk-works/claude-workbench/pull/179)
+  (plugin bump + changelog, `bc4237a`) merged, tag/release published targeting that same
+  commit, [PR #180](https://github.com/glunk-works/claude-workbench/pull/180) (this repo's
+  own pin bump, `85db39d`) merged. Ran the plugin-update procedure locally: marketplace
+  re-pointed to `v0.12.0`, `claude plugin update --scope project`, and the known
+  drive-letter-casing trap (`c:\` vs `C:\` in `installed_plugins.json`) mirrored so the IDE
+  session's casing also reports `0.12.0` — restart still required to load it.
 
-**Next:** task #45 — implement the approved spec
-(https://github.com/glunk-works/claude-workbench/issues/45#issuecomment-5831964523): add a
-`zizmor` job to `.github/workflows/ci.yml` (pinned by a verified commit SHA,
-`security-events: write` scoped to that job only), make it green (fix or justify-and-suppress
-every finding, listed in the PR body), add `WB-D15` to `docs/decisions.md` (decision + survey
-+ waiting list), and file one issue on `glunk-works/bedrock-serverless-rag` asking a human to
-enable CodeQL default setup — the toggle itself is the human's, this harness cannot write org
-settings. Then the green gate, `/way-of-working:critic-gate` (`architect` + `security-critic`
-+ `docs-consistency`), and `/way-of-working:ship` with `Closes #45`, linking the
-bedrock-serverless-rag issue. On **sonnet** (`coder`).
+**Next:** Verify the plugin update actually landed — run `claude plugin list` and confirm
+`way-of-working@claude-workbench` reports `0.12.0` (never infer this from a new cache
+directory appearing; old ones are never removed). Then run
+`/way-of-working:archive-sprint` to close out sprint-04 (milestone 3 — 0 open issues) and
+plan sprint-05. On **opus** (`architect`) — sprint close feeds directly into planning the
+next sprint.
 
-**HITL Gate: OPEN** — re-anchored for task #45 within the same sprint/milestone (description
-sha unchanged: `3daabee1...`). This session's own `/way-of-working:resume` never ran
-`plan-anchor.sh verify` (the prior gate was already open, so it took the wait branch), so per
-the baseline-validity rule the anchor is treated as unverified rather than carried forward
-silently. A human "go" at resume confirms the #45 spec before the build starts.
+**HITL Gate: NONE OPEN** — next is `/way-of-working:archive-sprint`, a deliberate
+sprint-completion action; `sprint_status: done` also blocks unattended auto-start
+regardless.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 3](https://github.com/glunk-works/claude-workbench/milestone/3)
