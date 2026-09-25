@@ -74,9 +74,9 @@ TIER1='hatch run|migration_roadmap|'"$CHECK_NAME"'|loop-orchestrator|Seuss27'
 # example. A skill that names one of these is the same defect as tier 1, caught before it
 # ships rather than after. `loop-orchestrator` is also matched by TIER1 (it predates this
 # tier), but is listed here too so this tier's own membership rule is literally true on its
-# own and doesn't silently depend on TIER1 never being pruned. Hand-maintained today (see
-# #48 for the derive-vs-hand-maintain call); keep this list in sync with
-# `gh repo list glunk-works`.
+# own and doesn't silently depend on TIER1 never being pruned. Hand-maintained: WB-D14
+# (docs/decisions.md) records the derive-vs-hand-maintain call; keep this list in sync
+# with `gh repo list glunk-works`.
 TIER2='bounty-infra|global-bootstrap|scope-core|glunk-works|claude-workbench|bedrock-serverless-rag|pm-agent-loop|appsec-triage-agent|loop-engine|loop-orchestrator'
 
 # Tier 3 -- structural literal SHAPES, not exact strings. SW Task 5 found that tiers 1-2
