@@ -64,3 +64,4 @@ agents:
 models:
   architect: opus
   coder: sonnet
+  second_opinion: fable

@@ -479,7 +479,41 @@ positively rule out an invalidating event, run the check.
 
 5. **Adopt the assigned persona/model.** If `assigned_model` does not match the model you are running as, say so explicitly and recommend the user `/model` switch before continuing. The role→model mapping is `{models}` (typically architect for planning/review, coder for implementation — see `reference/workflow.md`).
 
-6. **State the pick-up point** in 3–6 lines: current phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check result, and the branch-prune result — plus, when `.ai/parked/` is non-empty, **at most one line** naming each parked sprint with its `parked_at` (the *Read the cursor* step), derived from the directory, which is the authority (`Parked: 41 (2026-09-02), 43 (2026-09-15) — restore with /way-of-working:unpark-sprint <id>.`). Omit the line when there are none.
+6. **State the pick-up point** in 3–6 lines (plus, under `{planning.kind}: github_milestones`
+   and `sprint_status: planning`, the **Milestone close** line below when applicable): current
+   phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check
+   result, and the branch-prune result — plus, when `.ai/parked/` is non-empty, **at most one
+   line** naming each parked sprint with its `parked_at` (the *Read the cursor* step), derived
+   from the directory, which is the authority (`Parked: 41 (2026-09-02), 43 (2026-09-15) —
+   restore with /way-of-working:unpark-sprint <id>.`). Omit the line when there are none.
+
+   **Under `{planning.kind}: github_milestones`, when `sprint_status` is `planning`, also run**
+   (issue #153 — `hitl_gate: NONE OPEN` on a `planning` cursor is not, by itself, proof the
+   prior sprint's milestone actually closed; `/way-of-working:archive-sprint`'s own Close step
+   can be skipped or refused without that ever reaching the gate — the line is written or
+   carried forward by whichever of `archive-sprint`'s Seed step, `archive-sprint`'s own
+   unpark-branch note, `park-sprint`'s seed override, `handoff`'s carry-forward rule, or
+   `unpark-sprint`'s Restore step last touched this ledger; each guarantees at most one such
+   line survives, so there is never more than one to echo below):
+   ```bash
+   milestone-close-line.sh {planning.kind} <sprint_status> .ai/next-steps.md
+   ```
+   (bare name, same `bin/` `PATH` as `cursor-drift.sh` above). `not-applicable` (wrong kind or
+   status) says nothing extra — this is a report, not a gate, and a quiet result needs no line.
+   **`present`** echoes the ledger's own `**Milestone close:**` line, verbatim, as its own line
+   in the pick-up summary — never silently, however routine the recorded outcome looks. This
+   is the other half of #153: "closed" or "already closed" is unremarkable, but the Close
+   step's own three fail-open outcomes (blocked on an open issue, a failed read, or a *pending*
+   close — `archive-sprint`'s own Guardrails) leave the milestone open on GitHub while
+   `hitl_gate` can still read `NONE OPEN`, and that is
+   exactly the shape a silent `present` would hide again. `missing` is impossible to miss, in
+   the pick-up summary itself, not buried in a ruleset-style aside: `Milestone close: ledger has
+   no outcome for the prior sprint's close — verify by hand whether its milestone is actually
+   closed on GitHub before trusting NONE OPEN.` `unreadable` (the file could not be read,
+   despite the *Read the cursor* step's unconditional read above having succeeded) reports the
+   same way, naming the read failure instead. This never blocks auto-start on its own — a
+   `planning`-status cursor already never auto-starts (below) — it exists so the gap is *said*,
+   not merely survived.
 
    Then **either start the next action or wait**, per the rule below.
 
