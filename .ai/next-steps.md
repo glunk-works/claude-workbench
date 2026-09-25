@@ -1,45 +1,25 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 4** — [milestone 3](https://github.com/glunk-works/claude-workbench/milestone/3),
-*record the deferred decisions*. Status: **done**.
+**Now:** **Sprint 5** — [milestone 5](https://github.com/glunk-works/claude-workbench/milestone/5),
+*every config key is an explicit decision*. Status: **implementing**.
 
-**Just done (2026-09-25, Sonnet, coder):**
-- Task #45 shipped and merged: [PR #176](https://github.com/glunk-works/claude-workbench/pull/176)
-  (`5b73f8b`) — `WB-D15` recorded in `docs/decisions.md`: a `zizmor` job added to
-  `ci.yml` (two runs — a real gate plus a SARIF upload; a single default-mode run, as
-  first drafted, never actually fails on a finding), the `dependabot-cooldown` finding
-  fixed, two `adhoc-packages` findings suppressed with justification, and
-  [bedrock-serverless-rag#134](https://github.com/glunk-works/bedrock-serverless-rag/issues/134)
-  filed asking a human to enable CodeQL default setup there. `/way-of-working:critic-gate`
-  (`architect` + `security-critic` + `docs-consistency`): 3 rounds, converged — caught the
-  zizmor-never-fails defect and a leftover stray step from fixing it.
-- Unplanned, at the maintainer's direct request (not a milestone-3 item): issue
-  [#177](https://github.com/glunk-works/claude-workbench/issues/177) →
-  [PR #178](https://github.com/glunk-works/claude-workbench/pull/178) (`4f58026`) —
-  `WB-D16`: `/way-of-working:critic-gate`'s hard cap raised from 2 to 4 fix-and-re-run
-  rounds, critic selection now goes through a structured pick-list wherever the host can
-  present one. Critic gate: `architect`, 3 rounds, converged — caught an invented,
-  arithmetically-wrong rationale for the cap raise (removed rather than kept) and a false
-  round-count claim in the skill's own worked example.
-- Unplanned, at the maintainer's explicit call ("despite what this sprint said"): cut
-  release **v0.12.0** — [PR #179](https://github.com/glunk-works/claude-workbench/pull/179)
-  (plugin bump + changelog, `bc4237a`) merged, tag/release published targeting that same
-  commit, [PR #180](https://github.com/glunk-works/claude-workbench/pull/180) (this repo's
-  own pin bump, `85db39d`) merged. Ran the plugin-update procedure locally: marketplace
-  re-pointed to `v0.12.0`, `claude plugin update --scope project`, and the known
-  drive-letter-casing trap (`c:\` vs `C:\` in `installed_plugins.json`) mirrored so the IDE
-  session's casing also reports `0.12.0` — restart still required to load it.
+**Just done (2026-09-25, Opus, architect):**
+- Plugin update to `0.12.0` verified with `claude plugin list`.
+- Sprint 4 archived: Status recorded in `docs/decisions.md`
+  ([PR #182](https://github.com/glunk-works/claude-workbench/pull/182), `f252d0d`);
+  milestone 3 closed (read-back `closed`, 0 open issues).
+- Sprint 5 planned: the plan of record (milestone 5's description, from the 2026-09-24
+  triage) stands. One edit: its release line said `v0.12.0`, already Sprint 4's release;
+  corrected to **`v0.13.0`** in both places.
 
-**Next:** Verify the plugin update actually landed — run `claude plugin list` and confirm
-`way-of-working@claude-workbench` reports `0.12.0` (never infer this from a new cache
-directory appearing; old ones are never removed). Then run
-`/way-of-working:archive-sprint` to close out sprint-04 (milestone 3 — 0 open issues) and
-plan sprint-05. On **opus** (`architect`) — sprint close feeds directly into planning the
-next sprint.
+**Next:** task #142 — write the design spec as a comment on #142: options plus a
+recommendation settling every point in #142's 2026-09-24 review comment, plus a draft
+`WB-D` entry for reversing absent-means-default. Design only, no build; the human approves
+the spec before any coder session. On **fable** (`architect`) — the human's deliberate
+routing for this design pass; `models.architect` is opus.
 
-**HITL Gate: NONE OPEN** — next is `/way-of-working:archive-sprint`, a deliberate
-sprint-completion action; `sprint_status: done` also blocks unattended auto-start
-regardless.
+**HITL Gate: OPEN** — first anchor for milestone 5, description sha `c1f7c878…` (edited
+this session: `v0.12.0` → `v0.13.0`). Confirm the anchored plan, then say go.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
-[milestone 3](https://github.com/glunk-works/claude-workbench/milestone/3)
+[milestone 5](https://github.com/glunk-works/claude-workbench/milestone/5)
