@@ -272,6 +272,26 @@ o="$(new_origin undeclared-absent main)"
 c="$(clone_checkout "$o" undeclared-absent-checkout)"
 assert_stop "undeclared base: migration_base is not set at all, base is a real branch" "$c" main some-other-branch
 
+# WB-D17 (#142): migration_base ABSENT from the default branch's .ai/project.yml must
+# print its own word on the STOP line, distinct from a declared `null` -- both used to
+# read identically ("M stays empty"), which is exactly the silent-default shape #142
+# exists to remove. Checks the STOP line's CONTENT, not just its shape (assert_stop
+# above only pins the shape, `^STOP repo=`).
+out="" st=0
+out="$(cd "$c" && REVIEW_BASE_ANCHOR_GH="$gh_stub" FAKE_GH_REPO=acme/repo \
+  FAKE_GH_DEFAULT=main FAKE_GH_BASE=some-other-branch "$script" 7 2>"$tmp/absent-stderr")" || st=$?
+assert_eq "migration_base absent: STOP line reads migration_base=<absent>, not blank" \
+  1 "$(grep -qF 'migration_base=<absent>' "$tmp/absent-stderr" && echo 1 || echo 0)"
+
+o2="$(new_origin declared-null main null)"
+(cd "$o2" && git checkout -qb some-other-branch2 && echo x >note.txt && git add -A && git commit -qm real && git checkout -q main)
+c2="$(clone_checkout "$o2" declared-null-checkout)"
+out="" st=0
+out="$(cd "$c2" && REVIEW_BASE_ANCHOR_GH="$gh_stub" FAKE_GH_REPO=acme/repo \
+  FAKE_GH_DEFAULT=main FAKE_GH_BASE=some-other-branch2 "$script" 7 2>"$tmp/null-stderr")" || st=$?
+assert_eq "migration_base: null (declared, no migration): STOP line reads migration_base= (blank), not <absent>" \
+  1 "$(grep -qF 'migration_base=' "$tmp/null-stderr" && ! grep -qF 'migration_base=<absent>' "$tmp/null-stderr" && echo 1 || echo 0)"
+
 # --- the human override: REVIEW_BASE_ANCHOR_ALLOW_UNDECLARED_BASE -----------------------
 #
 # The one escape hatch the chain this replaces already had, in prose: a human, having
@@ -298,6 +318,39 @@ out="$(cd "$c" && REVIEW_BASE_ANCHOR_ALLOW_UNDECLARED_BASE='acme/repo#7:some-oth
   REVIEW_BASE_ANCHOR_GH="$gh_stub" FAKE_GH_REPO=acme/repo FAKE_GH_DEFAULT=main \
   FAKE_GH_BASE=some-other-branch "$script" 7 2>"$tmp/stderr")" || st=$?
 assert_eq "override: an undeclared base is accepted when set to the exact repo#N:base string" \
+  "repo=acme/repo default=main base=some-other-branch override=1/0" "$out/$st"
+
+# WB-D17 (#142) regression: a default branch with NO .ai/project.yml AT ALL (the repo
+# never adopted this plugin's schema, or the file was removed) must fall through the
+# SAME as a declared-null/absent migration_base -- not become a NEW hard stop that
+# silently loses the override above. An early draft of the absent-vs-null fix made ANY
+# `git show` failure here a `stop`, which broke exactly this case (an architect pass
+# caught it live). Built by hand, not via new_origin(), which always writes the file.
+o="$tmp/no-project-yml-origin"
+mkdir -p "$o"
+(
+  cd "$o" && git init -q && git symbolic-ref HEAD refs/heads/main &&
+  git config user.email t@example.com && git config user.name t &&
+  git config core.autocrlf false &&
+  echo x >README.md && git add -A && git commit -qm init &&
+  git checkout -qb some-other-branch && echo y >note.txt && git add -A && git commit -qm real &&
+  git checkout -q main
+)
+c="$(clone_checkout "$o" no-project-yml-checkout)"
+out="" st=0
+out="$(cd "$c" && REVIEW_BASE_ANCHOR_GH="$gh_stub" FAKE_GH_REPO=acme/repo FAKE_GH_DEFAULT=main \
+  FAKE_GH_BASE=some-other-branch "$script" 7 2>"$tmp/stderr")" || st=$?
+assert_eq "no .ai/project.yml at all on the default branch: STOPs (no override set)" \
+  "/1" "$out/$st"
+grep -qF 'migration_base=<absent>' "$tmp/stderr" && no_yml_absent_ok=1 || no_yml_absent_ok=0
+assert_eq "no .ai/project.yml at all: STOP line still reads migration_base=<absent>" \
+  1 "$no_yml_absent_ok"
+
+out="" st=0
+out="$(cd "$c" && REVIEW_BASE_ANCHOR_ALLOW_UNDECLARED_BASE='acme/repo#7:some-other-branch' \
+  REVIEW_BASE_ANCHOR_GH="$gh_stub" FAKE_GH_REPO=acme/repo FAKE_GH_DEFAULT=main \
+  FAKE_GH_BASE=some-other-branch "$script" 7 2>"$tmp/stderr")" || st=$?
+assert_eq "no .ai/project.yml at all: the override STILL works (the regression this pins)" \
   "repo=acme/repo default=main base=some-other-branch override=1/0" "$out/$st"
 
 # A boolean-shaped value (`1`) does NOT authorize a base named anything else -- the

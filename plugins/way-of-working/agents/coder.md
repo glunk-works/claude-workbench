@@ -19,7 +19,7 @@ under-specified, or requires a design decision, STOP and report back rather than
 
 ## Inputs you will be given
 
-- A single named task — under `{planning.kind}: files` or absent, usually a `**Task N:**`
+- A single named task — under `{planning.kind}: files`, usually a `**Task N:**`
   from a sprint plan under `{sprints_dir}`; under `{planning.kind}: github_milestones`, issue
   `{backlog.repo}#N` plus, when one exists, its spec comment's id, and the `plan_anchor` your
   spawning session verified against it.
@@ -56,7 +56,7 @@ under-specified, or requires a design decision, STOP and report back rather than
 3. **Whatever `{planning.kind}` is, read this plugin's `reference/conventions.md`** for the
    non-negotiable language and commit rules, and the repo's own `CLAUDE.md` for its enforced
    module boundaries and local extensions — respect both exactly. Where the two overlap, the
-   repo's `CLAUDE.md` is the local truth. Under `{planning.kind}: files` or absent, also read
+   repo's `CLAUDE.md` is the local truth. Under `{planning.kind}: files`, also read
    the named task in its `sprint_plan.md` and the files it touches (the task and its files
    under `github_milestones` came from the *fetch the task once, then use it* step, above).
 4. Reuse existing helpers and follow the surrounding code's idioms; match its comment density

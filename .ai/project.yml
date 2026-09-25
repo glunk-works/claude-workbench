@@ -1,6 +1,7 @@
 # ── identity ─────────────────────────────────────────────────────────────────
 repo: glunk-works/claude-workbench
 pr_base: main
+migration_base: null   # no migration under way (WB-D17, #142 — this key must be present).
 
 # ── the deep record ──────────────────────────────────────────────────────────
 # This repo has no separate roadmap-with-status-table — it ships as small,

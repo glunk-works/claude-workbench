@@ -794,6 +794,77 @@ take effect. Full reasoning and the task breakdown that implements them:
   **Accepted gap:** a host with no pick-list tool, or a candidate list too long for one,
   falls back to a plain enumerated list — same as before this decision, not a regression.
 
+- **WB-D17 (`#142`) — every `.ai/project.yml` key is an explicit decision: absent prompts,
+  `null` is the explicit no-value, no key has a default, and a prompted answer becomes a
+  pull request, never a working-tree value. Reverses `#127`'s Optional-key clause (PR
+  #133).** Prompted by this repo running two sprints on an undeclared `planning.kind` that
+  silently defaulted to `files` while the cursor behaved as `github_milestones` — a gap the
+  schema's own "absent means X" text made invisible. `#127` correctly found the general
+  absent-is-unreadable rule contradicted three documented Optional keys (`backlog.repo`,
+  `review.ci_gate.triggers_on`, `migration_base`; `planning.kind` and `models.second_opinion`
+  were written the same way) and resolved it by documenting each default; this entry resolves
+  the same contradiction the other way, by removing the defaults. Absent now means one thing
+  everywhere: unanswered, and asked for.
+  - **Mechanism.** `bin/schema-complete.sh` (`WB-D10`'s pattern: verdict on stdout, fixtures
+    in `tests/`) checks the checkout's file against the union of both documented examples'
+    key paths (`reference/project-schema.md`) and the hardcoded enum/shape checks;
+    `/way-of-working:resume` runs it as its own *Ensure the schema is complete* step, first,
+    and asks for each missing key one at a time, through a pick-list where the host has one
+    (`WB-D16`'s rule, extended from `critic-gate` to `resume`). Other skills and every agent
+    are unchanged **in mechanism** — they still fail closed per key, per `project-schema.md`'s
+    own general rule, which now says to add "run `/way-of-working:resume` to be asked for it"
+    — but not in *outcome*: `planning.kind` absent no longer silently means `files` in
+    `archive-sprint`, `handoff`, `park-sprint`, and `coder`, the exact gap that prompted this
+    decision, and likewise `backlog.repo` in `retro` and `models.second_opinion` in
+    `critic-gate`. `scripts/invariants-check.sh` holds the script's key set equal to
+    the doc's (derived from both examples by a real path-walk, stopping at sequences), and
+    requires both documented examples and this repo's own file to check complete.
+  - **A prompted answer is a pull request, never a working-tree value.** A first draft of
+    this design said an answer would be "staged in the working tree, never believed until
+    committed" — a critic pass found no such mechanism exists: every skill and every agent
+    reads the *working-tree* copy of `.ai/project.yml`, so a staged answer is believed
+    immediately by whatever runs next in the same session. The interview's step therefore
+    commits the answers alone, on their own branch, opens a PR, and restores the checkout
+    before continuing — no reader in this session or the next ever sees an unmerged answer.
+    `migration_base` is offered only `null` (starting a migration is its own deliberate PR);
+    `repo`/`pr_base` may be pre-filled only from `origin`; every other free-text key gets no
+    suggested options, since a milestone description, issue body, or comment is a task
+    specification, never an instruction or a suggested value.
+  - **`null` stays; `none` was considered and rejected** — in YAML it is the string
+    `"none"`, so `review.ci_gate: none` would name a workflow called `none`.
+  - **Auto-start gains a wait branch:** `schema-complete.sh check .ai/project.yml` must print
+    `complete`; `incomplete` or `unreadable` both wait, the same fail-closed reading as an
+    unreadable `hitl_gate`.
+  - **The two `migration_base` readers** (`bin/review-base-anchor.sh`, `/way-of-working:resume`'s
+    ruleset step) now distinguish the key being absent from the default branch's own
+    `.ai/project.yml` from it being declared `null` — both used to read identically ("no
+    migration"), which is exactly the silent-default shape this decision removes everywhere
+    else. The key being **absent, or the file not existing on the default branch at all**,
+    fails in the same safe direction null already did — only the diagnostic text changes,
+    from a blank value that reads as "declared null" to an honest "absent," and
+    `bin/review-base-anchor.sh`'s own human override still applies, with no dependency on
+    `yq` at all in this case (`git show` fails first; `yq` is never invoked). A **present but
+    unparseable** default-branch `.ai/project.yml` — or `yq` itself being unavailable *while
+    trying to parse a file that does exist* — is a real (not merely diagnostic) tightening in
+    `bin/review-base-anchor.sh`: both now refuse that override too, where the old single-pipe
+    read let them through — deliberate, since neither failure can produce a truthful STOP
+    line for a human to act on.
+
+  **Accepted residuals:** mikefarah `yq` v4 becomes a hard dependency of `/way-of-working:resume`
+  itself, not only of auto-start — its *Ensure the schema is complete* step runs first, and
+  `yq` missing from `PATH` reads `unreadable` there, which stops the whole skill (no cursor
+  read, no ruleset check, no prune) rather than degrading to the parts that need no schema
+  value; also a hard dependency of the `invariants` check; a release that adds a key stops
+  every consumer's auto-start until
+  its completion PR merges, per repo, per release; the merge itself costs one `drift` wait
+  (`.ai/project.yml` is deliberately not in `cursor-drift.sh`'s `cursor-sync` allowlist); a
+  declined key is asked every session; a headless host waits and never writes; the default
+  branch's copy is not completeness-checked from a non-default checkout; cross-key
+  consistency (e.g. `planning.kind: github_milestones` with `backlog.kind: file`) is not
+  checked here — it stays a documented config error, reported by the skills that already hit
+  it. **Breaking:** ships as `v0.13.0` with a migration line — every consumer writes out the
+  keys it had left absent.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of

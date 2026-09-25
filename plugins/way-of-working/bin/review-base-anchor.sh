@@ -75,10 +75,26 @@
 # `yq` is needed only on a non-default base, to read `migration_base` off the
 # default branch (see below) -- a PR based on the default branch never invokes
 # it, unchanged from the chain this replaces. Where it IS invoked and missing,
-# that is an ordinary STOP like any other failing step, not a separate
-# precondition: `yq: command not found` fails the pipe, `M` stays empty, and
-# the caller sees exactly the STOP shape a diverged branch or a dirty
-# `.ai/project.yml` produces.
+# that is an ordinary STOP like any other failing step: `yq: command not found`
+# fails the presence check below, which `stop`s directly, so the caller sees
+# exactly the STOP shape a diverged branch or a dirty `.ai/project.yml` produces.
+#
+# `migration_base` ABSENT (the key entirely missing from the default branch's
+# `.ai/project.yml`, OR the file not existing there at all) reads exactly like
+# a declared `null` for this script's own decision -- M stays "", the human
+# override below still applies -- WB-D17 (#142): absent is an unanswered
+# question, but this script only ever asked "is a migration declared to THIS
+# base," and absent answers that the same way null does. A bare
+# `.migration_base` traversal cannot tell absent from null apart on its own
+# (confirmed live: both print the literal string `null` and both fail
+# `yq -er`'s exit status identically), so the read below checks
+# `has("migration_base")` first -- but ONLY the STOP line's own diagnostic
+# changes as a result (a blank value that used to read as "declared null"
+# becomes the honest `<absent>`), never the pass/fail decision itself. An
+# earlier draft of this fix made absent its own hard STOP, unconditionally --
+# that silently lost the human override for a default branch that had never
+# adopted this plugin's schema at all, an architect pass caught it, and this
+# is the corrected version.
 #
 # `gh` is called only through $REVIEW_BASE_ANCHOR_GH (default: gh), never typed
 # literally elsewhere in this script, so a fixture can point it at a stub that
@@ -123,11 +139,17 @@ N="$1"
 
 # Reset every value this script can print, unconditionally -- see the header
 # note on a stale value read from the calling shell's own environment.
-R= D= B= M= T= OVERRODE=
+R= D= B= M= T= OVERRODE= DEF_YML= MB_PRESENT= MB_ABSENT=
 
 stop() {
+  # migration_base ABSENT prints its own word, never the same blank `M` a
+  # legitimate `null` prints -- the STOP line stays truthful about WHICH case
+  # occurred even though (see below) absent and null still compare the same
+  # way for the override/no-override decision itself.
+  mb_display="$M"
+  [ -n "$MB_ABSENT" ] && mb_display="<absent>"
   printf 'STOP repo=%s default=%s base=%s migration_base=%s\n' \
-    "$R" "$D" "$B" "$M" >&2
+    "$R" "$D" "$B" "$mb_display" >&2
   exit 1
 }
 
@@ -162,7 +184,56 @@ else
   # ignore the comparison, so a rerun's own diagnostic stays honest about what
   # was actually declared.
   git fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" || stop
-  M=$(git show "refs/remotes/origin/$D:./.ai/project.yml" | yq -er .migration_base) || M=""
+  # No `.ai/project.yml` AT ALL on the default branch (never adopted this
+  # plugin's schema, or the file was removed) is its OWN absent case -- the
+  # same shape as a missing KEY inside an existing file, not a new hard stop.
+  # An early draft of this fix made ANY `git show` failure here a `stop`,
+  # which silently lost the human override below for exactly this case: the
+  # OLD single-pipe read (`git show ... | yq -er .migration_base`) fed yq
+  # empty input on a failed `git show` and fell through to the same `M=""` a
+  # declared-null migration_base produces, so the override could previously
+  # still fire against a default branch that had never adopted the plugin at
+  # all -- an architect pass caught the regression. `git show <rev>:<path>`
+  # failing here means specifically "the path does not exist in that
+  # revision" (the ref itself was just fetched above), so that failure is
+  # treated the same as the key being absent: MB_ABSENT=1, M="", override
+  # still applies. A PRESENT but unparseable `.ai/project.yml` on the default
+  # branch, OR `yq` itself being missing, is a DIFFERENT, more suspicious
+  # failure class -- unlike the absent case just above, this one is a REAL
+  # behavior change from the old single-pipe read, not merely a diagnostic
+  # one: the old code fell through to `M=""` on ANY failure (a malformed
+  # file, or no `yq` on PATH, produced the exact same "no migration declared"
+  # outcome the human override could still act on), while the `|| stop` below
+  # now refuses the override for both. Deliberate: a human override is only
+  # as good as the STOP line it was typed in response to, and neither "the
+  # default branch's schema is corrupt" nor "this machine cannot even check"
+  # can produce a truthful one. Stated as its own change, not folded into the
+  # "only the diagnostic changes" claim two paragraphs below, which is scoped
+  # to the absent-vs-null case only.
+  if DEF_YML=$(git show "refs/remotes/origin/$D:./.ai/project.yml" 2>/dev/null); then
+    # `has()` distinguishes the key being PRESENT with an explicit `null` (no
+    # migration -- M stays "") from the key being ABSENT (WB-D17, #142: absent
+    # is an unanswered question, never silently read as "no migration is under
+    # way"). A bare `.migration_base` traversal cannot tell the two apart on
+    # its own (confirmed live: both print the literal string `null` and both
+    # fail `yq -er`'s exit status identically). This still FAILS IN THE SAME
+    # SAFE DIRECTION as before for the decision that follows -- absent, like
+    # null, means "not declared", so M stays "" and the human override below
+    # still applies to it exactly as it already did to a declared-null
+    # migration_base -- only the STOP line's own diagnostic changes, from a
+    # blank value that reads as "declared null" to the honest `<absent>`
+    # (see `stop` above).
+    MB_PRESENT=$(printf '%s' "$DEF_YML" | yq eval 'has("migration_base")') || stop
+    if [ "$MB_PRESENT" = "true" ]; then
+      M=$(printf '%s' "$DEF_YML" | yq -er .migration_base) || M=""
+    else
+      M=""
+      MB_ABSENT=1
+    fi
+  else
+    M=""
+    MB_ABSENT=1
+  fi
   if [ "$M" = "$B" ]; then
     T=$B
   elif [ "${REVIEW_BASE_ANCHOR_ALLOW_UNDECLARED_BASE:-}" = "$R#$N:$B" ]; then

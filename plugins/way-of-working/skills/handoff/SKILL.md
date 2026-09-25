@@ -97,7 +97,7 @@ github_milestones` — `{backlog.repo}`.
      holds.
    - `pointers.roadmap` = `{roadmap}`.
    - `pointers.sprint_plan` — branches on `{planning.kind}`:
-     - **`files` or absent** — `<active sprint_plan.md>`, unchanged.
+     - **`files`** — `<active sprint_plan.md>`, unchanged.
      - **`github_milestones`** — `https://github.com/{backlog.repo}/milestone/<number>`, and
        `pointers.plan_anchor` is written alongside it per *The plan anchor* below. A
        `planning` cursor (or one with no milestone chosen yet) writes `sprint_plan: null` and
@@ -186,7 +186,7 @@ github_milestones` — `{backlog.repo}`.
      as `next_action` (the *Determine the new cursor* step) — `/way-of-working:resume`'s
      cross-check reads this line for it.
    - **Pointers:** `{roadmap}` + the active sprint plan — `<active sprint_plan.md>` under
-     `files`/absent, or the milestone URL (`pointers.sprint_plan`) under `github_milestones` —
+     `files`, or the milestone URL (`pointers.sprint_plan`) under `github_milestones` —
      (do not copy their content — link to them), plus `.ai/parked/` while that directory is
      non-empty — the directory, never its listing. A park's **Just done** line is written by
      one pass over this file and gone at the next regeneration; the directory and the
@@ -211,7 +211,7 @@ github_milestones` — `{backlog.repo}`.
      ledger through a whole implementing sprint is exactly the stale line a later park + unpark
      cycle can turn into a duplicate (`/way-of-working:archive-sprint`'s unpark-branch note).
      **Never fabricate one** — a cursor that never had the line (this sprint's first handoff,
-     or a `files`/absent repo) gets none; this is a carry-forward, not a write.
+     or a `files` repo) gets none; this is a carry-forward, not a write.
    Regenerate the whole file (it is a cursor, not an append log — history lives in git + the roadmap).
    State no **regenerable aggregates**: no counts, no check inventories, no lists a
    command can re-emit — name the deriving command or the authority instead

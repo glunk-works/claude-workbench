@@ -224,6 +224,137 @@ if [ -n "$step_hits" ]; then
     "branches* step' -- never a number, including within the same file. See issue #61."
 fi
 
+# --- 7. WB-D17 (#142): the completeness checker's key set, the doc's own examples,
+#        and this repo's own file all agree ---------------------------------------
+#
+# `.ai/project.yml`'s schema doc (`project-schema.md`) and its completeness checker
+# (`bin/schema-complete.sh`) are two independent surfaces describing the SAME key
+# set, and nothing forced them to agree until now -- exactly the "documented but
+# not enforced" gap that let this repo run two sprints on an undeclared
+# `planning.kind` while behaving like `github_milestones`, the defect `#142` exists
+# to close for every key, not just that one.
+#
+# `yq` (mikefarah v4) is a hard dependency of this assertion, same as of
+# `schema-complete.sh` itself, and its absence FAILS the check -- it does not skip
+# it. A required gate that silently skips its own enforcement on a missing tool is
+# the same defect as any other silent pass.
+SCHEMA_COMPLETE_SCRIPT=$(printf '%s\n' "${BIN_SCRIPTS[@]}" | grep '/schema-complete\.sh$' || true)
+SCHEMA_DOC=$(printf '%s\n' "${REFERENCE_DOCS[@]}" | grep '/project-schema\.md$' || true)
+if [ -z "$SCHEMA_COMPLETE_SCRIPT" ] || [ -z "$SCHEMA_DOC" ]; then
+  report "could not find bin/schema-complete.sh and/or reference/project-schema.md" \
+    "  schema-complete.sh: ${SCHEMA_COMPLETE_SCRIPT:-<not found>}" \
+    "  project-schema.md: ${SCHEMA_DOC:-<not found>}" \
+    "A rename or move here would otherwise silently turn this check off."
+elif ! command -v yq >/dev/null 2>&1; then
+  report "yq is not on PATH -- WB-D17's schema-completeness assertions cannot run" \
+    "bin/schema-complete.sh and this check both require mikefarah yq v4. A CI runner" \
+    "missing it must fail this gate, not silently skip the assertions it backs."
+else
+  extract_yaml_fence() { # extract_yaml_fence <heading-prefix> <file>
+    awk -v heading="$1" '
+      $0 ~ "^"heading { found=1 }
+      found && /^```yaml/ { infence=1; next }
+      found && infence && /^```/ { exit }
+      found && infence { print }
+    ' "$2"
+  }
+  walk_leaf_paths() { # walk_leaf_paths <yaml-file> -- dotted leaf paths, stopping at sequences
+    yq eval '.. | select(tag != "!!map") | (path | join("."))' "$1" 2>/dev/null \
+      | grep -vE '(^|\.)[0-9]+(\.|$)' || true
+  }
+
+  full_tmp=$(mktemp)
+  worked_tmp=$(mktemp)
+  extract_yaml_fence "## Full schema" "$SCHEMA_DOC" >"$full_tmp"
+  extract_yaml_fence "## Worked example" "$SCHEMA_DOC" >"$worked_tmp"
+
+  if [ ! -s "$full_tmp" ] || [ ! -s "$worked_tmp" ]; then
+    report "could not extract a yaml fence for 'Full schema' and/or 'Worked example'" \
+      "  Full schema fence: $([ -s "$full_tmp" ] && echo found || echo empty)" \
+      "  Worked example fence: $([ -s "$worked_tmp" ] && echo found || echo empty)" \
+      "Expected a \`\`\`yaml fence directly under each heading in $SCHEMA_DOC."
+  else
+    # 7a. Set equality, both ways -- the script's keys (if-map suffix stripped)
+    # against the union of both examples' own leaf paths. The Full schema alone
+    # cannot supply the four `review.ci_gate.*` sub-keys (it keeps `ci_gate: null`
+    # there deliberately, so a plain walk finds none of them); the Worked example
+    # carries `ci_gate` as a live map precisely so the union supplies all four.
+    script_keys=$("$SCHEMA_COMPLETE_SCRIPT" keys | sed 's/ if-map$//' | sort -u)
+    doc_keys=$( { walk_leaf_paths "$full_tmp"; walk_leaf_paths "$worked_tmp"; } | sort -u)
+    doc_only=$(comm -23 <(printf '%s\n' "$doc_keys") <(printf '%s\n' "$script_keys"))
+    script_only=$(comm -13 <(printf '%s\n' "$doc_keys") <(printf '%s\n' "$script_keys"))
+    if [ -n "$doc_only" ] || [ -n "$script_only" ]; then
+      report "bin/schema-complete.sh's key set and project-schema.md's own examples disagree" \
+        "${doc_only:+  in the doc, not in the script:
+$doc_only}" \
+        "${script_only:+  in the script, not in the doc:
+$script_only}" \
+        "A key added to one must be added to the other in the same change" \
+        "(project-schema.md § 'Adding a key')."
+    fi
+
+    # 7b. Both documented examples themselves check complete.
+    for label_file in "Full schema:$full_tmp" "Worked example:$worked_tmp"; do
+      label="${label_file%%:*}"; f="${label_file#*:}"
+      verdict=$("$SCHEMA_COMPLETE_SCRIPT" check "$f" | head -1)
+      if [ "$verdict" != complete ]; then
+        report "project-schema.md's '$label' example is not schema-complete" \
+          "$("$SCHEMA_COMPLETE_SCRIPT" check "$f")" \
+          "Both documented examples must be a clean, complete path through the schema."
+      fi
+    done
+
+    # 7c. This repo's own .ai/project.yml is complete -- e.g. `migration_base: null`
+    # must land in the SAME PR as a change that adds a key, or the build fails its
+    # own gate before it can merge.
+    if [ -f .ai/project.yml ]; then
+      own_verdict=$("$SCHEMA_COMPLETE_SCRIPT" check .ai/project.yml | head -1)
+      if [ "$own_verdict" != complete ]; then
+        report "this repo's own .ai/project.yml is not schema-complete" \
+          "$("$SCHEMA_COMPLETE_SCRIPT" check .ai/project.yml)" \
+          "Every dotted key path in the schema must be present here too -- see" \
+          "project-schema.md's 'When it is missing or unreadable' section."
+      fi
+    else
+      report "no .ai/project.yml found at the repo root" \
+        "This repo consumes its own plugin (CLAUDE.md) and must have one."
+    fi
+  fi
+  rm -f "$full_tmp" "$worked_tmp"
+fi
+
+# --- 8. A known-wrong 'absent defaults to X' form has not come back ---------------
+#
+# WB-D17 (#142) removed every documented default -- "files or absent", "absent
+# means X", "absent or `null` means Y" -- because that phrasing is exactly the
+# shape that let this repo run two sprints on an undeclared `planning.kind` while
+# behaving like `github_milestones`. Scoped to skills, agents, and `reference/`
+# only, same as `#142`'s own build shape -- `docs/decisions.md` is a historical
+# log of decisions as they read AT THE TIME (the same carve-out check 6 makes,
+# for the same reason: rewriting its past tense would misrepresent what was
+# actually approved when).
+KNOWN_WRONG_PATTERNS=(
+  'or absent'
+  '/absent'
+  'absent means'
+  'absent or `null`'
+)
+wrong_hits=""
+for f in "${SKILLS[@]}" "${AGENTS[@]}" "${REFERENCE_DOCS[@]}"; do
+  for pat in "${KNOWN_WRONG_PATTERNS[@]}"; do
+    h=$(grep -nF -- "$pat" "$f" || true)
+    if [ -n "$h" ]; then
+      wrong_hits+="  $f (\"$pat\"):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/    /')"$'\n'
+    fi
+  done
+done
+if [ -n "$wrong_hits" ]; then
+  report "a known-wrong 'absent defaults to X' form has returned (WB-D17, #142)" \
+    "$wrong_hits" \
+    "Every schema key must read: state what null means if null is legal for it;" \
+    "absent always prompts, never a default. See project-schema.md's own rule."
+fi
+
 if [ "$fail" -ne 0 ]; then
   cat >&2 <<'EOF'
 
