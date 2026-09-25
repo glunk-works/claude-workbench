@@ -19,7 +19,12 @@ jobs:
         with:
           node-version: "22"
       - name: Install the claude CLI
-        run: npm install -g @anthropic-ai/claude-code
+        # Unpinned `npm install -g` on purpose, per .github/dependabot.yml's SCOPE/NOT
+        # COVERED notes: this is the PR-time install (wants latest), not the
+        # release-time one (`release.yml` pins a version for reproducibility). There is
+        # no package.json for this single global CLI install to lock against, on either
+        # path.
+        run: npm install -g @anthropic-ai/claude-code # zizmor: ignore[adhoc-packages]
       - name: Validate plugin manifests and skill frontmatter
         run: bash scripts/lint.sh
 
@@ -73,3 +78,47 @@ jobs:
         run: sh tests/review-gate-state.test.sh
       - name: ai-cursor-banner.sh fixtures
         run: sh tests/ai-cursor-banner.test.sh
+
+  # WB-D15 (#45): workflow security scanner, modeled on bounty-infra's own `zizmor` job
+  # (`ci.yml`). Unchained like `coupling`/`invariants` above -- a future required check
+  # should report its own conclusion as fast as it can, and this job doesn't depend on
+  # lint having passed.
+  #
+  # `security-events: write` is job-scoped, not added to the workflow-wide `permissions:`
+  # block above -- it is the one job here that needs it (to upload SARIF to the Security
+  # tab; public repos get GitHub Advanced Security free), every other job stays at the
+  # workflow default of `contents: read`.
+  #
+  # Not a required check yet (WB-D15) -- promoting it to `ruleset.required_checks` is a
+  # later human call, once it has a track record.
+  #
+  # TWO zizmor-action runs, not one. Verified by reading action.sh at this pin, then
+  # reproducing live (`zizmor . --format=sarif` exits 0 on a real finding; `zizmor .
+  # --format=github` exits 13 on the same finding): `advanced-security: true` (the
+  # action's default) passes `--format=sarif` to zizmor, and in THAT format zizmor
+  # itself always exits 0, whatever it finds -- SARIF mode is upload-only, it does not
+  # gate. A first version of this job set no inputs at all and inherited that default,
+  # so it could never fail no matter what a PR introduced. The first run below is the
+  # actual gate (`advanced-security: false`, `annotations: true`; no `--min-severity` or
+  # `--min-confidence` is set, so it fails on any finding that isn't `# zizmor:
+  # ignore[...]`-suppressed, the same as `lint`/`coupling`/`invariants` failing on
+  # theirs). The second is upload-only, with `if: !cancelled()` so a red gate still
+  # uploads its findings to the Security tab instead of silently skipping.
+  zizmor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run zizmor (gate)
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+          annotations: true
+      - name: Run zizmor (upload SARIF)
+        if: ${{ !cancelled() }}
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4

@@ -718,6 +718,58 @@ take effect. Full reasoning and the task breakdown that implements them:
   listed. **`TIER1`/`TIER2` overlap:** `loop-orchestrator` stays in both — the `TIER2`
   comment already explains why, and pruning `TIER1` buys nothing.
 
+- **WB-D15 (`#45`) — code scanning on two repos, split by what each one needs; the rest
+  wait.** `#45` surveyed **7 of 8** `glunk-works` repos as having no code scanning at all
+  (verified 2026-08-13 via the code-scanning-analyses API) and asked which of them CodeQL
+  can meaningfully analyse. The 2026-09-25 planning pass overturned that framing on two
+  points: `bounty-infra`'s 73 analyses are **zizmor** output (a workflow linter whose SARIF
+  a `ci.yml` job uploads), not CodeQL — CodeQL default setup is `not-configured` on all 8
+  repos — and "CodeQL can't analyse this repo" missed the point for a repo like this one,
+  whose real scan surface is `.github/workflows/` (this repo's own `release.yml` holds an
+  app token), which both zizmor and CodeQL's `actions` language read. All 8 repos are
+  public, so scanning and Actions minutes are free; the cost that scales per repo is triage
+  attention, which is why this splits by need rather than rolling out uniformly.
+
+  **This repo** gets `zizmor`, not CodeQL: a job in `ci.yml`, modeled on `bounty-infra`'s
+  own (`security-events: write` scoped to that job only, `zizmor-action` pinned by full
+  commit SHA, resolved and verified independently of `bounty-infra`'s pin rather than
+  copied). Not promoted to `ruleset.required_checks` yet — a later human call, once it has
+  a track record. **Runs twice, not once**: `bounty-infra`'s own job (and this job's first
+  draft) inherits `zizmor-action`'s default `advanced-security: true`, which passes
+  `--format=sarif` to zizmor — and in that format zizmor itself always exits `0`, whatever
+  it finds, so the job could never actually fail. Caught by `/way-of-working:critic-gate`
+  (`architect` and `security-critic` independently), verified live. The job's first run is
+  the real gate (`advanced-security: false`, `annotations: true`, confirmed to exit
+  non-zero on a finding); the second uploads SARIF to the Security tab (`if: !cancelled()`,
+  so a failing gate still uploads). Findings at first run: `dependabot-cooldown` (medium) —
+  fixed, `.github/dependabot.yml` now sets `cooldown: default-days: 7`, matching zizmor's
+  own default threshold; `adhoc-packages` (low) ×2, one on each `npm install -g
+  @anthropic-ai/claude-code` step (`ci.yml`'s PR-time install and `release.yml`'s pinned
+  release-time one) — suppressed inline (`# zizmor: ignore[adhoc-packages]`) with the same
+  justification `dependabot.yml`'s own SCOPE/NOT COVERED notes already give: no
+  `package.json` exists for either to lock against, and the audit fires on the ad-hoc
+  install shape itself, not on whether the package version is pinned (`release.yml`'s
+  already was, and still triggered it).
+
+  **`bedrock-serverless-rag`** gets CodeQL default setup (Python + Actions) — Python source
+  plus a real workflow surface, and (per `#28`'s original survey; not re-measured for this
+  decision) one of the org's more active repos. The toggle itself is a repo/org setting this
+  harness cannot flip:
+  [bedrock-serverless-rag#134](https://github.com/glunk-works/bedrock-serverless-rag/issues/134)
+  asks a human to enable it and name who triages.
+
+  **Waiting list**, with what brings each back:
+  - `global-bootstrap` — HCL, which CodeQL doesn't support. `zizmor` would apply if it
+    grows workflows worth scanning.
+  - `pm-agent-loop`, `appsec-triage-agent` — dormant (0 issues, 12 and 0 PRs), same
+    reasoning as `#28`'s decision 4. Revisit when activity resumes.
+  - `scope-core` — dormant by the same measure as of `#45`'s 2026-08-13 survey (0 issues, 2
+    PRs); has since opened one hygiene issue (`#3`, 2026-09-11) but no push since
+    2026-07-25, so it stays on this list. Revisit if real activity resumes, not just one
+    issue.
+  - `loop-orchestrator` — quiet since 2026-08-10 despite heavy earlier activity. Revisit
+    when activity resumes; it is the next candidate (Python plus workflows).
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of

@@ -72,9 +72,13 @@ jobs:
         with:
           node-version: "22"
       # Pinned so a release is reproducible: unpinned, `verify` runs whatever the registry
-      # serves that minute rather than the validator that passed on the PR.
+      # serves that minute rather than the validator that passed on the PR. Still an
+      # ad-hoc `npm install -g`, not a lockfile install -- there is no package.json for
+      # this single global CLI to lock against, and pinning the package's own version
+      # (above) is the reproducibility control available here; its transitive deps stay
+      # unpinned regardless.
       - name: Install the claude CLI
-        run: npm install -g @anthropic-ai/claude-code@2.1.224
+        run: npm install -g @anthropic-ai/claude-code@2.1.224 # zizmor: ignore[adhoc-packages]
       - name: Validate plugin manifests and skill frontmatter
         run: bash scripts/lint.sh
       - name: No repo-specific literals in any plugins/*/ entry except reference/, .claude-plugin/, .git/
