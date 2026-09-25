@@ -29,6 +29,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [0.12.0] — 2026-09-25
+
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed.
+
+### Added
+
+- **`zizmor` job in `ci.yml`** — a GitHub Actions workflow security linter, modeled on
+  `bounty-infra`'s own but resolved and verified independently
+  (`zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482` # v0.6.4). Runs
+  twice: a real gate (`advanced-security: false, annotations: true`, confirmed live to
+  exit non-zero on a finding) plus an `if: !cancelled()` SARIF upload to the Security tab
+  — a single default-mode run, as first drafted here and as `bounty-infra`'s own job does,
+  always exits 0 regardless of findings and could never actually fail; caught live during
+  this diff's own critic-gate pass. `security-events: write` stays job-scoped, not yet in
+  `ruleset.required_checks`. New decision `WB-D15`, which also files
+  `bedrock-serverless-rag#134` asking a human to enable CodeQL default setup there — the
+  toggle itself is a repo/org setting this harness cannot flip. Critic gate: `architect` +
+  `security-critic` + `docs-consistency`, 3 rounds, converged (#45, PR #176).
+- **`/way-of-working:critic-gate`'s hard cap raised from 2 to 4 fix-and-re-run rounds;
+  critic selection now goes through a structured pick-list** (e.g. `AskUserQuestion`)
+  wherever the host can present one, never a free-text reply, in both the initial
+  proposal and the second-opinion offer. Requested directly by the maintainer — not a fix
+  for an observed failure of 2; an invented technical rationale for the raise didn't
+  survive its own critic-gate pass and was removed rather than kept. New decision
+  `WB-D16`. Critic gate: `architect`, 3 rounds, converged (#177, PR #178).
+
 ## [0.11.0] — 2026-09-25
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
