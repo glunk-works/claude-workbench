@@ -561,6 +561,143 @@ take effect. Full reasoning and the task breakdown that implements them:
   sprint's in-flight state. The workaround was a standing per-session cost that lived
   outside the plugin.
 
+- **WB-D13 — a PR's own code runs in an isolated sandbox, not a shared-`.git` worktree; an
+  untrusted PR gets no local execution at all.** `/way-of-working:architect-review`'s *Review
+  by execution* step ran a PR's own tests and gate scripts with the reviewing session's
+  credentials via `git worktree add`, which shares `.git` with the main checkout — PR code
+  there could rewrite `.ai/project.yml` or `.git/config`'s `origin` before the *Compose and
+  post* step re-read them to post the frozen attestation strings (`#113`, from a
+  security-critic finding on `#98`'s base-anchor work).
+
+  The fix went through two design-spec revisions on the issue before a human decision, and
+  the gap between them is the record worth keeping. Revision 1 proposed a throwaway `git
+  clone --no-local --no-hardlinks` under a stripped `env -i`, argued to close the trust gap
+  outright. A critic pass (security-critic + architect, one round each) reproduced three
+  vectors it claimed closed: `gh auth token`/`gh auth git-credential` return the invoking
+  user's real credential from the OS keyring regardless of what the process environment
+  carries — stripping an env removes the credential *handle*, not the *reach*; `PATH`'s
+  first entry is a plantable shim directory, and the plugin's own `bin/` (which would hold
+  the sandbox script itself) is writable from inside a naive sandbox; and `git clone
+  <workspace>` writes the absolute workspace path into the clone's own reflog and its
+  `origin` remote config (a round-5 verification pass caught this record claiming
+  `FETCH_HEAD` too — verified live that `clone` never creates one; that leak is specific
+  to revision 2's single-ref fetch design, below, not to `clone`), so "the attacker would
+  have to guess the path" was false. Revision 1's own
+  claim — that a container changes nothing about the reviewing skill's text — was also wrong:
+  an untrusted PR's branch changes shape (from "run nothing" to "run in the container") the
+  moment a container exists, which revision 2 corrected directly.
+
+  Revision 2's mechanism (**option A**) is `git init --template=<empty>` plus a single-ref
+  fetch **from the workspace**, replacing `clone`: no local branches or tags copied, no
+  `clone: from` reflog entry, no `origin` remote to remove. `FETCH_HEAD` — the actual leak;
+  a single-ref fetch with no destination branch writes no reflog entry, so there is nothing
+  under `.git/logs` for the path to leak into either, a distinction a round-4 verification
+  pass caught this record getting wrong — is scrubbed immediately after the fetch, before
+  checkout, closing THAT specific leak directly rather than hoping cloning-differently
+  avoids it. The workspace path stays discoverable other ways that need no prior
+  compromise — an ancestor process's own cwd, or simply listing the filesystem for the
+  fetch's own ref namespace — which this fix does not touch; **D** (below) is what catches
+  a write made through one of those, not **A**. It states its own limit plainly, in its
+  header and in every review it produces: this is **accident containment, not isolation
+  from a deliberately hostile trusted-author PR** — the keyring reach, and any write that
+  persists as the reviewing user (a PATH directory, a dotfile, a shell rc file, or the
+  WORKSPACE's own `.git/config`/hooks, which a round-4 pass named as the most consequential
+  instance of this class — see below), stay open until a container exists.
+
+  The human approved **option 1**: **A (the corrected sandbox above) + C (no local execution
+  for an untrusted PR — the required checks' own witness on the pinned SHA stands in,
+  never silently treated as verified) + D (a pre-step transcript snapshot re-verified,
+  byte for byte, before the frozen attestation strings are read) now; B (a container,
+  closing the keyring and persistent-write residuals, needing its own `.ai/project.yml`
+  key) filed as `#158` and milestoned to Sprint 5 ("every config key is an explicit
+  decision" — fitting, since B is the one part of this design that needs one), not
+  parked.** Confirmed separately: an untrusted
+  PR gets *reviewed without local execution*, never *no review at all* — the required-check
+  witness, marked per claim as witnessed or not, is real signal even without a local run.
+
+  The accepted residual is stated, not implied, and it is wider than the keyring alone: until
+  B lands, a compromised **trusted** author's PR still reaches the reviewing session's real
+  GitHub credential in one command (`gh auth token`) run inside `review-sandbox.sh run`; the
+  SAME credential, if the invoking shell exported it as `GH_TOKEN`, is separately readable
+  from an ANCESTOR process's environment (`timeout`, the wrapping subshell, the script
+  itself) via `/proc/<pid>/environ` — a property of what `env -i` strips (the direct child
+  only) rather than a gap in its allowlist, found on the second critic round, not the first;
+  and a leftover process from an earlier `run` that this script's best-effort kill failed to
+  reach can still plant a local git-config value that executes under `make`'s full
+  environment during a later rebuild — found reachable for several specific config keys, not
+  closed as a class, on the THIRD round. The posted review says (in substance) that a
+  trusted-PR review executed under accident containment, not a container, so a reader knows
+  what the witness actually covers. (Rejected, all three rounds it came up: treating the
+  credential-handle strip as sufficient on its own — the keyring, and now the
+  ancestor-environ read, both make that false regardless of how thorough the strip is; and
+  skipping review for an untrusted PR outright, which trades a real, if narrower, signal for
+  none.)
+
+  A FOURTH round, run in a fresh session specifically to verify the third round's own fixes
+  held (rather than continuing in the session that had just hit the critic-gate's 2-round
+  cap), found the fixes themselves sound but not fully guarded or disclosed: the fix for
+  `run`'s wall-clock-bypass hang (a backgrounded child inheriting `run`'s output pipe, so
+  `head -c` never saw EOF) had no test that could fail if it regressed, and the
+  leftover-process fixture could never fail on any platform, whatever the kill mechanism did
+  — both closed with new fixtures, verified by mutation. Two disclosure gaps were also
+  found and named directly in the script's own residual list: direct reads of any
+  same-uid-readable credential file (not just the OS keyring) and unrestricted network
+  egress, neither previously named; and the WORKSPACE's own `.git/config`/hooks as a plant
+  route distinct from the sandbox-local one already documented, plus a gap in the
+  pre/post transcript snapshot (it records hook file names, not contents). No new trust
+  boundary was opened, and no round-4 finding changed the accepted scope — accident
+  containment, not a container, same as revision 2's own framing.
+
+  A FIFTH round, scoped to verifying round 4's own fixes rather than a fresh full pass,
+  found one round-4 fix incomplete as CODE, not merely as prose: `run`'s best-effort kill
+  used `kill -TERM -- "-$child"`, and dash (Debian/Ubuntu's `/bin/sh`, the shell this
+  repo's own CI runs) rejects `--` in that position and errors, an error the surrounding
+  `2>/dev/null || true` silently swallowed — so the kill was a no-op on every dash-based
+  Linux host, not merely "untested by CI" as stated. Reproduced live on WSL Ubuntu, where
+  round 4's OWN new leftover-process fixture (added specifically to stop this class of
+  claim going unverified) correctly failed red against the unpatched code. Fixed by
+  dropping `--` (`kill -TERM "-$child"`), portable across dash, bash-as-sh, and this
+  repo's own Git Bash `sh`. A smaller regression from round 4's own `mktemp` switch was
+  also found and fixed: the status file's fallback (`|| echo 1`) could no longer fire —
+  `mktemp` pre-creates the file, so `cat` always succeeds, and an empty status (the
+  subshell dying before writing one) crashed `run` on a non-numeric `return` instead of
+  exiting 1. Two of round 4's own disclosures were themselves corrected: the `mktemp` fix
+  narrows the status-file race, it does not close it (the file is still discoverable by
+  directory-listing or via the wrapped command's own inherited stdout fd), and the
+  "`make` applies a SUPERSET of `run`'s isolation" correction had swapped one overclaim
+  for another ("narrower" — wrong the other way, since `make` alone carries several `-c`
+  config overrides `run` doesn't); both are now stated as narrowed-not-closed and
+  different-not-ranked, respectively. A completeness gap was added to the workspace
+  `.git/config` residual: a plant there (`url.<x>.insteadOf`, a rewritten `origin`) can
+  redirect a LATER review's own trust read, not just execute code under it — `trust`/`make`
+  resolve `{repo}` from this checkout's own `origin` before ever reading a PR, so a plant
+  present before that read can point an entirely different review at an attacker-controlled
+  repo. And one claim predating round 4 was corrected in the course of re-checking it: `git
+  clone`'s workspace-path leak (revision 1, above) is through the reflog and `origin`
+  remote config, not `FETCH_HEAD` — `clone` never creates a `FETCH_HEAD` file at all; that
+  leak is specific to revision 2's own single-ref-fetch design. No new trust boundary was
+  opened by round 5's findings either; the kill fix closes a real functional gap in the
+  documented leftover-process residual, not a new one.
+
+  A SIXTH round, again scoped to verifying round 5's own patch, converged: nothing found
+  beyond stale comments the round-5 patch left behind and one disclosure gap, no new code
+  defect. The disclosure gap was the more consequential of the two: round 5's own
+  origin-redirect completeness note named only THIS script's trust read, but
+  `bin/review-base-anchor.sh` — invoked earlier, as the first step of
+  `/way-of-working:architect-review` itself — resolves `{repo}` the same way and, verified
+  live, fast-forwards the reviewer's own local default branch onto whatever a redirected
+  `origin` holds; the whole review session then reads `.ai/project.yml` from that
+  fast-forwarded tree, and SKILL.md's own `{repo}` cross-check does not catch it, because
+  both sides resolve from the same redirected `origin`. Named directly in both this
+  script's header and here. The stale leftovers: a comment beside `run`'s job-control
+  setup still quoted the pre-round-5 `kill -- "-$child"` form dash rejects (the code
+  itself was already fixed); the header said the `-c` config overrides `make` adds are "on
+  the checkout call specifically" when they are on both of `make`'s git calls; and the
+  `[ -n "$st" ] || st=1` guard round 5 added checked only non-emptiness, not that a forged
+  status value (from the already-accepted, narrowed-not-closed mktemp-discoverability
+  residual) is actually a valid exit code -- tightened to validate digits and range. No
+  new trust boundary, no regression from round 5's own patch.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
