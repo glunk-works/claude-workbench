@@ -698,6 +698,26 @@ take effect. Full reasoning and the task breakdown that implements them:
   residual) is actually a valid exit code -- tightened to validate digits and range. No
   new trust boundary, no regression from round 5's own patch.
 
+- **WB-D14 (`#48`) — `TIER2` in `scripts/coupling-check.sh` stays hand-maintained.**
+  Membership rule unchanged: every `glunk-works` repo, plus any name the reference docs use
+  as a worked example. (Rejected: deriving at run time — `gh repo list` inside the gate. It
+  turns an offline, instant gate into a network-dependent one that fails on a `gh` outage,
+  and worse, it fails **open**: in CI, `GITHUB_TOKEN` cannot list any private org repo, so a
+  future private repo would silently drop out of the derived list instead of erroring — the
+  org has none today, but the gate exists for exactly this case. Rejected: a
+  generated-and-committed list plus a regenerate script — the same weakness as
+  hand-maintenance, since someone still has to remember to run it when a repo is added, so it
+  buys no drift protection; and `TIER2` is not purely derivable, since `glunk-works` (the org
+  name) and `loop-engine` (a worked example in `reference/conventions.md`) are not repos, so
+  the generator's output would still need a hand-kept remainder. Rejected for now: a
+  scheduled drift check — gate stays offline, a cron job compares `gh repo list` against
+  `TIER2`. It is the only option that actually catches a new repo, but it needs new CI
+  infrastructure this repo does not have, which isn't worth it for an 8-repo org that rarely
+  adds repos; revisit if the org starts adding repos often.) **Accepted gap:** a new org repo
+  is unguarded until someone adds it to `TIER2`. Verified 2026-09-25: all 8 current repos are
+  listed. **`TIER1`/`TIER2` overlap:** `loop-orchestrator` stays in both — the `TIER2`
+  comment already explains why, and pruning `TIER1` buys nothing.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
