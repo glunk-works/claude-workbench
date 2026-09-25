@@ -22,7 +22,57 @@ command that archives — do not invoke it for ordinary session switches.
 
 1. The sprint's HITL Gate is **passed** — the user approved it (ask if unclear — never assume).
 2. The work is **committed** (`git status --short` clean, or only unrelated changes). If dirty, stop and tell the user to commit first.
-3. `{roadmap}` reflects the sprint as done (status row + commit hash recorded). If not, do that first (or flag it).
+3. `{roadmap}` reflects the sprint as done (status row + commit hash recorded), **checked on
+   `origin/{pr_base}` after a fetch, never the working tree** — `git fetch origin {pr_base}
+   -q && git show origin/{pr_base}:{roadmap}` — so a fix that has not merged yet still reads
+   as missing, whatever branch is currently checked out.
+
+   A failed fetch or `git show` is **not** "missing" — it's "could not look": stop and
+   report which command failed, same as any other unreadable check in this skill.
+
+   If missing, fix it — but never on whatever branch the session happens to be standing on.
+   This precondition runs *before* the *Compact the deep record* step's own branch-cut
+   guardrail is even reached, and the natural session state at this point can be a branch
+   `/way-of-working:handoff` left behind (`docs/sync-cursor-<slug>`) or the sprint's own
+   just-merged branch — either can already be squash-merged into `{pr_base}` under a
+   different SHA. `git checkout -b` from a stale branch succeeds silently, and nothing
+   errors if you skip the check and just commit.
+
+   If you cannot push (no reach), stop here and hand the edit to the human directly —
+   don't attempt the rest of this precondition.
+
+   Otherwise cut a fresh branch — a lightweight instance of the *Compact the deep record*
+   step's own chain below, **with the same failure handling, and the same tracked-clean
+   check, no exemption**: if any link fails, stop and hand it to the human, naming the link,
+   exactly as that step does — never commit on the current branch instead.
+   ```bash
+   git fetch origin {pr_base} && git checkout {pr_base} \
+     && git merge --ff-only origin/{pr_base} \
+     && git checkout -b docs/<sprint>-status
+   ```
+   **Then, before touching `{roadmap}`:** `git diff --quiet && git diff --cached --quiet`
+   must both exit 0 — exactly the Compact step's own check, run here for the same reason
+   (a dirty tracked file identical on both branches rides across the checkout silently, and
+   an existing uncommitted `{roadmap}` edit from a prior wrong-branch attempt is exactly
+   what this precondition exists to catch). Not clean → stop and hand it to the human,
+   naming the file.
+
+   Make the roadmap edit there, stage it by explicit path (`git add {roadmap}`, never `-A`
+   or `-a` — precondition 2 admits unrelated uncommitted changes), commit (subject `docs:
+   mark <sprint> done in {roadmap}`), push, and open a PR against `{pr_base}` (`gh pr create
+   --base {pr_base}`) — this fix is not part of the sprint being archived and does not
+   belong on its branch or in its PR. **A failed commit is a stop, reported the same way —
+   but stay on `docs/<sprint>-status`, never `git checkout {pr_base}`**: a failed commit
+   leaves the edit merely staged, and checking out `{pr_base}` at that point would carry it
+   across, landing exactly the edit-on-`{pr_base}` this precondition exists to prevent. **A
+   failed push or `gh pr create`, by contrast, happens after a real commit exists on the
+   side branch**, so `git checkout {pr_base}` there is safe — do it first, and say the
+   commit is waiting on `docs/<sprint>-status` for the human to push. On success,
+   `git checkout {pr_base}` and STOP per the rule below: the fix is not on
+   `origin/{pr_base}` until a human merges that PR, so this precondition is still unmet.
+   Report the PR link, note that preconditions 4-6
+   were not evaluated this pass, and re-run `/way-of-working:archive-sprint` once the PR
+   merges.
 4. **Verification ledger — "complete" must not overclaim "verified live."** If this sprint
    marks an item **complete** (or flips `{roadmap}` to done), confirm the docs make the
    **hermetic-vs-live** distinction explicit and that any verification the hermetic suite
@@ -127,9 +177,11 @@ If any precondition fails, STOP and report why — do not archive.
    Precondition 2 asks only that the work is *committed*; everything below reads `{pr_base}`
    and treats that reading as authoritative. If the sprint has not merged, `{pr_base}` does
    not yet contain the sprint this close is closing and the survey is against the wrong tree.
-   **Test it by content, on `{pr_base}`: does it carry what precondition 3 just verified —
-   the sprint's status and its closing commit hash in `{roadmap}`?** Present → proceed;
-   absent → say so and skip the compaction, and the next close picks it up.
+   **Test it by content, on `origin/{pr_base}` after a fetch — the same tree and command
+   precondition 3 just verified, not the local checkout below (which hasn't fast-forwarded
+   yet at this point in the survey): does it carry the sprint's status and its closing
+   commit hash in `{roadmap}`?** Present → proceed; absent → say so and skip the compaction,
+   and the next close picks it up.
 
    Do **not** test this by looking the branch up in `gh pr list --json headRefName`. Squash
    merge is what makes a branch-name lookup unreliable in the first place, and by this point
