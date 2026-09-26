@@ -582,9 +582,10 @@ If any precondition fails, STOP and report why — do not archive.
    `plan-anchor.sh`'s shape; it checks **every** `planning`-status cursor under
    `github_milestones`, not only one this step just seeded — this step's own unpark-branch
    note (above), `/way-of-working:park-sprint`'s own seed override,
-   `/way-of-working:handoff`'s carry-forward rule, and `/way-of-working:unpark-sprint`'s
-   Restore step are the other producers or preservers of a `planning` cursor the same check
-   applies to (see each skill's own note).
+   `/way-of-working:handoff`'s carry-forward rule, `/way-of-working:unpark-sprint`'s Restore
+   step, and `/way-of-working:plan-sprint`'s own *Sync the cursor* step (which likewise only
+   ever preserves this line, never generates or alters it) are the other producers or
+   preservers of a `planning` cursor the same check applies to (see each skill's own note).
    **Next** = "plan <next unit>" + the planning
    model + any open HITL Gate (the *Advance `.ai/state.json`* step's blank-seed branch is
    what sets it); **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written"),

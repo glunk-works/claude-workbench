@@ -308,16 +308,21 @@ description and cannot be mistaken for the human's approval.
   required, or the close is staged for the human instead), advances `.ai/state.json` to
   the next sprint, and seeds a fresh
   `.ai/next-steps.md`.
-- **`/way-of-working:plan-sprint`** — run under `planning.kind: github_milestones` when
-  `sprint_status: planning` and `pointers.sprint_plan` is the "no milestone picked yet"
-  cursor `archive-sprint` seeds. Gathers the open issues with no milestone and the open
-  milestones in due-date order (read-only), then proposes — one issue at a time — an
-  existing milestone, a new one, or leaving it unmilestoned on purpose; writes only what the
-  human confirms, stages the milestone writes this org's policy refuses, and posts a dated
-  triage comment recording each decision. Never ranks, never creates or closes a milestone
-  the human hasn't named, and refuses to edit a milestone description `pointers.plan_anchor`
-  already names — that needs `/way-of-working:handoff`'s own re-anchor instead. Mechanical
-  triage, not design; any model.
+- **`/way-of-working:plan-sprint`** — run under `planning.kind: github_milestones` to triage
+  the backlog: unmilestoned issues, and open milestones, exist and need sorting into a
+  sequence. A `sprint_status: planning` cursor whose `pointers.sprint_plan` is the "no
+  milestone picked yet" state `archive-sprint` seeds is one common trigger for it, not the
+  only one — backlog triage is independent of what the live sprint is doing, and this skill
+  never picks which milestone becomes `pointers.sprint_plan` itself (a separate human call,
+  followed by `/way-of-working:handoff`). Gathers the open issues with no milestone and the
+  open milestones in due-date order (read-only), then proposes — one issue at a time — an
+  existing milestone, a new one (with a drafted description), or leaving it unmilestoned on
+  purpose; writes only what the human confirms, stages the milestone writes the calling
+  environment's own write policy refuses, and posts a dated triage comment recording each
+  decision. Never ranks, never creates or closes a milestone the human hasn't named, and
+  refuses to edit a milestone description `pointers.plan_anchor` already names — that needs
+  `/way-of-working:handoff`'s own re-anchor instead. Mechanical triage, not design; any
+  model.
 - **`/way-of-working:park-sprint <next-id>`** — set the live sprint aside mid-flight:
   snapshot its cursor into tracked `.ai/parked/<id>-*`, seed the live cursor for the next
   sprint, and open the docs-only cursor-sync PR. Mechanical; any model.

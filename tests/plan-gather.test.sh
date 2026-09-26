@@ -151,4 +151,60 @@ out="$(FAKE_ROWS="" run milestones "$REPO")" || status=$?
 assert_status "milestones: a successful call with zero rows exits zero" 0 "$status"
 assert_eq "milestones: zero rows is legitimately empty output, not an error" "" "$out"
 
+echo "# titles -- ascending number sort, open and closed both present"
+
+shuffled="6${tab}open${tab}Sprint 6
+1${tab}closed${tab}Sprint 1
+5${tab}open${tab}Sprint 5"
+expected="1${tab}closed${tab}Sprint 1
+5${tab}open${tab}Sprint 5
+6${tab}open${tab}Sprint 6"
+out="$(FAKE_ROWS="$shuffled" run titles "$REPO")"
+assert_eq "titles: rows sort ascending by milestone number, open and closed both included" \
+  "$expected" "$out"
+
+echo "# titles -- gh failure vs. legitimately empty"
+
+status=0
+FAKE_FAIL=1 run titles "$REPO" >"$tmp/out" 2>"$tmp/err" || status=$?
+assert_status "titles: a failed gh call exits non-zero" 1 "$status"
+assert_eq "titles: a failed gh call prints nothing on stdout" "" "$(cat "$tmp/out")"
+
+status=0
+out="$(FAKE_ROWS="" run titles "$REPO")" || status=$?
+assert_status "titles: a successful call with zero rows exits zero" 0 "$status"
+assert_eq "titles: zero rows is legitimately empty output, not an error" "" "$out"
+
+echo "# milestone-issues -- argument validation"
+
+out=0; "$script" milestone-issues "$REPO" >/dev/null 2>&1 || out=$?
+assert_status "milestone-issues with no milestone-number argument exits non-zero" 1 "$out"
+
+out=0; "$script" milestone-issues "$REPO" abc >/dev/null 2>&1 || out=$?
+assert_status "milestone-issues with a non-digit milestone number exits non-zero" 1 "$out"
+
+out=0; "$script" milestone-issues "$REPO" 5 extra >/dev/null 2>&1 || out=$?
+assert_status "milestone-issues with an extra argument exits non-zero" 1 "$out"
+
+echo "# milestone-issues -- ascending issue-number sort"
+
+shuffled="42${tab}z issue
+7${tab}a issue"
+expected="7${tab}a issue
+42${tab}z issue"
+out="$(FAKE_ROWS="$shuffled" run milestone-issues "$REPO" 5)"
+assert_eq "milestone-issues: rows sort ascending by issue number" "$expected" "$out"
+
+echo "# milestone-issues -- gh failure vs. legitimately empty"
+
+status=0
+FAKE_FAIL=1 run milestone-issues "$REPO" 5 >"$tmp/out" 2>"$tmp/err" || status=$?
+assert_status "milestone-issues: a failed gh call exits non-zero" 1 "$status"
+assert_eq "milestone-issues: a failed gh call prints nothing on stdout" "" "$(cat "$tmp/out")"
+
+status=0
+out="$(FAKE_ROWS="" run milestone-issues "$REPO" 5)" || status=$?
+assert_status "milestone-issues: a successful call with zero rows exits zero" 0 "$status"
+assert_eq "milestone-issues: zero rows is legitimately empty output, not an error" "" "$out"
+
 exit "$fail"

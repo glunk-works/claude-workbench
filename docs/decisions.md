@@ -875,21 +875,31 @@ take effect. Full reasoning and the task breakdown that implements them:
   generally, with no built-in single-file scope guarantee, which risks sweeping other dirty
   state into a nominally docs-only PR — issue #150's failure mode one level up.
   `/way-of-working:plan-sprint` instead cites `/way-of-working:handoff`'s own docs-only
-  cursor-sync step by reference, the same pattern `/way-of-working:park-sprint` and
-  `/way-of-working:archive-sprint`'s own *Advance* step already use instead of reimplementing
-  it.
+  cursor-sync step by reference, the same pattern `/way-of-working:park-sprint` already cites
+  directly instead of reimplementing it (and `/way-of-working:archive-sprint` reaches on its
+  own parked-branch path via `/way-of-working:unpark-sprint`).
   - **No new `.ai/project.yml` key.** The milestone-description template and the
     triage-comment format are both fixed plugin prose the skill renders, not per-repo
     config — same reasoning as `ship`'s PR-body shape or `reference/conventions.md`'s commit
     grammar.
   - **Mechanism.** The read-only gather step (open issues with no milestone; open milestones
-    in due-date order) is a tested `bin/plan-gather.sh`, with fixtures in `tests/` — the
-    sprint's own build-order note for this task required it, mirroring `WB-D10`'s pattern.
-    The placement dialogue, the denied-milestone-write staging, and the cursor sync stay
-    skill prose. Issue-level milestone placement uses `gh issue edit --milestone <title>`
-    (the write channel this org's policy leaves open), always confirmed against the
-    milestone **number** on read-back before being trusted, never a title match this skill
-    found on its own.
+    in due-date order; every milestone's title, for a naming-collision check; a specific
+    milestone's own open issues, for the denied-write fallback-comment location) is a tested
+    `bin/plan-gather.sh`, with fixtures in `tests/` — the sprint's own build-order note for
+    this task required it, mirroring `WB-D10`'s pattern. The placement dialogue, the
+    denied-milestone-write staging, and the cursor sync stay skill prose. Issue-level
+    milestone placement uses `gh issue edit --milestone <title>` (the write channel that still
+    works when this org's own harness classifier refuses a `gh api` milestone write), always
+    confirmed against the milestone **number** on read-back before being trusted, never a
+    title match this skill found on its own.
+  - **Injection safety.** Untrusted content (issue titles/bodies, which anyone on a public
+    repo can author) never interpolates into a shell command, staged or live — every
+    free-text value goes through a file written by the file-editing tool itself, descriptions
+    via `gh api -F description=@<file>` (`-F`, not `-f` — confirmed live against `gh api
+    --help` that `-f`/`--raw-field` has no `@<path>` file-read behavior at all, an initial
+    draft's bug), and the staged script the calling environment's write-classifier forces is
+    constrained to three fixed line shapes with digit-validated arguments, printed verbatim in
+    the session's report rather than left for the human to run unread.
 
 ## Status
 
