@@ -557,7 +557,7 @@ If any precondition fails, STOP and report why — do not archive.
    report, alongside unpark's `hitl_gate` and the PR link (correcting the general case
    below, where there is normally nothing left to commit after unpark hands back control).
 
-   Otherwise seed a blank next unit: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>". Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet) — **under `{planning.kind}: github_milestones`, instead ask the human which milestone number is the next sprint (never scan — a scan cannot tell a new sprint from a parked one) and write `https://github.com/{backlog.repo}/milestone/<number>`, or `null` with `pointers.plan_anchor: null` if none is picked yet**, the legal "no milestone picked yet" state `reference/project-schema.md` § `planning` names. **Set `hitl_gate` too** — this branch is the one place in this step that actually writes it: `NONE OPEN` normally, or the *Close the sprint's milestone* step's pending-close note (verbatim, this step never opened one of its own here) when there is one. The *Seed a fresh `.ai/next-steps.md`* step below carries both the outcome line and this gate into the ledger it writes.
+   Otherwise seed a blank next unit: set `current_sprint_id` / `current_phase` to the next unit from `{roadmap}`, `sprint_status: "planning"`, and `assigned_model` / `assigned_persona` to the planning role in `{models}` (the next step after completion is always planning/review). Update `last_commit`, and set `next_action` to "plan <next sprint/phase>" — under `{planning.kind}: github_milestones` with no milestone picked yet, mention `/way-of-working:plan-sprint` as a tool that can help triage the backlog into milestones, **as a suggestion, never as a determined next action it forces** (`plan-sprint` never sets `pointers.sprint_plan` itself — picking which milestone becomes the next sprint stays a separate human decision, made via `/way-of-working:handoff`, whether or not `plan-sprint` ran first). Point `pointers.sprint_plan` at the next `{sprints_dir}/*/sprint_plan.md` (or note it does not exist yet) — **under `{planning.kind}: github_milestones`, instead ask the human which milestone number is the next sprint (never scan — a scan cannot tell a new sprint from a parked one) and write `https://github.com/{backlog.repo}/milestone/<number>`, or `null` with `pointers.plan_anchor: null` if none is picked yet**, the legal "no milestone picked yet" state `reference/project-schema.md` § `planning` names. **Set `hitl_gate` too** — this branch is the one place in this step that actually writes it: `NONE OPEN` normally, or the *Close the sprint's milestone* step's pending-close note (verbatim, this step never opened one of its own here) when there is one. The *Seed a fresh `.ai/next-steps.md`* step below carries both the outcome line and this gate into the ledger it writes.
 
 5. **Seed a fresh `.ai/next-steps.md`** for the next unit: **Now** = next phase/sprint in
    `planning`; **Just done** = one line noting the prior sprint archived + its commit;
@@ -582,9 +582,10 @@ If any precondition fails, STOP and report why — do not archive.
    `plan-anchor.sh`'s shape; it checks **every** `planning`-status cursor under
    `github_milestones`, not only one this step just seeded — this step's own unpark-branch
    note (above), `/way-of-working:park-sprint`'s own seed override,
-   `/way-of-working:handoff`'s carry-forward rule, and `/way-of-working:unpark-sprint`'s
-   Restore step are the other producers or preservers of a `planning` cursor the same check
-   applies to (see each skill's own note).
+   `/way-of-working:handoff`'s carry-forward rule, `/way-of-working:unpark-sprint`'s Restore
+   step, and `/way-of-working:plan-sprint`'s own *Sync the cursor* step (which likewise only
+   ever preserves this line, never generates or alters it) are the other producers or
+   preservers of a `planning` cursor the same check applies to (see each skill's own note).
    **Next** = "plan <next unit>" + the planning
    model + any open HITL Gate (the *Advance `.ai/state.json`* step's blank-seed branch is
    what sets it); **Pointers** = `{roadmap}` + the next sprint_plan (or "to be written"),

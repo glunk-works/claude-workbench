@@ -752,9 +752,10 @@ itself would take to decide whether to skip it — always run it.
    prior sprint's milestone actually closed; `/way-of-working:archive-sprint`'s own Close step
    can be skipped or refused without that ever reaching the gate — the line is written or
    carried forward by whichever of `archive-sprint`'s Seed step, `archive-sprint`'s own
-   unpark-branch note, `park-sprint`'s seed override, `handoff`'s carry-forward rule, or
-   `unpark-sprint`'s Restore step last touched this ledger; each guarantees at most one such
-   line survives, so there is never more than one to echo below):
+   unpark-branch note, `park-sprint`'s seed override, `handoff`'s carry-forward rule,
+   `unpark-sprint`'s Restore step, or `plan-sprint`'s own Sync-the-cursor step (a preserver
+   only, like the others besides Seed) last touched this ledger; each guarantees at most one
+   such line survives, so there is never more than one to echo below):
    ```bash
    milestone-close-line.sh {planning.kind} <sprint_status> .ai/next-steps.md
    ```
@@ -827,7 +828,17 @@ itself would take to decide whether to skip it — always run it.
 
    Otherwise **state the pick-up point and wait.** In particular: always wait on
    `planning` (the planning pass is one question at a time — that dialogue *is* the
-   work), on any open or unreadable gate, on a model mismatch, and on any drift.
+   work), on any open or unreadable gate, on a model mismatch, and on any drift. Under
+   `{planning.kind}: github_milestones`, a `planning` cursor whose `pointers.sprint_plan` is
+   `null` ("no milestone picked yet," `/way-of-working:archive-sprint`'s own seed) is a state
+   `/way-of-working:plan-sprint` can help with **if** there are unmilestoned issues or open
+   milestones needing sequencing — **mention it as a suggestion, not a determined next
+   action**: `plan-sprint` never sets `pointers.sprint_plan` itself (it triages the backlog,
+   not the single next sprint's own pick), so this pointer can legitimately stay `null` after
+   a triage has already run, while a human separately decides which milestone to anchor next
+   via `/way-of-working:handoff`. Never state or imply that resume will keep waiting on
+   `plan-sprint` specifically until `sprint_plan` stops being `null` — that pick is not
+   `plan-sprint`'s to make.
 
    > **The body read (TOCTOU closure), under `{planning.kind}: github_milestones`.** This
    > binds **whoever reads `#N`'s body to act on it** — this resumed session building
