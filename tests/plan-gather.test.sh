@@ -84,6 +84,12 @@ if [ -n "${FAKE_EXPECT:-}" ]; then
     *) echo "fake gh: expected '$FAKE_EXPECT' in path, got: $path" >&2; exit 1 ;;
   esac
 fi
+if [ -n "${FAKE_EXPECT2:-}" ]; then
+  case "$path" in
+    *"$FAKE_EXPECT2"*) ;;
+    *) echo "fake gh: expected '$FAKE_EXPECT2' in path, got: $path" >&2; exit 1 ;;
+  esac
+fi
 [ "${FAKE_FAIL:-0}" = 1 ] && { echo "fake gh: simulated failure" >&2; exit 1; }
 printf '%s' "${FAKE_ROWS-}"
 FAKE_GH
@@ -124,18 +130,18 @@ expected="7${tab}2026-09-02T00:00:00Z${tab}OWNER${tab}a issue
 # doesn't actually send `milestone=none` -- a silent behavior change here would
 # otherwise pass every assertion below unchanged, since the stub ignores the
 # query string except for this check.
-out="$(FAKE_EXPECT="milestone=none" FAKE_ROWS="$shuffled" run unmilestoned "$REPO")"
+out="$(FAKE_EXPECT="milestone=none" FAKE_EXPECT2="state=open" FAKE_ROWS="$shuffled" run unmilestoned "$REPO")"
 assert_eq "unmilestoned: rows sort ascending by issue number, not input order" "$expected" "$out"
 
 echo "# unmilestoned -- gh failure vs. legitimately empty"
 
 status=0
-FAKE_EXPECT="milestone=none" FAKE_FAIL=1 run unmilestoned "$REPO" >"$tmp/out" 2>"$tmp/err" || status=$?
+FAKE_EXPECT="milestone=none" FAKE_EXPECT2="state=open" FAKE_FAIL=1 run unmilestoned "$REPO" >"$tmp/out" 2>"$tmp/err" || status=$?
 assert_status "unmilestoned: a failed gh call exits non-zero" 1 "$status"
 assert_eq "unmilestoned: a failed gh call prints nothing on stdout" "" "$(cat "$tmp/out")"
 
 status=0
-out="$(FAKE_EXPECT="milestone=none" FAKE_ROWS="" run unmilestoned "$REPO")" || status=$?
+out="$(FAKE_EXPECT="milestone=none" FAKE_EXPECT2="state=open" FAKE_ROWS="" run unmilestoned "$REPO")" || status=$?
 assert_status "unmilestoned: a successful call with zero rows exits zero" 0 "$status"
 assert_eq "unmilestoned: zero rows is legitimately empty output, not an error" "" "$out"
 
@@ -213,18 +219,18 @@ shuffled="42${tab}z issue
 7${tab}a issue"
 expected="7${tab}a issue
 42${tab}z issue"
-out="$(FAKE_EXPECT="milestone=5" FAKE_ROWS="$shuffled" run milestone-issues "$REPO" 5)"
+out="$(FAKE_EXPECT="milestone=5" FAKE_EXPECT2="state=open" FAKE_ROWS="$shuffled" run milestone-issues "$REPO" 5)"
 assert_eq "milestone-issues: rows sort ascending by issue number" "$expected" "$out"
 
 echo "# milestone-issues -- gh failure vs. legitimately empty"
 
 status=0
-FAKE_EXPECT="milestone=5" FAKE_FAIL=1 run milestone-issues "$REPO" 5 >"$tmp/out" 2>"$tmp/err" || status=$?
+FAKE_EXPECT="milestone=5" FAKE_EXPECT2="state=open" FAKE_FAIL=1 run milestone-issues "$REPO" 5 >"$tmp/out" 2>"$tmp/err" || status=$?
 assert_status "milestone-issues: a failed gh call exits non-zero" 1 "$status"
 assert_eq "milestone-issues: a failed gh call prints nothing on stdout" "" "$(cat "$tmp/out")"
 
 status=0
-out="$(FAKE_EXPECT="milestone=5" FAKE_ROWS="" run milestone-issues "$REPO" 5)" || status=$?
+out="$(FAKE_EXPECT="milestone=5" FAKE_EXPECT2="state=open" FAKE_ROWS="" run milestone-issues "$REPO" 5)" || status=$?
 assert_status "milestone-issues: a successful call with zero rows exits zero" 0 "$status"
 assert_eq "milestone-issues: zero rows is legitimately empty output, not an error" "" "$out"
 

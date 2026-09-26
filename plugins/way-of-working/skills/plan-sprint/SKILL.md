@@ -130,14 +130,17 @@ If any precondition fails, stop and report why — do not proceed.
      release/version note, or "none" — both are legitimate, never fabricated); **and this
      issue's own build-order position (trivially "1st," since it's the milestone's first
      placement) and one-line reason, the same as any other placement.** **Before offering or
-     confirming any new title, check it against `plan-gather.sh titles {backlog.repo}`**
+     confirming any new title, check it against BOTH `plan-gather.sh titles {backlog.repo}`**
      (every milestone, open AND closed — GitHub enforces title uniqueness across both, and a
-     closed milestone still occupies the title) — surface a genuine collision before asking
-     the human to confirm a name that can't be created; this check runs *after* the
-     **Resume-safety preamble**'s own reconciliation, so it is never confused by the human's
-     own already-applied prior run. Add the new milestone (title, due-date-or-trigger, batch
-     reason, ships-as, and its first placement) to **milestones in play** for the rest of this
-     pass.
+     closed milestone still occupies the title) **AND the titles already in `milestones in
+     play` from earlier in this same pass** — a second "new milestone" proposal reusing an
+     earlier one's exact title is the same collision one step earlier than GitHub would catch
+     it, and offering the existing in-play entry instead (rather than letting it fail at
+     creation time in **Apply & stage**) keeps the two placements in one build order instead of
+     two competing ones. This check runs *after* the **Resume-safety preamble**'s own
+     reconciliation, so it is never confused by the human's own already-applied prior run. Add
+     the new milestone (title, due-date-or-trigger, batch reason, ships-as, and its first
+     placement) to **milestones in play** for the rest of this pass.
    - **Leave unmilestoned** → ask for the one-line reason (the condition that would later
      pull it in). No milestone write happens for this issue in **Apply & stage**, but the
      triage comment still does.
@@ -151,8 +154,14 @@ If any precondition fails, stop and report why — do not proceed.
    **For each NEW milestone, draft its full description from the template below** (the
    concrete shape `reference/project-schema.md` § `planning` names this skill as the home
    of), using data already gathered — the batch reason and ships-as line from **Placement
-   dialogue**, and the confirmed build order (every issue placed into it, in placement order,
-   each with its one-line reason):
+   dialogue**, and the confirmed build order: **every issue placed into it, ordered by the
+   position the human actually confirmed for each one, never by the order issues happened to
+   come up in the dialogue.** Resolve positions the way an ordered-list insert would: an
+   explicit slot number places an item there, shifting anything already at or after that slot
+   down by one; "append" places it after the current last item. Numbering is only finalized
+   here, once every issue is placed — the **Placement dialogue** step's own position answers
+   are inputs to this resolution, never final step numbers themselves, since a later issue can
+   still ask for an earlier slot than one already confirmed:
    ```
    <the batch reason the human gave>. <the ships-as line the human gave, or omit the clause
    entirely when they said "none" -- never fabricate one>.
@@ -172,8 +181,9 @@ If any precondition fails, stop and report why — do not proceed.
    - Plan: needs no plan, unless the human flags an item as needing a design spec first.
    - Build: `{models.coder}` for all.
    - Critic gate: the enabled subset of `{agents.enabled}` that
-     `reference/workflow.md`'s own critic-gate proposal table would flag for this batch's
-     items (typically `architect` and/or `security-critic` for `code_paths` work,
+     `/way-of-working:critic-gate`'s own proposal table would flag for this batch's items
+     (`reference/workflow.md`'s table is the overview only; `critic-gate`'s own SKILL is
+     authoritative — typically `architect` and/or `security-critic` for `code_paths` work,
      `docs-consistency` for `load_bearing_docs` work) — never a critic this repo hasn't
      enabled.
    - Architect review: `{models.architect}`, fresh session — or, when `{review.ci_gate}` is
@@ -230,23 +240,39 @@ If any precondition fails, stop and report why — do not proceed.
      gh issue edit <digits> --repo {backlog.repo} --milestone "$(cat <file>)"
      ```
      Every `<digits>` placeholder is validated digits-only before it goes in the script — never
-     a value read back from anywhere else. **Every `<file>` placeholder is never a free-form
-     path — it is always one of a small, fixed, enumerated set of literal filenames this same
-     step just wrote inside this run's own scratch directory (e.g. `"$scratch/title.txt"`,
-     `"$scratch/description.txt"`), always double-quoted, and never assembled, concatenated, or
-     derived from any variable or any text this session read.** Without this constraint the
-     three-shapes rule is weaker than it looks: a `<file>` value chosen freely could point
+     a value read back from anywhere else.
+
+     **Every `<file>` placeholder is the FULL, LITERAL, ABSOLUTE path to a file, spelled out
+     in full — the staged script contains no shell variables at all, so there is no fourth
+     line shape (a `scratch=…` assignment) to permit or forbid.** The path always has one of
+     exactly these two mechanical shapes, checked by regex before the script is ever printed:
+     - `<scratch>/title-<k>.txt` or `<scratch>/description-<k>.txt`, where `<scratch>` is this
+       run's own `mktemp -d` result (validated to be the literal directory this run actually
+       created, byte for byte — never re-typed by hand) and `<k>` is a small non-negative
+       integer, **one counter value assigned per milestone in play, in the order each
+       milestone was first proposed** (the first new milestone this pass is `1`, the second is
+       `2`, and so on — never reused across milestones, and never chosen by the drafting
+       process on the fly).
+     - `<scratch>/comment-<N>.txt`, where `<N>` is the target issue's own number (already
+       validated digits-only by the surrounding line shape).
+
+     Without this exact scheme, the constraint doesn't hold: a value read freely could point
      `-F description=@$HOME/.config/gh/hosts.yml` at a credential file and publish it as a
      public milestone description, or smuggle a command substitution into what looks like the
-     permitted `$(cat <file>)` shape — both would still visually match one of the three lines
-     above. Pinning `<file>` to a short, fixed enumeration this step itself controls (never
-     attacker- or drafting-process-chosen) is what actually closes that gap; the three-shapes
-     rule alone does not. `set -eu` at the top of the script, so any single line's failure
-     stops the rest rather than continuing past it silently. **Print the whole script,
-     verbatim, in the final Report** (below), with an explicit "read this before running it"
-     line — never just a path to it — **and print the content of every file it references
-     alongside it**, so the human can confirm the text they approved in the dialogue is the
-     same text the script actually sends, not merely that the script's shape looks right.
+     permitted `$(cat <file>)` shape — both would still visually match one of the three line
+     shapes above. Worse, once a single pass can propose *several* new milestones (per the
+     **Placement dialogue**'s "milestones in play" design), reusing the same one or two
+     filenames across all of them means every `$(cat "<file>")` in the script reads whatever
+     was written *last* — every placement line would silently target the last-processed
+     milestone's title instead of its own, misplacing issues with no error at all, since a
+     successful write to the wrong milestone still exits `0`. The per-milestone counter above
+     is what prevents that, not merely the "fixed filenames" idea alone. `set -eu` at the top
+     of the script, so any single line's failure stops the rest rather than continuing past it
+     silently. **Print the whole script, verbatim, in the final Report** (below), with an
+     explicit "read this before running it" line — never just a path to it — **and print the
+     content of every file it references alongside it**, so the human can confirm the text
+     they approved in the dialogue is the same text the script actually sends, not merely that
+     the script's shape looks right.
    - `due_on`, wherever it is substituted (live or staged), is validated against
      `^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?$` first — a due date is
      structured, human-or-model-proposed data, not raw adversarial text, but it still goes
@@ -267,8 +293,10 @@ If any precondition fails, stop and report why — do not proceed.
    read-back — `gh api repos/{backlog.repo}/issues/<N> --jq .milestone.number` — confirms the
    **number**, catching a same-title collision or a stale title and reporting "landed on #M,
    needs human confirmation" rather than assuming it's correct. Never derive a placement from
-   a title match this skill found itself — only from the exact title the human just confirmed
-   in the same dialogue turn. Before writing, re-read the issue's current milestone to confirm
+   a title match this skill found itself — only from the exact title the human confirmed in
+   this dialogue (the confirming turn may be an earlier issue's, when the placement targets a
+   milestone named earlier in the same pass — see **Placement dialogue**'s "milestones in
+   play"). Before writing, re-read the issue's current milestone to confirm
    it's still unmilestoned (or still where the human expects, on a resumed run); a concurrent
    external change is reported as "changed since gather, re-confirm," never silently
    overwritten.
@@ -335,13 +363,17 @@ If any precondition fails, stop and report why — do not proceed.
    task issue would make the next `/way-of-working:resume` read `drift` on an otherwise-healthy
    sprint, exactly the failure the anchor-consequence check above exists to prevent, just
    reached through a second write this skill might also make. **If `.ai/state.json` is
-   unreadable and the ledger can't answer which issue is anchored either, OR if any
-   `.ai/parked/*-state.json` snapshot for the milestone in question is itself unreadable or
-   malformed, this exclusion cannot be verified — fail closed exactly like the
-   anchor-consequence check itself: skip the fallback comment entirely and put the staged text
-   inline in the final Report instead of guessing a location.** A parked snapshot that reads
-   cleanly is used to build the exclusion list normally; only a snapshot that can't be read at
-   all triggers this fail-closed skip. If a due-date-only edit to the live/anchored milestone
+   unreadable and the ledger can't answer which issue is anchored either, OR if ANY
+   `.ai/parked/*-state.json` snapshot is itself unreadable or malformed — not only one already
+   known to belong to the milestone in question, since an unreadable snapshot's own milestone
+   can't be determined without reading it — this exclusion cannot be fully verified: fail
+   closed exactly like the anchor-consequence check itself, skip the fallback comment entirely,
+   and put the staged text inline in the final Report instead of guessing a location.** Every
+   parked snapshot that reads cleanly is used to build the exclusion list normally; it is only
+   a snapshot that can't be read *at all* that triggers this fail-closed skip — for that one,
+   whether it would have named the milestone in question is exactly the question that can't be
+   answered, so it counts as if it might have. If a due-date-only edit to the live/anchored
+   milestone
    has no
    newly-confirmed issue to post on, there is no free text worth a comment anyway — skip the
    comment entirely and record the date change in the `hitl_gate` note only. **Once chosen,
@@ -364,11 +396,21 @@ If any precondition fails, stop and report why — do not proceed.
    placeholder with no issues confirmed into it yet).
 
    **Per-issue triage comment**, posted on every placed-or-deliberately-left-unmilestoned
-   issue: `gh issue comment <N> --repo {backlog.repo} --body-file <file>`, content:
+   issue, **after** the **Sequence confirm** step has finalized every milestone's build-order
+   numbering (never posted from the raw dialogue answers, which are inputs to that
+   resolution, not final positions): `gh issue comment <N> --repo {backlog.repo} --body-file
+   <file>`, content:
    ```
    Triage <date> [plan-sprint]: <placed in milestone <number> (<title>) as build-order step
-   <k> | left unmilestoned> -- <the one-line reason the human gave>.
+   <k> | staged for new milestone (<title>), not yet created, as build-order step <k> |
+   left unmilestoned> -- <the one-line reason the human gave>.
    ```
+   The middle form is for a placement into a milestone whose own creation is itself staged
+   (**Apply & stage**, below) — never invent or guess a milestone **number** for it; a
+   milestone that does not exist yet has none, and guessing one risks naming a number that
+   later belongs to something else entirely, on a public, attributable comment. Use the real
+   `<number>` form only once the milestone is confirmed to exist (read back, per **Apply &
+   stage**).
    The literal bracketed tag `[plan-sprint]` is this skill's own **fixed idempotency marker**
    for both comment kinds (the triage comment above, and the staged-text fallback comment,
    which uses the same tag in its own lead-in: `Staged milestone text <date> [plan-sprint]:
@@ -446,10 +488,12 @@ If any precondition fails, stop and report why — do not proceed.
 
 7. **Report.** Every issue's outcome by number; the milestone-sequence outcome; any
    anchor-consequence refusal, named; the scratch directory's path and, verbatim, the full
-   contents of any staged script (never just a path to it) with an explicit "read this before
-   running it" line; the PR link (or the "continuing to handoff" note); and an explicit
-   reminder that `plan_anchor` and `pointers.sprint_plan` are untouched, and that
-   `/way-of-working:handoff` is the next step once a sprint is ready to pick up and anchor.
+   contents of any staged script (never just a path to it) **plus the content of every file it
+   references, printed alongside it** (per the injection-safety rule in **Apply & stage**),
+   with an explicit "read this before running it" line; the PR link (or the "continuing to
+   handoff" note); and an explicit reminder that `plan_anchor` and `pointers.sprint_plan` are
+   untouched, and that `/way-of-working:handoff` is the next step once a sprint is ready to
+   pick up and anchor.
 
 ## Guardrails
 
@@ -459,7 +503,7 @@ If any precondition fails, stop and report why — do not proceed.
 - Never picks which milestone becomes `pointers.sprint_plan`; that is a separate human
   decision followed by `/way-of-working:handoff`.
 - Never writes a placement, a new milestone, or a milestone edit the human hasn't confirmed
-  in the same dialogue turn.
+  in this dialogue.
 - Never edits a milestone description while `pointers.plan_anchor.milestone` names it,
   whatever `sprint_status` says — hands to `/way-of-working:handoff` instead.
 - Never posts the staged-write fallback comment on a live or parked anchor's task issue —
