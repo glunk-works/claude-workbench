@@ -98,7 +98,7 @@ If any precondition fails, stop and report why — do not proceed.
    A specific milestone's full **description** is fetched individually, only when the
    **Placement dialogue** or **Apply & stage** step actually needs to show or edit it, by
    direct redirection (`gh api repos/{backlog.repo}/milestones/<N> --jq '.description //
-   empty' > <file>`, never `$(...)`, which strips a trailing newline and would make a later
+   empty' > "<file>"`, never `$(...)`, which strips a trailing newline and would make a later
    edit's read-back disagree with what was written).
 
 3. **Placement dialogue — one issue at a time, ascending `#N`** (the order `plan-gather.sh`
@@ -117,11 +117,16 @@ If any precondition fails, stop and report why — do not proceed.
    real one, by its proposed title for one not yet created), **a new milestone**, or **leave
    unmilestoned** — the last is first-class, not a fallback (a real, precedented triage
    outcome: an issue can be deliberately held back pending some other condition).
-   - **A milestone already in play** (real or newly-named-this-pass) → ask the build-order
-     position (a slot, or "append") **and a one-line reason for this issue's placement** —
-     always, for every placement into any milestone, whether it already exists on GitHub or
-     was only just proposed. Record both verbatim for the triage comment and, for a new
-     milestone, the drafted description in **Sequence confirm** — never paraphrase them away.
+   - **A milestone already in play** (real or newly-named-this-pass) → ask a one-line reason
+     for this issue's placement, always. For a milestone **named this pass** (not yet on
+     GitHub), also ask its build-order position (a slot, or "append") — this feeds the numbered
+     list **Sequence confirm** drafts into its new description. For a milestone that was
+     **already open at Gather time**, still ask the position, but only as context for the human
+     and this skill's own report — it is never published as a numbered "build-order step" in
+     the triage comment (**Apply & stage**, below), since no drafted, numbered description
+     exists for an already-existing milestone to update. Record every reason verbatim for the
+     triage comment, and a new milestone's reasons in its drafted description — never
+     paraphrase them away.
    - **A new milestone** → ask, in the same turn: a title; either a concrete due date or an
      explicit trigger condition with no date (an undated, trigger-gated milestone that sorts
      last is a legitimate, precedented answer, not a gap to fill later); a one-clause reason
@@ -214,7 +219,7 @@ If any precondition fails, stop and report why — do not proceed.
      via a shell command re-exposes the same untrusted text to shell interpolation this rule
      exists to avoid, and a heredoc has its own, separate way of silently mangling backslashes
      in the content — using the file-editing tool sidesteps both.
-   - Descriptions → `gh api -X POST|PATCH ... -F description=@<file>`. **`-F`, never
+   - Descriptions → `gh api -X POST|PATCH ... -F "description=@<file>"`. **`-F`, never
      `-f`** — `-f`/`--raw-field` sends only a literal string and has no `@<path>` file-read
      behavior at all (confirmed against `gh api --help`); writing `-f description=@<file>`
      sends the literal text `@<file>` as the description, not the file's contents. `-F`'s
@@ -222,10 +227,10 @@ If any precondition fails, stop and report why — do not proceed.
      conversion — the type-coercion caveat that makes `-F` risky for arbitrary text (a value
      that reads as a number, `true`, `null`, or itself starts with `@`) applies to inline
      literals, not to content read this way.
-   - Comments → `gh issue comment --body-file <file>`.
+   - Comments → `gh issue comment --body-file "<file>"`.
    - Titles, including in this session's own **live** `gh issue edit --milestone` and `gh api
      -X POST .../milestones` calls, not only the staged script → `-f title="$(cat
-     <title-file>)"` / `--milestone "$(cat <title-file>)"` — plain `-f`/`--raw-field` here,
+     "<title-file>")"` / `--milestone "$(cat "<title-file>")"` — plain `-f`/`--raw-field` here,
      since a title is always a string and the file's content substitutes as a single shell
      argument, never re-parsed, so it needs no escaping regardless of what characters the
      title contains.
@@ -242,11 +247,15 @@ If any precondition fails, stop and report why — do not proceed.
      ```
      Every `<digits>` placeholder is validated digits-only before it goes in the script — never
      a value read back from anywhere else. **Every `<file>` and every `$(cat "<file>")` is
-     always double-quoted, in the script and in this rule's own examples above** — a scratch
-     path containing a space (a real risk on a Windows profile path) would otherwise split into
-     two arguments, and a failed `$(cat …)` used as part of another command's argument is not
-     caught by `set -e` at all, so quoting is the only thing that keeps a missing or unreadable
-     file from silently becoming an empty string instead of aborting the line.
+     always double-quoted — in the script, and in every place this skill writes the equivalent
+     live call itself** — a scratch path containing a space (a real risk on a Windows profile
+     path) would otherwise split into two arguments and break the command. Quoting does **not**
+     guard against a missing or unreadable file — `set -e` does not catch a failed `$(cat …)`
+     used as part of another command's argument, quoted or not, so a missing file still silently
+     substitutes an empty string rather than aborting the line. That gap is covered a different
+     way: every file this step writes is printed, with its content, in the final Report, so a
+     human reviewing before running the script would see an unexpectedly empty file there, not
+     rely on the script failing safely on its own.
 
      **Every `<file>` placeholder is the FULL, LITERAL, ABSOLUTE path to a file, spelled out in
      full — the staged script contains no shell variables at all** (the one permitted header
@@ -255,18 +264,19 @@ If any precondition fails, stop and report why — do not proceed.
      ever printed, and the two milestone kinds use **disjoint** name families so a real
      milestone's files and a not-yet-created one's files can never collide, whatever order they
      were reached in:
-     - **An existing milestone** (already has a real number, whether it was open at **Gather**
-       time or was created earlier in this same run) → `<scratch>/title-m<N>.txt` /
-       `<scratch>/description-m<N>.txt`, where `<N>` is that milestone's own validated
-       digits-only number — the same `<N>` used in the `PATCH .../milestones/<N>` or `gh issue
-       edit <issue> --milestone` line it feeds. Two different existing milestones always have
-       two different numbers, so this can never collide.
-     - **A new milestone whose creation is itself part of this run** (staged or just
-       succeeded live) → `<scratch>/title-new<k>.txt` / `<scratch>/description-new<k>.txt`,
-       where `<k>` is a small **positive** integer, one counter value per new milestone, in the
-       order each was first proposed this pass (the first is `1`, the second `2`, and so on —
-       never reused, never chosen by the drafting process on the fly, and never assigned to an
-       existing milestone, which always uses its own number instead).
+     - **An existing milestone** — one that was already open at **Gather** time, full stop,
+       never one created during this same run (see the next bullet for that case) → `<scratch>/
+       title-m<N>.txt` / `<scratch>/description-m<N>.txt`, where `<N>` is that milestone's own
+       validated digits-only number — the same `<N>` used in the `PATCH .../milestones/<N>` or
+       `gh issue edit <issue> --milestone` line it feeds. Two different existing milestones
+       always have two different numbers, so this can never collide.
+     - **A new milestone proposed this pass** — whether its creation is staged for the human to
+       run later, or already succeeded live earlier in this same run (a milestone created live
+       always uses this family, never the one above, even once it has a real number) →
+       `<scratch>/title-new<k>.txt` / `<scratch>/description-new<k>.txt`, where `<k>` is a small
+       **positive** integer, one counter value per new milestone, in the order each was first
+       proposed this pass (the first is `1`, the second `2`, and so on — never reused, never
+       chosen by the drafting process on the fly).
      - **Comment bodies are never part of the staged script at all** — every `gh issue
        comment` call (the triage comment and the staged-text fallback comment, below) is a
        **live** call this session makes itself, never a staged line, so its `--body-file` value
@@ -308,7 +318,7 @@ If any precondition fails, stop and report why — do not proceed.
    independent of what GitHub itself would allow — the same framing
    `/way-of-working:archive-sprint`'s own milestone-close step already uses for the write it
    attempts). So: `gh issue edit <N> --repo {backlog.repo} --milestone "$(cat
-   <title-file>)"` — `gh issue edit --milestone` takes a **title**, not a number, which is
+   "<title-file>")"` — `gh issue edit --milestone` takes a **title**, not a number, which is
    safe here because GitHub enforces unique milestone titles per repo (open + closed
    together, per the collision check in **Placement dialogue**) and because the mandatory
    read-back — `gh api repos/{backlog.repo}/issues/<N> --jq .milestone.number` — confirms the
@@ -323,7 +333,7 @@ If any precondition fails, stop and report why — do not proceed.
    overwritten.
 
    **Milestone creation**, attempted once per new milestone: `gh api -X POST
-   repos/{backlog.repo}/milestones -f title="$(cat <title-file>)" -F description=@<file> -f
+   repos/{backlog.repo}/milestones -f title="$(cat "<title-file>")" -F "description=@<file>" -f
    due_on="<validated ISO-8601, or omit>"`, then read back to confirm. Three distinct
    outcomes, reported differently, never collapsed into one "failed" bucket: **(a)** a
    refused write or an error on the create call itself → stage it (below); **(b)** a real
@@ -421,7 +431,7 @@ If any precondition fails, stop and report why — do not proceed.
    build-order numbering (never posted from the raw dialogue answers, which are inputs to that
    resolution, not final positions): a **live** call — never staged, and so never subject to
    the staged script's own file-naming split — `gh issue comment <N> --repo {backlog.repo}
-   --body-file <scratch>/triage-<N>.txt`, content one of:
+   --body-file "<scratch>/triage-<N>.txt"`, content one of:
    ```
    Triage <date> [plan-sprint]: placed in milestone <number> (<title>) as build-order step <k>
    -- <the one-line reason the human gave>.
@@ -441,23 +451,23 @@ If any precondition fails, stop and report why — do not proceed.
    - **A "build-order step `<k>`" claim appears ONLY for a placement into a NEW milestone** —
      that is the one case **Sequence confirm** actually drafts and numbers a build order for.
      An **existing** milestone's own description is never rewritten by a simple placement (that
-     would need an anchor-consequence-gated edit, a different and separate operation — see
-     below), so nothing records a step number for it, and the comment never claims one exists.
+     would need the separate, anchor-consequence-gated edit described earlier in this step), so
+     nothing records a step number for it, and the comment never claims one exists.
    - **"Staged for new milestone … not yet created"** is for a placement into a milestone whose
-     own creation is itself staged (**Apply & stage**, below) — never invent or guess a
+     own creation is itself staged (described earlier in this step) — never invent or guess a
      milestone **number** for it; a milestone that does not exist yet has none, and guessing one
      risks naming a number that later belongs to something else entirely, on a public,
      attributable comment.
    - **"Staged for milestone `<number>`"** is for a placement into an **existing**, numbered
-     milestone whose `gh issue edit --milestone` call was itself refused or unconfirmed (per
-     **Apply & stage**'s mixed-outcome tracking) — the milestone is real and its number is
-     known, only the write isn't confirmed yet, which this form says plainly instead of
+     milestone whose `gh issue edit --milestone` call was itself refused or unconfirmed (per the
+     **Track and report per-item outcome** rule, below) — the milestone is real and its number
+     is known, only the write isn't confirmed yet, which this form says plainly instead of
      claiming a placement ("placed in …") that hasn't happened.
    - Use the plain "placed in milestone `<number>`" forms only once a write is actually
-     confirmed by its own read-back (per **Apply & stage**).
+     confirmed by its own read-back.
    The literal bracketed tag `[plan-sprint]` is this skill's own **fixed idempotency marker**
    for both comment kinds (the triage comment above, and the staged-text fallback comment
-   below — `--body-file <scratch>/staged-<N>.txt`, a **separate** filename from the triage
+   below — `--body-file "<scratch>/staged-<N>.txt"`, a **separate** filename from the triage
    comment's own even when both land on the same issue `<N>` — which uses the same tag in its
    own lead-in: `Staged milestone text <date> [plan-sprint]: ...`) — a literal string search
    for `[plan-sprint]` in an issue's existing comments, from this session's own identity, is
