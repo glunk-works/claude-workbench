@@ -29,9 +29,10 @@
 #                     preserved its ledger -- archive-sprint's Seed step (fresh) and its own
 #                     unpark-branch note (fresh, replacing), park-sprint's seed override
 #                     (fresh or carried forward), handoff's carry-forward rule (preserved),
-#                     and unpark-sprint's Restore step (preserved, from whatever the parked
-#                     snapshot held):
-#                     plugins/way-of-working/skills/{archive-sprint,park-sprint,handoff,unpark-sprint}/SKILL.md.
+#                     unpark-sprint's Restore step (preserved, from whatever the parked
+#                     snapshot held), and plan-sprint's own Sync-the-cursor step (preserved,
+#                     verbatim -- it never generates or alters this line):
+#                     plugins/way-of-working/skills/{archive-sprint,park-sprint,handoff,unpark-sprint,plan-sprint}/SKILL.md.
 #                     Narrower phrasing here was itself a #153-shaped bug once (caught in
 #                     this script's own review): it let some of those producers write a
 #                     `planning` cursor this check silently never applied to.

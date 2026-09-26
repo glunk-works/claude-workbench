@@ -56,6 +56,13 @@ proxy/router) is explicitly out of scope.
 
 ## Switch points across a sprint
 
+**Under `planning.kind: github_milestones`, `/way-of-working:plan-sprint` runs *before* the
+`OPUS (plan)` box below, not inside it.** It turns `/way-of-working:archive-sprint`'s seeded
+"no milestone picked yet" into a concrete milestone placement for the human to pick up — the
+backlog-triage altitude, across every open issue and milestone, not the single sprint's own
+design that the `OPUS (plan)` box's milestone-description-plus-spec-comment work is about.
+It is mechanical (any model), so it is not drawn as its own model box in the diagram below.
+
 ```
 OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /way-of-working:handoff
    |           (or, under planning.kind: github_milestones, the milestone description +      |
@@ -301,6 +308,16 @@ description and cannot be mistaken for the human's approval.
   required, or the close is staged for the human instead), advances `.ai/state.json` to
   the next sprint, and seeds a fresh
   `.ai/next-steps.md`.
+- **`/way-of-working:plan-sprint`** — run under `planning.kind: github_milestones` when
+  `sprint_status: planning` and `pointers.sprint_plan` is the "no milestone picked yet"
+  cursor `archive-sprint` seeds. Gathers the open issues with no milestone and the open
+  milestones in due-date order (read-only), then proposes — one issue at a time — an
+  existing milestone, a new one, or leaving it unmilestoned on purpose; writes only what the
+  human confirms, stages the milestone writes this org's policy refuses, and posts a dated
+  triage comment recording each decision. Never ranks, never creates or closes a milestone
+  the human hasn't named, and refuses to edit a milestone description `pointers.plan_anchor`
+  already names — that needs `/way-of-working:handoff`'s own re-anchor instead. Mechanical
+  triage, not design; any model.
 - **`/way-of-working:park-sprint <next-id>`** — set the live sprint aside mid-flight:
   snapshot its cursor into tracked `.ai/parked/<id>-*`, seed the live cursor for the next
   sprint, and open the docs-only cursor-sync PR. Mechanical; any model.

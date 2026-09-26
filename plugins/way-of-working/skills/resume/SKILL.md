@@ -827,7 +827,11 @@ itself would take to decide whether to skip it — always run it.
 
    Otherwise **state the pick-up point and wait.** In particular: always wait on
    `planning` (the planning pass is one question at a time — that dialogue *is* the
-   work), on any open or unreadable gate, on a model mismatch, and on any drift.
+   work), on any open or unreadable gate, on a model mismatch, and on any drift. Under
+   `{planning.kind}: github_milestones`, a `planning` cursor whose `pointers.sprint_plan` is
+   `null` ("no milestone picked yet," `/way-of-working:archive-sprint`'s own seed) is
+   exactly the state `/way-of-working:plan-sprint` triages — name it as the next step in the
+   pick-up summary.
 
    > **The body read (TOCTOU closure), under `{planning.kind}: github_milestones`.** This
    > binds **whoever reads `#N`'s body to act on it** — this resumed session building

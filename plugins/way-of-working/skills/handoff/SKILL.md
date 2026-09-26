@@ -198,8 +198,10 @@ github_milestones` — `{backlog.repo}`.
      file, at column 0, never as a list item. Issue #153: this wholesale regeneration is not
      itself the event that produces a close outcome (`/way-of-working:archive-sprint`'s Seed
      step and its own unpark-branch note, `/way-of-working:park-sprint`'s own override, this
-     rule's own carry-forward, and `/way-of-working:unpark-sprint`'s Restore step are what
-     produce or preserve one) — but a sprint can stay in `sprint_status: planning` across more
+     rule's own carry-forward, `/way-of-working:unpark-sprint`'s Restore step, and
+     `/way-of-working:plan-sprint`'s own *Sync the cursor* step — which likewise only ever
+     preserves this line, never generates or alters it — are what produce or preserve one) —
+     but a sprint can stay in `sprint_status: planning` across more
      than one handoff (a model switch mid-planning-dialogue, or planning spanning several
      sessions), and `bin/milestone-close-line.sh` checks *every* `planning`-status cursor, not
      only a just-seeded one. Dropping the line here, the way this step drops everything else it

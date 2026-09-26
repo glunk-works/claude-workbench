@@ -865,6 +865,32 @@ take effect. Full reasoning and the task breakdown that implements them:
   it. **Breaking:** ships as `v0.13.0` with a migration line — every consumer writes out the
   keys it had left absent.
 
+- **WB-D18 (`#152`) — `/way-of-working:plan-sprint` reverses `due_on: ignored`, and deviates
+  from its own issue's "via `ship`" wording for its cursor-sync commit.** `due_on` was
+  documented as ignored ("no sprint cadence"); the new skill writes it deliberately, so the
+  live milestone list's own display order matches the human's confirmed triage sequence —
+  reversed in the same PR that ships the skill (`reference/project-schema.md` § `planning`).
+  Separately, issue #152's own *Shape* section named `/way-of-working:ship`'s branch-cut
+  chain for the final cursor-sync commit; `ship`'s own chain commits the working tree
+  generally, with no built-in single-file scope guarantee, which risks sweeping other dirty
+  state into a nominally docs-only PR — issue #150's failure mode one level up.
+  `/way-of-working:plan-sprint` instead cites `/way-of-working:handoff`'s own docs-only
+  cursor-sync step by reference, the same pattern `/way-of-working:park-sprint` and
+  `/way-of-working:archive-sprint`'s own *Advance* step already use instead of reimplementing
+  it.
+  - **No new `.ai/project.yml` key.** The milestone-description template and the
+    triage-comment format are both fixed plugin prose the skill renders, not per-repo
+    config — same reasoning as `ship`'s PR-body shape or `reference/conventions.md`'s commit
+    grammar.
+  - **Mechanism.** The read-only gather step (open issues with no milestone; open milestones
+    in due-date order) is a tested `bin/plan-gather.sh`, with fixtures in `tests/` — the
+    sprint's own build-order note for this task required it, mirroring `WB-D10`'s pattern.
+    The placement dialogue, the denied-milestone-write staging, and the cursor sync stay
+    skill prose. Issue-level milestone placement uses `gh issue edit --milestone <title>`
+    (the write channel this org's policy leaves open), always confirmed against the
+    milestone **number** on read-back before being trusted, never a title match this skill
+    found on its own.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
