@@ -698,6 +698,68 @@ take effect. Full reasoning and the task breakdown that implements them:
   residual) is actually a valid exit code -- tightened to validate digits and range. No
   new trust boundary, no regression from round 5's own patch.
 
+  **Amended (2026-09-28, `#158`): B is deferred, not built.** The human worked `#158`
+  through 13 design decisions and posted them as a build spec, then asked for one more
+  critical pass against how the plugin is actually used. That pass (checked against the
+  consuming repos' own `.ai/project.yml` and PR history) found B aimed at a risk that is
+  small **for this maintainer's own setup**, at a cost out of proportion to what it would
+  buy. The acceptance below is scoped to that setup, never a property of the plugin: a
+  consumer whose trusted authors are not the reviewer is exactly the case B was filed for.
+
+  - **The trusted-author residual is accepted here because of identity, not prior
+    execution.** In the repos that set `review.ci_gate` today, a trusted PR is expected to
+    be the maintainer's own, or a Claude session's opened under the maintainer's account
+    (checked on one of them, `terraform-cloudflare-dns`: its last 33 PRs were opened by
+    the maintainer's account or Dependabot, nothing else — PR openers, not per-commit
+    authorship), so the
+    credentials `run` leaves in reach belong to the same person whose code is running —
+    there is no second principal for a container to defend against. (Usually the code has
+    also already run on a host: `coder` and `/way-of-working:critic-gate` run
+    `{gates.green}` before `/way-of-working:ship`. That is supporting, not load-bearing —
+    a reviewer's reproductions and planted mutations run more than the gate, and a gate
+    that fetches at run time, `npx --yes` or `tofu init`, does not re-run the same bytes.)
+    Installing a container engine would add its own exposure (docker-group membership is
+    root-equivalent on Linux).
+  - **`--network none` defeats the gates the consuming repos actually run.** Those gates
+    (`tofu init` fetching providers, `npm run build` on a fresh checkout, `npx --yes`)
+    need the network, so nearly every containerised claim would read "not reproducible
+    offline", and every run would end in a host-mode override that stops being a real
+    decision once it is routine.
+  - **C already covers the realistic untrusted author.** That author is a dependency
+    bot: Dependabot's PRs read `author_association: CONTRIBUTOR` (seen live on
+    `bounty-infra` and `bedrock-serverless-rag`; `NONE` before its first merged PR),
+    outside the trust allowlist either way, so they already take option C, whose witness
+    is GitHub's own networked CI with no local credential in reach. That is the right
+    executor for a dependency bump. The reverse case is **not** covered: a trusted PR that
+    carries a dependency bump (grouped or cherry-picked by the maintainer) runs registry
+    install scripts on the reviewer's host if a reviewer reproduces it through `run`, so
+    `/way-of-working:architect-review` takes every claim on such a PR that would install
+    or fetch dependencies from C's CI witness instead.
+
+  So option 1 stands as A + C + D. The residuals above, keyring and persistent-write
+  included, remain as stated, and `bin/review-sandbox.sh`'s header keeps disclosing them.
+  **Revisit B** (the spec comment on `#158` is the starting point) when any of these
+  becomes true:
+  - anyone besides the maintainer can open a same-repo PR that reads trusted — a new
+    org member or collaborator (MEMBER needs no write access to read trusted, only an
+    existing branch to open from), whatever their permission level;
+  - automation that can push commits onto a trusted PR's branch after its author's gate
+    ran — a GitHub App (a Claude or Copilot agent, Renovate), an Actions workflow with
+    `contents: write`, or a web-UI suggestion committed by someone else;
+  - trusted PRs authored off the reviewer's host (a cloud session) whose code the
+    maintainer does not read before review;
+  - this repo or a consuming one opens to fork PRs whose claims a reviewer needs to
+    witness locally rather than through CI;
+  - reviews start running unattended (headless or cloud sessions) against PRs the
+    maintainer did not write;
+  - anyone else installs this plugin in a repo whose trusted authors are not its
+    reviewer — for them, this acceptance never applied.
+
+  The reduced shape the pass proposed for that day: container for untrusted PRs only, trusted PRs
+  stay on A, a machine without an engine falls back to C, and the schema key is required
+  only when `review.ci_gate` is a map. Moving `make`'s fetch into a container, `#193`, is
+  deferred with it.
+
 - **WB-D14 (`#48`) — `TIER2` in `scripts/coupling-check.sh` stays hand-maintained.**
   Membership rule unchanged: every `glunk-works` repo, plus any name the reference docs use
   as a worked example. (Rejected: deriving at run time — `gh repo list` inside the gate. It

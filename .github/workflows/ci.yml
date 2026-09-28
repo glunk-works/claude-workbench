@@ -83,6 +83,8 @@ jobs:
         run: sh tests/ai-cursor-banner.test.sh
       - name: schema-complete.sh fixtures
         run: sh tests/schema-complete.test.sh
+      - name: review-sandbox.sh fixtures
+        run: sh tests/review-sandbox.test.sh
 
   # WB-D15 (#45): workflow security scanner, modeled on bounty-infra's own `zizmor` job
   # (`ci.yml`). Unchained like `coupling`/`invariants` above -- a future required check

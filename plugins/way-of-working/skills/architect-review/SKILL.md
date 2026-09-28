@@ -115,14 +115,25 @@ guess a gate (`reference/project-schema.md`).
    container). Reproduce each claim — the added test, the gate it says is green, the
    command it says now fails — every touch through `review-sandbox.sh run <path> --
    <cmd>`, **never `cd` into `<path>` directly**, the reviewer's own git included. Plant
-   a mutation to witness a guard go red, then remove it, also through `run`. No
+   a mutation to witness a guard go red, then remove it, also through `run`. A trusted
+   PR that changes dependency manifests or lockfiles is the exception, for the whole
+   PR, not just its dependency claims: any reproduction that installs or fetches
+   dependencies — in practice usually all of them — executes the new registry code as
+   this user, with every residual `review-sandbox.sh`'s header lists. Take each such
+   claim from the untrusted branch's witness read below, applied in full (its SHA and
+   `event` filter, job-level resolution, `.github/` condition and stated limit); a claim
+   it cannot witness is *not witnessed*, never a cue to fall back to `run`. Say in the
+   body which claims were witnessed from CI rather than executed locally. No
    subagent fan-out by default — the fresh session *is* the architect; spawn a critic
    only for a named angle, its findings verified first. Line-anchored defects may go
    inline; the scope verdict goes in the body posted next. `review-sandbox.sh destroy
    <path>` when done, back at the main checkout's root — the *Compose and post* step
    re-reads `.ai/project.yml` from there.
 
-   **Untrusted** (`trusted=0`): **no local execution.** The verdict comes from a
+   **Untrusted** (`trusted=0`): **no local execution.** Expect this for a dependency
+   bot's PR too, even one on a same-repo branch: Dependabot reads `assoc=CONTRIBUTOR`
+   (or `NONE` before its first merged PR), outside the allowlist either way. The
+   verdict comes from a
    witness read, not the *Check the other required checks first* step's own read (that
    step answers a different question — is the gate currently green? — and carries
    neither `event` nor the SHA a run actually executed against):
@@ -186,8 +197,11 @@ guess a gate (`reference/project-schema.md`).
    Append to that file, in order: `Reviewed against head <sha>`; how the PR was
    reviewed — trusted, executed under accident containment (an isolated sandbox, not a
    container — see `bin/review-sandbox.sh`'s own header for what that does and does
-   not close), or untrusted, reviewed without local execution and marked per claim
-   from the *Review by execution, in an isolated sandbox* step; the verdict; ranked
+   not close), trusted with a dependency change (executed only where no install or
+   fetch was needed, every other claim taken from the CI witness read and marked per
+   claim), or
+   untrusted, reviewed without local execution and marked per claim — each as the
+   *Review by execution, in an isolated sandbox* step specifies; the verdict; ranked
    findings with reproductions; what you independently verified. Post with
    `gh pr review <N> --comment --body-file <that path>`. **Never `--approve`, never
    `--request-changes`, never merge**: the merge is the human's approval, and a
