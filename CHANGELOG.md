@@ -31,7 +31,38 @@ the GitHub release notes.
 
 ## [0.13.0] — 2026-09-26
 
-**No migration required.** No `.ai/project.yml` key was added, removed, or renamed.
+**⚠️ Migration:** every key `reference/project-schema.md` documents must now be **present**
+in `.ai/project.yml` (#142, `WB-D17`). No key was added, removed, or renamed, but an absent
+key is no longer silently defaulted. It is an unanswered question, and
+`/way-of-working:resume` stops auto-starting until it is answered. Expect a repo last
+pinned before this release to read `incomplete`. The keys most often absent are the ones
+earlier releases documented as optional: `migration_base`, `planning.kind`,
+`models.second_opinion`, `backlog.repo`, and `review.ci_gate.triggers_on` when
+`review.ci_gate` is set. **Fix:** after bumping, run `/way-of-working:resume`. It interviews
+for each missing key and opens a completion PR with your answers; merge it and resume again.
+Two things it will not do for you:
+- An `invalid` finding (a key that is present but malformed, e.g. `roadmap: null` where a
+  path is required) is reported, never rewritten. Fix those by hand.
+- A headless session cannot run the interview. Resume once attended, or add the keys by
+  hand from `project-schema.md`'s Full schema block.
+
+`yq` (mikefarah v4) is now a hard dependency of `/way-of-working:resume` itself, not only of
+auto-start. (This line was missing from the notes as first published; corrected after the
+release.)
+
+### Changed
+
+- **Every `.ai/project.yml` key is required-present** — `null` stays the explicit no-value
+  where a key's own reference allows it; absent means unanswered, everywhere. New
+  `bin/schema-complete.sh` (`check <file>` → `complete | incomplete | unreadable`, `keys`
+  lists the required paths). `/way-of-working:resume` gains a first step, *Ensure the schema
+  is complete*, that interviews for each missing key (pick-list where the kind fits, no
+  suggested defaults) and lands the answers as a pull request rather than a working-tree
+  value. The two `migration_base` readers now tell a key absent from the default branch's
+  copy apart from one declared `null`. `scripts/invariants-check.sh` checks the script's key
+  set against both schema example blocks. This reverses #127's documented defaults. New
+  decision `WB-D17`. Critic gate: `architect` + `security-critic` + `docs-consistency`, 5
+  rounds (the round cap), converged (#142, PR #185).
 
 ### Added
 
