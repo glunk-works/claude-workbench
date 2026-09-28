@@ -1032,3 +1032,14 @@ tracked as `bedrock-serverless-rag#134`. `WB-D16` (#177, PR #178) was not a mile
 It raises `/way-of-working:critic-gate`'s round cap from 2 to 4, at the maintainer's
 request. Sprint 4 closed at `bc4237a` (the `v0.12.0` tag, PR #179), with this repo's own pin
 bump to `v0.12.0` (PR #180) as its last step.
+
+`v0.13.0` carries Sprint 5's shipped work (milestone 5, *every config key is an explicit
+decision*): `WB-D17` (#142, PR #185) makes every `.ai/project.yml` key required-present, with
+`/way-of-working:resume` interviewing for a missing one through `bin/schema-complete.sh`, and
+`WB-D18` (#152, PR #187) adds `/way-of-working:plan-sprint`. This repo's own pin bump to
+`v0.13.0` is PR #191. The milestone's third issue, #158 (a container for architect-review's
+PR execution), was designed through 13 decisions and then deferred, not built. `WB-D13`'s
+amendment (PR #194) records why and when to revisit, and #158 and its follow-up #193 are
+closed as not planned. PR #194 also runs `tests/review-sandbox.test.sh` in CI and marks three
+`bin/` scripts executable; it landed after the tag and is unreleased. Sprint 5 closed at
+`4784d2e` (PR #194), not at a release tag.
