@@ -29,6 +29,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [0.13.0] — 2026-09-26
+
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed.
+
+### Added
+
+- **`/way-of-working:plan-sprint` skill** — owns the planning pass between
+  `/way-of-working:archive-sprint` and `/way-of-working:handoff` under
+  `planning.kind: github_milestones`: gather unmilestoned issues and open milestones
+  (`bin/plan-gather.sh`, a tested read-only script — `unmilestoned`, `milestones`, `titles`,
+  `milestone-issues`), propose placement and build-order one issue at a time, apply only
+  what the human confirms via `gh issue edit --milestone`, stage the milestone writes the
+  session can't make as a script plus proposed text for the human to run, post a dated
+  triage comment per issue, and sync the cursor. Never derives *which* milestone is the live
+  sprint from a title or ordering — that stays the milestone **number**, per the existing
+  rule; `due_on` now orders the github.com milestone list page (undated sorts last),
+  read by no other skill. New decision `WB-D18`. Critic gate: `architect` +
+  `security-critic` + `docs-consistency`, 5 rounds (the round cap), converged — plus three
+  independent adversarial architect reviews of the plan itself before any code was written
+  (#152, PR #187).
+
 ## [0.12.0] — 2026-09-25
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed.
