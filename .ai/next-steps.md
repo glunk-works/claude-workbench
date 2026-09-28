@@ -1,48 +1,32 @@
 # Cursor — claude-workbench
 
 **Now:** **Sprint 5** — [milestone 5](https://github.com/glunk-works/claude-workbench/milestone/5),
-*every config key is an explicit decision*. Status: **awaiting_review**.
+*every config key is an explicit decision*. Status: **planning**.
 
-**Just done (2026-09-25, Sonnet, coder):**
-- Task #152 built: a new `/way-of-working:plan-sprint` skill (triage the backlog into
-  milestones, mechanically) — `plugins/way-of-working/bin/plan-gather.sh` (the tested
-  read-only gather step, four subcommands: `unmilestoned`, `milestones`, `titles`,
-  `milestone-issues`), `plugins/way-of-working/skills/plan-sprint/SKILL.md`, `WB-D18` in
-  `docs/decisions.md`, plus updates to `project-schema.md`, `workflow.md`,
-  `milestone-close-line.sh`, `handoff`/`archive-sprint`/`resume` SKILL.md (pointer
-  sentences and Milestone-close-line list entries), and the usual
-  README/CLAUDE.md/marketplace.json/plugin.json mentions. Local green gate and all
-  `tests/*.test.sh` suites pass, **except `tests/schema-complete.test.sh`, which hangs on
-  this machine** — confirmed pre-existing and unrelated (reproduces on `main` too,
-  untouched by this diff).
-- The plan itself went through **three independent adversarial architect reviews before
-  any code was written** (pre-build critiques), catching a `--jq` per-page sort bug, an
-  empty denied-write fallback location, the wrong `gh` write channel, an `hitl_gate`
-  overwrite risk, an unconstrained shell-injection surface, and several cross-fix
-  interaction bugs.
-- Critic gate on the built diff: `architect` + `security-critic` + `docs-consistency`, **5
-  rounds (1 initial + 4 fix-and-re-run, the round cap), converged.** Real, fixed findings
-  across rounds: a `-f`/`-F` bug that silently wrote the literal string `@<path>` instead of
-  a file's contents (found independently by all three critics), a missing
-  milestone-description template the docs claimed existed, two stale
-  Milestone-close-line lists, a self-contradictory staged-script file-naming rule that
-  could have let a write land on the wrong milestone with no error, a triage-comment
-  build-order claim with no basis for existing-milestone placements, and a false safety
-  claim about what quoting does and doesn't guard against. Final round came back
-  tightenings-only from all three critics.
-- Shipped as [PR #187](https://github.com/glunk-works/claude-workbench/pull/187)
-  (`sprint/05-plan-sprint`, `248b7cb`) — **not yet merged**. CI green (coupling, invariants,
-  lint, tests, zizmor).
+**Just done (2026-09-28, resync only, no diff this session):**
+- Confirmed via `/way-of-working:resume` that the cursor had drifted behind reality: task
+  #152's [PR #187](https://github.com/glunk-works/claude-workbench/pull/187) and its
+  cursor-sync [PR #188](https://github.com/glunk-works/claude-workbench/pull/188) were
+  already merged, the plugin had shipped as
+  [v0.13.0](https://github.com/glunk-works/claude-workbench/pull/190), and this repo's own
+  plugin pin was bumped to v0.13.0
+  ([PR #191](https://github.com/glunk-works/claude-workbench/pull/191)) — all of it landed
+  without the ledger being resynced in between.
+- Ruleset check: healthy (`protected-integration-branches`: 4 rule types, 3 required
+  checks). No migration under way.
+- Pruned 2 squash-merged local branches (`chore/pin-v0.13.0`, `chore/release-0.13.0`).
+- Milestone 5 has exactly one open issue left: **#158**.
 
-**Next:** review and merge PR #187. Once merged, pick up the last milestone 5 task — #158
-(container the PR-execution sandbox) — no other task remains in this milestone. On
-**sonnet** (`coder`) for the build; a planning pass first if #158 needs one (its own issue
-already flags one). Separately worth a look: `tests/schema-complete.test.sh` hangs locally
-on this machine, pre-existing and unrelated to #152.
+**Next:** run a pre-build architect design pass on #158 (container the PR-execution
+sandbox to close the keyring/persistent-write residual) — it needs a new
+`review.sandbox.image` schema key and a decision between the sandbox's existing `env -i`
+isolation and a Docker/Podman container (option B, per #113's approved design revision 2)
+before any code is written, the same way #152 went through adversarial architect reviews
+first. On **opus** (`architect`).
 
-**HITL Gate: OPEN** — review and merge PR #187 (four independent critic re-runs converged
-at the round cap; CI green), then decide on the plugin-pin bump and pick up #158.
+**HITL Gate: NONE OPEN** — next human checkpoint is approving the #158 design once the
+pre-build architect pass produces one.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 5](https://github.com/glunk-works/claude-workbench/milestone/5) ·
-[PR #187](https://github.com/glunk-works/claude-workbench/pull/187)
+[issue #158](https://github.com/glunk-works/claude-workbench/issues/158)
