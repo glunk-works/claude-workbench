@@ -16,8 +16,8 @@
 # `origin` remote config (verified live: a clone does NOT create FETCH_HEAD at all --
 # that leak is specific to THIS design's single-ref fetch, below, not to clone), so
 # "the attacker would have to guess the path" was false. The approved
-# shape (option 1 on the issue: A+C+D now, a container -- option B -- filed for a
-# later sprint with its own schema key) is implemented here as option A, corrected:
+# shape (option 1 on the issue: A+C+D; a container -- option B -- filed as #158, then
+# deferred, see WB-D13's amendment) is implemented here as option A, corrected:
 #
 #   - `git init --template=<empty>` + a single-ref fetch FROM THE WORKSPACE replaces
 #     `clone`: no local branches or tags copied, no `clone: from` reflog entry, no
@@ -81,8 +81,8 @@
 #     script itself -- via `/proc/<pid>/environ` on Linux and MSYS, by a same-uid
 #     process, with no race and no prior compromise needed. Reproduced live during
 #     review. This is not a gap in the allowlist; it is a property of what `env -i`
-#     can and cannot reach, and nothing short of a different uid or namespace (the
-#     container, option B) closes it.
+#     can and cannot reach, and nothing short of a different uid or namespace (a
+#     container, option B -- deferred) closes it.
 #   - More generally, `run`'s stripped environment only changes what a tool finds BY
 #     DEFAULT -- it is not a filesystem or network sandbox. Code running under `run`
 #     has the invoking user's own uid and can read any file that uid can read (its
@@ -165,9 +165,15 @@
 #     not attempted here, and no combination of `-c` flags on `make`'s own git
 #     invocations gets there either.
 # In short: this is ACCIDENT CONTAINMENT, not isolation from a deliberately hostile
-# trusted-author PR -- the container (option B, filed as #158) is what closes that,
-# and is scheduled separately. A caller posting a review after running code through
-# `run` should say so, in those terms, not as "no link to credentials".
+# trusted-author PR. A container (option B, #158) would close that; it is not built.
+# Whether that residual is acceptable depends on who a repo's trusted authors are
+# relative to its reviewer -- WB-D13's amendment records one maintainer's acceptance
+# for their own setup and the conditions under which it lapses; it is not a property
+# of this script. `run` accepts only a sandbox `make` built (its marker check), and
+# `make` STOPs on an untrusted PR, so an untrusted PR's review takes its witness from
+# CI instead. A caller posting a review after
+# running code through `run` should say so, in those terms, not as "no link to
+# credentials".
 #
 # Usage:
 #   review-sandbox.sh trust <N>
@@ -244,14 +250,10 @@
 # DOES catch a `mklink /J` junction under Git Bash's `find`; untested by CI either way,
 # see below.
 #
-# This repo's CI (`.github/workflows/ci.yml`) runs Ubuntu only, and its `tests` job
-# does not run `tests/review-sandbox.test.sh` at all yet (same as three other recent
-# `bin/` test additions -- read `ci.yml`'s `tests` job directly for the current list;
-# CLAUDE.md's "not yet a required check" / "not yet required" annotation is on EVERY
-# test in that file (worded either way depending on the line), including ones CI does
-# run, so it cannot answer "does CI run this at all"). So every
-# Windows-specific path in this script is exercised only on a maintainer's machine,
-# never mechanically.
+# This repo's CI (`.github/workflows/ci.yml`) runs `tests/review-sandbox.test.sh` in
+# its `tests` job, on Ubuntu only, and not as a required check. So every
+# Windows-specific path in this script (the leftover-process skip, the junction check
+# above) is exercised only on a maintainer's machine, never mechanically.
 set -eu
 
 : "${REVIEW_SANDBOX_GH:=gh}"
