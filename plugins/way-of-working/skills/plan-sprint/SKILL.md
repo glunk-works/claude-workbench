@@ -152,7 +152,8 @@ If any precondition fails, stop and report why — do not proceed.
      places there (a new milestone's order is drafted whole; an existing milestone's position
      is context for the human, never published — see the **Placement dialogue** step);
    - **a one-line reason**, in the shape the triage comment records — this skill's own
-     paraphrase, **never a quotation from a body or description**, since the reason is what
+     paraphrase, **never a quotation from an issue title, body, or milestone description**,
+     since the reason is what
      gets published (a triage comment, a new milestone's description, and from there the
      plan prose an auto-starting session consumes); the same rule covers every other text
      this step drafts for publication — a new milestone's title, batch reason, and ships-as
@@ -198,10 +199,12 @@ If any precondition fails, stop and report why — do not proceed.
    whatever the accept-whole answer was, because "accept" cannot confirm a placement that
    was never proposed. A `pending staged` line is neither: it is not accepted (nothing was
    proposed) and **never walked through** (its placement is already decided, in the script
-   the human has yet to run) — it stays out of the dialogue entirely, and its staged
-   milestone's title is added to the **Placement dialogue**'s collision check, never to
-   "milestones in play" as a placement target, since that milestone's creation lives in a
-   script this session does not own. An accepted recommendation's placement, position, and
+   the human has yet to run) — it stays out of the dialogue entirely, and, when its target
+   milestone is itself staged for creation, that milestone's title is added to the
+   **Placement dialogue**'s collision check, never to "milestones in play" as a placement
+   target, since its creation lives in a script this session does not own (a pending
+   placement into an *existing* milestone needs neither: that milestone is already in play
+   and its title already on GitHub). An accepted recommendation's placement, position, and
    reason become
    the human's own confirmed answers for every later step, recorded exactly as a dialogue
    answer would be, and **every new milestone in an accepted line joins "milestones in play"
@@ -275,7 +278,9 @@ If any precondition fails, stop and report why — do not proceed.
 
 5. **Sequence confirm — ask once, after every issue in the previous two steps is resolved.**
    Compute one proposed table: every open milestone (existing + newly named) in the
-   **intended** order, each with a proposed due date that would make the live milestone list
+   **intended** order — plus, for ordering context only, any milestone a resumed pending
+   batch stages for creation, shown with its already-staged due date and never re-proposed
+   — each with a proposed due date that would make the live milestone list
    display that order (shown as a date; sent as midday UTC, per **Apply & stage**'s `due_on`
    rule), or "no date — trigger-gated, sorts last" for a deliberately undated one.
 
@@ -426,7 +431,8 @@ If any precondition fails, stop and report why — do not proceed.
      moment any one line fails. **Print the whole script, verbatim, in the final Report**
      (below), with an explicit "read this before running it" line — never just a path to it —
      **and print the content of every file it references alongside it**, so the human can
-     confirm the text they approved in the dialogue is the same text the script actually sends,
+     confirm the text they approved in the **Recommend** or **Placement dialogue** step is
+     the same text the script actually sends,
      not merely that the script's shape looks right.
    - `due_on`, wherever it is substituted (live or staged), is **always sent as midday UTC —
      `YYYY-MM-DDT12:00:00Z`, never midnight and never the bare date** — and validated against
@@ -517,11 +523,21 @@ If any precondition fails, stop and report why — do not proceed.
    read-back specifically, compare by re-fetching via the same direct-redirection pattern
    into `read-milestone-<N>-after.txt` (the **Gather** step's read-only family, never a
    staged `<file>`) and hashing that file against the composed `description-m<N>.txt` (or
-   `description-new<k>.txt` for a milestone created live this pass) the same way
-   `bin/plan-anchor.sh` hashes a description
-   (`sha256sum`/`shasum -a 256`) — never a string captured through `$(...)` on one side only,
-   which would make a legitimately trailing-newline-terminated description read as a
-   mismatch.
+   `description-new<k>.txt` for a milestone created live this pass) **with exactly one
+   newline appended to the composed side**:
+   ```bash
+   { cat "<scratch>/description-m<N>.txt"; printf '\n'; } | sha256sum
+   sha256sum "<scratch>/read-milestone-<N>-after.txt"
+   ```
+   The two sides are produced differently and are never byte-identical as written: GitHub
+   stores the description's bytes as sent (a trailing newline included — observed live), and
+   `gh`'s embedded `--jq` prints a string result followed by one newline of its own, so the
+   fetched file is always the stored bytes plus one `\n`. Appending that one newline to the
+   composed side is the whole normalization; without it every successful write reads as a
+   mismatch and is wrongly staged. `bin/plan-anchor.sh` compares two *fetched* files, so it
+   needs no such step — cite it only for the hashing tool (`sha256sum`/`shasum -a 256`), and
+   never capture either side through `$(...)`, which strips trailing newlines from whichever
+   side it is used on.
 
    Also scan `.ai/parked/*-state.json` for the same milestone number; if found, **warn** in
    the report, naming the parked sprint — what actually catches a changed description there is
@@ -571,8 +587,9 @@ If any precondition fails, stop and report why — do not proceed.
    or risking drift. The same fallback applies to a human-staged *empty* new milestone (a
    placeholder with no issues confirmed into it yet).
 
-   **Per-issue triage comment**, posted on every placed-or-deliberately-left-unmilestoned
-   issue, **after** the **Sequence confirm** step has finalized every **new** milestone's
+   **Per-issue triage comment**, posted on every issue this pass placed or deliberately left
+   unmilestoned (never on a `pending staged` issue — the run that staged it already
+   commented), **after** the **Sequence confirm** step has finalized every **new** milestone's
    build-order numbering (never posted from the raw dialogue answers, which are inputs to that
    resolution, not final positions): a **live** call — never staged, and so never subject to
    the staged script's own file-naming split — `gh issue comment <N> --repo {backlog.repo}
