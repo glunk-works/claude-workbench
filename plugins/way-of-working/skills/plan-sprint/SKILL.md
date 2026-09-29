@@ -528,10 +528,13 @@ If any precondition fails, stop and report why — do not proceed.
    newline appended to the composed side**:
    ```bash
    { cat "<scratch>/description-m<N>.txt"; printf '\n'; } | sha256sum   # or description-new<k>.txt
-   sha256sum "<scratch>/read-milestone-<N>-after.txt"
+   sha256sum < "<scratch>/read-milestone-<N>-after.txt"
    ```
-   (`shasum -a 256` where `sha256sum` is absent; compare the first field of each output only —
-   the second is `-` on one side and the path on the other.) The two sides are produced
+   (`shasum -a 256` where `sha256sum` is absent. **Both sides are hashed from stdin**, never
+   by passing the path as an argument: GNU `sha256sum` prefixes its output line with `\`
+   whenever the named path contains a backslash — observed live on a Windows-style path —
+   which would make the two hash fields differ on a correct write. From stdin both lines end
+   in `-` and compare whole.) The two sides are produced
    differently and are never byte-identical as written: GitHub stores the description's
    bytes as sent (a trailing newline included — observed live), and `gh`'s embedded `--jq`
    prints a string result followed by one newline of its own, so for any *string*
