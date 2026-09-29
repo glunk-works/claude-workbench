@@ -138,7 +138,9 @@ If any precondition fails, stop and report why — do not proceed.
 
 3. **Recommend — read everything once, then propose one table, before any question.** From
    the bodies and descriptions the **Gather** step fetched, draft one recommendation per
-   unmilestoned issue, ascending `#N`, each with:
+   unmilestoned issue, ascending `#N` — except an issue a resumed pending batch already
+   covers, which appears as `pending staged: <placement>` per the **Resume-safety preamble**
+   and gets no recommendation — each with:
    - **a recommended placement** — an open milestone (by number + title), a **new milestone**
      (with a proposed title, checked for collisions exactly as the **Placement dialogue**
      step requires before it is offered; a due date or an explicit trigger condition; a
@@ -152,13 +154,17 @@ If any precondition fails, stop and report why — do not proceed.
    - **a one-line reason**, in the shape the triage comment records — this skill's own
      paraphrase, **never a quotation from a body or description**, since the reason is what
      gets published (a triage comment, a new milestone's description, and from there the
-     plan prose an auto-starting session consumes);
+     plan prose an auto-starting session consumes); the same rule covers every other text
+     this step drafts for publication — a new milestone's title, batch reason, and ships-as
+     line;
    - **the evidence it cites**, pointed at, never merely asserted and never reproduced
      verbatim — the line of the issue body or milestone description that grounds it (cited by
      position or a short paraphrase); the milestone's own state from **Gather** (its
      open-*item* count, which includes milestoned PRs; dated or undated); whether
      `pointers.plan_anchor` names it, read from `.ai/state.json` the same fail-closed way
-     **Apply & stage** reads it (unreadable means "possibly anchored", and the line says so);
+     **Apply & stage** reads it (an unreadable `.ai/state.json` falls back to the ledger's
+     **Pointers:** line, then to "possibly anchored", exactly as that step does, and the line
+     says which answer it got);
      or a dependency between two issues in the table. A recommendation with no citable basis
      is reported as **"no basis to recommend — your call"** for that issue, never dressed up
      as a judgment.
@@ -190,7 +196,13 @@ If any precondition fails, stop and report why — do not proceed.
    runs for the issues the human named **plus every issue this table could not recommend
    for** (a "no basis" line, or a failed body read): those always get their own question,
    whatever the accept-whole answer was, because "accept" cannot confirm a placement that
-   was never proposed. An accepted recommendation's placement, position, and reason become
+   was never proposed. A `pending staged` line is neither: it is not accepted (nothing was
+   proposed) and **never walked through** (its placement is already decided, in the script
+   the human has yet to run) — it stays out of the dialogue entirely, and its staged
+   milestone's title is added to the **Placement dialogue**'s collision check, never to
+   "milestones in play" as a placement target, since that milestone's creation lives in a
+   script this session does not own. An accepted recommendation's placement, position, and
+   reason become
    the human's own confirmed answers for every later step, recorded exactly as a dialogue
    answer would be, and **every new milestone in an accepted line joins "milestones in play"
    before the dialogue starts** — so an issue the human does walk through is offered it as
@@ -200,7 +212,8 @@ If any precondition fails, stop and report why — do not proceed.
    already returns — the *dialogue* order stays mechanical even though each question now
    leads with a recommendation; a human who wants an issue handled earlier says so). Runs for
    every issue the human did not accept whole in the **Recommend** step, and for every issue
-   that step had no basis to recommend for. Maintain a running list of **milestones in
+   that step had no basis to recommend for — **never for a `pending staged` issue**, which
+   that step keeps out of the dialogue. Maintain a running list of **milestones in
    play** for this pass: every open milestone `plan-gather.sh milestones` returned, **plus
    every new milestone in an accepted Recommend line, plus every new milestone named earlier
    in this same pass** (a milestone the human proposed or accepted for an earlier issue is
@@ -245,7 +258,10 @@ If any precondition fails, stop and report why — do not proceed.
      confirming any new title, check it against BOTH `plan-gather.sh titles {backlog.repo}`**
      (every milestone, open AND closed — GitHub enforces title uniqueness across both, and a
      closed milestone still occupies the title) **AND the titles already in `milestones in
-     play` from earlier in this same pass** — a second "new milestone" proposal reusing an
+     play` from earlier in this same pass, AND the title of any not-yet-created milestone a
+     resumed pending batch stages** (per the **Recommend** step — that milestone is not a
+     placement target here, but its title is already spoken for) — a second "new milestone"
+     proposal reusing an
      earlier one's exact title is the same collision one step earlier than GitHub would catch
      it, and offering the existing in-play entry instead (rather than letting it fail at
      creation time in **Apply & stage**) keeps the two placements in one build order instead of
@@ -272,8 +288,8 @@ If any precondition fails, stop and report why — do not proceed.
    come up in the dialogue.** Resolve positions the way an ordered-list insert would: an
    explicit slot number places an item there, shifting anything already at or after that slot
    down by one; "append" places it after the current last item. Numbering is only finalized
-   here, once every issue is placed — the **Placement dialogue** step's own position answers
-   are inputs to this resolution, never final step numbers themselves, since a later issue can
+   here, once every issue is placed — the **Recommend** and **Placement dialogue** steps' own
+   position answers are inputs to this resolution, never final step numbers themselves, since a later issue can
    still ask for an earlier slot than one already confirmed:
    ```
    <the batch reason the human confirmed>. <the ships-as line the human confirmed, or omit the clause
@@ -494,9 +510,14 @@ If any precondition fails, stop and report why — do not proceed.
    slip, never a reason to skip the read-back. If the read-back disagrees even with a midday
    value, **stage the write and name the slip** in the report; never retry with a different
    time of day, which would be guessing at a normalization this skill has one observation
-   of. For a **description** read-back specifically, compare by re-fetching via the same
-   direct-redirection pattern into `read-milestone-<N>-after.txt` (the **Gather** step's
-   read-only family, never a staged `<file>`) and hashing both files the same way
+   of. For a **description** edit, the text to change is fetched fresh at that moment into
+   `read-milestone-<N>-before.txt` and the new text is composed from it into
+   `description-m<N>.txt` with the file-editing tool — never by editing the `read-` file in
+   place, which would make a read-only file into a write argument. For the **description**
+   read-back specifically, compare by re-fetching via the same direct-redirection pattern
+   into `read-milestone-<N>-after.txt` (the **Gather** step's read-only family, never a
+   staged `<file>`) and hashing that file against the composed `description-m<N>.txt` (or
+   `description-new<k>.txt` for a milestone created live this pass) the same way
    `bin/plan-anchor.sh` hashes a description
    (`sha256sum`/`shasum -a 256`) — never a string captured through `$(...)` on one side only,
    which would make a legitimately trailing-newline-terminated description read as a
@@ -511,7 +532,7 @@ If any precondition fails, stop and report why — do not proceed.
    **The staged-text fallback comment — where the proposed milestone text is posted when a
    write is staged rather than applied.** Location is the lowest-numbered issue the human
    confirmed *for* that milestone in the **Recommend** or **Placement dialogue** step (an
-   accept-whole answer confirms every issue in the table), regardless of whether its own
+   accept-whole answer confirms every recommended line it accepted), regardless of whether its own
    placement write succeeded — but **never the live milestone's own `pointers.plan_anchor.task_issue`,
    and never any parked snapshot's own task issue, as a candidate, ever.** A new comment, like
    a milestone edit, bumps `updated_at` on the issue it lands on — landing on the anchored
@@ -670,7 +691,8 @@ If any precondition fails, stop and report why — do not proceed.
    risks sweeping other dirty state into a nominally docs-only PR. Never merge.
 
 8. **Report.** Every issue's outcome by number, and for each whether the **Recommend**
-   step's line was accepted as-is, adjusted (to what), or had no basis to recommend; the
+   step's line was accepted as-is, adjusted (to what), had no basis to recommend, or was
+   `pending staged` from a resumed batch and left untouched; the
    milestone-sequence outcome; any
    anchor-consequence refusal, named; the scratch directory's path and, verbatim, the full
    contents of any staged script (never just a path to it) **plus the content of every file it

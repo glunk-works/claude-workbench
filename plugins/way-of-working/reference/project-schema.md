@@ -367,8 +367,9 @@ accepted, stated trade, not a silent one:
    this untrusted surface of any skill here — every open unmilestoned issue's title **and
    body**, and every open milestone's description, up front on every triage pass, because
    its recommendation table cites that text as the basis for each placement — and writes
-   based only on what the human confirms in the dialogue. A body's own claim ("urgent", "do
-   this first") is cited as the author's claim, beside their `author_association`, never
+   based only on what the human confirms (the accepted table, or the dialogue). A body's own
+   claim ("urgent", "do this first", "prerequisite for #M", "overlaps #K") is cited as the
+   author's claim, beside their `author_association`, never
    adopted as the skill's finding.
 2. **The plan anchor (below) binds everything an auto-starting session consumes**: the plan
    prose, the task issue `#N`, and `#N`'s spec comment. It deliberately does **not** bind the

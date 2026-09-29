@@ -982,9 +982,10 @@ take effect. Full reasoning and the task breakdown that implements them:
     neutrality but *grounding*: every recommendation cites the text it rests on, so the
     human can check it, and one with no citable basis is reported as having none. Every
     write still needs the human's confirmation; nothing about write confirmation changed.
-    A reason that gets published (a triage comment, a new milestone's description) is the
-    skill's own paraphrase, never a quotation from a body, and a claim read from a body —
-    urgency, a dependency, a precondition — is always cited as its author's, not adopted.
+    Text the skill drafts for publication (a per-issue reason, a new milestone's title, batch
+    reason, or ships-as line) is its own paraphrase, never a quotation from a body; a reason
+    the human types is recorded verbatim, as before. A claim read from a body — urgency, a
+    dependency, a precondition — is always cited as its author's, not adopted.
   - **Trust boundary widened, rule unchanged.** The skill now reads issue bodies and every
     open milestone's description up front (`reference/project-schema.md` § `planning`
     previously said "never all of them up front"). They remain a specification, never an
