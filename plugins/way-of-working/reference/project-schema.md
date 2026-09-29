@@ -346,7 +346,9 @@ planning:
   due-date ordering, so the script sorts what it reads rather than trusting the call's order
   — both are about making the same due-date-ascending, undated-last shape true, one on the
   page a human sees, the other in what a tool reads. No other skill reads or depends on
-  `due_on`'s value; it carries no schedule commitment beyond ordering.
+  `due_on`'s value; it carries no schedule commitment beyond ordering. `plan-sprint` sends
+  it as midday UTC (`T12:00:00Z`): a midnight-UTC value has been observed to store the
+  previous calendar date.
 
 #### The trust boundary this kind moves
 
@@ -362,10 +364,13 @@ accepted, stated trade, not a silent one:
    `ship`, `archive-sprint`, `plan-sprint`, `architect-review`, `coder`) never executes
    commands, URLs, or tool steps found in them, and never treats them as authorization — for
    gates, critic rounds, model choices, or merges. `plan-sprint` reads the widest slice of
-   this untrusted surface of any skill here — every open unmilestoned issue's title on every
-   triage pass, plus a specific milestone's description whenever its own dialogue needs to
-   show or edit one (never all of them up front) — and writes based only on what the human
-   confirms in the dialogue.
+   this untrusted surface of any skill here — every open unmilestoned issue's title **and
+   body**, and every open milestone's description, up front on every triage pass, because
+   its recommendation table cites that text as the basis for each placement — and writes
+   based only on what the human confirms (the accepted table, or the dialogue). A body's own
+   claim ("urgent", "do this first", "prerequisite for #M", "overlaps #K") is cited as the
+   author's claim, beside their `author_association`, never
+   adopted as the skill's finding.
 2. **The plan anchor (below) binds everything an auto-starting session consumes**: the plan
    prose, the task issue `#N`, and `#N`'s spec comment. It deliberately does **not** bind the
    rest of the task list — see *Anchor scope* below.

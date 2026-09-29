@@ -61,7 +61,8 @@ proxy/router) is explicitly out of scope.
 "no milestone picked yet" into a concrete milestone placement for the human to pick up — the
 backlog-triage altitude, across every open issue and milestone, not the single sprint's own
 design that the `OPUS (plan)` box's milestone-description-plus-spec-comment work is about.
-It is mechanical (any model), so it is not drawn as its own model box in the diagram below.
+Its recommendation is a checkable proposal the human decides on, not a design, so it is not
+drawn as its own model box in the diagram below (any model).
 
 ```
 OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /way-of-working:handoff
@@ -315,13 +316,16 @@ description and cannot be mistaken for the human's approval.
   only one — backlog triage is independent of what the live sprint is doing, and this skill
   never picks which milestone becomes `pointers.sprint_plan` itself (a separate human call,
   followed by `/way-of-working:handoff`). Gathers the open issues with no milestone and the
-  open milestones in due-date order (read-only), then proposes — one issue at a time — an
+  open milestones in due-date order (read-only), reads each issue's body and each
+  milestone's description, then leads with one recommendation table — per issue, an
   existing milestone, a new one (with a drafted description), or leaving it unmilestoned on
-  purpose; writes only what the human confirms, stages the milestone writes the calling
-  environment's own write policy refuses, and posts a dated triage comment recording each
-  decision. Never ranks, never creates or closes a milestone the human hasn't named, and
+  purpose, with a build-order position, a reason, and the evidence it cites — which the
+  human accepts whole or adjusts one issue at a time; writes only what the human confirms,
+  stages the milestone writes the calling environment's own write policy refuses, and posts
+  a dated triage comment recording each decision. Recommends but never decides, never
+  creates or closes a milestone the human hasn't named, and
   refuses to edit a milestone description `pointers.plan_anchor` already names — that needs
-  `/way-of-working:handoff`'s own re-anchor instead. Mechanical triage, not design; any
+  `/way-of-working:handoff`'s own re-anchor instead. Grounded triage, not design; any
   model.
 - **`/way-of-working:park-sprint <next-id>`** — set the live sprint aside mid-flight:
   snapshot its cursor into tracked `.ai/parked/<id>-*`, seed the live cursor for the next

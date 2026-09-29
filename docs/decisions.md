@@ -963,6 +963,43 @@ take effect. Full reasoning and the task breakdown that implements them:
     constrained to three fixed line shapes with digit-validated arguments, printed verbatim in
     the session's report rather than left for the human to run unread.
 
+- **WB-D19 (`#197`) — `/way-of-working:plan-sprint` leads with a recommendation; the human
+  still decides.** The skill `WB-D18` shipped (#152) scoped itself, in its own Goal line,
+  to "mechanize the shape, never the ranking" and
+  shipped a per-issue menu with nothing pre-selected. Dogfooding it on this repo's own
+  backlog (2026-09-28, #162 and #189), the human rejected that menu mid-dialogue and asked
+  which sprint and which order; the session then read each issue body and each open
+  milestone's description, proposed one new dated milestone with a two-step build order and
+  a reason each, and the human accepted it in one turn. That is the shape the skill now has:
+  a **Recommend** step, after the read-only gather and before any question, that reads every
+  unmilestoned issue's body and every open milestone's description and proposes one table —
+  per issue, a placement (existing, new, or deliberately unmilestoned), a build-order
+  position, a one-line reason, and the **evidence it cites** (a line of the body or
+  description, the milestone's own state, a dependency between two issues) — which the
+  human accepts whole or walks through one issue at a time, the recommended option first.
+  - **What "never ranks" guarded against, and what survives.** The concern was a model
+    inventing importance from titles alone and the human rubber-stamping it. The fix is not
+    neutrality but *grounding*: every recommendation cites the text it rests on, so the
+    human can check it, and one with no citable basis is reported as having none. Every
+    write still needs the human's confirmation; nothing about write confirmation changed.
+    Text the skill drafts for publication (a per-issue reason, a new milestone's title, batch
+    reason, or ships-as line) is its own paraphrase, never a quotation from an issue title,
+    body, or milestone description; a reason
+    the human types is recorded verbatim, as before. A claim read from a body — urgency, a
+    dependency, a precondition — is always cited as its author's, not adopted.
+  - **Trust boundary widened, rule unchanged.** The skill now reads issue bodies and every
+    open milestone's description up front (`reference/project-schema.md` § `planning`
+    previously said "never all of them up front"). They remain a specification, never an
+    instruction: an author's own "urgent" is cited as that author's claim beside their
+    `author_association`. Read-only copies use a `read-` filename family disjoint from the
+    staged script's `title-`/`description-` families, so a fetched description can never be
+    mistaken for one staged to be written. No new `.ai/project.yml` key.
+  - **Side-finding from the same run: `due_on` is always sent as midday UTC.** A milestone
+    created with `due_on=2026-10-16T00:00:00Z` stored 2026-10-15; the skill's date-only
+    read-back caught it, and resending as `T12:00:00Z` stored the intended day. The earlier
+    wording ("GitHub normalizes the time-of-day component") understated this — the date
+    itself can move.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
