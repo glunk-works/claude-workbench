@@ -431,8 +431,9 @@ If any precondition fails, stop and report why — do not proceed.
      moment any one line fails. **Print the whole script, verbatim, in the final Report**
      (below), with an explicit "read this before running it" line — never just a path to it —
      **and print the content of every file it references alongside it**, so the human can
-     confirm the text they approved in the **Recommend** or **Placement dialogue** step is
-     the same text the script actually sends,
+     confirm the text they approved earlier in this pass — a placement or reason in the
+     **Recommend** or **Placement dialogue** step, a new milestone's full description in the
+     **Sequence confirm** step — is the same text the script actually sends,
      not merely that the script's shape looks right.
    - `due_on`, wherever it is substituted (live or staged), is **always sent as midday UTC —
      `YYYY-MM-DDT12:00:00Z`, never midnight and never the bare date** — and validated against
@@ -526,15 +527,21 @@ If any precondition fails, stop and report why — do not proceed.
    `description-new<k>.txt` for a milestone created live this pass) **with exactly one
    newline appended to the composed side**:
    ```bash
-   { cat "<scratch>/description-m<N>.txt"; printf '\n'; } | sha256sum
+   { cat "<scratch>/description-m<N>.txt"; printf '\n'; } | sha256sum   # or description-new<k>.txt
    sha256sum "<scratch>/read-milestone-<N>-after.txt"
    ```
-   The two sides are produced differently and are never byte-identical as written: GitHub
-   stores the description's bytes as sent (a trailing newline included — observed live), and
-   `gh`'s embedded `--jq` prints a string result followed by one newline of its own, so the
-   fetched file is always the stored bytes plus one `\n`. Appending that one newline to the
-   composed side is the whole normalization; without it every successful write reads as a
-   mismatch and is wrongly staged. `bin/plan-anchor.sh` compares two *fetched* files, so it
+   (`shasum -a 256` where `sha256sum` is absent; compare the first field of each output only —
+   the second is `-` on one side and the path on the other.) The two sides are produced
+   differently and are never byte-identical as written: GitHub stores the description's
+   bytes as sent (a trailing newline included — observed live), and `gh`'s embedded `--jq`
+   prints a string result followed by one newline of its own, so for any *string*
+   description — an empty one included, since `// empty` fires only on `null` — the fetched
+   file is the stored bytes plus one `\n`. Appending that one newline to the composed side
+   is the whole normalization; without it every successful write reads as a mismatch and is
+   wrongly staged. Should GitHub ever hand back `null` for a description this skill emptied,
+   the fetched file is zero bytes, the compare fails, and the write is staged and named —
+   the fail-closed direction, on a path no template here produces (a new milestone's
+   description always opens with its confirmed batch reason). `bin/plan-anchor.sh` compares two *fetched* files, so it
    needs no such step — cite it only for the hashing tool (`sha256sum`/`shasum -a 256`), and
    never capture either side through `$(...)`, which strips trailing newlines from whichever
    side it is used on.
