@@ -964,7 +964,8 @@ take effect. Full reasoning and the task breakdown that implements them:
     the session's report rather than left for the human to run unread.
 
 - **WB-D19 (`#197`) — `/way-of-working:plan-sprint` leads with a recommendation; the human
-  still decides.** `WB-D18` scoped the skill to "mechanize the shape, never the ranking" and
+  still decides.** The skill `WB-D18` shipped (#152) scoped itself, in its own Goal line,
+  to "mechanize the shape, never the ranking" and
   shipped a per-issue menu with nothing pre-selected. Dogfooding it on this repo's own
   backlog (2026-09-28, #162 and #189), the human rejected that menu mid-dialogue and asked
   which sprint and which order; the session then read each issue body and each open
@@ -980,7 +981,10 @@ take effect. Full reasoning and the task breakdown that implements them:
     inventing importance from titles alone and the human rubber-stamping it. The fix is not
     neutrality but *grounding*: every recommendation cites the text it rests on, so the
     human can check it, and one with no citable basis is reported as having none. Every
-    write still needs the human's confirmation; nothing about the write path changed.
+    write still needs the human's confirmation; nothing about write confirmation changed.
+    A reason that gets published (a triage comment, a new milestone's description) is the
+    skill's own paraphrase, never a quotation from a body, and a claim read from a body —
+    urgency, a dependency, a precondition — is always cited as its author's, not adopted.
   - **Trust boundary widened, rule unchanged.** The skill now reads issue bodies and every
     open milestone's description up front (`reference/project-schema.md` § `planning`
     previously said "never all of them up front"). They remain a specification, never an

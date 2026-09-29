@@ -61,7 +61,8 @@ proxy/router) is explicitly out of scope.
 "no milestone picked yet" into a concrete milestone placement for the human to pick up — the
 backlog-triage altitude, across every open issue and milestone, not the single sprint's own
 design that the `OPUS (plan)` box's milestone-description-plus-spec-comment work is about.
-It is mechanical (any model), so it is not drawn as its own model box in the diagram below.
+Its recommendation is a checkable proposal the human decides on, not a design, so it is not
+drawn as its own model box in the diagram below (any model).
 
 ```
 OPUS (plan)    design/plan the sprint -> write sprint_plan.md + roadmap -> /way-of-working:handoff
@@ -324,7 +325,7 @@ description and cannot be mistaken for the human's approval.
   a dated triage comment recording each decision. Recommends but never decides, never
   creates or closes a milestone the human hasn't named, and
   refuses to edit a milestone description `pointers.plan_anchor` already names — that needs
-  `/way-of-working:handoff`'s own re-anchor instead. Mechanical triage, not design; any
+  `/way-of-working:handoff`'s own re-anchor instead. Grounded triage, not design; any
   model.
 - **`/way-of-working:park-sprint <next-id>`** — set the live sprint aside mid-flight:
   snapshot its cursor into tracked `.ai/parked/<id>-*`, seed the live cursor for the next

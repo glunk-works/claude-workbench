@@ -1,5 +1,6 @@
 #!/bin/sh
-# The read-only gather step behind /way-of-working:plan-sprint's placement dialogue
+# The read-only gather step behind /way-of-working:plan-sprint's recommendation table
+# and placement dialogue
 # (reference/project-schema.md § `planning`) -- open issues with no milestone, open
 # milestones in due-date order, every milestone's title (for a naming-collision
 # check), and a specific milestone's own open issues (for the denied-write
@@ -54,12 +55,13 @@
 # sentinel needed: under byte-value ordering, every ASCII digit (0x30-0x39, the
 # first character of any ISO date) sorts before the lowercase letter `n` (0x6E).
 #
-# Milestone DESCRIPTIONS are deliberately not part of any subcommand's output --
-# a multi-line description cannot be a TSV field, and no gather query here needs
-# one to build its report. A specific milestone's full description is fetched
-# individually, on demand, by the calling skill, via the same direct-redirection
-# pattern used below (never `$(...)`, which strips a trailing newline and would
-# make a later edit's read-back disagree with what was actually written).
+# Milestone DESCRIPTIONS and issue BODIES are deliberately not part of any
+# subcommand's output -- a multi-line text cannot be a TSV field. The calling
+# skill fetches each one individually (every open milestone's description and
+# every unmilestoned issue's body, up front, as the evidence its recommendation
+# cites), via the same direct-redirection pattern used below (never `$(...)`,
+# which strips a trailing newline and would make a later edit's read-back
+# disagree with what was actually written).
 #
 # Permitted toolset: POSIX sh, `gh` (using only its own embedded --jq), and
 # whatever sort ships on the machine, invoked under `LC_ALL=C` for deterministic

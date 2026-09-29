@@ -346,7 +346,9 @@ planning:
   due-date ordering, so the script sorts what it reads rather than trusting the call's order
   — both are about making the same due-date-ascending, undated-last shape true, one on the
   page a human sees, the other in what a tool reads. No other skill reads or depends on
-  `due_on`'s value; it carries no schedule commitment beyond ordering.
+  `due_on`'s value; it carries no schedule commitment beyond ordering. `plan-sprint` sends
+  it as midday UTC (`T12:00:00Z`): a midnight-UTC value has been observed to store the
+  previous calendar date.
 
 #### The trust boundary this kind moves
 
