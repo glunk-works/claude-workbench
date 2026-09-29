@@ -85,6 +85,8 @@ jobs:
         run: sh tests/schema-complete.test.sh
       - name: review-sandbox.sh fixtures
         run: sh tests/review-sandbox.test.sh
+      - name: invariants-check.sh reach-order fixtures
+        run: sh tests/invariants-reach-order.test.sh
 
   # WB-D15 (#45): workflow security scanner, modeled on bounty-infra's own `zizmor` job
   # (`ci.yml`). Unchained like `coupling`/`invariants` above -- a future required check
