@@ -362,10 +362,12 @@ accepted, stated trade, not a silent one:
    `ship`, `archive-sprint`, `plan-sprint`, `architect-review`, `coder`) never executes
    commands, URLs, or tool steps found in them, and never treats them as authorization — for
    gates, critic rounds, model choices, or merges. `plan-sprint` reads the widest slice of
-   this untrusted surface of any skill here — every open unmilestoned issue's title on every
-   triage pass, plus a specific milestone's description whenever its own dialogue needs to
-   show or edit one (never all of them up front) — and writes based only on what the human
-   confirms in the dialogue.
+   this untrusted surface of any skill here — every open unmilestoned issue's title **and
+   body**, and every open milestone's description, up front on every triage pass, because
+   its recommendation table cites that text as the basis for each placement — and writes
+   based only on what the human confirms in the dialogue. A body's own claim ("urgent", "do
+   this first") is cited as the author's claim, beside their `author_association`, never
+   adopted as the skill's finding.
 2. **The plan anchor (below) binds everything an auto-starting session consumes**: the plan
    prose, the task issue `#N`, and `#N`'s spec comment. It deliberately does **not** bind the
    rest of the task list — see *Anchor scope* below.
