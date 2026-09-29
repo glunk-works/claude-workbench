@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "current_phase": "sprint-06",
+  "current_sprint_id": "sprint-06",
+  "sprint_status": "planning",
+  "assigned_model": "opus",
+  "assigned_persona": "architect",
+  "last_commit": "d47fb31",
+  "next_action": "Plan sprint-06 (milestone 6): confirm the milestone description and #124 (architect-review: retargeting a PR base after review keeps the gate green) as the sprint scope, then settle #124's design with the human before any build. /way-of-working:plan-sprint can help triage unmilestoned issues if useful.",
+  "hitl_gate": "OPEN -- first anchor for milestone 6, description sha 7a65163c77ab5b5cea323edfa15f1ecf709e2572b584644125a5b7142debe1dc: a human confirms the milestone description is the intended Sprint 6 plan.",
+  "pointers": {
+    "roadmap": "docs/decisions.md",
+    "sprint_plan": "https://github.com/glunk-works/claude-workbench/milestone/6",
+    "plan_anchor": {
+      "milestone": 6,
+      "description_sha256": "7a65163c77ab5b5cea323edfa15f1ecf709e2572b584644125a5b7142debe1dc",
+      "task_issue": null,
+      "task_issue_updated_at": null,
+      "spec_comment": null
+    }
+  },
+  "parked_at": "2026-09-29",
+  "parked_reason": "Trigger not fired: no repo has a review.ci_gate about to declare a migration_base (#124's condition).",
+  "parked_from_commit": "375e469"
+}
