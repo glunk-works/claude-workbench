@@ -4,19 +4,21 @@
 *the local green gate checks what it claims, in reasonable time*. Status: **implementing**.
 
 **Just done (2026-09-29):**
-- Rewrote milestone 7's description: #197 had already merged in #198, so it moved out of the
-  build order and into a "done ahead of the build" line; the 0.14.0 release step stays.
-- The human confirmed the edited description as the Sprint 7 plan.
-- First anchor for milestone 7, description sha `3c373465bc9b46757d47e874f6e00777396963b710c94809024c81cee8c8865b`,
-  task #162 (planning session, no code diff, so no critic pass).
+- #162 merged as #202 (`71b63f4`): invariants check 3 now matches the real
+  `gh api --paginate repos/...` ruleset call, reports a missing call loudly, and has a
+  fixture suite (`tests/invariants-reach-order.test.sh`) that goes red against the old script.
+- Critic pass on #162: `architect`, 2 rounds, converged; no second-opinion round. No review
+  CI gate here, so that pass and the human's merge were the only review.
 
-**Next:** task #162 — fix `invariants-check.sh`'s reach-precedes-ruleset check for /resume
-so its regex matches the real `gh api --paginate repos/...` form, add the fixture the issue
-names, run the local green gate, then `/way-of-working:critic-gate` (architect) and
-`/way-of-working:ship`. On **sonnet** (`coder`).
+**Next:** task #189 — make `tests/schema-complete.test.sh` not read as hung on Git Bash
+(about 2m15s, past the default 120s timeout). First put the choice to the human — batch the
+`yq` calls, or keep them and document the runtime — then implement it, run the local green
+gate, then `/way-of-working:critic-gate` (`architect`; `docs-consistency` if it settles on
+documenting) and `/way-of-working:ship`. On **sonnet** (`coder`). After it: the
+`chore(release)` step (0.14.0) from the milestone's build order.
 
-**HITL Gate: NONE OPEN.** The human confirmed the Sprint 7 plan on 2026-09-29. Next gate:
-the human merges #162's PR.
+**HITL Gate: OPEN.** #189 needs the batch-vs-document decision from the human before any
+code. Then the human merges #189's PR.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 7](https://github.com/glunk-works/claude-workbench/milestone/7) ·
