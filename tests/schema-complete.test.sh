@@ -343,6 +343,42 @@ assert_eq 'pr_base as a block scalar (trailing newline a shell capture would str
   'incomplete
 invalid pr_base "main\n"' "$(run_check "$f")"
 
+echo "# check -- a value cannot forge a row, and a second document cannot add rows (#189)"
+
+# The batched read emits one tab-separated row per key. A security-critic pass on
+# the batching found (1) that a verbatim YAML tag `!<...%0A...>` is percent-decoded
+# by yq into a real newline, so a hostile value could write a whole forged row for
+# another key, leaving `pr_base: "m$(id>&2)"` reading `complete`; and (2) that
+# yq runs the expression once PER DOCUMENT, so `---` plus a second document made
+# two row sets that each looked fine. The tag is now a closed set inside yq, and
+# the rows must match the key table exactly, in order.
+f="$tmp/forged_row_via_tag.yml"
+awk '{ if ($0 == "pr_base: main") print "pr_base: !<!!str%09true%09%22main%22%0Aroadmap%09value%09-%09true%09!!str> \"m$(id>&2)\""; else print }' "$base" >"$f"
+assert_eq 'a percent-encoded tag cannot forge a row that validates a hostile pr_base' \
+  'incomplete
+invalid pr_base "m$(id>&2)"' "$(run_check "$f")"
+
+f="$tmp/two_documents.yml"
+{ cat "$base"; echo '---'; sed 's/^pr_base: main/pr_base: bin\/evil.sh/' "$base"; } >"$f"
+assert_eq 'a second YAML document is unreadable, never a second passing row set' \
+  "unreadable" "$(run_check "$f")"
+
+f="$tmp/enum_trailing_newline.yml"
+awk '{ if ($0 == "  coder: sonnet") { print "  coder: |"; print "    sonnet" } else print }' "$base" >"$f"
+assert_eq 'an enum value with a trailing newline is invalid (tightened by #189, was complete)' \
+  'incomplete
+invalid models.coder "sonnet\n"' "$(run_check "$f")"
+
+f="$tmp/root_sequence.yml"; printf -- '- a\n- b\n' >"$f"
+assert_eq 'a root that is a sequence, not a mapping, is unreadable (fail closed)' \
+  "unreadable" "$(run_check "$f")"
+
+f="$tmp/aliased_list_keeps_its_value.yml"
+awk '{ if ($0 == "code_paths:") { print "cp: &cp [a]"; print "code_paths: *cp" } else if ($0 == "  - src/") { next } else print }' "$base" >"$f"
+assert_eq 'an aliased value (empty yq tag) reports its own value, columns do not shift' \
+  'incomplete
+invalid code_paths ["a"]' "$(run_check "$f")"
+
 echo "# check -- a shape check requires the node to actually BE a string"
 
 # An architect pass on this script's first version found that a shape check
