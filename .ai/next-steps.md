@@ -1,24 +1,28 @@
 # Cursor — claude-workbench
 
 **Now:** **Sprint 7** — [milestone 7](https://github.com/glunk-works/claude-workbench/milestone/7),
-*the local green gate checks what it claims, in reasonable time*. Status: **implementing**.
+*the local green gate checks what it claims, in reasonable time*. Status: **implementing**;
+both issues are merged, only the release step remains.
 
-**Just done (2026-09-29):**
-- #162 merged as #202 (`71b63f4`): invariants check 3 now matches the real
-  `gh api --paginate repos/...` ruleset call, reports a missing call loudly, and has a
-  fixture suite (`tests/invariants-reach-order.test.sh`) that goes red against the old script.
-- Critic pass on #162: `architect`, 2 rounds, converged; no second-opinion round. No review
-  CI gate here, so that pass and the human's merge were the only review.
+**Just done (2026-09-30):**
+- #189 merged as #204 (`ab6eb2a`): `schema-complete.sh` reads each key table in one `yq`
+  call; the fixture suite went from about 2m15s to about 15s on Git Bash. Batching was the
+  human's choice over documenting the runtime.
+- Critic pass on #189: `architect` + `security-critic`, 3 rounds, converged; no second-opinion
+  round (declined). Round 1 found two real exploits in the batching (a percent-encoded YAML
+  tag could forge a row; a multi-document file read `complete`), both fixed with fixtures.
+  No review CI gate here, so that pass and the human's merge were the only review.
+- Left open, pre-existing and out of scope, candidates for issues: yq-vs-other-parser
+  differences (duplicate keys, empty leading documents); shapeless `value` keys accept a
+  map/seq behind a custom tag; routing keys may start with `-`.
 
-**Next:** task #189 — make `tests/schema-complete.test.sh` not read as hung on Git Bash
-(about 2m15s, past the default 120s timeout). First put the choice to the human — batch the
-`yq` calls, or keep them and document the runtime — then implement it, run the local green
-gate, then `/way-of-working:critic-gate` (`architect`; `docs-consistency` if it settles on
-documenting) and `/way-of-working:ship`. On **sonnet** (`coder`). After it: the
-`chore(release)` step (0.14.0) from the milestone's build order.
+**Next:** the release step, item 3 of the milestone's build order — `chore(release)`: bump
+`way-of-working` to 0.14.0 (covers #197/#198, #162 and #189, which touched `bin/`), tag it,
+then bump this repo's own pin. Follow the earlier `chore(release)` PRs for the exact files.
+Then `/way-of-working:critic-gate` (`architect`) and `/way-of-working:ship`. On **sonnet**
+(`coder`). This is not one issue's build, so `/way-of-working:resume` waits for a "go".
 
-**HITL Gate: OPEN.** #189 needs the batch-vs-document decision from the human before any
-code. Then the human merges #189's PR.
+**HITL Gate: NONE OPEN.** The human merges the release PR.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 7](https://github.com/glunk-works/claude-workbench/milestone/7) ·
