@@ -1080,3 +1080,11 @@ amendment (PR #194) records why and when to revisit, and #158 and its follow-up 
 closed as not planned. PR #194 also runs `tests/review-sandbox.test.sh` in CI and marks three
 `bin/` scripts executable; it landed after the tag and is unreleased. Sprint 5 closed at
 `4784d2e` (PR #194), not at a release tag.
+
+`v0.14.0` carries Sprint 7's shipped work (milestone 7, *the local green gate checks what it
+claims, in reasonable time*): `WB-D19` (#197, PR #198) makes `/way-of-working:plan-sprint`
+lead with a recommended placement and build order, `invariants-check.sh`'s
+reach-precedes-ruleset check now matches the real `--paginate` call (#162, PR #202), and
+`schema-complete.sh` reads each key table in one `yq` call, taking its fixture suite from
+about 2m15s to about 15s on Git Bash (#189, PR #204). The release is PR #206 and this repo's
+own pin bump to `v0.14.0` is PR #207. Sprint 7 closed at `4d63776` (PR #207).
