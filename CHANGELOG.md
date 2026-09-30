@@ -29,6 +29,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [0.14.0] — 2026-09-29
+
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
+tooling note: `bin/schema-complete.sh` now needs a `yq` that supports `to_json(0)`,
+`to_string`, `//` and `select` (verified on v4.53.6; older v4 releases are untested). On a
+`yq` that cannot parse it, `/way-of-working:resume` reports the schema `unreadable` and stops
+before reading the cursor — upgrade `yq`.
+
+### Changed
+
+- **`/way-of-working:plan-sprint` leads with a recommended placement** — instead of a neutral
+  menu, it proposes a recommended milestone, build order, and the cited evidence for each
+  unmilestoned issue, which the human accepts as a table or overrides one at a time. It now
+  reads every unmilestoned issue's title **and body** and every open milestone's description
+  up front (recorded in the `planning` trust boundary, `project-schema.md`), and sends a new
+  milestone's `due_on` as midday UTC (`T12:00:00Z`) — a midnight-UTC value has been observed
+  to store the previous calendar date. New decision `WB-D19` (#197, PR #198).
+- **`/way-of-working:architect-review` handles a trusted PR that changes dependency manifests
+  or lockfiles differently** — any reproduction that installs or fetches dependencies would
+  execute the new registry code locally, so every such claim now comes from the CI witness
+  read instead, and a claim CI cannot witness is marked *not witnessed* rather than falling
+  back to `review-sandbox.sh run`. The posted review body has a third shape, *trusted with a
+  dependency change*, and a Dependabot PR is expected to be classed untrusted
+  (`assoc=CONTRIBUTOR`/`NONE`). See `WB-D13`'s amendment (#158, PR #194).
+
+### Fixed
+
+- **`bin/schema-complete.sh` reads each key table in one `yq` call** instead of one per key;
+  its fixture suite went from about 2m15s to about 15s on Git Bash. The batching closed two
+  exploits found in review — a percent-encoded YAML tag could forge a row, and a
+  multi-document file read `complete` — both now covered by fixtures (#189, PR #204). Stricter
+  outcomes follow: a trailing empty `---` document or a sequence root
+  now reads `unreadable`, and an enum value such as `"opus\n"` now reads `invalid`.
+- **`bin/` scripts are executable** (`plan-anchor.sh`, `review-base-anchor.sh`,
+  `review-sandbox.sh`: mode `100644` → `100755`), and `review-sandbox.sh`'s header now records
+  that the container option (#158) is deferred rather than scheduled (PR #194).
+
 ## [0.13.0] — 2026-09-26
 
 **⚠️ Migration:** every key `reference/project-schema.md` documents must now be **present**
