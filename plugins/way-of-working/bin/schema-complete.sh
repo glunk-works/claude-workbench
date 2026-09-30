@@ -115,6 +115,32 @@
 # missing from PATH is `unreadable`, never treated as "no findings, therefore
 # complete" -- `complete` needs positive evidence, exactly like
 # `plan-anchor.sh`'s header states for its own `unreadable` cases.
+#
+# --- One yq call per key table, not per key (#189) -------------------------
+#
+# Every fact the checks need (present, tag, charset, compact JSON) is read in ONE
+# `yq` expression per table, because process spawns dominate on Git Bash: the
+# per-key form took ~100 spawns and ~3.6s per run (the fixture suite, ~2m15s).
+# The `has()` query above is therefore `select(tag == "!!map") | has(...)`, which
+# also reads as absent under a scalar parent instead of failing the whole call.
+# Consequences kept on purpose, each with a fixture:
+#   - rows must match the key table exactly, in order, else `unreadable` (a
+#     multi-document file, or any row a value could forge, is never `complete`);
+#   - the tag field is a closed set inside yq (a verbatim `!<..%0A..>` tag is
+#     percent-decoded by yq into a real newline);
+#   - an enum value must also pass the charset test, so `models.coder: "opus\n"`
+#     is now `invalid` (it used to pass, via the lossy `$(...)` capture);
+#   - a root that is a sequence is `unreadable` (yq refuses to index it -- a side
+#     effect, not a deliberate check); a scalar, null or empty root still reads
+#     `incomplete` with every key `missing`, as before;
+#   - a trailing empty document (`---` after the content) is `unreadable` too;
+#     it used to read every key `missing`, because yq answered once per document
+#     (`true` then `false`), which never equalled `true`;
+#   - a present child under a custom-tagged parent map (`planning: !custom`) reads
+#     `missing`, because the guard requires the literal `!!map` tag. Fails closed,
+#     and an exotic form; `yq`'s `kind` operator would restore the old answer.
+# Needs a yq with `to_json(0)`, `to_string`, `//` and `select`; verified on
+# v4.53.6. An older yq that cannot parse the expression prints `unreadable`.
 set -eu
 
 # --- the required key table -------------------------------------------------
@@ -271,26 +297,52 @@ is_branch_name() { # is_branch_name <value> -- safe charset, round-trips check-r
   [ "$out" = "$v" ]
 }
 
-path_present() { # path_present <dotted-path> -- exit 0 present, 1 absent
-  p="$1"
-  case "$p" in
-    *.*)
-      parent="${p%.*}"
-      last="${p##*.}"
-      q=".${parent} | has(\"$last\")"
-      ;;
-    *)
-      last="$p"
-      q="has(\"$last\")"
-      ;;
-  esac
-  ok=$(yq eval "$q" "$FILE" 2>/dev/null) || return 1
-  [ "$ok" = "true" ]
+
+# ONE `yq` call reads every fact the checks below need, instead of 3-5 spawns per
+# key (#189: ~100 spawns per run made the fixture suite take ~2m15s on Git Bash,
+# where process-spawn latency dominates). Each key becomes one tab-separated row,
+# in table order:
+#   <path> <kind> <shape> <present> <tag> <safe> <json>
+# `kind`/`shape` are the table's own literals, echoed back so the loop below needs
+# no lookup. `present` is `has()` on the parent, guarded by `select(tag == "!!map")`
+# so a scalar parent (`planning: 5`) reads as absent, never as a failed call that
+# would take every other key down with it. `safe` is the [A-Za-z0-9._/-] charset
+# test done INSIDE yq, against the parsed string, never against a shell-captured
+# `$(...)` value: `$(...)` strips every trailing newline, so `pr_base: "main\n"`
+# would read back as the harmless "main" and pass a check that never saw the
+# newline (a round-2 security-critic finding). `json` is `to_json(0)` -- compact,
+# one line, newlines escaped -- so a row can never be split by a value, and a
+# string that passed `safe` has no escapes to undo (see `unquote`). `@tsv` is not
+# used: it csv-quotes fields containing `"`, which every JSON string does.
+TAB=$(printf '\t')
+
+build_rows() { # build_rows <table> -- the yq expression, one row per key
+  expr=''
+  while IFS=' ' read -r path kind shape; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      *.*) parent=".${path%.*}"; last="${path##*.}" ;;
+      *)   parent="."; last="$path" ;;
+    esac
+    v="($parent | select(tag == \"!!map\") | .${last})"
+    row="\"$path\t$kind\t$shape\t\""
+    row="$row + (((($parent | select(tag == \"!!map\") | has(\"$last\")) // false)) | to_string)"
+    row="$row + \"\t\" + (($v | tag | select(. == \"!!str\" or . == \"!!null\" or . == \"!!map\" or . == \"!!seq\" or . == \"!!bool\" or . == \"!!int\" or . == \"!!float\")) // \"other\")"
+    row="$row + \"\t\" + ((($v | select(tag == \"!!str\") | test(\"^[A-Za-z0-9._/-]+\$\")) // false) | to_string)"
+    row="$row + \"\t\" + (($v | to_json(0)) // \"null\")"
+    if [ -z "$expr" ]; then expr="$row"; else expr="$expr, $row"; fi
+  done <<EOF_ROWS
+$1
+EOF_ROWS
+  printf '%s' "$expr"
 }
 
-read_tag() { yq eval ".${1} | tag" "$FILE" 2>/dev/null; }
-read_scalar() { yq eval ".${1}" "$FILE" 2>/dev/null; }
-read_json() { yq eval -o=json -I=0 ".${1}" "$FILE" 2>/dev/null; }
+unquote() { # unquote <json-string> -- "abc" -> abc. Only ever called on a string
+            # that already passed `safe` (charset excludes " and \), so there are
+            # no JSON escapes to undo.
+  v="${1#\"}"
+  printf '%s' "${v%\"}"
+}
 
 enum_match() { # enum_match <value> <pipe-separated-set>
   v="$1"; set_str="$2"
@@ -304,53 +356,30 @@ enum_match() { # enum_match <value> <pipe-separated-set>
   return "$match"
 }
 
-invalid_finding() { # invalid_finding <path> -- reads+truncates the offending value
-                     # ONLY when a finding is actually about to be recorded, not on
-                     # every key -- an extra `yq` spawn per VALID key is pure waste,
-                     # and on some machines that overhead is not free (confirmed live:
-                     # a full run took ~6s per invocation immediately after a burst of
-                     # unrelated git subprocess activity, vs. sub-second in isolation).
-  add_finding "invalid $1 $(truncate_json "$(read_json "$1")")"
+invalid_finding() { # invalid_finding <path> <json>
+  add_finding "invalid $1 $(truncate_json "$2")"
 }
 
-has_only_safe_chars_at() { # has_only_safe_chars_at <path> -- the charset check done
-                            # INSIDE yq, against the file directly, never against a
-                            # shell-captured `$(...)` value. `$(...)` strips EVERY
-                            # trailing newline before a shell variable ever sees it, so
-                            # `pr_base: "main\n"` (or the block form `pr_base: |` \n
-                            # `  main`) reads back as the harmless string "main" --
-                            # `is_safe_chars` on that captured value can never see the
-                            # newline it validated. A security-critic pass confirmed
-                            # this live in round 2, after round 1's charset guard closed
-                            # the shell-metacharacter path. Not a real injection (a
-                            # shell reader elsewhere strips the same trailing newline the
-                            # same way), but "complete means safe to interpolate" must be
-                            # true of the actual bytes, not of a lossy shell capture of
-                            # them -- checking inside yq, before any capture happens,
-                            # closes that gap at the source instead of special-casing it.
-  yq eval ".${1} | test(\"^[A-Za-z0-9._/-]+\$\")" "$FILE" 2>/dev/null | grep -qx true
-}
-
-check_value_shape() { # check_value_shape <path> <tag> <shape> -- exit 0 if OK, prints
-                       # nothing; caller records the finding. Requires tag = !!str for
-                       # every scalar shape (ownername/branch/enum:*) -- a critic pass
-                       # on this script's first version found `pr_base: true` (tag
-                       # !!bool) and `repo: [a/b]` (tag !!seq) both read as VALID,
-                       # because `git check-ref-format`/the owner-name split ran on
-                       # yq's plain scalar rendering of the value without ever
-                       # checking what kind of node produced that rendering.
+check_value_shape() { # check_value_shape <shape> <tag> <safe> <json> -- exit 0 if OK,
+                       # prints nothing; caller records the finding. Requires tag =
+                       # !!str for every scalar shape (ownername/branch/enum:*) -- a
+                       # critic pass on this script's first version found `pr_base:
+                       # true` (tag !!bool) and `repo: [a/b]` (tag !!seq) both read
+                       # as VALID, because `git check-ref-format`/the owner-name
+                       # split ran on yq's plain scalar rendering of the value without
+                       # ever checking what kind of node produced that rendering.
                        # "Shape-valid" now requires "is actually a string" first.
-  path="$1"; tag="$2"; shape="$3"
+  shape="$1"; tag="$2"; safe="$3"; json="$4"
   case "$shape" in
     ownername)
-      [ "$tag" = '!!str' ] && has_only_safe_chars_at "$path" && is_owner_name "$(read_scalar "$path")"
+      [ "$tag" = '!!str' ] && [ "$safe" = true ] && is_owner_name "$(unquote "$json")"
       ;;
     branch)
-      [ "$tag" = '!!str' ] && has_only_safe_chars_at "$path" && is_branch_name "$(read_scalar "$path")"
+      [ "$tag" = '!!str' ] && [ "$safe" = true ] && is_branch_name "$(unquote "$json")"
       ;;
     enum:*)
       set_str="${shape#enum:}"
-      [ "$tag" = '!!str' ] && enum_match "$(read_scalar "$path")" "$set_str"
+      [ "$tag" = '!!str' ] && [ "$safe" = true ] && enum_match "$(unquote "$json")" "$set_str"
       ;;
     list)
       # A nullable key whose non-null form is a LIST, never a scalar --
@@ -373,75 +402,85 @@ check_value_shape() { # check_value_shape <path> <tag> <shape> -- exit 0 if OK, 
   esac
 }
 
-check_one() { # check_one <path> <kind> <shape>
-  path="$1"; kind="$2"; shape="$3"
+check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
+  path="$1"; kind="$2"; shape="$3"; present="$4"; tag="$5"; safe="$6"; json="$7"
 
-  if ! path_present "$path"; then
+  if [ "$present" != true ]; then
+    [ "$kind" = cigate ] && kind=nullable   # printed as the interview asks it
     add_finding "missing $path $kind"
     return
   fi
 
-  tag="$(read_tag "$path")"
-
   case "$kind" in
     value)
       if [ "$tag" = '!!null' ]; then
-        invalid_finding "$path"; return
+        invalid_finding "$path" "$json"; return
       fi
-      check_value_shape "$path" "$tag" "$shape" || { invalid_finding "$path"; return; }
+      check_value_shape "$shape" "$tag" "$safe" "$json" || { invalid_finding "$path" "$json"; return; }
       ;;
     nullable)
       if [ "$tag" = '!!null' ]; then
         :   # valid -- the explicit no-value answer
       else
-        check_value_shape "$path" "$tag" "$shape" || { invalid_finding "$path"; return; }
+        check_value_shape "$shape" "$tag" "$safe" "$json" || { invalid_finding "$path" "$json"; return; }
       fi
       ;;
     enum:*)
       set_str="${kind#enum:}"
-      if [ "$tag" != '!!str' ]; then invalid_finding "$path"; return; fi
-      enum_match "$(read_scalar "$path")" "$set_str" || { invalid_finding "$path"; return; }
+      if [ "$tag" != '!!str' ] || [ "$safe" != true ]; then invalid_finding "$path" "$json"; return; fi
+      enum_match "$(unquote "$json")" "$set_str" || { invalid_finding "$path" "$json"; return; }
       ;;
     list)
-      [ "$tag" = '!!seq' ] || { invalid_finding "$path"; return; }
+      [ "$tag" = '!!seq' ] || { invalid_finding "$path" "$json"; return; }
+      ;;
+    cigate)
+      case "$tag" in
+        '!!null') : ;;
+        '!!map') cigate_is_map=1 ;;
+        *) invalid_finding "$path" "$json" ;;
+      esac
       ;;
   esac
 }
 
-cigate_is_map=0
-# A HEREDOC, never a pipe (`cmd | while read`) -- a pipe forks the loop body
-# into a subshell under some shells even without an explicit `()`, and
-# `findings`/`cigate_is_map` set inside it would not survive to the parent.
-# `<<EOF` keeps the loop body in THIS shell's process, so the accumulation
-# below is visible after the loop exits.
-while IFS=' ' read -r path kind shape; do
-  [ -n "$path" ] || continue
-  if [ "$path" = "review.ci_gate" ]; then
-    if ! path_present "$path"; then
-      add_finding "missing $path nullable"
-      continue
-    fi
-    tag="$(read_tag "$path")"
-    case "$tag" in
-      '!!null') : ;;
-      '!!map') cigate_is_map=1 ;;
-      *) invalid_finding "$path" ;;
-    esac
-    continue
-  fi
-  check_one "$path" "$kind" "$shape"
-done <<EOF_KEYS
-$MAIN_KEYS
-EOF_KEYS
-
-if [ "$cigate_is_map" = 1 ]; then
-  while IFS=' ' read -r path kind shape; do
+run_table() { # run_table <table> -- one yq call, then check each row
+  # An outright yq failure here (the file already parsed above) is unreadable, not
+  # a pile of per-key findings: fail closed rather than guess.
+  rows=$(yq eval "$(build_rows "$1")" "$FILE" 2>/dev/null) || { echo unreadable; exit 0; }
+  # The output must be exactly one row per table key, in table order -- checked, not
+  # assumed. yq evaluates the expression once PER DOCUMENT, so a multi-document file
+  # (`---`) yields a second set of rows that each look fine alone while a consumer's
+  # `yq '.pr_base'` prints both documents' values; and any field that let a value
+  # forge a row would land here as a count or path mismatch. Either is `unreadable`.
+  # (The tag field is a closed set inside yq for the same reason: a verbatim tag
+  # `!<...%0A...>` is decoded by yq into real separators.)
+  want=''
+  while IFS=' ' read -r path _kind _shape; do
     [ -n "$path" ] || continue
-    check_one "$path" "$kind" "$shape"
-  done <<EOF_CIGATE
-$CIGATE_KEYS
-EOF_CIGATE
-fi
+    want="$want$path
+"
+  done <<EOF_WANT
+$1
+EOF_WANT
+  # A HEREDOC, never a pipe (`cmd | while read`) -- a pipe forks the loop body
+  # into a subshell under some shells even without an explicit `()`, and
+  # `findings`/`cigate_is_map` set inside it would not survive to the parent.
+  while IFS="$TAB" read -r path kind shape present tag safe json; do
+    next="${want%%
+*}"
+    [ -n "$next" ] && [ "$path" = "$next" ] || { echo unreadable; exit 0; }
+    want="${want#*
+}"
+    check_row "$path" "$kind" "$shape" "$present" "$tag" "$safe" "$json"
+  done <<EOF_ROWS
+$rows
+EOF_ROWS
+  [ -z "$want" ] || { echo unreadable; exit 0; }
+}
+
+cigate_is_map=0
+run_table "$MAIN_KEYS"
+[ "$cigate_is_map" = 1 ] && run_table "$CIGATE_KEYS"
 
 if [ -z "$findings" ]; then
   echo complete
