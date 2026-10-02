@@ -62,7 +62,8 @@ plugins/way-of-working/
   agents/     architect.md coder.md security-critic.md docs-consistency.md
   bin/        cursor-drift.sh entry-anchor.sh review-gate-state.sh plan-anchor.sh
               spawn-model.sh review-base-anchor.sh review-sandbox.sh
-              milestone-close-line.sh plan-gather.sh — executables, added to the Bash
+              milestone-close-line.sh plan-gather.sh schema-complete.sh
+              cursor-sync-pr.sh — executables, added to the Bash
               tool's PATH
   hooks/      hooks.json + ai-cursor-banner.sh
   reference/  conventions.md  workflow.md  project-schema.md

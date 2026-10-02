@@ -96,7 +96,9 @@ never carries into the coding session, and vice-versa — that is the token savi
 
 **A merged PR is the human approval.** Nothing reaches the integration branch
 without it. Claude commits and pushes freely on a sprint branch, opens the PR, and
-**never merges**.
+**never merges** it. The one merge Claude runs anywhere is `/way-of-working:resume`'s
+offer for a forgotten docs-only cursor-sync PR, and only as the answer to the human's
+explicit confirmation (`WB-D20`).
 
 - **Branch per sprint:** `sprint/NN-slug`, cut from `pr_base` (`.ai/project.yml`).
 - **PR base is `pr_base`.** Every sprint PR merges into that branch — normally the repo's
@@ -278,13 +280,20 @@ description and cannot be mistaken for the human's approval.
   pick-up point, and adopts the assigned persona/model.
   **It may then start the `next_action` unattended** — but only on a clean, unambiguous
   cursor: `hitl_gate` reading `NONE OPEN`, `sprint_status` `implementing`, the model
-  matching `assigned_model`, no cursor/HEAD drift, and — under `github_milestones` — the plan
-  anchor verified and the task issue's author trusted. Anything else — a `planning`
+  matching `assigned_model`, no cursor/HEAD drift, no open cursor-sync PR and no unmerged
+  sync branch under HEAD, and —
+  under `github_milestones` — the plan anchor verified and the task issue's author trusted
+  (the skill's own *Auto-start* rule is the complete list). Before reading the cursor it
+  offers to merge a forgotten handoff cursor-sync PR, showing its **Next:** and the
+  `next_action` auto-start would run, and merges only on the human's confirmation (`WB-D20`).
+  Anything else — a `planning`
   status, an open gate, an unreadable one, a wrong model, a dirty tree — and it states the
   pick-up point and waits. The rule **fails closed**: not being able to tell whether a
   gate is open counts as open. The approval that carries signal is the `hitl_gate`, which
   is unchanged and still enforced; what auto-start removes is the content-free "go" that
-  re-approved a `next_action` the human already approved at `/way-of-working:handoff` time.
+  re-approved a `next_action` the human already approved by merging its cursor-sync PR (a
+  merge on GitHub approves the ledger's **Next:**; one at `/resume`'s offer approves the
+  `next_action` itself, shown beside it — `WB-D20`).
 - **`/way-of-working:handoff`** — run **before** switching model/session. Checks the QA-critic pass ran
   on any `code_paths` diff (a prompt, not a block — nothing else in the pipeline points at
   `/way-of-working:critic-gate`, so `/way-of-working:handoff` is where a forgotten pass gets caught). Serializes the
