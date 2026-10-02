@@ -316,11 +316,13 @@ itself would take to decide whether to skip it — always run it.
      Otherwise read what the human is approving. The PR's **Next:** paragraph, and its
      **HITL Gate** line if it has one, come from exactly `<oid>`, through a temp file so the
      rest of the ledger does not enter context. A paragraph runs until a blank line or the
-     next of the ledger's own labels (handoff's *Regenerate `.ai/next-steps.md`* step: Now,
-     Just done, Next, Pointers, Milestone close, HITL Gate), since a wrapped **Next:** is the
-     normal shape and its continuation may itself start with bold text. A **HITL Gate**
-     anywhere in the file, indented or not, counts toward the at-most-one, so a fake one
-     inside **Next:** cannot pass as the real line. Beside them go the `next_action`
+     next label this plugin writes into the ledger — Now, Just done, Next, Pointers and
+     Milestone close (handoff's *Regenerate `.ai/next-steps.md`* step), and HITL Gate
+     (unpark-sprint, plan-sprint and archive-sprint) — each optionally carrying a
+     parenthetical such as a date before its colon. Only those end it, because a wrapped
+     **Next:** is the normal shape and its continuation may itself start with bold text. A
+     **HITL Gate** at the start of any line, indented with spaces or tabs or not, counts
+     toward the at-most-one, so a fake one inside **Next:** cannot pass as the real line. Beside them go the `next_action`
      auto-start would actually run and the `hitl_gate` it enforces, which live only in the
      git-ignored `.ai/state.json` and are never part of the PR. They print as one compact JSON
      object, so no value can fake where it ends:
@@ -329,9 +331,9 @@ itself would take to decide whether to skip it — always run it.
      gh api -H "Accept: application/vnd.github.raw+json" \
        "repos/{repo}/contents/.ai/next-steps.md?ref=<oid>" >"$f" &&
      [ "$(grep -cE '^(- )?\*\*Next:' "$f")" = 1 ] &&
-     [ "$(grep -cE '^[ \t]*(- )?\*\*HITL Gate' "$f")" -le 1 ] &&
-     awk '/^(- )?\*\*(Now|Just done|Next|Pointers|Milestone close|HITL Gate):/ { p = 0 }
-          /^(- )?\*\*(Next:|HITL Gate)/ { p = 1 } /^[ \t]*$/ { p = 0 } p' "$f" ||
+     [ "$(grep -cE '^[[:blank:]]*(- )?\*\*HITL Gate' "$f")" -le 1 ] &&
+     awk '/^(- )?\*\*(Now|Just done|Next|Pointers|Milestone close|HITL Gate)( \([^)]*\))?:/ { p = 0 }
+          /^(- )?\*\*(Next:|HITL Gate)/ { p = 1 } /^[[:blank:]]*$/ { p = 0 } p' "$f" ||
        echo "NOT OFFERED: ledger unreadable at <oid>, or not one Next: and at most one HITL Gate"
      rm -f "$f"
      jq -c '{next_action: .next_action, hitl_gate: .hitl_gate}' .ai/state.json

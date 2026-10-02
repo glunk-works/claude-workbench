@@ -4,8 +4,9 @@
 # this checkout standing on a sync branch nobody merged?
 #
 # Issue #215: handoff opens the `.ai/next-steps.md` sync as its own docs-only PR and
-# never merges it -- the human's merge is the approval of the `next_action` the next
-# session may run unattended. In practice that PR was regularly forgotten, so resume
+# never merges it -- the human's merge is the approval of the cursor the next session
+# may run unattended (of the `next_action` itself only through resume's display, which
+# shows it beside the ledger -- WB-D20). In practice that PR was regularly forgotten, so resume
 # now finds it at session start and offers the merge on one explicit confirmation.
 # Deciding WHICH PR is safe to offer is a deterministic predicate, so it lives here,
 # tested, rather than in skill prose -- the same shape as cursor-drift.sh and
@@ -57,7 +58,7 @@
 #     is refused here; the human merges that one on GitHub. The binding does not catch a
 #     sync PR the human closed unmerged and an outsider reopens as a new PR while the
 #     local branch survives -- the display then shows the human the same text they
-#     rejected, and the merge is pinned to it. The PR AUTHOR is
+#     rejected, and the merge needs the human's pinned confirmation. The PR AUTHOR is
 #     deliberately not checked: `author_association` is viewer-relative, and read by a
 #     `gh` account other than the PR's author it reports `CONTRIBUTOR` for the repo's
 #     own maintainer (observed live on PR #210).
