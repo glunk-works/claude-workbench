@@ -1021,14 +1021,17 @@ take effect. Full reasoning and the task breakdown that implements them:
     git-ignored `.ai/state.json` and is never part of the PR; the PR carries only the
     ledger's **Next:** line. Showing the ledger alone would let a session write a harmless
     **Next:** and a harmful `next_action` and have the first approved for the second, so
-    both are shown. Nothing mechanically compares them: under `planning.kind: files` the
-    two are free prose, and the human judges whether they agree.
+    both are shown, and `next_action` is printed JSON-encoded so its own text cannot fake
+    where it ends. Nothing mechanically compares them: under `planning.kind: files` the
+    two are free prose, and the human judges whether they agree. This holds only for a merge
+    made through the offer. A merge on GitHub still approves the ledger alone, as it always
+    did.
   - **Trust is "this machine's own sync branch", not "same author".** The predicate offers a
     PR only when it is same-repository, changes exactly `.ai/next-steps.md`, is `CLEAN`, and
     a local branch of the same name sits at exactly its head commit. Same-repository alone is
     not enough on a public repo: anyone with read access can open a PR from an existing
-    branch, and this repo keeps merged branches (50 stale `docs/sync-cursor-*` heads when
-    this was written). The local binding also matches what auto-start runs, since
+    branch, and this repo keeps merged branches (49 stale `docs/sync-cursor-*` heads beside
+    one live sync when this was written). The local binding also matches what auto-start runs, since
     `.ai/state.json` is machine-local. A sync opened from another machine is refused
     (`not-local`) and merged on GitHub as before. The PR author is not checked:
     `author_association` depends on the viewer, and read by a `gh` account other than the
@@ -1037,9 +1040,16 @@ take effect. Full reasoning and the task breakdown that implements them:
     Once the code it describes has merged, `cursor-drift.sh` reads that branch as
     `cursor-sync`, so a session could auto-start a `next_action` whose PR no one had merged.
     Auto-start now also requires that the step found no open sync PR and no `unmerged` sync
-    branch under HEAD (a failed push, or a PR the human closed), or that its offered merge
-    succeeded. Every other outcome waits. **What remains:** a session on `{pr_base}` with a
-    hand-edited `state.json` is not detected, as before this change.
+    branch under HEAD (a failed push, a PR the human closed, or one merged at a different
+    commit), or that its offered merge succeeded. Every other outcome waits. **What
+    remains, all as before this change:**
+    - A GitHub-side merge auto-starts a `next_action` no one was shown.
+    - A sync PR closed unmerged after the checkout already left its branch reads `none`, and
+      so does a detached HEAD. The `unmerged` check looks only at the branch HEAD is on.
+    - A hand-edited `state.json` is not detected.
+    - A sync PR the human closed unmerged, then reopened by an outsider as a new PR while
+      the local branch survives, passes the binding. The display shows the same text that
+      was rejected, and the merge is pinned to it.
   - **Cost, accepted: anyone who can open a PR can make auto-start wait.** A fork PR on a
     `docs/sync-cursor-*` branch reads `refuse`, or `ambiguous` beside a real one, until
     someone closes it. That fails closed, so it costs a "go", never an unapproved run.

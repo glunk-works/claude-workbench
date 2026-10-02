@@ -16,7 +16,8 @@
 # The local-branch binding needs a real checkout, so each case runs inside a
 # throwaway repo (the same setup tests/cursor-drift.test.sh uses).
 #
-# Permitted toolset: POSIX sh, git. No jq, no yq, no python.
+# Permitted toolset: POSIX sh and its standard utilities (sed, tr, mktemp), git. No jq,
+# no yq, no python.
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -155,6 +156,10 @@ assert_eq "the open-PR list hit its fetch limit -> unreadable, never none" \
 : >"$tmp/nothing"
 assert_eq "no count line at all -> unreadable" "unreadable" "$(run "$tmp/nothing")"
 
+rows 0 210 $good CLEAN 1 .ai/next-steps.md >"$tmp/countlies"
+assert_eq "more candidate rows than the count line claims -> unreadable" \
+  "unreadable" "$(run "$tmp/countlies")"
+
 rows 1 21 $good CLEAN 1 .ai/next-steps.md | sed 1d >"$tmp/nocount"
 assert_eq "a candidate row where the count line belongs -> unreadable" \
   "unreadable" "$(run "$tmp/nocount")"
@@ -202,6 +207,11 @@ assert_eq "on a sync branch no merged PR carries (push failed / PR closed) -> un
 printf '%s\n' "$other" >"$tmp/merged-other"
 assert_eq "a merged PR on that branch, but not at this tip -> unmerged" \
   "unmerged docs/sync-cursor-x" "$(FAKE_MERGED="$tmp/merged-other" run "$tmp/empty")"
+
+git tag docs/sync-cursor-x
+assert_eq "a same-named tag does not hide the unmerged branch (no --short ambiguity)" \
+  "unmerged docs/sync-cursor-x" "$(FAKE_MERGED="$tmp/merged-none" run "$tmp/empty")"
+git tag -d docs/sync-cursor-x >/dev/null
 
 printf '%s\n%s\n' "$other" "$oid_a" >"$tmp/merged-tip"
 assert_eq "this tip was merged (the human merged on GitHub) -> none" \

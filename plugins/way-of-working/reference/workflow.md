@@ -280,7 +280,8 @@ description and cannot be mistaken for the human's approval.
   pick-up point, and adopts the assigned persona/model.
   **It may then start the `next_action` unattended** — but only on a clean, unambiguous
   cursor: `hitl_gate` reading `NONE OPEN`, `sprint_status` `implementing`, the model
-  matching `assigned_model`, no cursor/HEAD drift, no open or unmerged cursor-sync PR, and —
+  matching `assigned_model`, no cursor/HEAD drift, no open cursor-sync PR and no unmerged
+  sync branch under HEAD, and —
   under `github_milestones` — the plan anchor verified and the task issue's author trusted
   (the skill's own *Auto-start* rule is the complete list). Before reading the cursor it
   offers to merge a forgotten handoff cursor-sync PR, showing its **Next:** and the
@@ -290,7 +291,9 @@ description and cannot be mistaken for the human's approval.
   pick-up point and waits. The rule **fails closed**: not being able to tell whether a
   gate is open counts as open. The approval that carries signal is the `hitl_gate`, which
   is unchanged and still enforced; what auto-start removes is the content-free "go" that
-  re-approved a `next_action` the human already approved by merging its cursor-sync PR.
+  re-approved a `next_action` the human already approved by merging its cursor-sync PR (a
+  merge on GitHub approves the ledger's **Next:**; one at `/resume`'s offer approves the
+  `next_action` itself, shown beside it — `WB-D20`).
 - **`/way-of-working:handoff`** — run **before** switching model/session. Checks the QA-critic pass ran
   on any `code_paths` diff (a prompt, not a block — nothing else in the pipeline points at
   `/way-of-working:critic-gate`, so `/way-of-working:handoff` is where a forgotten pass gets caught). Serializes the

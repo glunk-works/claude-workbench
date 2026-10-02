@@ -28,8 +28,11 @@
 #                              file wholesale, so which is right is the human's call
 #   unmerged <branch>       -- no such PR is open, but HEAD is on a `docs/sync-cursor-`
 #                              branch whose tip no merged PR carries: handoff's push or
-#                              PR creation failed, or the human closed the PR unmerged.
-#                              Either way the local cursor was never approved
+#                              PR creation failed, the human closed the PR unmerged, or
+#                              it merged at a different commit (edited or updated on
+#                              GitHub). Either way the local tip is not what was approved.
+#                              Only an attached HEAD is checked: a detached HEAD reads
+#                              `none`, as handoff never leaves one
 #   unreadable              -- wrong arguments, not in a git checkout, a `gh` call
 #                              failed, its output was not in the shape asked for, or the
 #                              open-PR list hit its fetch limit (a candidate past the
@@ -46,11 +49,14 @@
 #     otherwise). This is the binding that makes the offer mean something. Same-repo
 #     alone is not enough on a public repo: anyone with read access can open a PR from
 #     an existing branch, and a repo that keeps merged branches holds dozens of stale
-#     `docs/sync-cursor-*` heads (50 on this plugin's own repo when this was written)
-#     whose PRs pass every other check. And `.ai/state.json` -- where auto-start reads
+#     `docs/sync-cursor-*` heads (49 beside one live sync, on this plugin's own repo
+#     when this was written), and the newest of them can pass every other check. And `.ai/state.json` -- where auto-start reads
 #     the `next_action` it runs -- is git-ignored and machine-local, so only a sync PR
 #     THIS machine's handoff produced describes it. A sync opened from another machine
-#     is refused here; the human merges that one on GitHub. The PR AUTHOR is
+#     is refused here; the human merges that one on GitHub. The binding does not catch a
+#     sync PR the human closed unmerged and an outsider reopens as a new PR while the
+#     local branch survives -- the display then shows the human the same text they
+#     rejected, and the merge is pinned to it. The PR AUTHOR is
 #     deliberately not checked: `author_association` is viewer-relative, and read by a
 #     `gh` account other than the PR's author it reports `CONTRIBUTOR` for the repo's
 #     own maintainer (observed live on PR #210).
@@ -60,8 +66,8 @@
 #
 # The branch prefix selects candidates; it is not a trust signal.
 #
-# Permitted toolset: POSIX sh, git, `gh` (using only its own embedded --jq), tr,
-# mktemp. No jq, no yq, no python, no awk.
+# Permitted toolset: POSIX sh and its standard utilities (cat, rm, tr, mktemp), git,
+# `gh` (using only its own embedded --jq). No jq, no yq, no python, no awk.
 set -u
 
 tab="$(printf '\t')"
@@ -130,7 +136,7 @@ while IFS="$tab" read -r number branch oid cross state nfiles path rest || [ -n 
   c_state="$state"; c_nfiles="$nfiles"; c_path="$path"
 done <"$tmp/rows"
 
-[ -n "$total" ] || { echo unreadable; exit 0; }
+[ -n "$total" ] && [ "$count" -le "$total" ] || { echo unreadable; exit 0; }
 if [ "$total" -ge "$limit" ]; then
   echo "cursor-sync-pr.sh: $total open PRs against $base reached the fetch limit" >&2
   echo unreadable
@@ -158,17 +164,20 @@ if [ "$count" -eq 1 ]; then
   fi
   if [ "$c_state" != CLEAN ]; then
     lower="$(printf '%s' "$c_state" | tr 'A-Z' 'a-z')"
-    echo "refuse $c_number state-${lower:-empty}"
+    echo "refuse $c_number state-$lower"
     exit 0
   fi
   echo "offer $c_number $c_oid $c_branch"
   exit 0
 fi
 
-# No open candidate. Is HEAD on a sync branch nobody merged?
-current="$(git symbolic-ref -q --short HEAD 2>/dev/null)" || current=""
+# No open candidate. Is HEAD on a sync branch nobody merged? Read the FULL ref and
+# strip `refs/heads/` ourselves: `--short` abbreviates only when the name is
+# unambiguous, so a same-named tag would turn it into `heads/docs/...`, miss the
+# prefix, and read as `none`.
+current="$(git symbolic-ref -q HEAD 2>/dev/null)" || current=""
 case "$current" in
-  "$prefix"?*) ;;
+  "refs/heads/$prefix"?*) current="${current#refs/heads/}" ;;
   *) echo none; exit 0 ;;
 esac
 tip="$(git rev-parse -q --verify HEAD 2>/dev/null)" || { echo unreadable; exit 0; }
