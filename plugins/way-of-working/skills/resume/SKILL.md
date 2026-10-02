@@ -333,7 +333,7 @@ itself would take to decide whether to skip it — always run it.
      [ "$(grep -cE '^(- )?\*\*Next:' "$f")" = 1 ] &&
      [ "$(grep -cE '^[[:blank:]]*(- )?\*\*HITL Gate' "$f")" -le 1 ] &&
      awk '/^(- )?\*\*(Now|Just done|Next|Pointers|Milestone close|HITL Gate)( \([^)]*\))?:/ { p = 0 }
-          /^(- )?\*\*(Next:|HITL Gate)/ { p = 1 } /^[[:blank:]]*$/ { p = 0 } p' "$f" ||
+          /^(- )?\*\*(Next:|HITL Gate)/ { p = 1 } /^[ \t]*$/ { p = 0 } p' "$f" ||
        echo "NOT OFFERED: ledger unreadable at <oid>, or not one Next: and at most one HITL Gate"
      rm -f "$f"
      jq -c '{next_action: .next_action, hitl_gate: .hitl_gate}' .ai/state.json
