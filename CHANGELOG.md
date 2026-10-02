@@ -29,6 +29,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [0.15.0] — 2026-10-02
+
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
+behaviour change to expect: `/way-of-working:resume` now calls `gh pr list` at session start,
+and **auto-start waits** whenever a handoff cursor-sync PR is still open, HEAD is on a
+`docs/sync-cursor-*` branch no merged PR carries, or that check could not run (`gh` missing or
+unauthenticated). A repo that habitually leaves cursor-sync PRs open will see `/resume` stop
+for a "go" until they are merged — which `/resume` now offers to do.
+
+### Added
+
+- **`/way-of-working:resume` offers to merge a forgotten handoff cursor-sync PR** (#215, PR
+  #216, `WB-D20`). A new step before *Read the cursor* runs `bin/cursor-sync-pr.sh`; when
+  exactly one PR qualifies — same repository, changes only `.ai/next-steps.md`, `CLEAN`, and
+  a local branch on this machine sits at exactly its head commit — it shows the PR's
+  **Next:** paragraph and **HITL Gate** line beside the local `next_action` and `hitl_gate`
+  auto-start would run, and merges with `gh pr merge --squash --match-head-commit` only on the
+  human's explicit confirmation. Never on a headless host. Handoff itself still never merges,
+  and its `docs/sync-cursor-` branch prefix is now required rather than an example.
+  Rejected alternative, recorded in `WB-D20`: letting handoff merge its own PR when the commits
+  are signed.
+
+### Changed
+
+- **Auto-start has a new fail-closed condition**: the cursor-sync check found nothing open
+  and no unmerged sync branch under HEAD, or its offered merge succeeded. This narrows a gap
+  that already existed — a session left on an unmerged sync branch could auto-start a
+  `next_action` nobody had approved. The residuals that remain are listed in `WB-D20`.
+
 ## [0.14.0] — 2026-09-29
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One
