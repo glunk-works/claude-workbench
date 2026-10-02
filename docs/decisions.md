@@ -1000,6 +1000,36 @@ take effect. Full reasoning and the task breakdown that implements them:
     wording ("GitHub normalizes the time-of-day component") understated this — the date
     itself can move.
 
+- **WB-D20 (`#215`) — a forgotten cursor-sync PR is merged at `/resume`, on confirmation;
+  handoff still never merges.** Handoff's docs-only cursor-sync PR was regularly left open,
+  so `{pr_base}`'s cursor went stale. `/way-of-working:resume` now runs
+  `bin/cursor-sync-pr.sh` before it reads the cursor, and when exactly one qualifying PR is
+  open it shows that PR's **Next:** and **HITL Gate** lines and merges it on one explicit
+  confirmation, pinned with `--match-head-commit`. The human is always present at `/resume`,
+  so the PR stops being forgotten, and the approval moves to the moment just before the
+  `next_action` it carries would run.
+  - **Rejected: handoff merges its own PR when the commits are signed.** Signing is not an
+    authorship signal here: every session commit is signed with the human's key through the
+    cached passphrase, so a signature cannot tell "the human approved this" from "a session
+    wrote this". Squash merge (`WB-D7`) also replaces the signed branch commit with one
+    GitHub signs, so the check could never apply to what lands. And it would open a
+    persistence channel for prompt injection: a session steered by untrusted text (an issue
+    body, a PR comment, review output) could write a harmful `next_action`, approve it
+    itself, and the next session would run it unattended.
+  - **Trust is "same repository", not "same author".** The predicate refuses fork PRs and
+    does not check the PR author. `author_association` depends on the viewer: read from
+    this machine's active `gh` account, it reported `CONTRIBUTOR` for the maintainer's own
+    PR #210. A head branch in `{repo}` could only have been pushed by an identity with push
+    access, and the merge is pinned to the commit the human was shown.
+  - **It closes a gap that already existed.** Handoff leaves the checkout on the sync
+    branch, where `cursor-drift.sh` reads it as `cursor-sync`, so a session could auto-start
+    a `next_action` whose PR no one had merged. Auto-start now also requires that the step
+    found no cursor-sync PR, or that its offered merge succeeded; a declined offer, a
+    refusal, an ambiguous result or an unreadable one all wait.
+  - **Park and unpark PRs are never offered.** They share handoff's branch prefix but also
+    touch `.ai/parked/`, so the predicate refuses them as `files`; setting a sprint aside or
+    restoring one stays the human's separate decision. No `.ai/project.yml` key.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of

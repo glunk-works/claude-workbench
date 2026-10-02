@@ -85,6 +85,8 @@ jobs:
         run: sh tests/schema-complete.test.sh
       - name: review-sandbox.sh fixtures
         run: sh tests/review-sandbox.test.sh
+      - name: cursor-sync-pr.sh fixtures
+        run: sh tests/cursor-sync-pr.test.sh
       - name: invariants-check.sh reach-order fixtures
         run: sh tests/invariants-reach-order.test.sh
 

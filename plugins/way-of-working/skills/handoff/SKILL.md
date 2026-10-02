@@ -236,7 +236,8 @@ github_milestones` — `{backlog.repo}`.
    session's work landed on. Do it now, don't just remind:
    - If the current branch is a code branch (e.g. mid-implementation, or the just-pushed
      feature branch), do **not** commit the cursor sync there — switch to `{pr_base}`, cut
-     a fresh small branch (e.g. `docs/sync-cursor-<slug>`), and commit `.ai/next-steps.md`
+     a fresh small branch named `docs/sync-cursor-<slug>` (the prefix is required — see
+     *Never merge it* below), and commit `.ai/next-steps.md`
      there. If a `/way-of-working:handoff` runs directly on `{pr_base}` with nothing else
      in flight, cutting a fresh branch from it is still correct — never commit straight to
      `{pr_base}`.
@@ -299,7 +300,11 @@ github_milestones` — `{backlog.repo}`.
      reach preflight of its own and carries the same push-identity exposure as
      `/way-of-working:ship`'s *Preflight the branch* step — a 403 here is diagnosed the same way
      (`reference/conventions.md` § *Push identity*).
-   - **Never merge it.** The human's merge is the approval. Report the PR URL and stop.
+   - **Never merge it.** The human's merge is the approval. Report the PR URL and stop. If it
+     is still open when the next session starts, `/way-of-working:resume`'s *Offer to merge a
+     forgotten cursor-sync PR* step finds it — which is why the branch must keep the
+     `docs/sync-cursor-` prefix — and offers the merge with its **Next:** line in view, on the
+     human's confirmation; until then that session does not auto-start.
    - `.ai/state.json` is git-ignored and needs no commit; it already travels with the
      working tree for this machine.
    - If something *else* is dirty beyond `.ai/next-steps.md` (leftover from this
