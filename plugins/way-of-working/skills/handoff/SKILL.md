@@ -303,8 +303,9 @@ github_milestones` — `{backlog.repo}`.
    - **Never merge it.** The human's merge is the approval. Report the PR URL and stop. If it
      is still open when the next session starts, `/way-of-working:resume`'s *Offer to merge a
      forgotten cursor-sync PR* step finds it — which is why the branch must keep the
-     `docs/sync-cursor-` prefix — and offers the merge with its **Next:** line in view, on the
-     human's confirmation; until then that session does not auto-start.
+     `docs/sync-cursor-` prefix and stay a local branch on this machine — and offers the merge
+     with its **Next:** paragraph and the local `next_action` in view, on the human's
+     confirmation; until then that session does not auto-start.
    - `.ai/state.json` is git-ignored and needs no commit; it already travels with the
      working tree for this machine.
    - If something *else* is dirty beyond `.ai/next-steps.md` (leftover from this
