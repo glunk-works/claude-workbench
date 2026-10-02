@@ -1004,8 +1004,9 @@ take effect. Full reasoning and the task breakdown that implements them:
   handoff still never merges.** Handoff's docs-only cursor-sync PR was regularly left open,
   so `{pr_base}`'s cursor went stale. `/way-of-working:resume` now runs
   `bin/cursor-sync-pr.sh` before it reads the cursor. When exactly one qualifying PR is
-  open, it shows the PR's **Next:** and **HITL Gate** paragraphs read at its head commit,
-  beside the local `next_action` auto-start would run, and merges on one explicit
+  open, it shows the PR's **Next:** paragraph and **HITL Gate** line (if any) read at its
+  head commit, beside the local `next_action` and `hitl_gate` auto-start would run and
+  enforce, and merges on one explicit
   confirmation, pinned with `--match-head-commit`. The merge happens only when a human
   answers, and `/resume` is where the human already is at the start of a session, so the PR
   stops being forgotten and the approval lands just before the `next_action` could run.
@@ -1021,8 +1022,8 @@ take effect. Full reasoning and the task breakdown that implements them:
     git-ignored `.ai/state.json` and is never part of the PR; the PR carries only the
     ledger's **Next:** line. Showing the ledger alone would let a session write a harmless
     **Next:** and a harmful `next_action` and have the first approved for the second, so
-    both are shown, and `next_action` is printed JSON-encoded so its own text cannot fake
-    where it ends. Nothing mechanically compares them: under `planning.kind: files` the
+    both are shown, and `next_action` is printed inside one compact JSON object so its own
+    text cannot fake where it ends. Nothing mechanically compares them: under `planning.kind: files` the
     two are free prose, and the human judges whether they agree. This holds only for a merge
     made through the offer. A merge on GitHub still approves the ledger alone, as it always
     did.
@@ -1042,14 +1043,17 @@ take effect. Full reasoning and the task breakdown that implements them:
     Auto-start now also requires that the step found no open sync PR and no `unmerged` sync
     branch under HEAD (a failed push, a PR the human closed, or one merged at a different
     commit), or that its offered merge succeeded. Every other outcome waits. **What
-    remains, all as before this change:**
+    remains.** These three were also possible before this change:
     - A GitHub-side merge auto-starts a `next_action` no one was shown.
     - A sync PR closed unmerged after the checkout already left its branch reads `none`, and
       so does a detached HEAD. The `unmerged` check looks only at the branch HEAD is on.
     - A hand-edited `state.json` is not detected.
+
+    One is a residual of the offer itself, though still narrower than before, when such a
+    cursor auto-started with nothing shown:
     - A sync PR the human closed unmerged, then reopened by an outsider as a new PR while
       the local branch survives, passes the binding. The display shows the same text that
-      was rejected, and the merge is pinned to it.
+      was rejected, and the merge needs the human's pinned confirmation.
   - **Cost, accepted: anyone who can open a PR can make auto-start wait.** A fork PR on a
     `docs/sync-cursor-*` branch reads `refuse`, or `ambiguous` beside a real one, until
     someone closes it. That fails closed, so it costs a "go", never an unapproved run.

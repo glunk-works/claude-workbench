@@ -29,8 +29,9 @@
 #   unmerged <branch>       -- no such PR is open, but HEAD is on a `docs/sync-cursor-`
 #                              branch whose tip no merged PR carries: handoff's push or
 #                              PR creation failed, the human closed the PR unmerged, or
-#                              it merged at a different commit (edited or updated on
-#                              GitHub). Either way the local tip is not what was approved.
+#                              it merged at a different commit (edited on GitHub, or the
+#                              local branch moved on). Either way the local tip is not
+#                              what was approved.
 #                              Only an attached HEAD is checked: a detached HEAD reads
 #                              `none`, as handoff never leaves one
 #   unreadable              -- wrong arguments, not in a git checkout, a `gh` call

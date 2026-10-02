@@ -16,8 +16,7 @@
 # The local-branch binding needs a real checkout, so each case runs inside a
 # throwaway repo (the same setup tests/cursor-drift.test.sh uses).
 #
-# Permitted toolset: POSIX sh and its standard utilities (sed, tr, mktemp), git. No jq,
-# no yq, no python.
+# Permitted toolset: POSIX sh and its standard utilities, git. No jq, no yq, no python.
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
