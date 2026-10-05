@@ -1054,8 +1054,7 @@ take effect. Full reasoning and the task breakdown that implements them:
       so does a detached HEAD. The `unmerged` check looks only at the branch HEAD is on.
     - A hand-edited `state.json` is not detected.
 
-    One is a residual of the offer itself, though still narrower than before, when such a
-    cursor auto-started with nothing shown:
+    The offer itself carries these, narrower than the auto-start exposure above:
     - A sync PR the human closed unmerged, then reopened by an outsider as a new PR while
       the local branch survives, passes the binding. The display shows the same text that
       was rejected, and the merge needs the human's pinned confirmation.
@@ -1065,6 +1064,15 @@ take effect. Full reasoning and the task breakdown that implements them:
       deployments, code scanning, merge queue), is bypassed with it, and check state can
       change between the offer and the confirmation. The server still enforces any required
       rule the admin cannot bypass. The script header lists these.
+    - Since #250 the `BLOCKED` offer also requires the **active `gh` identity** to be able to
+      perform that merge: `--admin` only switches off `gh`'s client-side refusal, and the
+      server applies the bypass per viewer (measured: one account on a machine saw
+      `current_user_can_bypass: never`, another `pull_requests_only`). `cursor-sync-pr.sh`
+      reads the rulesets carrying an `update` rule on the base and each one's
+      `current_user_can_bypass`; `never` is `refuse <N> bypass-never`, and resume names the
+      identity and sends the human to the web UI or a bypass-capable account. No `update`
+      rule, a failed read or an unknown value does not offer. `pr-checks`' READY (admin
+      merge) verdict names the same identity and value instead of "if you hold the bypass".
   - **Cost, accepted: anyone who can open a PR can make auto-start wait.** A fork PR on a
     `docs/sync-cursor-*` branch reads `refuse`, or `ambiguous` beside a real one, until
     someone closes it. That fails closed, so it costs a "go", never an unapproved run.

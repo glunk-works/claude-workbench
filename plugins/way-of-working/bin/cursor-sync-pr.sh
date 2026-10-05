@@ -22,7 +22,7 @@
 #                              is its head commit, which the caller must both display
 #                              from and merge with `gh pr merge --match-head-commit`
 #   refuse <N> <reason>     -- exactly one such PR, failing a check; <reason> is one of
-#                              cross-repository | files | not-local |
+#                              cross-repository | files | not-local | bypass-never |
 #                              state-<mergeStateStatus, lowercased>
 #   ambiguous <N> <N>...    -- more than one such PR (e.g. a forgotten earlier sync plus
 #                              a newer one). Never pick one: two syncs regenerate the same
@@ -77,7 +77,8 @@
 #     SKIPPED; StatusContext SUCCESS -- an empty rollup is no evidence, so it is not
 #     green), and `reviewDecision` neither REVIEW_REQUIRED nor CHANGES_REQUESTED. All
 #     present checks, not only the required ones: stricter is the safe direction. A
-#     BLOCKED PR on that evidence is offered exactly like a CLEAN one.
+#     BLOCKED PR on that evidence is offered like a CLEAN one, once the bypass check
+#     below passes too.
 #     Residuals, stated so the confirmation is not mistaken for more than it is:
 #       - A required check that never REPORTED (a workflow `paths:` filter that excludes
 #         `.ai/`, a job not yet registered) is absent from the rollup, so it cannot
@@ -92,6 +93,17 @@
 #         --admin, this applies to a CLEAN offer too (gh's own re-check is switched off).
 #       - `statusCheckRollup` may be capped by gh (believed 100 entries; unverified).
 #     The human's confirmation, shown the ledger text, is what stands for all of these.
+#   - A BLOCKED PR is offered only if the ACTIVE `gh` identity can bypass the
+#     restrict-updates ruleset(s) (#250) -- not proof it can perform the whole merge: a
+#     rule of another kind that the identity cannot bypass is not read here. `--admin` only switches off gh's client-side refusal; the server
+#     applies the bypass per viewer. So for a BLOCKED PR this reads the rulesets with an
+#     `update` rule on <base> (`gh api repos/<repo>/rules/branches/<base>`) and each
+#     one's `current_user_can_bypass` (`gh api repos/<repo>/rulesets/<id>`):
+#     `never` on any of them -> `refuse <N> bypass-never` (the caller names the identity
+#     and sends the human to the web UI or a bypass-capable account); `always`,
+#     `pull_requests_only` or `exempt` on all -> offered; no `update` rule at all -> the
+#     restriction does not explain the BLOCKED, so `refuse <N> state-blocked`; a failed
+#     call or any other value -> `unreadable`. A CLEAN PR needs no bypass and skips this.
 #
 # The branch prefix selects candidates; it is not a trust signal.
 #
@@ -207,6 +219,45 @@ if [ "$count" -eq 1 ]; then
     lower="$(printf '%s' "$c_state" | tr 'A-Z' 'a-z')"
     echo "refuse $c_number state-$lower"
     exit 0
+  fi
+  if [ "$c_state" = BLOCKED ]; then
+    # A BLOCKED offer rests on "only the restriction is unmet", and resume's merge
+    # carries --admin, which gets past gh's client-side refusal only -- the server
+    # still needs the ACTIVE identity to be a bypass actor (#250). So read the rules
+    # applying to <base>: no `update` rule means the restriction does not explain the
+    # BLOCKED; one whose ruleset reports current_user_can_bypass `never` means the
+    # merge would be refused. `current_user_can_bypass` is viewer-relative, which is
+    # the point: it answers for whichever account `gh` is active as.
+    if ! gh api --paginate "repos/$repo/rules/branches/$base" \
+         --jq '.[] | select(.type == "update") | .ruleset_id' \
+         >"$tmp/ids" 2>"$tmp/err"; then
+      echo "cursor-sync-pr.sh: gh api rules/branches/$base failed for $repo:" >&2
+      cat "$tmp/err" >&2
+      echo unreadable
+      exit 0
+    fi
+    nids=0
+    while IFS= read -r rid || [ -n "$rid" ]; do
+      is_digits "$rid" || { echo unreadable; exit 0; }
+      nids=$((nids + 1))
+      # </dev/null: the loop's stdin is the ids file; nothing here may consume it.
+      if ! bypass="$(gh api "repos/$repo/rulesets/$rid" \
+           --jq '.current_user_can_bypass // ""' 2>"$tmp/err" </dev/null)"; then
+        echo "cursor-sync-pr.sh: gh api rulesets/$rid failed for $repo:" >&2
+        cat "$tmp/err" >&2
+        echo unreadable
+        exit 0
+      fi
+      case "$bypass" in
+        always | pull_requests_only | exempt) ;;
+        never) echo "refuse $c_number bypass-never"; exit 0 ;;
+        *) echo unreadable; exit 0 ;;
+      esac
+    done <"$tmp/ids"
+    if [ "$nids" -eq 0 ]; then
+      echo "refuse $c_number state-blocked"
+      exit 0
+    fi
   fi
   echo "offer $c_number $c_oid $c_branch"
   exit 0

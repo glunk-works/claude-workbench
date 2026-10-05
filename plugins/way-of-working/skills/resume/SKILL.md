@@ -356,8 +356,9 @@ itself would take to decide whether to skip it — always run it.
      role, shows the admin `mergeStateStatus: BLOCKED` on a green PR and `gh` refuses the
      plain merge client-side (`#229`); `--admin` only gets past `gh`'s own
      refusal (the server applies the bypass whatever the client sends). So
-     `cursor-sync-pr.sh` offers a `BLOCKED` PR only when every present check is green and
-     the review is not blocking — that script is what keeps a red PR from being *offered*,
+     `cursor-sync-pr.sh` offers a `BLOCKED` PR only when every present check is green, the
+     review is not blocking, an `update` rule applies to the base, and the active identity
+     can bypass each such ruleset (`#250`) — that script is what keeps a red PR from being *offered*,
      and where the admin's bypass also covers required checks it is the only thing; its
      header lists what it cannot see. The human's confirmation above and
      `--match-head-commit` bound what is merged, and **no other merge this plugin runs carries
@@ -372,10 +373,16 @@ itself would take to decide whether to skip it — always run it.
      the checkout actually holds. On **no**, or a merge `gh` refuses, report it and continue.
    - **`refuse <N> <reason>`** or **`ambiguous <N> <N>...`** — never merge. Report one line
      naming the PR(s) and the reason (`Cursor-sync PR #210 is open but not offered:
-     state-dirty — resolve or close it by hand.`) and continue. Three reasons need a word
+     state-dirty — resolve or close it by hand.`) and continue. Four reasons need a word
      more. `state-blocked` now means a check is not recognisably green, the check
-     list is empty, or a review is blocking — not merely the restriction — so look at the PR's checks before saying
-     what to do. `files` is also what a `/way-of-working:park-sprint` or
+     list is empty, a review is blocking, or no `update` rule applies to the base to explain
+     it — not merely the restriction — so look at the PR's checks before saying
+     what to do. `bypass-never` means the PR is `BLOCKED` by a restrict-updates ruleset and
+     the **active `gh` identity** cannot bypass it (`current_user_can_bypass: never`), so the
+     `--admin` merge would be refused by the server (`#250`): name the identity
+     (`gh api user --jq .login`) and tell the human to merge in the web UI signed in as a
+     bypass-capable account, or to run that one `gh` command as one (a per-command token, not `gh auth switch`) — never offer the merge, and never switch the account
+     yourself. `files` is also what a `/way-of-working:park-sprint` or
      `/way-of-working:unpark-sprint` PR returns — they share handoff's branch prefix but also
      touch `.ai/parked/` — and setting a sprint aside or restoring one is a decision of its
      own, so say it may be one. `not-local` means no local branch here sits at that PR's head:

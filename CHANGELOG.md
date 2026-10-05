@@ -29,6 +29,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [Unreleased]
+
+### Changed
+
+- **`/way-of-working:resume` no longer offers an `--admin` cursor-sync merge the active
+  `gh` identity cannot perform** (#250). `--admin` only gets past `gh`'s client-side
+  refusal; the server applies the ruleset bypass per account, so a session whose `gh` was
+  active as a non-bypass account was shown the offer, took the confirmation, and had the
+  merge refused. For a `BLOCKED` PR, `bin/cursor-sync-pr.sh` now reads each ruleset carrying
+  an `update` rule on the base and its `current_user_can_bypass`: `never` prints
+  `refuse <N> bypass-never` (resume names the identity and points to the web UI or a
+  bypass-capable account), a `BLOCKED` PR with no `update` rule is `refuse <N>
+  state-blocked`, and a failed read or unknown value is `unreadable`. `/way-of-working:pr-checks`'
+  READY (admin merge) verdict now names the identity and its `current_user_can_bypass`
+  instead of "if you hold the bypass". No `.ai/project.yml` key changes.
+
 ## [0.16.0] — 2026-10-05
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed. This
