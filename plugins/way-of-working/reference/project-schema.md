@@ -450,7 +450,9 @@ critics on a diff that does not build.
 
 `name` is the branch-protection ruleset's name, `rule_types` the rule types it must carry,
 `required_checks` every check it requires. `/way-of-working:resume` verifies the live ruleset against all
-three; `/way-of-working:pr-checks` reports every name in `required_checks` and only those.
+three; `/way-of-working:pr-checks` reports every name in `required_checks` and, beyond them,
+only a context the branch's own `required_status_checks` rule names (as *also required by
+the branch's rule*, on its `BLOCKED` path).
 
 Keep `required_checks` in sync with the **live** ruleset, not with a plan or a wish. The
 list here is what skills report as authoritative, so a stale entry produces a confident
