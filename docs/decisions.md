@@ -1160,3 +1160,15 @@ reach-precedes-ruleset check now matches the real `--paginate` call (#162, PR #2
 `schema-complete.sh` reads each key table in one `yq` call, taking its fixture suite from
 about 2m15s to about 15s on Git Bash (#189, PR #204). The release is PR #206 and this repo's
 own pin bump to `v0.14.0` is PR #207. Sprint 7 closed at `4d63776` (PR #207).
+
+`v0.16.0` carries most of Sprint 8's shipped work (milestone 8, *Security review phase 1:
+plugin release*): `/way-of-working:resume`'s cursor-sync merge and
+`/way-of-working:pr-checks`' verdict now work under a restrict-updates ruleset (#229, PR
+#238; #224, PR #239), and the SessionStart hook script is stored executable behind a
+fail-closed invariants check (#214, PR #240). The release is PR #241 and this repo's own
+pin bump to `v0.16.0` is PR #242. Two tasks landed after the tag and are unreleased:
+`/way-of-working:architect-review` and the `architect` and `security-critic` agents now
+mark a PR body as data and call out bot-authored PRs, with an invariants check that keeps
+the wording (#225, PR #251), and the repo is licensed Apache-2.0 (#226, PR #252). They
+ship in the release the milestone 9 plan puts at that milestone's end. Sprint 8 closed at
+`d4f82ac` (PR #252), not at a release tag.
