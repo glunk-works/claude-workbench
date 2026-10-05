@@ -367,6 +367,52 @@ if [ -n "$wrong_hits" ]; then
     "absent always prompts, never a default. See project-schema.md's own rule."
 fi
 
+# --- 9. Every executed hook/bin script is stored executable (#214) -----------------
+#
+# `hooks/hooks.json` runs ai-cursor-banner.sh directly, and the skills call every
+# `bin/*.sh` by bare name off the plugin's PATH. A git checkout gets the mode the index
+# records, so a script stored 100644 installs non-executable, and a hook that cannot run
+# fails silently ("the hook didn't run" reads exactly like "nothing to report").
+# ai-cursor-banner.sh was stored 100644 at every tag from v0.1.0 through v0.15.0 (#214).
+# This guards the INDEX mode only; a copy that drops mode bits (`cp` without `-p`, a zip
+# extract) is not cured by it -- the issue's alternative, running the hook through
+# `bash`, would be, and was not taken here.
+#
+# Read from the INDEX (`git ls-files -s`), never the filesystem: on a checkout with
+# core.filemode=false (this maintainer's Windows host) a filesystem test says nothing,
+# and the index is what a consumer's install is made from. Fails closed: a `git`
+# failure, or an on-disk script the index does not list (untracked, so it would not
+# ship), is a failure, never a pass -- the same stance as a missing `yq`.
+mode_hits=""
+mode_problem=""
+disk_scripts=0
+for f in "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}"; do
+  [ -e "$f" ] && disk_scripts=$((disk_scripts + 1))
+done
+if ! ls_out=$(git ls-files -s -- "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}" 2>&1); then
+  mode_problem="could not read the git index: $ls_out"
+else
+  listed=0
+  while read -r mode _ _ path; do
+    [ -n "$mode" ] || continue
+    listed=$((listed + 1))
+    [ "$mode" = "100755" ] || mode_hits+="  $path (mode $mode)"$'\n'
+  done <<<"$ls_out"
+  if [ "$listed" -ne "$disk_scripts" ]; then
+    mode_problem="$disk_scripts hook/bin script(s) on disk but $listed in the index (untracked?)"
+  fi
+fi
+if [ -n "$mode_hits" ]; then
+  report "a hook or bin script is stored without the executable bit (#214)" \
+    "$mode_hits" \
+    "Fix: git update-index --chmod=+x <path> (or git add --chmod=+x for a new file," \
+    "or after a rename). A script that cannot execute fails silently; the index mode" \
+    "is what an install gets."
+fi
+if [ -n "$mode_problem" ]; then
+  report "the executable-bit check could not be completed (#214)" "  $mode_problem"
+fi
+
 if [ "$fail" -ne 0 ]; then
   cat >&2 <<'EOF'
 
