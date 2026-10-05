@@ -210,10 +210,38 @@ what is actually enforced.
    - **READY (admin merge)** — `blocked-state.sh` printed `admin-merge-ready`: every
      required check is green, the review is not blocking, and an `update` rule applies,
      which on its own keeps a green PR `BLOCKED`. Tell the user "PR #N into `<baseRefName>`
-     has every required check green and reads BLOCKED because an update rule applies. If you
-     hold the bypass, merge it yourself — `gh pr merge <N> --repo {repo} --squash --admin
-     --match-head-commit <headRefOid>`, or the web UI's bypass box; I will not." The base
-     is named so the human sees what the verdict was judged against. Re-read
+     has every required check green and reads BLOCKED because an update rule applies. As
+     `<login>`, the restrict-updates ruleset reports `current_user_can_bypass: <value>` —
+     merge it yourself, `gh pr merge <N> --repo {repo} --squash --admin
+     --match-head-commit <headRefOid>`, or the web UI's bypass box; I will not." Get
+     `<login>` and each `<value>` from one more block, the same shape as (a) and (b)
+     (the branch read and validated inside it, used only as `"$B"`):
+
+     ```bash
+     # (c) the active identity, and its bypass state per ruleset carrying an update rule
+     B=$(gh pr view <N> --repo {repo} --json baseRefName -q .baseRefName) &&
+     case "$B" in '' | *[!A-Za-z0-9._/-]*) false ;; esac &&
+     L=$(gh api user --jq .login) &&
+     I=$(gh api --paginate "repos/{repo}/rules/branches/$B" \
+           --jq '.[] | select(.type=="update") | .ruleset_id') &&
+     printf 'login %s\n' "$L" &&
+     for id in $I; do
+       case "$id" in '' | *[!0-9]*) echo "bad-id"; break ;; esac
+       printf '%s %s\n' "$id" "$(gh api "repos/{repo}/rulesets/$id" --jq '.current_user_can_bypass // ""')"
+     done
+     ```
+
+     Report one `<value>` per ruleset when there is more than one. A `never` on any of them
+     means this identity cannot perform the `--admin` merge: say so instead, and tell the
+     human to merge in the web UI **signed in as a bypass-capable account**, or to run that
+     one `gh` command as one (a per-command token, not `gh auth switch`). The verdict stays
+     READY (admin merge), since the checks are what it judges. `<login>` is the identity
+     **this session's `gh` runs as**; it holds for the human's merge only if theirs is the
+     same account — say so. **Never switch the account yourself** (`gh auth switch` is
+     global on a host with a concurrent session) — the advice is the human's to act on. A
+     failed block, no ruleset line after `login`, a `bad-id` line, or a value that is empty
+     or not one of `always`, `pull_requests_only`, `exempt`, `never`, is reported as "could
+     not confirm which identity can bypass", never with a value filled in. The base is named so the human sees what the verdict was judged against. Re-read
      `headRefOid` **and** `baseRefName`
      (`gh pr view <N> --repo {repo} --json headRefOid,baseRefName`) just before stating
      this verdict: if either differs from what the *Pull status in one shot* step read, a
@@ -223,11 +251,12 @@ what is actually enforced.
      retarget after the verdict is not pinnable: `gh pr merge` has no flag for the base).
      List every required check with its state. This is **not** "bypass the checks": `--admin` still enforces
      every ruleset the admin cannot bypass, which is why the checks must be green first —
-     whether the admin can bypass the ruleset holding them is not visible from here. And
+     whether the admin can bypass the ruleset holding them is not visible from here (block
+     (c) reads only the rulesets carrying an `update` rule). And
      it cannot see a rule the verdict does not name (an unresolved conversation, a
      required deployment, code scanning, a merge queue) — the admin's bypass would skip
-     that too — nor whether a same-named check came from the app the rule requires. The
-     script does not read bypass actors either, so "if you hold the bypass" is real.
+     that too — nor whether a same-named check came from the app the rule requires.
+     `blocked-state.sh` does not read bypass actors; block (c) is what names the identity.
    - **STALE-RED (auto-clearable)** — only possible when `{review.ci_gate}` is set. The
      *Read the review gate on both surfaces it can post to* step's predicate reads
      `success` and the *only* red is a superseded run of the gate's name (or, on a
@@ -288,5 +317,5 @@ Verdict: READY — all 8 required checks green. Merge it yourself when you're re
 On a repo whose branch carries a restrict-updates rule the state line reads `state: BLOCKED`
 and the verdict line is `Verdict: READY (admin merge) into main — all 8 required checks
 green (plus any contexts the branch rule names, listed); an update rule is why it reads
-BLOCKED. If you hold the bypass: gh pr merge 94 --repo {repo} --squash --admin --match-head-commit
-<headRefOid>. I won't.`
+BLOCKED. As octocat, the ruleset reports current_user_can_bypass: pull_requests_only — gh pr
+merge 94 --repo {repo} --squash --admin --match-head-commit <headRefOid>. I won't.`

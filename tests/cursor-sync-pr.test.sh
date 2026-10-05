@@ -48,6 +48,24 @@ mkdir -p "$fakebin"
 cat >"$fakebin/gh" <<'FAKE_GH'
 #!/bin/sh
 set -eu
+if [ "$1" = api ]; then
+  # The bypass check (#250). Like the pr-list stub, --jq is not interpreted: the stub
+  # returns what the real program would emit, after asserting the call's own shape.
+  # FAKE_API_FAIL=rules fails the rules/branches call, =rulesets the rulesets/<id> call.
+  case "${FAKE_API_FAIL:-}:$*" in
+    rules:*"/rules/branches/"* | rulesets:*"/rulesets/"*) echo "fake gh: HTTP 502" >&2; exit 1 ;;
+  esac
+  case " $* " in
+    *" --paginate repos/$FAKE_REPO/rules/branches/$FAKE_BASE --jq "*'select(.type == "update") | .ruleset_id'*)
+      for id in ${FAKE_UPDATE_IDS:-}; do echo "$id"; done ;;
+    *" repos/$FAKE_REPO/rulesets/"*" --jq "*'.current_user_can_bypass'*)
+      id="${2##*/}"
+      eval "v=\${FAKE_BYPASS_$id:-\${FAKE_BYPASS:-}}"
+      echo "$v" ;;
+    *) echo "fake gh: unexpected api call: $*" >&2; exit 1 ;;
+  esac
+  exit 0
+fi
 [ "$1" = pr ] && [ "$2" = list ] || { echo "fake gh: unsupported command $*" >&2; exit 1; }
 args=" $* "
 case "$args" in *" --base $FAKE_BASE "*) ;; *) echo "fake gh: base not $FAKE_BASE: $*" >&2; exit 1 ;; esac
@@ -100,6 +118,9 @@ FAKE_GH
 chmod +x "$fakebin/gh"
 
 export FAKE_REPO=acme/widgets FAKE_BASE=main FAKE_HEAD=unset
+# One restrict-updates ruleset (id 7) applies to the base; the active identity can
+# bypass it for pull requests. Cases below override these.
+export FAKE_UPDATE_IDS=7 FAKE_BYPASS=pull_requests_only
 
 # --- a throwaway checkout with a local sync branch ---------------------
 repo="$tmp/repo"
@@ -185,6 +206,40 @@ assert_eq "a sync PR with zero files is refused as files, not unreadable (empty 
 GREEN=0; rows 1 210 $good CLEAN 1 .ai/next-steps.md >"$tmp/cleanred"; GREEN=1
 assert_eq "CLEAN is offered whatever the green column says (CLEAN needs no bypass)" \
   "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/cleanred")"
+
+# --- the active identity must be able to perform the --admin merge (#250) ---
+rows 1 210 $good BLOCKED 1 .ai/next-steps.md >"$tmp/blk"
+for v in always pull_requests_only exempt; do
+  FAKE_BYPASS=$v
+  assert_eq "BLOCKED + update rule + current_user_can_bypass $v -> offer" \
+    "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/blk")"
+done
+FAKE_BYPASS=never
+assert_eq "BLOCKED + update rule + current_user_can_bypass never -> refuse, reason named" \
+  "refuse 210 bypass-never" "$(run "$tmp/blk")"
+FAKE_BYPASS=pull_requests_only FAKE_UPDATE_IDS="7 8"; export FAKE_BYPASS_8=never
+assert_eq "two update rulesets, one of them never -> refuse" \
+  "refuse 210 bypass-never" "$(run "$tmp/blk")"
+unset FAKE_BYPASS_8
+FAKE_BYPASS=
+assert_eq "an empty current_user_can_bypass -> unreadable, not an offer" \
+  "unreadable" "$(run "$tmp/blk")"
+FAKE_BYPASS=sometimes
+assert_eq "an unknown current_user_can_bypass value -> unreadable" \
+  "unreadable" "$(run "$tmp/blk")"
+FAKE_BYPASS=pull_requests_only FAKE_UPDATE_IDS=
+assert_eq "BLOCKED with no update rule on the base -> the restriction does not explain it" \
+  "refuse 210 state-blocked" "$(run "$tmp/blk")"
+FAKE_UPDATE_IDS=x
+assert_eq "a non-numeric ruleset id -> unreadable" "unreadable" "$(run "$tmp/blk")"
+FAKE_UPDATE_IDS=7
+assert_eq "a failed rules/branches lookup -> unreadable" "unreadable" "$(FAKE_API_FAIL=rules run "$tmp/blk")"
+assert_eq "a failed rulesets/<id> lookup -> unreadable, never an offer" "unreadable" \
+  "$(FAKE_API_FAIL=rulesets run "$tmp/blk")"
+FAKE_BYPASS=never
+assert_eq "CLEAN needs no bypass: never is not consulted" \
+  "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/clean")"
+FAKE_BYPASS=pull_requests_only
 
 GREEN=maybe; rows 1 210 $good BLOCKED 1 .ai/next-steps.md >"$tmp/badgreen"; GREEN=1
 assert_eq "a non-0/1 green column -> unreadable" "unreadable" "$(run "$tmp/badgreen")"
