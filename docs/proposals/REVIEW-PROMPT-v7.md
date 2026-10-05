@@ -1,0 +1,54 @@
+Paste the block below as the first message of a NEW Claude Code session opened in this repo,
+started on Fable 5.1. Fable is the author's family, and also v4's and v5's. It is
+cross-family to the two revisions just made: v6 and v7 were both Opus 5.5. The prompt asks
+the reviewer to check § 6.5 and § 6.6 as two same-family voices, and to watch for its own
+family's pull back toward the author's original positions.
+
+§ 8.1–8.4 were decided by the maintainer on 2026-10-04 after the v4 review. After the v7
+review the maintainer also decided § 8.5 and § 8.6 and four pending notes (the 8.4a critic
+floor, the 8.1 date, the 8.2 move trigger, and deferring 7.4's merge-triggered dispatch),
+each on the v7 reviewer's recommendation. Nothing in § 8 is open. The reviewer reviews a plan
+with decisions in it. It may say a decision is inconsistent with the rest of the plan, or that
+the plan cannot carry it out as written, but it does not re-litigate the maintainer's call.
+
+---
+
+You are reviewing the seventh draft of a proposal for context and bias, not implementing it. Read-only: do not edit, commit, or run write-side git commands, and do not change any GitHub setting.
+
+Who wrote what. The author (v3) and the first two revisers (v4, v5) were Fable 5.1, your family. The next two revisers (v6, v7) were Opus 5.5, each reviewing the previous draft and then editing it; v7 is the same family as v6. v7 changed no maintainer decision. It rewrote § 8.5's options (it says option (b) is unusable and adds a fork option (e)), added option (e) to § 8.6, rewrote § 7.3's launch line and settings sources, added a host-side gateway block to the egress design, narrowed the Docker-socket residual, and moved v6's deterministic critic floor out of principle 10 and re-keyed it. After the v7 review the maintainer decided every remaining item in § 8 on v7's recommendations (§ 6.6's last paragraph lists them). The same session that recommended those decisions then wrote them into the plan, so check that what § 7 now does matches what § 8 records. Your job is to review the plan and to check both Opus passes, which have so far only been checked by each other. Two biases to hold against yourself: agreeing with v6/v7 because they are cross-family and so feel independent, and reverting to v3–v5's positions because they are your family's.
+
+Read, in this order, and nothing else first:
+1. `docs/proposals/sprint-orchestrator-plan-v7.md`, the proposal. § 0 lists declared biases (including v6's and v7's own) and eight suggested checks for you. § 6.3–§ 6.6 list what each reviser changed. § 8 carries the maintainer's decisions (all of them now decided) and the review notes under them.
+2. Only after you have written down your own first-pass verdict on v7: `docs/proposals/analysis/orchestrator-plan-v6.md`. Use it to judge whether each § 6.6 change was warranted, whether § 6.6's verdicts on § 6.5 were right, and whether v7 kept the maintainer's decisions intact. Open `orchestrator-plan-v5.md` only where § 6.6 adjudicates between v5 and v6 (§ 6.6 item 9 is the main case) or where § 6.5's account of v5 leaves you unsure. Open v4 or v3 only if you still need them.
+
+Do NOT open `docs/proposals/analysis/session-export/` unless a specific claim is unverifiable from the repo and the cited URLs and you need the primary source. If you open any file in it, name the file and section in your report and say why. No reviser's transcript is exported.
+
+Verify against primary sources, not the plan's text:
+- The repo files it cites: `docs/decisions.md`, `plugins/way-of-working/**`, `.ai/project.yml`.
+- The consuming repos via read-only `gh api`: 603-Identity/devcontainers, 603-Identity/infrastructure-core, glunk-works/bounty-infra. Use the JaredGroves-603 account for 603-Identity and the Seuss27 account for glunk-works: ruleset `bypass_actors` reads `null` to an account without admin, which is not the same as "none". Read the live rulesets, each repo's `.ai/project.yml` `gates.green`, and the CI workflows behind each required check.
+- The code.claude.com pages raw (`curl -sL … | grep -n`), not through summaries: settings.md, **settings-reference.md** (where most key definitions live), permissions.md, hooks.md, sandboxing.md, cli-reference.md, headless.md, skills.md, sub-agents.md, memory.md, network-config.md, managed-settings.md, plugins/mods/admin.md. v7 relayed most of its § 4.2 quotes from a research subagent with line numbers; re-read the ones § 7.3 depends on.
+- docs.github.com (raw markdown via `https://docs.github.com/api/article/body?pathname=/en/...`): available rules for rulesets (restrict updates, bypass, the unattributed-Copilot setting), creating rulesets (bypass actors and modes), approving a pull request with required reviews, workflows from forks and fork-PR approval settings, the compare API.
+- docs.docker.com: `docker network create --internal`, the default seccomp profile, Docker Desktop's WSL backend and file sharing, Enhanced Container Isolation. v7 could not match the `--internal` gateway sentence in its own grep of the rendered page; find it or say it is not there.
+- Re-run `docs/proposals/analysis/pr_analysis.py` for **infrastructure-core or bounty-infra**; devcontainers and claude-workbench have been reproduced already. Input: `gh pr list -R <repo> --state all --limit 200 --json number,title,createdAt,mergedAt,state,additions,deletions,changedFiles,files`.
+
+Pay particular attention to:
+- § 8.5, decided as option (a), a separate restrict-updates ruleset, on all four repos, with (e) as claude-workbench's fallback. Do not re-argue the choice; test whether the plan can carry it out. Check § 2.2's authorship row yourself, since it is why (b) was dropped. Does a restrict-updates rule block a non-bypass user's PR merge, or only a direct push? Is the separate-ruleset layering right, so the admin's merges still need every check? Does a bypass merge need `--admin` from `gh`, and are § 8.5's conditions for resume (`skills/resume/SKILL.md` L350) and devcontainers' `merge-guard.sh` complete, and safe against `--admin` on a non-cursor-sync PR? Was the evidence ruling out (e) for bounty-infra (`plan-infra.yml` OIDC subject, `ci.yml` Gitleaks licence) read correctly? If the decision cannot work as recorded, say so with the evidence; that is not re-litigating.
+- § 7.3's settings configuration as rewritten in v7. v7 prefers an empty `--setting-sources` list, with `project` plus write-denies as a fallback, and calls both undocumented. Is there documentation either way? Does managed settings still load? Does leaving out `user` drop user CLAUDE.md, agents and skills? Is v7's list of live-reloaded helpers and `env` right, and complete? Did v7 miss anything else loaded from a path the session can write: the work clone's `CLAUDE.md` or `.claude/agents`, `.claude.json`, output styles, the `--plugin-dir` copy?
+- Accretion. v6 named it as a bias of the Fable passes; § 7.3 grew again in v7. Is every control in § 7.3 still needed given the others? Name any that is redundant, and any place where the plan would be simpler and no weaker if the image moved to a VM or a separate box (§ 8.2).
+- § 7.3's egress. v7 says an `--internal` network still reaches the gateway, so the block belongs on the host side, and that making it persist on Docker Desktop's WSL2 backend is unverified. Is the premise right? Is there a documented way to apply it? Does Claude Code's own host list (network-config.md) widen the exfiltration surface beyond what § 7.2 already accepts?
+- § 4.5's narrowed Docker-socket residual. v7 replaced "reaches every Windows credential" with write-then-execute, citing gh's keyring storage. Did v7 understate the risk? Check what else on this machine holds secrets in plain files.
+- § 8.6, decided as (d) then (e), and § 8.2's move trigger, decided as security (Docker Desktop for public repos only; move before infrastructure-core or routine unattended nights; the maintainer is "not terribly worried about the integrity of this host"). Are the two consistent with each other and with § 7.3 and § 7.4? Is (e) sound: native hadolint and Trivy so only the image build and template proof go to CI? Does the image-scope skip in devcontainers' `build.yml` leave any change where CI runs fewer Docker steps than the local gate would? Is (e) plus the CI-wait rule an honest reading of "same quality bar"? Given the maintainer's remark about the host, does § 7.3 still carry host-hardening that only protects the desktop and could go?
+- § 8.4a and principles 3 and 10. The maintainer adopted v7's re-keyed floor. Did v7 read critic-gate's table (`skills/critic-gate/SKILL.md` L69–95) correctly when it chose "at least one of"? Do principles 3 and 10 and § 8.4a now say the same thing? Was v6's floor-as-rule in principle 10 a smuggled decision, as v7 says?
+- § 6.6 item 9. v7 says v6's "v5 wrong on cause" verdict on § 8.3 was a strawman, because v5 already named the away-only window. Check v5's text. Is v7's added cost list for merge-triggered dispatch (task-session pace, the 5-hour window, the lock file) right?
+- § 6.6's new bias, that "the human's PR" is in practice a Claude-written PR the human merges. Is the inference v7 draws from it fair (the loop's PRs are not a new kind of trust)? Does it bear on WB-D20 in a way the plan should say?
+- Whether any v7 edit outside § 8 changed a decision's effect without saying so, and whether v7's notes are consistent with the decisions as recorded.
+
+Report back:
+- Your first-pass verdict on v7, written before step 2 above, unchanged.
+- Claims in v7 you checked and found wrong, overstated, or unsupported, with evidence. Include any § 6.6 "correction" that was itself wrong, any v6 finding v7 kept that should not have survived, and anything v7 introduced that no source supports.
+- For each of § 6.6 items 1–10: did v7 have it right, or not?
+- Places any reviser's biases visibly shaped the result. Include the same-family pattern across v6 and v7, your own family's pull toward v3–v5, and any bias none of them declared.
+- For each decision taken after the v7 review (§ 6.6's last paragraph): can the plan carry it out as written, and does any part of § 4–§ 7 contradict it? Where a decision rests on something untested (the restrict-updates test, the `--setting-sources` behaviour), say what would have to hold.
+- What you would change in v7, ranked, and what you would leave alone. Name anything you would remove, not only what you would add.
+
+Be concrete, cite file:line or URL for every finding, and keep it under 1500 words. A clean "v7 holds" on any point is a valid answer; do not invent findings, do not agree with v7 because it is cross-family, and do not revert to an earlier draft because it is your family's. Where you disagree with any reviser, say so plainly and give the evidence, not a compromise.

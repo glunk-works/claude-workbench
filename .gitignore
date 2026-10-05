@@ -2,3 +2,6 @@
 .ai/archive/
 # .ai/parked/ is deliberately NOT ignored: a parked sprint's snapshot is the only
 # copy of its in-flight state (reference/workflow.md, "Two sprints, one cursor").
+
+# authoring-session transcript export; context for the maintainer only (plan v9 § 10)
+docs/proposals/analysis/session-export/
