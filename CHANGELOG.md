@@ -50,6 +50,21 @@ the GitHub release notes.
   plugin does.
   `--match-head-commit`, the human's confirmation, and the no `--delete-branch` / `--auto`
   rules are unchanged.
+- **`/way-of-working:pr-checks` no longer tells you to wait on a PR the restrict-updates
+  ruleset is blocking** (#224). It read `BLOCKED` with nothing red or pending as GitHub
+  re-evaluation lag, but under an `update` rule (measured with the repository admin role as
+  its only bypass actor) every green PR reads `BLOCKED` to every viewer for good, so it
+  could never again return a merge-ready verdict. A new tested
+  predicate, `bin/blocked-state.sh`, reads the PR's own base branch's rule types: every
+  required check green (over `{ruleset.required_checks}` and the contexts the branch's own
+  rule names), a non-blocking review and an `update` rule is the new verdict **READY (admin
+  merge)**, which names `gh pr merge <N> --repo <repo> --squash --admin --match-head-commit <headRefOid>` as
+  advice and still never runs it; no `update` rule keeps the lag reading. It never says
+  "bypass the checks" — where the admin cannot bypass the ruleset holding them, `--admin`
+  still enforces required checks — and a failed rules call, or any answer other than one
+  of the three words it can give on a `BLOCKED` PR, is "could not tell", never ready. **Known limit:** it cannot see a
+  rule nobody passes it (unresolved conversations, required deployments, code scanning,
+  merge queue), and the admin's bypass would skip those too.
 
 ## [0.15.0] — 2026-10-02
 

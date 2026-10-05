@@ -360,8 +360,9 @@ itself would take to decide whether to skip it — always run it.
      the review is not blocking — that script is what keeps a red PR from being *offered*,
      and where the admin's bypass also covers required checks it is the only thing; its
      header lists what it cannot see. The human's confirmation above and
-     `--match-head-commit` bound what is merged, and **nothing else in this plugin carries
-     `--admin`** — never add it to any other merge. Never add `--delete-branch` (it
+     `--match-head-commit` bound what is merged, and **no other merge this plugin runs carries
+     `--admin`** (`/way-of-working:pr-checks` only names it as advice, never runs it) —
+     never add it to any other merge. Never add `--delete-branch` (it
      switches the local checkout itself; the *Prune squash-merged local branches* step
      removes the branch once merged) or `--auto`. Then, if the current branch is
      `{pr_base}` or `<branch>`, `git switch {pr_base} && git pull --ff-only origin
