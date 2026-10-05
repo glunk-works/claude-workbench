@@ -63,7 +63,7 @@ plugins/way-of-working/
   bin/        cursor-drift.sh entry-anchor.sh review-gate-state.sh plan-anchor.sh
               spawn-model.sh review-base-anchor.sh review-sandbox.sh
               milestone-close-line.sh plan-gather.sh schema-complete.sh
-              cursor-sync-pr.sh — executables, added to the Bash
+              cursor-sync-pr.sh blocked-state.sh — executables, added to the Bash
               tool's PATH
   hooks/      hooks.json + ai-cursor-banner.sh
   reference/  conventions.md  workflow.md  project-schema.md

@@ -44,6 +44,7 @@ sh tests/schema-complete.test.sh  # WB-D17 .ai/project.yml completeness-checker 
 sh tests/plan-gather.test.sh    # plan-sprint's read-only gather-step fixtures (not yet required)
 sh tests/invariants-reach-order.test.sh  # invariants-check.sh check 3 (reach precedes ruleset) fixtures (not yet required)
 sh tests/cursor-sync-pr.test.sh # resume's cursor-sync PR merge-offer predicate fixtures (not yet required)
+sh tests/blocked-state.test.sh  # pr-checks' BLOCKED lag-vs-update-rule predicate fixtures (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `scripts/invariants-check.sh` needs
