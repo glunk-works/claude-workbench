@@ -72,3 +72,7 @@ CHANGELOG.md        # what each tag changes — read before bumping a pin
 scripts/            # the CI gates: lint, coupling, invariants
 tests/              # fixtures for the plugin's bin/ scripts and for the CI gates
 ```
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
