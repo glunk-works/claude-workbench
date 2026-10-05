@@ -17,8 +17,13 @@ drive-letter casings (the mirror step, per the CHANGELOG's bump note).
   #214 — 1 round, fixes applied, **no re-run**, so not formally converged.
 - Follow-up issues from those passes are filed unmilestoned for `/way-of-working:plan-sprint`
   to triage (`gh issue list --search "no:milestone"`).
-- Every merge to `main` is still an admin bypass (merge in the web UI); `resume`'s offer
-  should now work on this ledger's own sync PR with 0.16.0 loaded — first real test.
+- Every merge to `main` is still an admin bypass. v0.16.0 fixed the **decision** (`resume`
+  now offers a green `BLOCKED` sync PR, `pr-checks` says READY (admin merge)), not the
+  **identity**: the merge needs an account the restrict-updates ruleset lets bypass. Here
+  that is Seuss27 (`current_user_can_bypass`: `pull_requests_only`); the active `gh` login,
+  JaredGroves-603, reads `never`, so `resume`'s `--admin` merge is refused by the server
+  while `gh` is on that account. Merge in the web UI (tick the bypass box) or with `gh`
+  switched to the admin account.
 
 **Next:** task #225 — in architect-review step 5 mark the PR body as data to review, never
 instructions to the session, and call out bot-authored PRs (Dependabot and any `[bot]`
