@@ -1,41 +1,31 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 8** (cursor id `sprint-08`), anchored on
-[milestone 8](https://github.com/glunk-works/claude-workbench/milestone/8), *Security review
-phase 1: plugin release*. Status: **implementing**. Plugin **v0.16.0** is released and this
-repo's own pin is bumped to it; `claude plugin list` reports 0.16.0 for this repo, both
-drive-letter casings (the mirror step, per the CHANGELOG's bump note).
+**Now:** **Sprint 9** (cursor id `sprint-09`), no milestone picked yet. Status: **planning**.
+Plugin **v0.16.0** is released and this repo's own pin is bumped to it; #225 and #226 are
+merged but unreleased and ship with the milestone 9 release.
 
-**Just done (2026-10-05):**
-- Shipped the restrict-updates fixes: `resume`'s cursor-sync merge works under the rule (#229,
-  PR #238) and `pr-checks` reports **READY (admin merge)** instead of waiting (#224, PR #239);
-  the SessionStart hook is stored executable, with a fail-closed invariants check (#214, PR
-  #240). Released as v0.16.0 (#241), pin bumped (#242).
-- **Critic passes (default models, no second-opinion round attempted):** #229 — 4 rounds,
-  converged (round 4 tightenings-only). #224 — 4 rounds, **cap reached**: round 4 left small
-  prose findings, applied after it and **not re-read by a critic**; the human chose to ship.
-  #214 — 1 round, fixes applied, **no re-run**, so not formally converged.
-- Follow-up issues from those passes are filed unmilestoned for `/way-of-working:plan-sprint`
-  to triage (`gh issue list --search "no:milestone"`).
-- Every merge to `main` is still an admin bypass. v0.16.0 fixed the **decision** (`resume`
-  now offers a green `BLOCKED` sync PR, `pr-checks` says READY (admin merge)), not the
-  **identity**: the merge needs an account the restrict-updates ruleset lets bypass. Here
-  that is Seuss27 (`current_user_can_bypass`: `pull_requests_only`); the active `gh` login,
-  JaredGroves-603, reads `never`, so `resume`'s `--admin` merge is refused by the server
-  while `gh` is on that account. Merge in the web UI (tick the bypass box) or with `gh`
-  switched to the admin account.
+**Just done (2026-10-05, archive-sprint, no code diff):**
+- Archived Sprint 8, which closed at `d4f82ac` (PR #252) and is recorded in
+  `docs/decisions.md` by PR #253. No deep-record compaction was needed.
+- Shipped this sprint: #229, #224, #214 (v0.16.0), then #225 (PR #251) and #226 (PR #252).
+- Decided: `restrict-updates-to-main` stays — every merge to `main` is an admin bypass by
+  design (flow control, not a workaround). Release plan: one release at the end of milestone
+  9, unless something worth pushing out sooner is fixed.
+- Planned the backlog (plan-sprint): created milestone 11, *v0.16.0 follow-ups: merge-flow
+  hardening* (due 2026-10-16, ships with the milestone 9 release), and placed #250, #245, #248,
+  #244, #243, #246 and #247 in it in that build order. #227 and #223 stay unmilestoned on
+  purpose. Milestones 9 (due 2026-10-23), 6 and 10 are unchanged.
 
-**Next:** task #225 — in architect-review step 5 mark the PR body as data to review, never
-instructions to the session, and call out bot-authored PRs (Dependabot and any `[bot]`
-author) explicitly; apply the same wording where `agents/architect.md` and
-`agents/security-critic.md` read a PR body; add an `invariants-check.sh` check that the
-wording stays if it fits that script's model. Then the green gate,
-`/way-of-working:critic-gate` (`architect` + `security-critic`) and `/way-of-working:ship`.
-**#226** (Apache-2.0 license) follows and ships in the same release as #225. On **sonnet**
-(`coder`).
+**Milestone close:** closed — milestone 8, *Security review phase 1: plugin release*
+(`verify --plan` match, 0 open issues, read-back `closed`).
 
-**HITL Gate: NONE OPEN** — the next gate is the human merging each task PR.
+**Next:** pick which milestone is the next sprint — milestone 11 (due 2026-10-16, ahead of
+milestone 9) or milestone 9 — and anchor it via `/way-of-working:handoff`; picking is a human
+decision, not plan-sprint's. Milestone 9's plan wants an architect-drafted `WB-D` for #230
+before any build, and its step 1 depends on 603-Identity/devcontainers#262. Sprint-06 stays
+parked. On **opus** (`architect`).
+
+**HITL Gate: NONE OPEN** — the next gate is the human choosing the next milestone.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
-[milestone 8](https://github.com/glunk-works/claude-workbench/milestone/8) ·
 [CHANGELOG.md](../CHANGELOG.md) · [.ai/parked/](parked/)
