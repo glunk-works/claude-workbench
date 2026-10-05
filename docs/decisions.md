@@ -823,8 +823,11 @@ take effect. Full reasoning and the task breakdown that implements them:
   **Waiting list**, with what brings each back:
   - `global-bootstrap` — HCL, which CodeQL doesn't support. `zizmor` would apply if it
     grows workflows worth scanning.
-  - `pm-agent-loop`, `appsec-triage-agent` — dormant (0 issues, 12 and 0 PRs), same
-    reasoning as `#28`'s decision 4. Revisit when activity resumes.
+  - `appsec-triage-agent` — dormant (0 issues, 0 PRs), same reasoning as `#28`'s
+    decision 4. Revisit when activity resumes.
+  - `pm-agent-loop` — off the list: archived 2026-10-05, superseded by
+    `loop-orchestrator` (its own description called it that repo's prototype). Was dormant
+    (0 issues, 12 PRs) by the same measure.
   - `scope-core` — dormant by the same measure as of `#45`'s 2026-08-13 survey (0 issues, 2
     PRs); has since opened one hygiene issue (`#3`, 2026-09-11) but no push since
     2026-07-25, so it stays on this list. Revisit if real activity resumes, not just one
