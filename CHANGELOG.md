@@ -29,9 +29,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
-## [Unreleased]
+## [0.16.0] — 2026-10-05
 
-**No migration required.** No `.ai/project.yml` key was added, removed, or renamed.
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed. This
+release makes the plugin work under a restrict-updates ruleset (an `update` rule whose only
+bypass actor is the repository admin role), where every green PR reads `BLOCKED`. Two
+behaviour changes to expect: `/way-of-working:resume` may now merge a cursor-sync PR with
+`--admin` (still only on your confirmation), and `/way-of-working:pr-checks` now calls the
+rules API for a `BLOCKED` PR and can give the new verdict **READY (admin merge)**.
 
 ### Changed
 
@@ -65,6 +70,17 @@ the GitHub release notes.
   of the three words it can give on a `BLOCKED` PR, is "could not tell", never ready. **Known limit:** it cannot see a
   rule nobody passes it (unresolved conversations, required deployments, code scanning,
   merge queue), and the admin's bypass would skip those too.
+
+### Fixed
+
+- **The `SessionStart` cursor-banner hook is now stored executable** (#214).
+  `hooks/ai-cursor-banner.sh` was mode `100644` at every tag from `v0.1.0` through `v0.15.0`,
+  and `hooks/hooks.json` runs it directly, so an install that takes the git mode left the hook
+  unable to execute. It failed silently — "the hook didn't run" reads exactly like "nothing
+  to report" — so the banner never appeared. `scripts/invariants-check.sh` check 9 now fails
+  the gate if any `hooks/*.sh` or `bin/*.sh` is not `100755` in the index, and fails closed on
+  a `git` error or an unlisted script. **Not cured:** a copy that drops mode bits (`cp`
+  without `-p`, a zip extract); running the hook through `bash` would be, and was not done.
 
 ## [0.15.0] — 2026-10-02
 
