@@ -29,6 +29,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [Unreleased]
+
+**No migration required.** No `.ai/project.yml` key was added, removed, or renamed.
+
+### Changed
+
+- **`/way-of-working:resume`'s cursor-sync merge works under a restrict-updates ruleset**
+  (#229). With the repository admin role as the ruleset's only bypass actor, GitHub reports
+  `mergeStateStatus: BLOCKED` to the admin on a green PR, so `bin/cursor-sync-pr.sh` — which
+  offered only `CLEAN` — refused every sync PR as `state-blocked`. It now also offers a
+  `BLOCKED` PR when every present check is green (non-empty rollup;
+  `SUCCESS`/`NEUTRAL`/`SKIPPED`) and `reviewDecision` is not
+  `REVIEW_REQUIRED`/`CHANGES_REQUESTED`; a red, pending or empty check set stays refused.
+  **Known limit:** a required check that never reported is absent from the rollup, so it
+  cannot refuse the PR — it matters only where the admin's bypass also covers required
+  checks (the script header lists this and the other residuals). The merge command now
+  carries `--admin`, since `gh` refuses the plain merge client-side in that state; the prose
+  that forbade `--admin` says why this one merge carries it and that no other merge in the
+  plugin does.
+  `--match-head-commit`, the human's confirmation, and the no `--delete-branch` / `--auto`
+  rules are unchanged.
+
 ## [0.15.0] — 2026-10-02
 
 **No migration required.** No `.ai/project.yml` key was added, removed, or renamed. One

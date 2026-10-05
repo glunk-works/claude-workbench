@@ -307,7 +307,8 @@ itself would take to decide whether to skip it — always run it.
    complete* step left `{repo}` or `{pr_base}` unanswered, treat this as `unreadable` without
    running it). It prints one line. Which PRs qualify, and why each check is the one it is —
    same repository, exactly `.ai/next-steps.md`, a local branch at exactly the PR's head,
-   `CLEAN` — is argued in the script's own header; read that rather than restating it here.
+   `CLEAN`, or `BLOCKED` with green checks and no blocking review — is argued in the
+   script's own header; read that rather than restating it here.
    The policy:
 
    - **`none`** — say nothing.
@@ -347,12 +348,22 @@ itself would take to decide whether to skip it — always run it.
      answers this one offer only; a later offer, in this run or another `/resume` in the
      same conversation, is asked fresh. On **yes**:
      ```bash
-     gh pr merge <N> --repo {repo} --squash --match-head-commit <oid>
+     gh pr merge <N> --repo {repo} --squash --admin --match-head-commit <oid>
      ```
      `--match-head-commit` pins the merge to the head commit the human was shown; a push to
-     the branch after the display makes `gh` refuse. Never add `--delete-branch` (it
+     the branch after the display makes `gh` refuse. `--admin` is here because a repo
+     carrying a restrict-updates ruleset, whose only bypass actor is the repository admin
+     role, shows the admin `mergeStateStatus: BLOCKED` on a green PR and `gh` refuses the
+     plain merge client-side (`#229`); `--admin` only gets past `gh`'s own
+     refusal (the server applies the bypass whatever the client sends). So
+     `cursor-sync-pr.sh` offers a `BLOCKED` PR only when every present check is green and
+     the review is not blocking — that script is what keeps a red PR from being *offered*,
+     and where the admin's bypass also covers required checks it is the only thing; its
+     header lists what it cannot see. The human's confirmation above and
+     `--match-head-commit` bound what is merged, and **nothing else in this plugin carries
+     `--admin`** — never add it to any other merge. Never add `--delete-branch` (it
      switches the local checkout itself; the *Prune squash-merged local branches* step
-     removes the branch once merged), `--admin`, or `--auto`. Then, if the current branch is
+     removes the branch once merged) or `--auto`. Then, if the current branch is
      `{pr_base}` or `<branch>`, `git switch {pr_base} && git pull --ff-only origin
      {pr_base}`, so the next step reads what merged; on any other branch, leave the checkout
      alone and say so. If the switch or pull fails, the merge still happened — report the
@@ -360,8 +371,10 @@ itself would take to decide whether to skip it — always run it.
      the checkout actually holds. On **no**, or a merge `gh` refuses, report it and continue.
    - **`refuse <N> <reason>`** or **`ambiguous <N> <N>...`** — never merge. Report one line
      naming the PR(s) and the reason (`Cursor-sync PR #210 is open but not offered:
-     state-dirty — resolve or close it by hand.`) and continue. Two reasons need a word
-     more. `files` is also what a `/way-of-working:park-sprint` or
+     state-dirty — resolve or close it by hand.`) and continue. Three reasons need a word
+     more. `state-blocked` now means a check is not recognisably green, the check
+     list is empty, or a review is blocking — not merely the restriction — so look at the PR's checks before saying
+     what to do. `files` is also what a `/way-of-working:park-sprint` or
      `/way-of-working:unpark-sprint` PR returns — they share handoff's branch prefix but also
      touch `.ai/parked/` — and setting a sprint aside or restoring one is a decision of its
      own, so say it may be one. `not-local` means no local branch here sits at that PR's head:

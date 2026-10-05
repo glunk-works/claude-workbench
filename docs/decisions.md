@@ -1031,7 +1031,9 @@ take effect. Full reasoning and the task breakdown that implements them:
     made through the offer. A merge on GitHub still approves the ledger alone, as it always
     did.
   - **Trust is "this machine's own sync branch", not "same author".** The predicate offers a
-    PR only when it is same-repository, changes exactly `.ai/next-steps.md`, is `CLEAN`, and
+    PR only when it is same-repository, changes exactly `.ai/next-steps.md`, is `CLEAN` (or, since #229, `BLOCKED` with every
+    present check green and no blocking review — the shape GitHub shows the admin when only
+    a restrict-updates ruleset is unmet), and
     a local branch of the same name sits at exactly its head commit. Same-repository alone is
     not enough on a public repo: anyone with read access can open a PR from an existing
     branch, and this repo keeps merged branches (49 stale `docs/sync-cursor-*` heads beside
@@ -1057,6 +1059,12 @@ take effect. Full reasoning and the task breakdown that implements them:
     - A sync PR the human closed unmerged, then reopened by an outsider as a new PR while
       the local branch survives, passes the binding. The display shows the same text that
       was rejected, and the merge needs the human's pinned confirmation.
+    - Since #229 the offer also admits a `BLOCKED` PR and merges with `--admin`, on evidence
+      the script can only partly see: a required check that never reported, or a rule the
+      admin role can bypass that the script cannot read (unresolved conversations,
+      deployments, code scanning, merge queue), is bypassed with it, and check state can
+      change between the offer and the confirmation. The server still enforces any required
+      rule the admin cannot bypass. The script header lists these.
   - **Cost, accepted: anyone who can open a PR can make auto-start wait.** A fork PR on a
     `docs/sync-cursor-*` branch reads `refuse`, or `ambiguous` beside a real one, until
     someone closes it. That fails closed, so it costs a "go", never an unapproved run.

@@ -5,18 +5,23 @@
 # PR. This predicate decides which PR, if any, may be offered -- and whether HEAD is
 # on a sync branch nobody merged.
 #
-# `gh` is stubbed the same way tests/plan-gather.test.sh stubs it: it does NOT
-# interpret --jq, it returns pre-formed TSV standing in for what the real --jq
-# would emit. So this suite tests the script's own shell code -- the shape checks,
-# the candidate count, each refusal, the local-branch binding -- not GitHub's field
-# semantics. The stub does assert the call's own arguments (the repo, the base, the
-# state, and the exact --jq projection, whose column order the parser depends on),
-# so a regression there fails a fixture instead of passing silently.
+# `gh` is stubbed in two modes. By default, as tests/plan-gather.test.sh stubs it, it
+# does NOT interpret --jq: it returns pre-formed TSV standing in for what the real --jq
+# would emit, so those cases test the script's own shell code -- the shape
+# checks, the candidate count, each refusal, the local-branch binding -- not GitHub's
+# field semantics. With FAKE_JSON set it instead runs the script's REAL --jq program
+# under jq over a JSON fixture trimmed to the fields --json asked for (as real gh
+# would return), so the green predicate itself, and the fields it depends on, are under
+# test. The stub also asserts the call's own arguments (the repo, the base, the state,
+# the --jq projection's column anchors, whose order the parser depends on, and that
+# --json carries both fields the green predicate reads), so a regression there fails a
+# fixture instead of passing silently.
 #
 # The local-branch binding needs a real checkout, so each case runs inside a
 # throwaway repo (the same setup tests/cursor-drift.test.sh uses).
 #
-# Permitted toolset: POSIX sh and its standard utilities, git. No jq, no yq, no python.
+# Permitted toolset: POSIX sh and its standard utilities, git; jq for the FAKE_JSON
+# cases only (skipped loudly when absent). No yq, no python.
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -54,12 +59,35 @@ case "$args" in
       *) echo "fake gh: prefix filter missing" >&2; exit 1 ;;
     esac
     case "$args" in
-      *'[.number, .headRefName, .headRefOid, .isCrossRepository, .mergeStateStatus,'*'(.files | length), (.files[0].path // "")]'*) ;;
+      *'[.number, .headRefName, .headRefOid, .isCrossRepository, .mergeStateStatus,'*'(.files | length),'*'"1" else "0" end),'*'(.files[0].path // "")]'*) ;;
       *) echo "fake gh: projection changed -- update the parser and this stub together" >&2; exit 1 ;;
     esac
     case "$args" in *"--jq length, "*) ;; *) echo "fake gh: total count missing" >&2; exit 1 ;; esac
     [ -z "${FAKE_FAIL:-}" ] || { echo "fake gh: HTTP 502" >&2; exit 1; }
-    cat "$FAKE_ROWS"
+    # The value of --json (the comma list of fields gh will return) and of --jq.
+    prog=""; fields=""; take=""
+    for a in "$@"; do
+      case "$take" in jq) prog="$a" ;; json) fields="$a" ;; esac
+      take=""
+      case "$a" in --jq) take=jq ;; --json) take=json ;; esac
+    done
+    # The green column is computed from these two fields. Dropping statusCheckRollup
+    # makes it always 0 (every BLOCKED PR refused again); dropping reviewDecision makes
+    # it silently ignore a blocking review -- the dangerous direction. Check the --json
+    # list itself, never the whole argument text (which includes the --jq program that
+    # names both fields).
+    case ",$fields," in *,statusCheckRollup,*) ;; *) echo "fake gh: --json lacks statusCheckRollup" >&2; exit 1 ;; esac
+    case ",$fields," in *,reviewDecision,*) ;; *) echo "fake gh: --json lacks reviewDecision" >&2; exit 1 ;; esac
+    if [ -n "${FAKE_JSON:-}" ]; then
+      # Run the script's REAL --jq program (jq stands in for gh's embedded gojq) over a
+      # JSON fixture trimmed to the requested fields, so a dropped field changes the
+      # result as it would with real gh. tr drops the CR a Windows jq.exe emits.
+      jq -c --arg f "$fields" '($f | split(",")) as $k
+        | map(with_entries(select(.key as $x | $k | index($x))))' "$FAKE_JSON" >"$FAKE_JSON.trim"
+      jq -r "$prog" "$FAKE_JSON.trim" | tr -d '\015'
+    else
+      cat "$FAKE_ROWS"
+    fi
     ;;
   *" --state merged "*)
     case "$args" in *" --head $FAKE_HEAD "*) ;; *) echo "fake gh: head not $FAKE_HEAD: $*" >&2; exit 1 ;; esac
@@ -87,11 +115,11 @@ oid_a="$(git rev-parse HEAD)"
 git checkout -q -
 other=89abcdef0123456789abcdef0123456789abcdef   # a head no local branch carries
 
-# rows <total> then one candidate row per remaining group of six args
+# rows <total> then one candidate row per remaining group of seven args
 rows() {
   printf '%s\n' "$1"; shift
   while [ "$#" -ge 7 ]; do
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6" "$7"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6" "${GREEN:-1}" "$7"
     shift 7
   done
 }
@@ -110,7 +138,7 @@ rows 1 210 $good CLEAN 1 .ai/next-steps.md >"$tmp/clean"
 assert_eq "one same-repo, one-file, local, CLEAN PR -> offer with its branch" \
   "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/clean")"
 
-{ printf '1\n'; printf '210\tdocs/sync-cursor-x\t%s\tfalse\tCLEAN\t1\t.ai/next-steps.md' "$oid_a"; } >"$tmp/nonl"
+{ printf '1\n'; printf '210\tdocs/sync-cursor-x\t%s\tfalse\tCLEAN\t1\t1\t.ai/next-steps.md' "$oid_a"; } >"$tmp/nonl"
 assert_eq "a last row with no trailing newline is still read" \
   "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/nonl")"
 
@@ -137,9 +165,66 @@ assert_eq "no local branch of that name (a revived stale remote branch) -> not-l
 for st in BEHIND BLOCKED DIRTY DRAFT UNSTABLE UNKNOWN HAS_HOOKS; do
   lower="$(printf '%s' "$st" | tr 'A-Z' 'a-z')"
   rows 1 210 $good "$st" 1 .ai/next-steps.md >"$tmp/state"
-  assert_eq "$st is refused with its name -- only CLEAN is offered" \
-    "refuse 210 state-$lower" "$(run "$tmp/state")"
+  case "$st" in
+    BLOCKED) want="offer 210 $oid_a docs/sync-cursor-x"; why="BLOCKED with every check green (only the restriction unmet) is offered" ;;
+    *) want="refuse 210 state-$lower"; why="$st is refused with its name" ;;
+  esac
+  assert_eq "$why" "$want" "$(run "$tmp/state")"
 done
+
+# Whatever the state, a PR whose present checks are not all green is never offered.
+# (Only BLOCKED actually reaches the green test; every other state is refused before it.)
+GREEN=0; rows 1 210 $good BLOCKED 1 .ai/next-steps.md >"$tmp/state"; GREEN=1
+assert_eq "BLOCKED with a red, pending or empty check set is refused" \
+  "refuse 210 state-blocked" "$(run "$tmp/state")"
+
+rows 1 210 $good CLEAN 0 "" >"$tmp/nofiles"
+assert_eq "a sync PR with zero files is refused as files, not unreadable (empty path field)" \
+  "refuse 210 files" "$(run "$tmp/nofiles")"
+
+GREEN=0; rows 1 210 $good CLEAN 1 .ai/next-steps.md >"$tmp/cleanred"; GREEN=1
+assert_eq "CLEAN is offered whatever the green column says (CLEAN needs no bypass)" \
+  "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/cleanred")"
+
+GREEN=maybe; rows 1 210 $good BLOCKED 1 .ai/next-steps.md >"$tmp/badgreen"; GREEN=1
+assert_eq "a non-0/1 green column -> unreadable" "unreadable" "$(run "$tmp/badgreen")"
+
+# --- the green predicate itself, through the script's real --jq program ------
+# jq stands in for gh's embedded gojq. Skipped loudly if jq is absent.
+if command -v jq >/dev/null 2>&1; then
+  pr_json() { # <state> <rollup-json> <reviewDecision>
+    printf '[{"number":210,"headRefName":"docs/sync-cursor-x","headRefOid":"%s","isCrossRepository":false,"mergeStateStatus":"%s","files":[{"path":".ai/next-steps.md"}],"statusCheckRollup":%s,"reviewDecision":%s}]\n' \
+      "$oid_a" "$1" "$2" "$3"
+  }
+  jq_case() { # <desc> <expected> <state> <rollup> <reviewDecision>
+    pr_json "$3" "$4" "$5" >"$tmp/pr.json"
+    assert_eq "jq predicate: $1" "$2" "$(FAKE_JSON="$tmp/pr.json" run /dev/null)"
+  }
+  offer="offer 210 $oid_a docs/sync-cursor-x"; blocked=refuse\ 210\ state-blocked
+  ok='{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SUCCESS"}'
+  jq_case "all-green CheckRuns + StatusContext, no review rule" "$offer" BLOCKED \
+    "[$ok,{\"__typename\":\"StatusContext\",\"state\":\"SUCCESS\"}]" '""'
+  jq_case "NEUTRAL and SKIPPED count as green" "$offer" BLOCKED \
+    '[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"NEUTRAL"},{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SKIPPED"}]' null
+  jq_case "APPROVED review is fine" "$offer" BLOCKED "[$ok]" '"APPROVED"'
+  jq_case "empty rollup is no evidence" "$blocked" BLOCKED '[]' '""'
+  jq_case "null rollup is no evidence" "$blocked" BLOCKED null '""'
+  jq_case "an in-progress run" "$blocked" BLOCKED \
+    "[$ok,{\"__typename\":\"CheckRun\",\"status\":\"IN_PROGRESS\",\"conclusion\":null}]" '""'
+  for c in FAILURE CANCELLED TIMED_OUT ACTION_REQUIRED STARTUP_FAILURE STALE; do
+    jq_case "a $c run" "$blocked" BLOCKED \
+      "[$ok,{\"__typename\":\"CheckRun\",\"status\":\"COMPLETED\",\"conclusion\":\"$c\"}]" '""'
+  done
+  jq_case "a pending StatusContext" "$blocked" BLOCKED \
+    "[$ok,{\"__typename\":\"StatusContext\",\"state\":\"PENDING\"}]" '""'
+  jq_case "an unknown __typename" "$blocked" BLOCKED \
+    "[$ok,{\"__typename\":\"Mystery\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"}]" '""'
+  jq_case "REVIEW_REQUIRED" "$blocked" BLOCKED "[$ok]" '"REVIEW_REQUIRED"'
+  jq_case "CHANGES_REQUESTED" "$blocked" BLOCKED "[$ok]" '"CHANGES_REQUESTED"'
+  jq_case "CLEAN needs no green evidence" "$offer" CLEAN '[]' '""'
+else
+  echo "SKIP - jq not on PATH: the green predicate's own --jq program was NOT exercised" >&2
+fi
 
 rows 2 205 $good CLEAN 1 .ai/next-steps.md 210 docs/sync-cursor-y "$other" false CLEAN 1 .ai/next-steps.md >"$tmp/two"
 assert_eq "two candidates -> ambiguous, neither offered" \
@@ -181,7 +266,7 @@ assert_eq "a non-numeric file count -> unreadable" "unreadable" "$(run "$tmp/bad
 rows 1 210 feat/other "$oid_a" false CLEAN 1 .ai/next-steps.md >"$tmp/badbranch"
 assert_eq "a row whose branch lacks the prefix -> unreadable" "unreadable" "$(run "$tmp/badbranch")"
 
-{ printf '1\n'; printf '210\tdocs/sync-cursor-x\t%s\tfalse\tCLEAN\t1\t.ai/next-steps.md\textra\n' "$oid_a"; } >"$tmp/extra"
+{ printf '1\n'; printf '210\tdocs/sync-cursor-x\t%s\tfalse\tCLEAN\t1\t1\t.ai/next-steps.md\textra\n' "$oid_a"; } >"$tmp/extra"
 assert_eq "an extra field -> unreadable" "unreadable" "$(run "$tmp/extra")"
 
 assert_eq "no arguments -> unreadable" "unreadable" \
