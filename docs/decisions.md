@@ -1059,11 +1059,17 @@ take effect. Full reasoning and the task breakdown that implements them:
       the local branch survives, passes the binding. The display shows the same text that
       was rejected, and the merge needs the human's pinned confirmation.
     - Since #229 the offer also admits a `BLOCKED` PR and merges with `--admin`, on evidence
-      the script can only partly see: a required check that never reported, or a rule the
-      admin role can bypass that the script cannot read (unresolved conversations,
-      deployments, code scanning, merge queue), is bypassed with it, and check state can
-      change between the offer and the confirmation. The server still enforces any required
-      rule the admin cannot bypass. The script header lists these.
+      the script can only partly see: a rule the admin role can bypass that the script cannot
+      read (unresolved conversations, deployments, code scanning, merge queue) is bypassed
+      with it, and check state can change between the offer and the confirmation. The server
+      still enforces any required rule the admin cannot bypass. The script header lists these.
+    - Since #245 a `BLOCKED` offer also requires every name in `{ruleset.required_checks}`
+      (passed as the script's third argument) to appear in the rollup as a green entry, so a
+      required check that never reported — a `paths:` filter excluding `.ai/`, a job not yet
+      registered — no longer slips past the all-present-checks-green test. An empty or
+      missing list refuses. What it checks is the list in `.ai/project.yml`, not the contexts
+      the ruleset currently carries, so a context added to the ruleset and not to the file is
+      still not looked for.
     - Since #250 the `BLOCKED` offer also requires the **active `gh` identity** to be able to
       perform that merge: `--admin` only switches off `gh`'s client-side refusal, and the
       server applies the bypass per viewer (measured: one account on a machine saw

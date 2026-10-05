@@ -80,7 +80,7 @@ case "$args" in
       *'[.number, .headRefName, .headRefOid, .isCrossRepository, .mergeStateStatus,'*'(.files | length),'*'"1" else "0" end),'*'(.files[0].path // "")]'*) ;;
       *) echo "fake gh: projection changed -- update the parser and this stub together" >&2; exit 1 ;;
     esac
-    case "$args" in *"--jq length, "*) ;; *) echo "fake gh: total count missing" >&2; exit 1 ;; esac
+    case "$args" in *"length, (.[] | select"*) ;; *) echo "fake gh: total count missing" >&2; exit 1 ;; esac
     [ -z "${FAKE_FAIL:-}" ] || { echo "fake gh: HTTP 502" >&2; exit 1; }
     # The value of --json (the comma list of fields gh will return) and of --jq.
     prog=""; fields=""; take=""
@@ -136,16 +136,21 @@ oid_a="$(git rev-parse HEAD)"
 git checkout -q -
 other=89abcdef0123456789abcdef0123456789abcdef   # a head no local branch carries
 
+us="$(printf '\037')"
+
+# The names column the script's --jq emits: the green checks' names, each wrapped in
+# the unit separator. NAMES overrides it; the default carries both required checks.
 # rows <total> then one candidate row per remaining group of seven args
 rows() {
   printf '%s\n' "$1"; shift
   while [ "$#" -ge 7 ]; do
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6" "${GREEN:-1}" "$7"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6" "${GREEN:-1}" \
+      "${NAMES-${us}lint${us}coupling${us}}" "$7"
     shift 7
   done
 }
 
-run() { FAKE_ROWS="$1" PATH="$fakebin:$PATH" sh "$script" acme/widgets main 2>/dev/null; }
+run() { FAKE_ROWS="$1" PATH="$fakebin:$PATH" sh "$script" acme/widgets main "${REQ-lint,coupling}" 2>/dev/null; }
 
 good="docs/sync-cursor-x $oid_a false"
 
@@ -159,7 +164,7 @@ rows 1 210 $good CLEAN 1 .ai/next-steps.md >"$tmp/clean"
 assert_eq "one same-repo, one-file, local, CLEAN PR -> offer with its branch" \
   "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/clean")"
 
-{ printf '1\n'; printf '210\tdocs/sync-cursor-x\t%s\tfalse\tCLEAN\t1\t1\t.ai/next-steps.md' "$oid_a"; } >"$tmp/nonl"
+{ printf '1\n'; printf '210\tdocs/sync-cursor-x\t%s\tfalse\tCLEAN\t1\t1\t%s\t.ai/next-steps.md' "$oid_a" "${us}lint${us}coupling${us}"; } >"$tmp/nonl"
 assert_eq "a last row with no trailing newline is still read" \
   "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/nonl")"
 
@@ -241,6 +246,24 @@ assert_eq "CLEAN needs no bypass: never is not consulted" \
   "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/clean")"
 FAKE_BYPASS=pull_requests_only
 
+# --- the required-check list (#245), at the shell level ---
+rows 1 210 $good BLOCKED 1 .ai/next-steps.md >"$tmp/blk"
+NAMES="${us}lint${us}"; rows 1 210 $good BLOCKED 1 .ai/next-steps.md >"$tmp/lacks"; unset NAMES
+assert_eq "BLOCKED, every present check green, a listed required check absent from the rollup -> refused" \
+  "refuse 210 state-blocked" "$(run "$tmp/lacks")"
+assert_eq "BLOCKED with no third argument (no list) -> refused, never offered" \
+  "refuse 210 state-blocked" "$(FAKE_ROWS="$tmp/blk" PATH="$fakebin:$PATH" sh "$script" acme/widgets main 2>/dev/null)"
+assert_eq "BLOCKED with an empty list -> refused" \
+  "refuse 210 state-blocked" "$(REQ= run "$tmp/blk")"
+assert_eq "four arguments -> unreadable" "unreadable" \
+  "$(FAKE_ROWS="$tmp/blk" PATH="$fakebin:$PATH" sh "$script" acme/widgets main a b 2>/dev/null)"
+NAMES=lint; rows 1 210 $good BLOCKED 1 .ai/next-steps.md >"$tmp/badnames"; unset NAMES
+assert_eq "a names column without the unit-separator wrapping -> unreadable" "unreadable" \
+  "$(run "$tmp/badnames")"
+NAMES="${us}${us}"; rows 1 210 $good CLEAN 1 .ai/next-steps.md >"$tmp/cleannone"; unset NAMES
+assert_eq "CLEAN with a required check absent from the rollup is still offered (CLEAN needs no bypass)" \
+  "offer 210 $oid_a docs/sync-cursor-x" "$(run "$tmp/cleannone")"
+
 GREEN=maybe; rows 1 210 $good BLOCKED 1 .ai/next-steps.md >"$tmp/badgreen"; GREEN=1
 assert_eq "a non-0/1 green column -> unreadable" "unreadable" "$(run "$tmp/badgreen")"
 
@@ -253,14 +276,19 @@ if command -v jq >/dev/null 2>&1; then
   }
   jq_case() { # <desc> <expected> <state> <rollup> <reviewDecision>
     pr_json "$3" "$4" "$5" >"$tmp/pr.json"
-    assert_eq "jq predicate: $1" "$2" "$(FAKE_JSON="$tmp/pr.json" run /dev/null)"
+    assert_eq "jq predicate: $1" "$2" "$(REQ="${REQ-lint}" FAKE_JSON="$tmp/pr.json" run /dev/null)"
+  }
+  jq_req() { # <required list> then jq_case's arguments
+    REQ="$1"; shift
+    jq_case "$@"
+    unset REQ
   }
   offer="offer 210 $oid_a docs/sync-cursor-x"; blocked=refuse\ 210\ state-blocked
-  ok='{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SUCCESS"}'
+  ok='{"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"SUCCESS"}'
   jq_case "all-green CheckRuns + StatusContext, no review rule" "$offer" BLOCKED \
     "[$ok,{\"__typename\":\"StatusContext\",\"state\":\"SUCCESS\"}]" '""'
   jq_case "NEUTRAL and SKIPPED count as green" "$offer" BLOCKED \
-    '[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"NEUTRAL"},{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SKIPPED"}]' null
+    '[{"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"NEUTRAL"},{"__typename":"CheckRun","name":"coupling","status":"COMPLETED","conclusion":"SKIPPED"}]' null
   jq_case "APPROVED review is fine" "$offer" BLOCKED "[$ok]" '"APPROVED"'
   jq_case "empty rollup is no evidence" "$blocked" BLOCKED '[]' '""'
   jq_case "null rollup is no evidence" "$blocked" BLOCKED null '""'
@@ -277,6 +305,26 @@ if command -v jq >/dev/null 2>&1; then
   jq_case "REVIEW_REQUIRED" "$blocked" BLOCKED "[$ok]" '"REVIEW_REQUIRED"'
   jq_case "CHANGES_REQUESTED" "$blocked" BLOCKED "[$ok]" '"CHANGES_REQUESTED"'
   jq_case "CLEAN needs no green evidence" "$offer" CLEAN '[]' '""'
+  # Required checks (#245): every listed name must be in the rollup as a green entry.
+  ctx='{"__typename":"StatusContext","context":"ci/build","state":"SUCCESS"}'
+  jq_req lint,coupling "all green but a listed required check never reported" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req lint,ci/build "a required StatusContext is matched by its context" "$offer" BLOCKED "[$ok,$ctx]" '""'
+  jq_req lint,ci/build "a required context that is absent is refused" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req lin "a required name is matched whole, not as a substring" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req LINT "a required name is matched case-sensitively" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req 'lint,' "a trailing comma adds no requirement" "$offer" BLOCKED "[$ok]" '""'
+  jq_req ',lint' "an empty entry before a name is refused" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req 'lint,,' "an empty entry is refused, not skipped" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req '' "an empty required list is no evidence" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req , "a list of only separators is no evidence" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req '*' "a glob in the list is matched literally" "$blocked" BLOCKED "[$ok]" '""'
+  jq_req lint "an unnamed green entry cannot satisfy a requirement" "$blocked" BLOCKED \
+    '[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SUCCESS"}]' '""'
+  jq_req lint "a name carrying a control character is never matched" "$blocked" BLOCKED \
+    "[{\"__typename\":\"CheckRun\",\"name\":\"li\\u001fnt\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"}]" '""'
+  jq_req lint "a green required name beside a red unrelated check is refused" "$blocked" BLOCKED \
+    "[$ok,{\"__typename\":\"CheckRun\",\"name\":\"other\",\"status\":\"COMPLETED\",\"conclusion\":\"FAILURE\"}]" '""'
+  jq_req '' "CLEAN needs no required-check evidence either" "$offer" CLEAN "[$ok]" '""'
 else
   echo "SKIP - jq not on PATH: the green predicate's own --jq program was NOT exercised" >&2
 fi
@@ -321,7 +369,7 @@ assert_eq "a non-numeric file count -> unreadable" "unreadable" "$(run "$tmp/bad
 rows 1 210 feat/other "$oid_a" false CLEAN 1 .ai/next-steps.md >"$tmp/badbranch"
 assert_eq "a row whose branch lacks the prefix -> unreadable" "unreadable" "$(run "$tmp/badbranch")"
 
-{ printf '1\n'; printf '210\tdocs/sync-cursor-x\t%s\tfalse\tCLEAN\t1\t1\t.ai/next-steps.md\textra\n' "$oid_a"; } >"$tmp/extra"
+{ printf '1\n'; printf '210\tdocs/sync-cursor-x\t%s\tfalse\tCLEAN\t1\t1\t%s\t.ai/next-steps.md\textra\n' "$oid_a" "${us}lint${us}coupling${us}"; } >"$tmp/extra"
 assert_eq "an extra field -> unreadable" "unreadable" "$(run "$tmp/extra")"
 
 assert_eq "no arguments -> unreadable" "unreadable" \
