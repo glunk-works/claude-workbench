@@ -13,7 +13,13 @@ didn't write it, posted so it goes green on the head commit. The `architect` *su
 `/way-of-working:critic-gate`'s pre-review, never this: spawned mid-work isn't a fresh
 session.
 
-Argument: a PR number in the repo whose checkout you are standing in, at its root. Wherever
+Argument: a PR number in the repo whose checkout you are standing in, at its root,
+optionally followed by `--pin <sha>` — a full 40-hex head SHA, compared byte for byte, never
+a prefix. `/way-of-working:resume` passes it when it starts this skill itself from the
+review step it derived (`WB-D22`); a hand-started run carries none and behaves as it always
+has. A value that is not exactly 40 lowercase hex is a stop. `--pin` is **never evidence of
+a fresh session** — the *State the integrity precondition, then honor it* step stays as
+written. Wherever
 you start — on the base, on the PR's own branch (whose `.ai/project.yml` is the author's),
 or anywhere else — **the base comes from GitHub, not the checkout**, and you sync onto
 it before reading any config:
@@ -82,7 +88,9 @@ guess a gate (`reference/project-schema.md`).
    this checkout's own `origin` (never a script argument): prints `sha=<40hex>
    head_repo=<owner/name> base=<branch> assoc=<association> trusted=0|1`. `base` must
    be the anchored `{pr_base}` — any other branch is a stop. Pin the head SHA from
-   THIS line, never a second, separate read. `trusted=1` only when `assoc` is on
+   THIS line, never a second, separate read. **With `--pin`, stop here if that `sha` is not
+   byte-for-byte the pin** — the head moved since resume derived the step, and a review of a
+   commit nobody pinned is not the review that was approved to start. `trusted=1` only when `assoc` is on
    `/way-of-working:resume`'s own author-trust allowlist (point at it, never restate it
    a third time) and `head_repo` equals `{repo}` — a fork head is untrusted whoever
    opened the PR. Then `gh pr view <N> --json files` for `{code_paths}` (or
@@ -91,7 +99,10 @@ guess a gate (`reference/project-schema.md`).
 
 4. **Check the other required checks first** — invoke `/way-of-working:pr-checks <N>` via
    the Skill tool. The gate reads `absent` or `failure` here: what you're about to satisfy;
-   `success` already means a review satisfied this SHA, so ask why first. Review only a
+   `success` already means a review satisfied this SHA, so ask why first. **With `--pin`,
+   `success` on the pin is a stop, not a question**: the PR was already reviewed at that head,
+   so a later session that finds the same cursor never posts a second review; report it as
+   reviewed and awaiting the human's merge, or a fix. Review only a
    PR whose other checks are green, unless the human says otherwise: a fix pushed after
    review moves the head and re-arms the gate.
 
@@ -215,6 +226,25 @@ guess a gate (`reference/project-schema.md`).
    `--request-changes`, never merge**: the merge is the human's approval, and a
    Claude-issued approval would be a gate approving itself.
 
+   **With `--pin`, re-read the head immediately before posting** — `gh pr view <N> --repo {repo} --json
+   headRefOid -q .headRefOid` — and stop if it is not the pin, **then post against the pin, not
+   against whatever the head is by then**, instead of `gh pr review`:
+   ```bash
+   R=$(gh api -X POST "repos/{repo}/pulls/<N>/reviews" -f commit_id=<pin> -f event=COMMENT \
+         -F body=@"<that path>" --jq '.commit_id + " " + .state') &&
+   [ "$R" = "<pin> COMMENTED" ] || { echo "STOP: review post returned ${R:-nothing}"; exit 1; }
+   ```
+   `event=COMMENT` is a fixed literal and is required: omitted, the API creates an invisible
+   PENDING draft, the gate stays red and a stray draft is left behind. It is never `APPROVE` or
+   `REQUEST_CHANGES`. The body is the same file, so the frozen header and attestation still
+   reach the gate byte for byte. The review is now attached to the pin even if a push landed
+   after the re-read, and a push that removes the pin from the PR makes the API refuse the post
+   (a stop). A gate keyed on the review's `commit_id` then stays red on the pushed head; a gate
+   keyed on the PR's head can still go green there, and the poll's head check reports it. A
+   refused POST (including a harness denying this `gh api` write) is a stop to report, never a
+   fall back to `gh pr review`. **Not yet verified live**: it runs only where `{review.ci_gate}`
+   is set, and a hand-started run keeps `gh pr review` unchanged.
+
 8. **Verify the post took.** Poll until `{review.ci_gate.check}` reads `success` on the
    head SHA — bounded, about 90 s — through the tested predicate, reading **both**
    surfaces it posts to; name which carried it. The `&&` chain is load-bearing: a failed
@@ -233,6 +263,19 @@ guess a gate (`reference/project-schema.md`).
      sleep 15
    done
    ```
+
+   **With `--pin`, the loop's `SHA` is the pin, never a fresh read.** Set `SHA=<pin>` on its own
+   line **before** the loop (each Bash call is a fresh shell, so it must be set in the same
+   call), drop the loop's first link (`SHA=$(gh pr view …) &&`), and make the loop body begin
+   with an explicit stop, so a moved head ends the loop instead of failing a chain silently:
+   `HEAD_NOW=$(gh pr view <N> --repo {repo} --json headRefOid -q .headRefOid) && [ "$HEAD_NOW" = "$SHA" ] ||
+   { echo "STOP: head is ${HEAD_NOW:-unreadable}, not the pin"; break; }`. `success` counts
+   only on the pin, and a head other than the pin is a **stop to report** (never re-pin and
+   repost: a pushed fix re-arms the gate on a commit nobody pinned, and a new no-op handoff
+   from the fixed head is what re-pins it). Diagnosis (a) below does not apply, and a printed
+   `STOP` is reported as that, never run through (b) or (c). Today's unpinned loop polls the current head and accepts
+   `success` there without comparing it to what was reviewed; that gap is closed for the
+   pinned run only.
 
    Any word but `success`, or nothing (exit 2), is not green. Not `success` at the bound:
    diagnose **in order**. (a) **Head moved** — the printed SHA isn't the one
@@ -254,11 +297,16 @@ guess a gate (`reference/project-schema.md`).
    **Findings never travel in `next_action`.**
 
 10. **End with the pointer:** `/way-of-working:handoff`. Next: the human's merge, or the
-    fix-and-repost loop — never a second review from this session.
+    fix-and-repost loop — never a second review from this session. **With `--pin`, end
+    without that pointer:** the cursor already names the PR, and what comes next is the
+    human's merge or the coder's fix. A handoff from the PR's base branch, where
+    `review-base-anchor.sh` leaves the checkout, would fail the no-op handoff's own pin and
+    open exactly the relay PR that shape removes. Every later resume on that branch reads
+    `drift`, so it never auto-starts: it reports the derived step (`reviewed`, awaiting the human's merge, once the gate reads success on the pin) and waits.
 
 ## Guardrails
 
-- `--comment` only. No `--approve`, no `--request-changes`, no `gh pr merge`, no push to
+- A COMMENT review only (`--comment`, or `event=COMMENT` on the pinned path). No `--approve`/`event=APPROVE`, no `event=REQUEST_CHANGES`, no `--request-changes`, no `gh pr merge`, no push to
   the branch, no `--force`.
 - The two frozen strings are copied from `.ai/project.yml` on `{pr_base}`, never typed —
   why: `reference/project-schema.md`.

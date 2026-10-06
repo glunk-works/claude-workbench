@@ -33,6 +33,9 @@ re-verifies it before `/way-of-working:resume` may run it unattended.
    then drop the three `parked_*` fields from the live cursor. Under `{planning.kind}:
    github_milestones`, this restores `pointers.plan_anchor` **as it was at park time** — it
    is not re-verified here, and may already be stale against whatever moved on GitHub since.
+   It sets `pointers.review_pr` to `null` on the restored cursor, whatever the snapshot held
+   (`WB-D22`): a review pinned at park time named a head that has since moved or merged, and
+   a stale vote for a review step must not survive the restore.
    That is safe only because this skill never leaves `hitl_gate` reading `NONE OPEN` (the
    *Re-point and gate* step) — the human re-verifies before anything auto-starts against it.
 2. **Re-point and gate.** Set `last_commit` to `git rev-parse --short HEAD`. Write

@@ -257,7 +257,7 @@ what it does and does not close) and an untrusted
 one from the required checks' own witness alone, with no local execution at all, pastes the header and
 attestation out of `.ai/project.yml` (why those two strings are frozen and must never be
 retyped is stated once, in `reference/project-schema.md` § `review.ci_gate`), posts with
-`gh pr review --comment` — never `--approve`: the merge is the human's approval, and a
+`gh pr review --comment` (a pinned run: `POST …/reviews` with `event=COMMENT`) — never `--approve`: the merge is the human's approval, and a
 Claude-issued approval would be a gate approving itself — then verifies the check went green
 on that SHA on **both** surfaces a gate can post to, and files the non-blocking findings as
 backlog items rather than into the cursor. The posted review is a timestamped, threadable
@@ -294,6 +294,10 @@ description and cannot be mistaken for the human's approval.
   re-approved a `next_action` the human already approved by merging its cursor-sync PR (a
   merge on GitHub approves the ledger's **Next:**; one at `/resume`'s offer approves the
   `next_action` itself, shown beside it — `WB-D20`).
+  After a **no-op handoff** (below) it also derives a review or merge step from GitHub state
+  alone — never from `next_action` — and auto-starts
+  `/way-of-working:architect-review <M> --pin <oid>` only when `state.json` agrees on the PR,
+  its head and the task token, from a fresh session on the work branch (`WB-D22`).
 - **`/way-of-working:handoff`** — run **before** switching model/session. Checks the QA-critic pass ran
   on any `code_paths` diff (a prompt, not a block — nothing else in the pipeline points at
   `/way-of-working:critic-gate`, so `/way-of-working:handoff` is where a forgotten pass gets caught). Serializes the
@@ -303,6 +307,9 @@ description and cannot be mistaken for the human's approval.
   dirty. Does **not** archive. Because `/way-of-working:resume` may execute the `next_action` unattended,
   write it as a bounded imperative you would be content to see carried out without you; if
   it genuinely needs a decision, open a `hitl_gate` instead.
+  **When the only cursor change is "review or merge PR #M next"** it is a *no-op handoff*:
+  it writes `.ai/state.json` with `pointers.review_pr`, puts the critic record in the work
+  PR's `## Critic pass` section, and opens no ledger PR (`WB-D22`; `github_milestones` only).
 - **`/way-of-working:architect-review <PR>`** — run in the **fresh** session after
   `/way-of-working:handoff`, where a repo wires `review.ci_gate`. Posts the review that
   satisfies the gate, verifies it went green on the head SHA on both surfaces a gate can

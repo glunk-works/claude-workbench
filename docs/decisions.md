@@ -1108,6 +1108,317 @@ take effect. Full reasoning and the task breakdown that implements them:
     exec-bit path the harness uses is covered by check 9, not by that suite. No
     `.ai/project.yml` key.
 
+- **WB-D22 (`#230`) — a review step is derived from GitHub, so handoff skips the ledger PR
+  that would only say "review PR N next".** *Step-1 half* (orchestrator plan v9 § 7.1 step 1,
+  § 8.4b, § 8.4c). The loop half, for milestone 2, is added under this same number when that
+  milestone starts. Today a work PR is usually followed by a second, docs-only cursor-sync PR
+  whose only news is "review or merge PR N next", and the human reads and merges each one.
+  Plan v9's exit metric for this step is fewer than 0.5 cursor PRs per work PR on
+  devcontainers within a week, with zero relay PRs.
+  - **The no-op handoff rule.** It applies when the only cursor change is that the anchored
+    task's work now sits in an open PR awaiting review or merge. In that case
+    `/way-of-working:handoff` writes `.ai/state.json` and nothing else:
+    - It does not regenerate `.ai/next-steps.md`. A regenerated, uncommitted ledger would
+      leave the tree dirty, and resume would wait.
+    - It opens no ledger PR.
+    - It leaves the checkout on the work branch.
+
+    What it writes into `.ai/state.json`, in this order:
+    - **The PR**, as `pointers.review_pr: {number, head_oid}`. `head_oid` is this
+      checkout's own `git rev-parse HEAD`, and it must equal the PR's `headRefOid`. If they
+      differ (unpushed local commits, or a remote commit not pulled), handoff opens the
+      ledger PR instead. The pin binds the review to the commit this checkout holds, not to
+      commits the owner wrote: a collaborator's commit the maintainer has pulled is pinned
+      like any other.
+    - **The `## Critic pass` section** (below) is written to the PR body before the anchor
+      is re-taken. That way an edit that touches `#N`'s `updated_at` cannot fall after the
+      anchor.
+    - **`next_action`**, beginning `` review PR #M — `` when `review.ci_gate` is set, or
+      `` merge PR #M — `` when it is `null`, followed by the task's usual `` task #N — ``
+      token (or `` task {backlog.repo}#N — ``).
+    - **The anchor**, re-taken with `task_issue: N`. This is handoff's existing mechanical
+      re-anchor. A `drift`, an `unreadable` or a no-baseline result opens `hitl_gate`, and
+      a gate change takes the ledger-PR route below. That is the main way a no-op falls
+      back, visibly, to a ledger PR.
+    - **`last_commit`** is the work branch's HEAD, as handoff writes it today. That is what
+      lets `cursor-drift.sh` read `clean` on the work branch.
+    - **`sprint_status` stays `implementing`.** It is not `awaiting_review`, which
+      auto-start does not accept.
+    - **With `review.ci_gate` set, `assigned_model` and `assigned_persona` become the
+      architect values.** The review runs on the architect model (architect-review's
+      step 1), and resume's model match must pass. This is part of the no-op, not the
+      "model switch" that forces a ledger PR. A fix after the review is the human's call,
+      made after reading it. The human starts a session on `{models.coder}` on the work
+      branch and directs it. Resume there reports the mismatch against the architect
+      assignment and waits, which is expected: the human's instruction is the override.
+      Nothing auto-starts a fix.
+
+    This **amends** two handoff rules for this shape:
+    - the rule that an implementing cursor's `next_action` begins with `` task #N — `` as
+      its very first characters;
+    - the rule that an `architect-review` next action anchors `task_issue: null`. Under that
+      rule the step could never pass resume's plan check.
+
+    Every other `state.json` writer that sets pointers sets `review_pr` to `null`:
+    archive-sprint, park-sprint, unpark-sprint, and handoff writing any other cursor.
+    plan-sprint writes only `hitl_gate`, so it never touches `review_pr`. A value left
+    behind still has to match an open PR at its pinned head, so it fails closed. A missing
+    field reads as `null`, so an older cursor never auto-starts a review step.
+
+    The rule applies only under `planning.kind: github_milestones`, because the derivation
+    below needs an anchored task issue. Every known adopter is on, or moving to, that kind,
+    so `files` repos are not served.
+
+    The ledger normally keeps two things no command re-derives: the cursor's own fields and
+    the critic pass's record (round count, stopping condition, model provenance). The
+    cursor's fields are in `state.json`. For the critic record, handoff writes a
+    `## Critic pass` section into the work PR's body with `gh pr edit <M> --repo {repo}`. It
+    replaces the first `## Critic pass` heading at the start of a line, outside a code fence,
+    up to the next `## ` heading, or appends one if none exists. If the write fails, handoff
+    opens the ledger PR as before. The next ordinary handoff reads the section back as data
+    and carries it into the ledger. It reaches `main` only through that ledger PR, which the
+    human merges.
+
+    Rejected: making the record a precondition that `/way-of-working:ship` happened to meet.
+    That would fire on habit and need a judgement call on free prose.
+
+    Any other cursor change still gets the ledger PR: a gate, a sprint status, a new task,
+    or a model change other than the architect assignment above.
+  - **The derivation rule.** `/way-of-working:resume` derives the review step from GitHub
+    state only, never from `next_action`. A PR qualifies when **all** of these hold:
+    - it is open and same-repository (`isCrossRepository` false);
+    - its author is the login from a fresh `gh api user` read made for this step, which the
+      same-conversation shortcut never reuses;
+    - its title or body names the anchored task issue. The match is `#N` or `{repo}#N` when
+      `backlog.repo` is `repo`, else `{backlog.repo}#N`. In each case it is never preceded by
+      a word character or `/` (outside the repo prefix itself), and never followed by a
+      digit.
+
+    The step it derives depends on `review.ci_gate`, and on `review.ci_gate.check` for the
+    `success` read. Both are read from the same default-branch copy as `{models.architect}`
+    (below), never the working tree. Otherwise a PR could blank the gate, or name a check
+    that is always green, and resume would report an unreviewed PR as reviewed. The same
+    read carries resume's `{repo}` cross-check: the repo `origin` names must equal
+    `{repo}`, and `{backlog.repo}` is taken from that copy too. Any of these derives
+    nothing and auto-starts nothing, and is never read as `null`:
+    - a mismatch;
+    - a failed fetch, `git show` or `yq`.
+
+    Handoff picks the `review PR` or `merge PR` form from its own working-tree copy. If
+    that disagrees with the default branch's, the token check fails and resume waits.
+    - **Set, and the gate does not yet read `success` on the PR's head:** the step is
+      `/way-of-working:architect-review <M>`.
+    - **Set, and the gate already reads `success` on the head:** the step is "PR #M was
+      reviewed at its head and awaits your merge, or a fix". It is a report, like the `null`
+      case, so a reviewed PR is never offered for review again.
+    - **`null`:** there is no review to run, so the step is "PR #M awaits your merge", a
+      report with nothing to auto-start. It names `/way-of-working:pr-checks <M>` as a status
+      read the human can ask for. Resume never merges a work PR.
+
+    Two or more qualifying PRs show all of them and wait.
+
+    Once `orchestration.loop_identity` exists (`#234`), resume derives nothing when its
+    running login equals that value. This stops a session running as the loop's own
+    identity. It does **not** close § 8.13d's stale-value case: a stale `loop_identity` by
+    definition does not equal the running login. That case stays with the driver's
+    preflight login-equality check (plan v9 § 7.3).
+
+    Why the running login rather than a schema key: it is the identity that posts the
+    review, so the PR's author and its reviewer cannot drift apart. A session under the
+    wrong account finds no PR and waits.
+    - Rejected: a `maintainer_login` key. It can go stale, and it would still have to equal
+      the running login.
+    - Rejected: `author_association`. It is wider (any collaborator's PR), and it is relative
+      to who is looking (`WB-D20`).
+  - **Auto-start needs two sources to agree, and a fresh session** (§ 8.4b). The derived
+    step auto-starts only when **all** of these hold:
+    - `.ai/state.json` exists.
+    - `pointers.review_pr.number` is the derived PR, and `head_oid` is that PR's current
+      head.
+    - **The review-form token check passes.** It replaces the `task #N —` leading-token
+      cross-check for this shape. `next_action` must begin `` review PR #M — `` and then the
+      task token, with `M` equal to `review_pr.number` and `N` equal to
+      `plan_anchor.task_issue`. The ledger's **Next:** is not compared, because during a
+      review it still names the task by design (below).
+    - **The checkout is the work branch at `head_oid`.** On `main`, `cursor-drift.sh`
+      correctly reads `drift`, because `main` lacks the work. So the step auto-starts only
+      from the branch the no-op handoff left checked out, with a clean tree.
+    - **The model is the repo's architect.** `assigned_model` must equal
+      `{models.architect}`, not merely match the running model, so a `state.json` naming
+      another model cannot start the review on it. The value is read from the **default
+      branch's** committed `.ai/project.yml`. The default branch is named from `origin` (not
+      from any schema value), fetched, then read with `git show`. This is how resume's
+      ruleset step reads `migration_base` and the ci_gate check name. It is never read from
+      the working tree, which the PR under review can edit. It is never read from
+      `origin/{pr_base}` either: `{pr_base}` itself comes from the working tree, and during
+      a migration it names an integration branch whose copy "can't vouch for itself".
+    - **No same-conversation shortcut is in effect.** A `/model` switch inside the
+      conversation that wrote the PR is not a fresh session, and the gate's whole premise is
+      a fresh one. architect-review's own *State the integrity precondition, then honor it*
+      step stays as well. `--pin` (below) is never evidence of a fresh session.
+    - **architect-review carries the pin, explicitly.** Resume invokes it as
+      `/way-of-working:architect-review <M> --pin <head_oid>`, where the value is a full
+      40-hex SHA compared byte for byte, never a prefix. A hand-started run with no `--pin`
+      behaves as today. With `--pin`, architect-review:
+      - stops at *Pin the target* if the SHA it pins differs;
+      - stops at its *Check the other required checks first* step if the gate already
+        reads `success` on the pin. The PR was already reviewed at that head, so a later
+        session that finds the same `review_pr` never posts a second review.
+      - re-reads `headRefOid` immediately before posting, and stops if that differs;
+      - on step 8's poll, counts `success` only on the pinned SHA, never re-pins and
+        reposts, and reports any head other than the pin as a stop;
+      - ends **without** step 10's `/way-of-working:handoff` pointer. The cursor already
+        names PR #M, and what comes next is the human's merge or the coder's fix. A
+        handoff from the PR's base branch, where `review-base-anchor.sh` leaves the
+        checkout, would fail the pin and open exactly the relay PR this rule removes. Every
+        later resume on that branch reads `drift`, so it never auto-starts. It shows the
+        derived "reviewed, awaits your merge" step and waits.
+
+      Today's step 8 polls the current head and accepts `success` there without comparing
+      it to what was reviewed. That gap is closed for the pinned run only.
+    - Every other auto-start condition in resume still holds unchanged.
+
+    What runs is built from the GitHub-derived number. `next_action`'s text is a vote that
+    must match, never the command. Disagreement, a moved head, or a missing `state.json`
+    shows the derived step and waits. This is fail-closed, like every other auto-start
+    condition.
+  - **A fresh machine with no `state.json`** derives the step, shows it beside the ledger's
+    **Next:**, says the ledger is behind by design, and waits. This is the existing rule
+    that `next-steps.md` alone never auto-starts, applied to the new step. One "go" from the
+    human runs the derived step. A machine whose `state.json` names a different PR or task is
+    the disagreement case, not this one.
+  - **When `review_pr` names no open PR** (merged or closed), resume reports which, says
+    the cursor is stale, and waits. The next ordinary handoff, run by the human or by the
+    session they start, picks the next task and writes the ledger PR. A PR that is still
+    open but whose head moved (say, a fix pushed after a requested change) is the moved-head
+    case above. It shows the step and waits, and a new no-op handoff from the fixed head
+    re-pins it.
+  - **What changes, and what it supersedes.** This is the cost of the rule.
+    - **WB-D20's display property.** Under `WB-D20`, a cursor-sync merge made through
+      resume's offer shows the human the `next_action` beside the ledger before approving
+      it. A review-step `next_action` is never approved by anyone. The SessionStart banner
+      injects it into the model's context, but that is not human approval. It also never
+      reaches `main`, so between the no-op handoff and the work PR's merge, `main`'s
+      **Next:** still names the task, not the PR.
+    - **Why giving it up is acceptable.** The property is given up only for a `next_action`
+      whose sole effect is a vote on a step derived elsewhere. The command is rebuilt from
+      GitHub state, so a harmful `next_action` can at worst make auto-start wait. A
+      free-prose `next_action` keeps `WB-D20`'s display through the ledger PR.
+    - **The first unattended review post.** Until now an `architect-review` next action
+      anchored `task_issue: null` and never auto-started. This makes it the first review
+      the plugin posts without a human approving that step. Resume's *Why auto-start is not
+      a lost approval* passage says auto-start "never crosses a merge or review boundary…
+      nothing here posts a review". That passage is amended for this one derived step. The
+      review is still never a merge, and the human still merges.
+    - **Plan v9 § 7.1 step 3** says the fresh-session review "stays human-started, locally,
+      as today", and then sets out what automating it in CI would require. This entry reads
+      "human-started" as *the human starts the fresh session*. That stays true. What is
+      dropped is the "go" inside the session, which § 8.4b's decision already allows.
+    - **The ledger catches up** at the next ordinary handoff after the merge.
+  - **Loop PRs never match. This is intended** (§ 8.13c, option A). The milestone-2 driver
+    opens its PRs with the GitHub App's token, so their author is the App's bot account,
+    never the login resume runs as. The one path that starts a review under the owner's
+    identity therefore never derives a step from a loop-written PR. If the first wave's
+    measurement of human minutes per work PR shows the PR list is not enough, a reminder
+    written by the driver at the end of a wave (§ 8.13c, option C) is the next step. That
+    reminder would never be a `next_action`.
+  - **Rejected alternatives.**
+    - **Derive the step from `next_action` alone.** The cursor would then carry an
+      unreviewed command, which is exactly what `WB-D20`'s display existed to stop.
+    - **Extend the derivation to `orchestration.loop_identity`** (§ 8.13c, option B). That
+      widens the gate-minting path to loop-written PRs, and still has to refuse auto-start
+      for them.
+  - **What remains.**
+    - "Pushed by the maintainer's login" (§ 7.1) is checked as **authored by**, plus the pin.
+      GitHub's PR API records who opened a PR, not who pushed each commit, and commit
+      metadata can be forged. Here is what the pin bounds:
+      - Handoff pins only a head equal to its own local commit, so a push the checkout has
+        not pulled sends it to the ledger PR. A pulled one is pinned.
+      - Resume refuses a head that moved since.
+      - A pinned architect-review refuses a head other than the pin, at its pin, before it
+        posts, and on its poll.
+
+      One window remains: a push landing between the pre-post read and the post itself.
+      `gh pr review` attaches the review to whatever the head is then (a pinned run now posts
+      against the pin instead: see the *Build* bullet, Known residual 2). The review body names
+      the SHA it reviewed, and the poll then stops and reports, but the gate may already be
+      green on the new head. Posting through `gh api …/pulls/<M>/reviews -f commit_id=<pin>`
+      narrows this where the adopter's gate honours `commit_id`, and the build took it for
+      pinned runs. A hand-started review carries a wider form of
+      this race today: from its pin to its post, with a poll that accepts the new head. A
+      fresh machine with no pin only shows the step.
+    - **Anyone with write access can edit a PR's title and body**, not only its author.
+      Adding `#N` to an unrelated open PR of the maintainer's makes two PRs qualify, so
+      resume waits. On a fresh machine, it shows the wrong PR for one "go". Auto-start itself
+      is bound by `review_pr.number`.
+    - **The same writers can edit the `## Critic pass` section.** GitHub keeps the body's edit
+      history, but nothing here checks it. The record is as trustworthy as the PR body,
+      which is less than a merged ledger commit.
+    - **"GitHub state the session cannot shape" holds against the loop.** The loop session
+      holds no GitHub token (§ 8.13a), and its PRs carry the App's author. It does **not**
+      hold against an interactive session, which acts under the owner's own `gh` login and
+      could open a qualifying PR itself. That session already holds the owner's credentials.
+      The derived step is a review, never a merge, and the human still merges.
+    - **Confirmed in the build: a PR mentioning `#N` does not bump the issue's `updated_at`.** The
+      PR that carries this build (#284, "Closes #230") left `#230`'s `updated_at` at the anchored
+      value. The no-op handoff still re-takes the anchor after the PR exists, as a precaution.
+    - **`#209` and `#220` close with this WB-D's build**, so a sprint close is one PR. `#209`
+      is the roadmap entry written before the close, and `#220` is a dirty ledger left by
+      plan-sprint. They are build items, not decisions.
+    - **No new `.ai/project.yml` key.** `pointers.review_pr` is a `state.json` field.
+  - **Build (`#230`).** What landed, and the choices the build made inside this entry:
+    - **`bin/review-step.sh`** is both halves as a pure, fixture-tested predicate: `derive`
+      (the qualifying-PR rule, with `@tsv`'s escapes decoded before the word-character test) and
+      `decide` (`auto | show <reasons> | merge | reviewed | many | none | unreadable`). The
+      no-op handoff runs `derive` itself and requires `one <M> <oid>` with `<oid>` equal to its
+      own `HEAD`, so handoff pins only a PR that resume would derive. `bin/critic-section.sh`
+      is the fence-aware replace/read-back for the PR body's `## Critic pass` section.
+    - **`#209`** is closed by option (b): `handoff` refuses to write `done` before the roadmap
+      entry is on `origin/{pr_base}` and says the entry belongs in the sprint's last work PR.
+      **`#220`** by option (a): `plan-sprint` offers "continue uncommitted" only when the
+      cursor's `next_action` is or begins with `/way-of-working:handoff`.
+    - **`next_action` is compared with its exact prefix**, `` review PR #M — task #N — ``, so
+      `#12` cannot match `#123` and `task #230` cannot match `task #2301`.
+    - **`derive` takes the `--limit` the caller gave `gh pr list` (200) and refuses, exit 2, a
+      list of that many records or more.** A truncated list (newest first) could drop a
+      qualifying PR and turn `many` into `one`, so it is never an answer.
+    - **The `<repo>#N` form also rejects `-` and `.` before the owner**, since owner and repo
+      names may contain them (`evil-owner/repo#N` is another repo).
+    - **`reviewed` is honest only about the pin.** A green gate on a head `state.json` does not
+      pin for that PR reads `show … head-moved` (a push landing in the post window).
+    - **`fresh` means no assistant turn or work before the resume**; `/clear` and `/model` do
+      not count, so the new-window, `/model`, resume sequence handoff prescribes is fresh.
+    - **Known residuals, not closed by this build.** (1) The pinned review session starts on the
+      PR's tree (the checkout condition requires HEAD at the pin), so it takes its project
+      settings from that tree. Two halves, one old and one new. *Shell execution* through a
+      `SessionStart` hook is old: it happens in any session opened on the work branch, including
+      the coder session the no-op handoff tells the human to open, so auto-start adds no
+      capability there. *Review integrity* is what this entry introduces: the PR's `CLAUDE.md`
+      and `.mcp.json` are loaded into the "fresh" reviewer as authority, and its project
+      settings (session hooks, `permissions.allow`, `env` including `PATH`) stay active after
+      `review-base-anchor.sh` switches to the base, so an author writes standing instructions
+      and tooling for their own reviewer, and the skill's fixed `event=COMMENT` is a promise
+      about the text, not about what runs in that session.
+      Whether a changed plugin `ref` in that tree substitutes the predicates
+      is unverified (a pin bump needs a marketplace re-add, not a session start). A handoff-side
+      denylist of `.claude/`, `CLAUDE.md`, `.mcp.json` and `.claude-plugin/` was rejected: it is
+      advisory (the human can start on the branch anyway) and open-ended (nested `CLAUDE.md`,
+      base hooks calling scripts the PR edits). The structural fix is tracked as `#283`:
+      start the pinned review from `{pr_base}`, carrying the pin in the git-ignored
+      `state.json`, which amends the checkout condition above and needs its own drift rule. It
+      must land before any adopter with `review.ci_gate` set bumps its plugin ref to a release
+      containing this entry; the auto-start review path is not live in this repo, where the key
+      is `null`. (2) A pinned `architect-review` posts through `…/pulls/<M>/reviews -f
+      commit_id=<pin> -f event=COMMENT`, so the review attaches to the pin when a push lands
+      after the pre-post re-read. A gate keyed on the review's `commit_id` then stays red on the
+      pushed head, and one keyed on the PR's head can still go green there, which the poll
+      reports. Not verified live (no gate here), and a harness denial of that `gh api` write is a
+      stop, never a fall back. (3) The repo's own ledger PRs naming the task also qualify in
+      `derive`, and fail closed to `show` or `many`. A draft work PR is pinned and auto-reviewed
+      like any other.
+    - **`derive` requires the PR's own `state` to read `OPEN`** besides being listed with
+      `--state open`, so a merged or closed record can never qualify if a caller's filter slips.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of

@@ -95,6 +95,10 @@ jobs:
         run: sh tests/prune-verdict.test.sh
       - name: invariants-check.sh reach-order fixtures
         run: sh tests/invariants-reach-order.test.sh
+      - name: review-step.sh fixtures
+        run: sh tests/review-step.test.sh
+      - name: critic-section.sh fixtures
+        run: sh tests/critic-section.test.sh
       - name: invariants-check.sh gh-pipe fixtures
         run: sh tests/invariants-gh-pipe.test.sh
 
