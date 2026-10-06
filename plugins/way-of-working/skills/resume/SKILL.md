@@ -561,11 +561,12 @@ itself would take to decide whether to skip it — always run it.
        case "$b" in "$base"|"$cur") continue;; esac
        tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$1 == b { print $2; exit }')
        [ -n "$tip_gh" ] || continue                    # no merged PR -- not a candidate
-       if [ "$(git rev-parse "$b")" = "$tip_gh" ]; then
-         git branch -D "$b" && echo "pruned $b"
-       else
-         echo "skipped $b -- merged, but its tip is not the commit GitHub merged"
-       fi
+       case "$(prune-verdict.sh "$b" "$tip_gh")" in   # tip IS, or is behind, the merged commit
+         delete)           git branch -D "$b" && echo "pruned $b" ;;
+         skip-ahead)       echo "skipped $b -- merged, but its tip has commits the merged head lacks" ;;
+         skip-unfetchable) echo "skipped $b -- merged, but the merged commit could not be fetched to compare" ;;
+         *)                echo "skipped $b -- merged, but its tip could not be compared with the merged commit" ;;
+       esac
      done
    fi
    ```
@@ -573,14 +574,19 @@ itself would take to decide whether to skip it — always run it.
    **deliberate** guard against the loop ever targeting `{pr_base}` by name, and an empty
    or `"null"` pattern matches nothing, so a silent fallback would leave `{pr_base}`
    protected only by accident — by whether some merged PR's `headRefName` happens to equal
-   it and its local tip happens to match. Guard on it before the `gh` call, not after.
+   it and its local tip happens to be that commit or an ancestor of it. Guard on it before the `gh` call, not after.
 
    `-D` is safe only **per commit**, not per branch. Merged-ness is confirmed out-of-band,
    but a merged branch whose local tip has moved since the push still deletes without
    complaint — and a squash-merged branch's commits are unreachable, so that work is gone
    with no warning. So the candidate test asks GitHub *which commit it merged*
    (`headRefOid`, free in the call already being made), and the deletion happens only when
-   the local tip **is** that commit.
+   the local tip **is** that commit or an **ancestor** of it. A tip *behind* the merged
+   head — the PR picked up more commits after this checkout stopped — carries nothing the
+   merge lacks, so `-D` loses nothing; `bin/prune-verdict.sh` fetches the oid by SHA when it is not already local (GitHub
+   serves a merged PR's head by SHA after the branch is gone) and answers `delete`,
+   `skip-ahead` (the tip has a commit the merged head lacks — the real stranded-work
+   case), `skip-unfetchable` or `unreadable` (`#271`).
 
    **Do not substitute the obvious "is my tip pushed?" test** — `git rev-list --count
    origin/$b..$b`. It reads the remote-tracking ref, which stops resolving as soon as the
@@ -594,11 +600,12 @@ itself would take to decide whether to skip it — always run it.
    depend on it — the PR record keeps the merged commit after the branch is gone.
 
    Report in the pick-up summary in **at most one line**, and **never drop a skip** — a
-   skipped branch is stranded work, and it is the one outcome here worth a human's
+   skipped branch may be stranded work (`skip-ahead` is; an unfetchable or unreadable one
+   is a comparison that could not be made), and it is the one outcome here worth a human's
    attention. Name the skipped branches; past two, give the count and name the first
-   (`Pruned 6 squash-merged local branches.` / `Pruned 5; skipped feat/x — its tip is not
-   what GitHub merged.` / `Pruned 3; skipped 4, first feat/x — tips are not what GitHub
-   merged.` / `No stale branches to prune.`). If that will not fit one line, the skips win
+   (`Pruned 6 squash-merged local branches.` / `Pruned 5; skipped feat/x — its tip has commits not in
+   what GitHub merged.` / `Pruned 3; skipped 4, first feat/x — tips have commits not in what GitHub
+   merged.` / `Pruned 4; skipped feat/y — could not fetch the merged commit to compare.` / `No stale branches to prune.`). If that will not fit one line, the skips win
    and the line grows — the length rule exists to keep hygiene quiet, not to suppress the
    one thing worth reading. This is hygiene, not a gate — never block the session on it; if
    `pr_base` can't be read or the `gh` call fails, skip pruning and say so.

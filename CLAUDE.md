@@ -47,6 +47,7 @@ sh tests/invariants-gh-pipe.test.sh  # invariants-check.sh check 11 (no gh outpu
 sh tests/cursor-sync-pr.test.sh # resume's cursor-sync PR merge-offer predicate fixtures (not yet required)
 sh tests/blocked-state.test.sh  # pr-checks' BLOCKED lag-vs-update-rule predicate fixtures (not yet required)
 sh tests/blocked-state-block.test.sh  # pr-checks' blocked-state shell block vs a stub gh (not yet required)
+sh tests/prune-verdict.test.sh    # resume/archive-sprint prune: merged-tip-or-ancestor verdict fixtures (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `scripts/invariants-check.sh` needs
