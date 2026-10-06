@@ -138,8 +138,8 @@ so nothing ships with *no* critic having looked — a fully green PR with an inc
 and no review having caught it is exactly the gap one standing critic pass exists to close
 (the load-bearing incident behind `review.ci_gate` below). The session orchestrates it: it spawns coder and
 critics itself, as siblings, so each result comes straight back to the session rather than
-through a parent subagent (subagents can nest, to a default depth of 3, but this gate does not
-use it).
+through a parent subagent (a subagent can spawn its own subagents only if it holds the `Agent`
+tool; none of this plugin's agents does, so nothing here nests).
 
 **The gate proposes; the human picks — it does not auto-fan-out.** Each critic is real spend
 (mostly Opus subagents) and `architect`/`security-critic` overlap, so `/way-of-working:critic-gate` works out
