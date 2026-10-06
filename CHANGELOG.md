@@ -33,6 +33,16 @@ the GitHub release notes.
 
 ### Added
 
+- **`/way-of-working:resume` won't auto-start while an orchestrator driver holds its lock**
+  (#233, sprint-orchestrator plan § 7.5). New `bin/driver-lock.sh` (no arguments) prints
+  `present`, `absent` or `unreadable`; resume waits on anything but `absent` — an unreadable
+  location or lock reads as present — and names it in the pick-up summary. The driver
+  directory is host config, never an `.ai/project.yml` key: `$WOW_DRIVER_DIR` when set, else
+  an absolute `$XDG_CONFIG_HOME` or else `$HOME/.config`, plus `/way-of-working/driver`; lock = the entry `lock` in it. Absolute paths only. A
+  declared directory that is missing reads `unreadable`; a default one that does not exist
+  reads `absent` (no driver on this host) unless something above it is a file or cannot be
+  searched, which reads `unreadable`. The lock is host-wide for now. No schema change.
+
 - **`/way-of-working:plan-sprint` records a per-issue `depends_on` marker** (#232).
   The recommendation table proposes it, the human confirms it like the build-order slot, and
   a NEW milestone's drafted **Build order:** list carries it as a last-on-the-line
