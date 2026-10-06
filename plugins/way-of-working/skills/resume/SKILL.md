@@ -5,7 +5,7 @@ description: >-
   assigned persona/model, and state the exact pick-up point. Offers to merge a forgotten
   handoff cursor-sync PR, on the human's explicit confirmation only. Then start the next_action
   unattended IF the cursor is clean and unambiguous (hitl_gate NONE OPEN, sprint_status
-  implementing, model matches, no drift, no open cursor-sync PR and no unmerged sync branch
+  implementing, model matches, no drift, no orchestrator-driver lock, no open cursor-sync PR and no unmerged sync branch
   under HEAD — an unreadable check counts as one — and — under planning.kind: github_milestones — the
   plan anchor verifies and the task issue's author is trusted); otherwise state the pick-up
   point and wait. Fails closed — an open, missing, or unreadable gate always waits. Run this
@@ -39,7 +39,7 @@ there), never checked by the ruleset step.
 
 **Never reused, whatever the repo:** the milestone, issue and anchor reads (this session's drift
 detection for a plan surface git cannot see); the *Ensure the schema is complete* step (a cheap
-local read — always run it); the *Check reality vs. the cursor* step (git state changes
+local read — always run it); the *State the pick-up point* step's driver-lock check (a lock appears and clears while a conversation idles); the *Check reality vs. the cursor* step (git state changes
 mid-session); and the *Derive the review step from GitHub* step (`WB-D22`: login, PR list,
 default-branch config and gate state are read fresh, and a `/model` switch inside the
 conversation that wrote the PR is exactly the not-a-fresh-session case it refuses to auto-start).
@@ -471,7 +471,7 @@ edited it. **Default to the full checklist whenever unsure.**
 9. **State the pick-up point** in 3–6 lines (plus, under `{planning.kind}: github_milestones`
    and `sprint_status: planning`, the **Milestone close** line below when applicable): current
    phase/sprint, sprint_status, the single next action, any open HITL Gate, the ruleset check
-   result, the branch-prune result, the cursor-sync PR outcome unless it was `none`, and the derived review step (the *Derive the review step from GitHub* step) unless it was `none` — plus, when `.ai/parked/` is non-empty, **at most one
+   result, the branch-prune result, the driver-lock line unless it was `absent`, the cursor-sync PR outcome unless it was `none`, and the derived review step (the *Derive the review step from GitHub* step) unless it was `none` — plus, when `.ai/parked/` is non-empty, **at most one
    line** naming each parked sprint with its `parked_at` (the *Read the cursor* step), derived
    from the directory, which is the authority (`Parked: 41 (2026-09-02), 43 (2026-09-15) —
    restore with /way-of-working:unpark-sprint <id>.`). Omit the line when there are none.
@@ -493,6 +493,25 @@ edited it. **Default to the full checklist whenever unsure.**
    naming the read failure. This never blocks auto-start on its own (a `planning` cursor never
    auto-starts); it exists so the gap is *said*.
 
+   **Always run the driver-lock check** (`#233`, orchestrator plan § 7.5 — a driver working in
+   this host's driver directory holds a lock, and a resumed session auto-starting beside it
+   would be a second writer on the clone):
+   ```bash
+   driver-lock.sh
+   ```
+   (bare name, same `bin/` `PATH`; it takes no argument — the driver directory is **host**
+   config, found by the script itself from `$WOW_DRIVER_DIR` (absolute paths only) or its
+   default location, never from `.ai/project.yml`. It reads the session environment, which a
+   repo's committed `.claude/settings.json` `env` can also set — a stated residual, not a
+   guarantee; the script's header is the contract, including what the driver must do for
+   this guard to see it, and that it reads a lock rather than excluding a later driver). It prints one line. **`absent`** says nothing. **`present`** and **`unreadable`**
+   are both **impossible to miss**, one line in the pick-up summary — `Driver lock: present —
+   an orchestrator driver is working on this host; not auto-starting.` / `Driver lock:
+   unreadable — cannot tell whether a driver is working here; not auto-starting.` — and the
+   auto-start rule below waits on either: an unreadable lock reads as present. It is never
+   cached by the same-conversation shortcut — a lock appears and clears while a conversation
+   idles.
+
    Then **either start the next action or wait**, per the rule below.
 
    **Auto-start** — begin the `next_action` immediately, no "go" needed, only when **all** hold:
@@ -502,6 +521,7 @@ edited it. **Default to the full checklist whenever unsure.**
    - the *Offer to merge a forgotten cursor-sync PR* step found `none`, or the human merged
      the PR it offered and that merge succeeded — every other outcome waits;
    - `hitl_gate` is present and reads `NONE OPEN`;
+   - `driver-lock.sh` printed `absent` — `present` and `unreadable` both wait (`#233`);
    - `sprint_status` is `implementing`;
    - the running model matches `assigned_model` (the *Adopt the assigned persona/model* step);
    - the *Check reality vs. the cursor* step's `cursor-drift.sh` reported `clean` or
