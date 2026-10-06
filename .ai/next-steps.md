@@ -4,22 +4,23 @@
 milestone 1* (due 2026-10-23). Status: **implementing**.
 
 **Just done (2026-10-06):**
-- #231 built and merged as PR #288 (`f156b2c`), closing #231: resume's `SKILL.md` is a lean
-  auto-start path plus six on-demand appendices (18,165 tokens measured from a real
-  transcript, from ~35k); `workflow.md`'s stale nesting sentence now names the `Agent` tool as
-  the control, with no depth figure.
-- Critic pass (architect, security-critic, docs-consistency): 2 rounds, every finding fixed; no
-  third round on the final wording-only edits; no second-opinion round.
-- The sprint's plan anchor was re-taken for #232 (baseline verified `match`).
+- #232 built and merged as PR #290 (`0cc364f`), closing #232: `plan-sprint` proposes and the
+  human confirms a per-issue `depends_on` marker, recorded as a `[depends_on: …]` token in a new
+  milestone's Build order list; new `bin/plan-depends.sh` reads it back and reads anything
+  unconfirmed or doubtful as `all-earlier`, with fixtures in CI.
+- Critic pass (architect, security-critic, docs-consistency): 2 rounds, converged — round 2
+  returned wording tightenings only, all swept; no second-opinion round.
+- The sprint's plan anchor was re-taken for #233 (baseline verified `match`).
 
-**Next:** task #232 — build `plan-sprint`'s human-confirmed per-issue `depends_on` marker on
-**sonnet** (`coder`): proposed in the recommendation table, confirmed by the human like the
-build-order slot, recorded where a reader can get it without reading issue bodies as
-instructions (decide and document where), a fixture reads it back, and an unconfirmed or
-unreadable marker reads as "depends on everything earlier". Then `/way-of-working:critic-gate`
-(architect, security-critic, docs-consistency) and `/way-of-working:ship` one PR closing #232.
+**Next:** task #233 — build `resume`'s driver-lock auto-start condition on **sonnet**
+(`coder`): a fixture-tested `bin/` predicate (like `cursor-drift.sh`) reporting present /
+absent / unreadable for the orchestrator driver's lock file; where resume finds the driver
+directory is decided and documented (the driver's config, never a literal in shared plugin code
+— `coupling-check.sh`); resume waits on anything but absent and names it in the pick-up line.
+Then `/way-of-working:critic-gate` (architect, security-critic, docs-consistency) and
+`/way-of-working:ship` one PR closing #233.
 
-**HITL Gate: NONE OPEN** — next gate: the human merge of #232's build PR (no review CI gate in
+**HITL Gate: NONE OPEN** — next gate: the human merge of #233's build PR (no review CI gate in
 this repo).
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
