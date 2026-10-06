@@ -226,13 +226,13 @@ guess a gate (`reference/project-schema.md`).
    `--request-changes`, never merge**: the merge is the human's approval, and a
    Claude-issued approval would be a gate approving itself.
 
-   **With `--pin`, re-read the head immediately before posting** — `gh pr view <N> --json
+   **With `--pin`, re-read the head immediately before posting** — `gh pr view <N> --repo {repo} --json
    headRefOid -q .headRefOid` — and stop if it is not the pin, **then post against the pin, not
    against whatever the head is by then**, instead of `gh pr review`:
    ```bash
    R=$(gh api -X POST "repos/{repo}/pulls/<N>/reviews" -f commit_id=<pin> -f event=COMMENT \
          -F body=@"<that path>" --jq '.commit_id + " " + .state') &&
-   [ "$R" = "<pin> COMMENTED" ] || echo "STOP: review post returned ${R:-nothing}"
+   [ "$R" = "<pin> COMMENTED" ] || { echo "STOP: review post returned ${R:-nothing}"; exit 1; }
    ```
    `event=COMMENT` is a fixed literal and is required: omitted, the API creates an invisible
    PENDING draft, the gate stays red and a stray draft is left behind. It is never `APPROVE` or
@@ -268,7 +268,7 @@ guess a gate (`reference/project-schema.md`).
    line **before** the loop (each Bash call is a fresh shell, so it must be set in the same
    call), drop the loop's first link (`SHA=$(gh pr view …) &&`), and make the loop body begin
    with an explicit stop, so a moved head ends the loop instead of failing a chain silently:
-   `HEAD_NOW=$(gh pr view <N> --json headRefOid -q .headRefOid) && [ "$HEAD_NOW" = "$SHA" ] ||
+   `HEAD_NOW=$(gh pr view <N> --repo {repo} --json headRefOid -q .headRefOid) && [ "$HEAD_NOW" = "$SHA" ] ||
    { echo "STOP: head is ${HEAD_NOW:-unreadable}, not the pin"; break; }`. `success` counts
    only on the pin, and a head other than the pin is a **stop to report** (never re-pin and
    repost: a pushed fix re-arms the gate on a commit nobody pinned, and a new no-op handoff
@@ -306,7 +306,7 @@ guess a gate (`reference/project-schema.md`).
 
 ## Guardrails
 
-- `--comment` only. No `--approve`, no `--request-changes`, no `gh pr merge`, no push to
+- A COMMENT review only (`--comment`, or `event=COMMENT` on the pinned path). No `--approve`/`event=APPROVE`, no `event=REQUEST_CHANGES`, no `--request-changes`, no `gh pr merge`, no push to
   the branch, no `--force`.
 - The two frozen strings are copied from `.ai/project.yml` on `{pr_base}`, never typed —
   why: `reference/project-schema.md`.

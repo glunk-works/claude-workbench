@@ -43,7 +43,7 @@ the GitHub release notes.
   `/way-of-working:resume` derives the step from GitHub only — an open same-repo PR authored by
   the running login that names the anchored task — and auto-starts
   `/way-of-working:architect-review <M> --pin <oid>` only when `state.json` exists and names the
-  same PR and head, the token check passes, the checkout is the work branch at the pin with a
+  same PR and head, the token check passes, HEAD is the pin with a
   clean tree, `assigned_model` is the default branch's `models.architect`, and the session is
   fresh; otherwise it shows the step and waits. A fresh machine with no `state.json` shows it
   and waits for one "go". Loop PRs, authored by the App, never match. New:
@@ -63,8 +63,10 @@ the GitHub release notes.
   `event=COMMENT`, so the review attaches to the pin even if a push lands after the pre-post
   re-read (not verified live: no gate in this repo).
   **Adopters with `review.ci_gate` set should not bump to a release containing this until #283
-  lands**: the pinned review session still starts on the PR's own tree, so the PR's `CLAUDE.md`
-  is in the reviewer's context.
+  lands**: the pinned review session still starts on the PR's own tree, so that PR's project
+  settings (hooks, permissions, env), `.mcp.json` and `CLAUDE.md` are active in the reviewer's session.
+  The `commit_id` post is likely to be refused by the harness on org repos on a host that blocks
+  `gh api` writes; that is a stop, never a fallback.
 
 ### Fixed
 

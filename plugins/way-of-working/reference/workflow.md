@@ -257,7 +257,7 @@ what it does and does not close) and an untrusted
 one from the required checks' own witness alone, with no local execution at all, pastes the header and
 attestation out of `.ai/project.yml` (why those two strings are frozen and must never be
 retyped is stated once, in `reference/project-schema.md` § `review.ci_gate`), posts with
-`gh pr review --comment` — never `--approve`: the merge is the human's approval, and a
+`gh pr review --comment` (a pinned run: `POST …/reviews` with `event=COMMENT`) — never `--approve`: the merge is the human's approval, and a
 Claude-issued approval would be a gate approving itself — then verifies the check went green
 on that SHA on **both** surfaces a gate can post to, and files the non-blocking findings as
 backlog items rather than into the cursor. The posted review is a timestamped, threadable

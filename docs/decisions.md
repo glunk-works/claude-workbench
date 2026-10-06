@@ -1339,11 +1339,12 @@ take effect. Full reasoning and the task breakdown that implements them:
         posts, and on its poll.
 
       One window remains: a push landing between the pre-post read and the post itself.
-      `gh pr review` attaches the review to whatever the head is then. The review body names
+      `gh pr review` attaches the review to whatever the head is then (a pinned run now posts
+      against the pin instead: see the *Build* bullet, Known residual 2). The review body names
       the SHA it reviewed, and the poll then stops and reports, but the gate may already be
-      green on the new head. Posting through `gh api …/pulls/<M>/reviews -f
-      commit_id=<pin>` would narrow this, but only where the adopter's gate honours
-      `commit_id`, so it is left to the build. A hand-started review carries a wider form of
+      green on the new head. Posting through `gh api …/pulls/<M>/reviews -f commit_id=<pin>`
+      narrows this where the adopter's gate honours `commit_id`, and the build took it for
+      pinned runs. A hand-started review carries a wider form of
       this race today: from its pin to its post, with a poll that accepts the new head. A
       fresh machine with no pin only shows the step.
     - **Anyone with write access can edit a PR's title and body**, not only its author.
@@ -1358,9 +1359,9 @@ take effect. Full reasoning and the task breakdown that implements them:
       hold against an interactive session, which acts under the owner's own `gh` login and
       could open a qualifying PR itself. That session already holds the owner's credentials.
       The derived step is a review, never a merge, and the human still merges.
-    - **Unverified: whether a PR mentioning `#N` bumps the issue's `updated_at`.** If it
-      does, a carried anchor would drift. The no-op handoff re-takes the anchor after the PR
-      exists, which avoids this. The build confirms it.
+    - **Confirmed in the build: a PR mentioning `#N` does not bump the issue's `updated_at`.** The
+      PR that carries this build (#284, "Closes #230") left `#230`'s `updated_at` at the anchored
+      value. The no-op handoff still re-takes the anchor after the PR exists, as a precaution.
     - **`#209` and `#220` close with this WB-D's build**, so a sprint close is one PR. `#209`
       is the roadmap entry written before the close, and `#220` is a dirty ledger left by
       plan-sprint. They are build items, not decisions.
@@ -1392,10 +1393,13 @@ take effect. Full reasoning and the task breakdown that implements them:
       settings from that tree. Two halves, one old and one new. *Shell execution* through a
       `SessionStart` hook is old: it happens in any session opened on the work branch, including
       the coder session the no-op handoff tells the human to open, so auto-start adds no
-      capability there. *Review integrity* is what this entry introduces: the PR's `CLAUDE.md` is
-      loaded into the "fresh" reviewer as authority and stays in its context after
-      `review-base-anchor.sh` switches to the base, so an author writes standing instructions to
-      their own reviewer. Whether a changed plugin `ref` in that tree substitutes the predicates
+      capability there. *Review integrity* is what this entry introduces: the PR's `CLAUDE.md`
+      and `.mcp.json` are loaded into the "fresh" reviewer as authority, and its project
+      settings (session hooks, `permissions.allow`, `env` including `PATH`) stay active after
+      `review-base-anchor.sh` switches to the base, so an author writes standing instructions
+      and tooling for their own reviewer, and the skill's fixed `event=COMMENT` is a promise
+      about the text, not about what runs in that session.
+      Whether a changed plugin `ref` in that tree substitutes the predicates
       is unverified (a pin bump needs a marketplace re-add, not a session start). A handoff-side
       denylist of `.claude/`, `CLAUDE.md`, `.mcp.json` and `.claude-plugin/` was rejected: it is
       advisory (the human can start on the branch anyway) and open-ended (nested `CLAUDE.md`,

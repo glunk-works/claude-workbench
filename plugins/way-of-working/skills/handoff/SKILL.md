@@ -74,7 +74,7 @@ github_milestones` — `{backlog.repo}`.
    shell**: every block in this skill runs as one invocation with everything it needs, and a
    variable from an earlier call is gone, so each block makes its own `mktemp -d`:
    ```bash
-   T=$(mktemp -d) && PRIOR=$([ -f .ai/state.json ] && jq -r '.pointers.review_pr.number? // empty' .ai/state.json || true) &&
+   T=$(mktemp -d) && PRIOR=$(if [ -f .ai/state.json ]; then jq -r '.pointers.review_pr.number? // empty' .ai/state.json; fi) &&
    case "$PRIOR" in ''|0*|*[!0-9]*) PRIOR= ;; esac &&
    { [ -z "$PRIOR" ] || {
      gh pr view "$PRIOR" --repo {repo} --json body -q .body >"$T/prior-body.md" &&
@@ -363,7 +363,9 @@ github_milestones` — `{backlog.repo}`.
    *Determine the new cursor* step, before anything was written)** into this ledger, beside the
    second-opinion provenance above, when there was one — as **indented** text under that bullet,
    never at column 0: it is edit-able text, and a forged `**Next:**` line must not land where
-   resume reads one.
+   resume reads one. If that read failed ("could not read", as opposed to none), write the line
+   "could not read PR #PRIOR's record" in its place, never nothing: the pointer to that PR is
+   about to be nulled, so this is the only trace.
 
 5. **Commit `.ai/next-steps.md` as its own docs-only PR against `{pr_base}`.** **Skipped on a no-op handoff** (see the *Regenerate `.ai/next-steps.md`* step). The cursor
    sync travels as a small, standalone, docs-only PR, separate from whatever code PR this
