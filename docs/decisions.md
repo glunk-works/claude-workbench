@@ -1613,3 +1613,15 @@ closed) adds no `.ai/project.yml` key and is unreleased; it ships in the milesto
 `/way-of-working:resume` and `/way-of-working:archive-sprint` prune a merged branch whose
 local tip is the commit GitHub merged or an ancestor of it, through `bin/prune-verdict.sh`
 (#271, PR #278). Sprint 10 closed at `542827e` (PR #278), not at a release tag.
+
+Sprint 11 (milestone 9, *Sprint 8: orchestrator milestone 1*, all its issues closed) ships as
+`v0.17.0`, released in #303 (PRs #305, #306). It adds the `orchestration.*` schema keys (#234),
+a resume guard that refuses auto-start while the driver's lock file exists (#233), the
+loop-identity name rule for `plan-anchor.sh` and `review-sandbox.sh` (#235) and for a review step
+in resume (#295), the derived review step with the no-op handoff (#230, `WB-D22`), the pinned
+review started from the base branch (#283), the `plan-sprint` `depends_on` marker (#232), the lean
+resume path (#231), and the `archive-sprint` and `plan-sprint` fixes #209, #219, #220.
+Hermetically verified, live smoke done: resume's `--admin` cursor-sync offer and `pr-checks`'
+identity-naming READY (admin merge) verdict, run on 2026-10-06 against PRs #308 and #309 (#273),
+and the loop host runs Claude Code 2.1.289, above the 2.1.259 floor (#236). Sprint 11 closed at
+`edc21d0` (PR #306), the pin bump after the `v0.17.0` tag.
