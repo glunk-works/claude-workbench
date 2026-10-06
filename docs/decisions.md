@@ -1208,3 +1208,15 @@ mark a PR body as data and call out bot-authored PRs, with an invariants check t
 the wording (#225, PR #251), and the repo is licensed Apache-2.0 (#226, PR #252). They
 ship in the release the milestone 9 plan puts at that milestone's end. Sprint 8 closed at
 `d4f82ac` (PR #252), not at a release tag.
+
+Sprint 9 (milestone 11, *v0.16.0 follow-ups: merge-flow hardening*, all 7 issues closed)
+adds no `.ai/project.yml` key and is unreleased; it ships in the milestone 9 release.
+`/way-of-working:resume` offers the `--admin` cursor-sync merge only to an identity that can
+bypass, and `pr-checks` names that identity in its admin-merge verdict (#250, PR #256).
+`cursor-sync-pr.sh` requires every named required check to appear green (#245, PR #258).
+`pr-checks`' blocked-state predicate reads rule parameters and answers could-not-tell for a
+rule it cannot evaluate (#248, PR #260), with a stub-`gh` fixture for that block (#244, PR
+#262). `invariants-check.sh` rejects `gh` output piped into a `bin/` predicate (#243, PR
+#264). `ai-cursor-banner.sh` caps the length of each field it injects (#246, PR #266).
+`WB-D21` keeps `hooks.json` invoking that hook directly (#247, PR #268). Sprint 9 closed at
+`7be385a` (PR #268), not at a release tag.
