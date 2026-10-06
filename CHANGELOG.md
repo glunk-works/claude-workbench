@@ -43,12 +43,25 @@ the GitHub release notes.
   `null` until one is declared, which a dispatch will refuse). `bin/schema-complete.sh` checks
   all of it, with fixtures, and `/way-of-working:resume`'s schema interview asks it with no
   suggested answers. The block is required of every adopting repo, not only one the loop
-  dispatches into: absent stays an unanswered question (`WB-D17`). No skill reads these keys yet;
-  the driver that will is not built, and `WB-D22`'s resume guard on `loop_identity` is still to do.
+  dispatches into: absent stays an unanswered question (`WB-D17`). No skill reads these keys yet
+  (but see the `loop_identity` entry below, #235); the driver that will is not built, and `WB-D22`'s resume guard on `loop_identity` is still to do.
 
   **⚠️ Migration:** `orchestration` is a new required key. A repo that pins this release reads
   `incomplete` (and `/way-of-working:resume` will not auto-start) until it answers it:
   `orchestration: null` if the loop will never dispatch into it.
+
+- **The loop identity is untrusted by name** (#235, plan v9 § 8.1, § 8.13d).
+  `bin/plan-anchor.sh verify` takes `--loop-identity <login>` and prints a new `untrusted`
+  verdict, before any drift comparison, when the milestone's creator, the task issue's author or
+  the anchored spec comment's author equals it (case-insensitive, a trailing `[bot]` ignored on both sides; the last two in full mode
+  only); a failed or empty author read is `unreadable`. `bin/review-sandbox.sh trust` reads
+  `orchestration.loop_identity` from the default branch's copy of `.ai/project.yml` and refuses
+  that author before any association check: its output line gains `loop=0|1` before `trusted=`,
+  and it now needs `yq` on `PATH` (a STOP without it, like an unreadable copy). `/way-of-working:resume`
+  waits on `untrusted`; `/way-of-working:handoff` and `/way-of-working:archive-sprint` treat it as
+  a refusal (a gate and a staged close, never a re-anchor or a close). A `loop_identity` left stale
+  after the loop's login changes protects nothing against the new login; the driver's preflight
+  owns that check.
 
 - **`/way-of-working:resume` won't auto-start while an orchestrator driver holds its lock**
   (#233, sprint-orchestrator plan § 7.5). New `bin/driver-lock.sh` (no arguments) prints

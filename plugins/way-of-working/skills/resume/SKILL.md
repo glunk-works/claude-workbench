@@ -529,12 +529,17 @@ edited it. **Default to the full checklist whenever unsure.**
    - **under `{planning.kind}: github_milestones`, the plan verified** — the reach check
      above passed, both the milestone and the open-issues reads succeeded,
      ```bash
-     plan-anchor.sh verify {backlog.repo} <pointers.sprint_plan> <anchor>
+     plan-anchor.sh verify [--loop-identity <login>] {backlog.repo} <pointers.sprint_plan> <anchor>
      ```
-     (full mode, `reference/project-schema.md` § `planning`; `<anchor>` is
+     (full mode, `reference/project-schema.md` § `planning`; `--loop-identity` is passed when
+     the default branch's `orchestration.loop_identity` is non-null, read as that section's
+     *Passing it to `plan-anchor.sh verify`* paragraph says, and an unreadable read waits;
+     `<anchor>` is
      `pointers.plan_anchor` extracted **compact, on one line** — e.g. `jq -c
      .pointers.plan_anchor .ai/state.json` — never pretty-printed, since the parser only
-     matches a value on the same line as its key) printed `match`, the **leading-token
+     matches a value on the same line as its key) printed `match` — **`untrusted` waits**, like
+     `drift`: the milestone, the task, or the anchored spec comment was authored by the loop's
+     own login — the **leading-token
      cross-check** passed, and every author-trust check below passed. Under `files`, this
      condition does not apply.
    - **when the cursor is the review shape (whatever `{planning.kind}` the working tree says — a PR can edit it)** — `next_action` begins `` review PR #`` or

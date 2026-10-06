@@ -411,8 +411,9 @@ accepted, stated trade, not a silent one:
 
 `bin/plan-anchor.sh` is the deterministic predicate over it, mirroring `cursor-drift.sh`'s
 shape: `write <repo> <milestone> <N|-> [<comment-id|->]` produces the anchor; `verify [--plan]
-<repo> <pointer-url> <anchor-json>` compares it against the live milestone/issue/comment and
-answers `match | drift | unreadable`, always exiting 0 — the verdict is stdout, the caller
+[--loop-identity <login>] <repo> <pointer-url> <anchor-json>` compares it against the live
+milestone/issue/comment and answers `match | drift | unreadable | untrusted` (`untrusted`:
+the loop's own login authored one of them, § `orchestration`), always exiting 0 — the verdict is stdout, the caller
 decides policy. `--plan` mode checks only the milestone (open, number, description hash) and
 ignores `task_issue`/`spec_comment` — `/way-of-working:handoff`'s baseline re-anchor check uses
 it, since `#N` may not exist yet or may have just changed; `/way-of-working:archive-sprint`'s
@@ -660,10 +661,16 @@ when it is a map, so a `null` repo is asked nothing more.
   the form the REST API reports as `user.login`** (`<slug>[bot]`): GraphQL and `gh pr view`
   show an App as `app/<slug>` or the bare slug, and a comparison against the wrong surface
   finds no match and quietly falls through. Plan § 8.13d decides that `review-sandbox.sh trust`
-  and `plan-anchor.sh` will treat this name as untrusted ahead of their other trust checks
-  (`#235`); they do not read it yet, and neither does `/way-of-working:resume`'s review-step
-  derivation (`WB-D22`'s "once `loop_identity` exists" guard, which is still to build). **`null`
-  is a complete answer**; a loop dispatch needs a non-null value, and that refusal is the
+  and `plan-anchor.sh` treat this name as **untrusted by name**, ahead of their other trust
+  checks, whatever `author_association` says (`#235`): `review-sandbox.sh trust` reads it
+  itself (from the default branch's copy, below) and prints `loop=1 trusted=0` for a PR that
+  login authored; `plan-anchor.sh verify` takes it as `--loop-identity <login>` (it forbids
+  `yq`, so a caller passes it) and prints `untrusted`, comparing case-insensitively before
+  any drift comparison, a trailing `[bot]` ignored on both sides (so a bare-slug value still matches an App). The name is the only thing either refuses: a `loop_identity` left
+  stale after the loop's login changed protects nothing against the new login, which is what
+  the driver's preflight login-equality check (plan § 7.3) is for. `/way-of-working:resume`'s
+  review-step derivation does not read it yet (`WB-D22`'s "once `loop_identity` exists"
+  guard, which is still to build). **`null` is a complete answer**; a loop dispatch needs a non-null value, and that refusal is the
   driver's preflight, which does not exist yet. Shape-checked when non-null: a stem of letters,
   digits and `-` (no leading or trailing `-`, at most 39 characters) with an optional trailing
   `[bot]`.
@@ -678,10 +685,33 @@ task that edits its own `pr_base` must not be choosing which copy is trusted, no
 own `human_only_paths`. `schema-complete.sh`'s verdict on the working tree is resume's
 auto-start input and says nothing about that copy; a dispatch must check the trusted one.
 
+**Passing it to `plan-anchor.sh verify`** (`/way-of-working:resume`, `/way-of-working:handoff`,
+`/way-of-working:archive-sprint`). A caller reads `orchestration.loop_identity` from that same
+default-branch copy and passes `--loop-identity <login>` **only when it is non-null**; a
+`null` (or `orchestration: null`) omits the flag. The read is the caller's own, so a caller
+that **cannot** make it (a failed fetch or `yq` read, a missing `origin`, an unresolvable default
+branch) has no verdict it may act on: it treats that exactly as `unreadable` — it waits or
+stages, never proceeds. It never reads the working tree's own copy for this, which on a task's
+branch is the task's to edit.
+```bash
+TOPLEVEL=$(git rev-parse --show-toplevel) &&
+U=$(git -C "$TOPLEVEL" remote get-url origin) &&
+D=$(gh repo view "$U" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') && [ -n "$D" ] &&
+git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
+YML=$(git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml") &&
+LOOP=$(printf '%s' "$YML" | yq -r '.orchestration.loop_identity // ""')
+# a failed step above is unreadable, never an empty $LOOP; empty: no flag, else --loop-identity "$LOOP"
+```
+`plan-anchor.sh verify` prints `untrusted` when the milestone's creator, the task issue's
+author, or the anchored spec comment's author (the last two in full mode only) is that
+login. Every caller treats `untrusted` as a refusal: it is never `match`, and it is not
+`drift` either, since no re-anchor or approval by the session itself repairs it.
+
 **What `complete` does and does not establish.** It means every key is present and well-formed
 for its kind, not that the allowlist names real agents, the ruleset exists, or the paths are
 the right ones; those are the preflight's reads. Until the driver ships, no skill reads these
-keys. They are recorded now so each repo's answer is reviewed in its own PR; "a key documented
+keys, except `loop_identity` (`#235`: `plan-anchor.sh`'s callers and `review-sandbox.sh trust`
+read it, as above). They are recorded now so each repo's answer is reviewed in its own PR; "a key documented
 but unread" (§ *Adding a key*) is therefore a stated, temporary state for this block, not an
 oversight.
 
