@@ -4,27 +4,27 @@
 milestone 1* (due 2026-10-23). Status: **implementing**.
 
 **Just done (2026-10-06):**
-- #295 built and merged as PR #300 (`e5b7a4f`): `review-step.sh decide` takes `login` and
-  `loop_identity` and prints `none`
-  ahead of every other verdict when they match (case and one trailing `[bot]` folded, as
-  `plan-anchor.sh` does; `-` = null = no guard; a malformed value exits 2). Resume reads the value
-  from the default branch's copy and treats an absent or malformed value as a failed read. Critic
-  pass (architect, security-critic, docs-consistency): 2 rounds; round 2's one substantive finding
-  (a quoted `"-"` colliding with the null sentinel) was fixed and hand-tested, not re-run through a
-  critic; second-opinion round not run.
-- Unverified: `gh api user` may be refused for an App installation token, which would make the
-  guard mainly a machine-user control.
+- #283 built and merged as PR #302 (`294edc4`): the no-op handoff ends with a synced switch to
+  `{pr_base}`, and resume's review-step auto-start requires the base at `origin/{pr_base}`, clean,
+  with `last_commit` equal to the pin (`review-step.sh decide` gained `branch`, `base`, `base_head`,
+  `last_commit` and the reason `last-commit`). `architect-review` rewrites the local cursor's
+  `next_action` once its post succeeds, leaving `pointers.review_pr` intact. Residuals are in
+  `WB-D22`. Critic pass (architect, security-critic, docs-consistency): 3 rounds, converged;
+  second-opinion round offered and skipped.
+- Milestone 9 re-planned: #303 (the v0.17.0 release) and #273 (live smoke) added; its description
+  now lists them as steps 14 and 15 and was re-anchored.
 - Three local branches were skipped by the resume prune (merged, but their tips are not what
   GitHub merged): `docs/sync-cursor-271-next-b`, `docs/sync-cursor-sprint-08-orchestrator-plan`,
   `fix/hook-exec-bit-214` — check for unpushed work.
 
-**Next:** task #283 — build the WB-D22 residual on **sonnet** (`coder`): the pinned review
-session starts from the base branch, not the PR's tree (spec in issue #283). Then
-`/way-of-working:critic-gate` (architect, security-critic, plus docs-consistency for skill prose)
-and `/way-of-working:ship` one PR closing #283. After it: #236, a human task on the loop host.
+**Next:** task #303 — build the v0.17.0 release on **sonnet** (`coder`): a `chore(release)` PR
+bumping the plugin version and moving `CHANGELOG.md` `[Unreleased]` under 0.17.0 (rewrite the #283
+pin warning, carry any Migration line), per the v0.16.0 procedure and the spec in issue #303; one
+PR, never tag or merge it. Then #236, a human task on the loop host, and #273 once the pin is
+bumped.
 
-**HITL Gate: NONE OPEN** — next gate: the human merge of #283's build PR (no review CI gate in
-this repo).
+**HITL Gate: NONE OPEN** — next gate: the human merge of the release PR, then the tag and this
+repo's pin bump (no review CI gate in this repo).
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 9](https://github.com/glunk-works/claude-workbench/milestone/9) ·
