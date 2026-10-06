@@ -33,6 +33,23 @@ the GitHub release notes.
 
 ### Changed
 
+- **`/way-of-working:pr-checks` no longer reads a rule it cannot see as absent** (#248).
+  `bin/blocked-state.sh` was fed rule type names only, so a green `BLOCKED` PR under a
+  `pull_request` rule demanding thread resolution or required reviewers, or under
+  `required_deployments`, `code_scanning`, `required_signatures`, a merge queue, or a status
+  check pinned to an app (`integration_id`), still read `admin-merge-ready` (or `lag`). Its
+  stdin is now one line per rule: the type plus `key=value` words for `pull_request` and
+  `required_status_checks`, which the skill builds with `gh`'s embedded jq. When such a rule
+  applies to a green `BLOCKED` PR the script exits 2, naming the rules on stderr, and
+  pr-checks reports COULD NOT TELL naming them instead of its generic caveat; a bare
+  `pull_request` or `required_status_checks` line (parameters dropped) is the same refusal;
+  a repeated key or a wrong-type key is a malformed line, refused in any state. `not-blocked` and `blocked` are unchanged.
+  **Behaviour change:** on a repo whose `pull_request` rule requires an approval, required
+  reviewers, thread resolution or code-owner review, a green `BLOCKED` PR now reads COULD NOT TELL, never READY (admin
+  merge). No `.ai/project.yml` key changes. **Known limit:** other rule types (`workflows`,
+  commit-message patterns) and parameters the projection omits are still ignored, and
+  bypass actors are not read — `current_user_can_bypass` is `never` to a non-admin viewer.
+
 - **`/way-of-working:resume`'s `BLOCKED` cursor-sync offer now sees a required check that
   never reported** (#245). `bin/cursor-sync-pr.sh` took a rollup of all-green present checks
   as enough, so a required check absent from it (a workflow `paths:` filter excluding

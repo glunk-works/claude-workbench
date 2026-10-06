@@ -74,10 +74,11 @@ what is actually enforced.
      the branch's rules decide which. On a repo carrying a restrict-updates ruleset (an
      `update` rule whose only bypass actor is the repository admin role) every green PR
      reads `BLOCKED`, to every viewer, for good — waiting never clears it. Without an
-     `update` rule it is usually GitHub re-evaluation lag, though a rule the predicate is
-     never shown (an unresolved conversation, a required deployment) holds a PR at
-     `BLOCKED` the same way. Let the tested predicate say which (`#224`); it keys on the
-     `update` rule, not on who may bypass it.
+     `update` rule it is usually GitHub re-evaluation lag, though a rule that holds a PR at
+     `BLOCKED` the same way (an unresolved conversation, a required deployment) can be
+     the cause. Let the tested predicate say which (`#224`); it keys on the `update` rule,
+     not on who may bypass it, and it refuses to answer when such a rule applies
+     (`#248`).
 
      The branch to read the rules for is the PR's own base (`baseRefName`), never
      `{pr_base}` — a PR into another branch is judged by that branch's rules. **A branch
@@ -105,14 +106,19 @@ what is actually enforced.
      # (b) ask the predicate
      B=$(gh pr view <N> --repo {repo} --json baseRefName -q .baseRefName) &&
      case "$B" in '' | *[!A-Za-z0-9._/-]*) false ;; esac &&
-     T=$(gh api --paginate "repos/{repo}/rules/branches/$B" --jq '.[].type') &&
-     { [ -z "$T" ] || printf '%s\n' "$T"; } | blocked-state.sh BLOCKED <green>
+     T=$(gh api --paginate "repos/{repo}/rules/branches/$B" --jq '.[] | .type + (if .type=="pull_request" then " approvals=\(.parameters.required_approving_review_count // 0) threads=\(.parameters.required_review_thread_resolution // false) codeowner=\(.parameters.require_code_owner_review // false) reviewers=\([.parameters.required_reviewers[]?] | length)" elif .type=="required_status_checks" then " app_pinned=\([.parameters.required_status_checks[]? | select(.integration_id != null)] | length)" else "" end)') &&
+     { [ -z "$T" ] || printf '%s\n' "$T"; } | blocked-state.sh BLOCKED <green> 2>&1
      ```
 
      The rule list is captured first (`T=$(…) &&`), so a failed `gh api` stops the chain
      before the predicate — a pipe straight from `gh` would hide that failure — and the
      pipeline's status is the predicate's own. An empty `T` (no rules apply) sends nothing,
-     which the predicate reads as "no `update` rule".
+     which the predicate reads as "no `update` rule". Each line is a rule type, plus
+     `key=value` words for the two types whose parameters matter (`pull_request`,
+     `required_status_checks`), so the predicate can see an approval count, thread
+     resolution, code-owner review, required reviewers, or a check pinned to an app (`#248`). `2>&1` is so that
+     when the predicate refuses (exit 2, nothing on stdout) its one stderr line, which
+     names the rules it cannot evaluate, reaches this session to be quoted in the verdict.
 
      `<green>` is `1` only when **all** of these hold, otherwise `0`: every check in the
      union of `{ruleset.required_checks}` **and** the contexts (a) printed is green (or
@@ -126,9 +132,9 @@ what is actually enforced.
      words is an answer, and
      anything else — no output, a different word, a non-zero status — is "could not tell":
      - **`lag`** — no `update` rule applies. Usually GitHub is still re-evaluating: say so
-       and wait — do **not** intervene, re-run, or push. If it persists, a rule this
-       skill cannot see (an unresolved conversation, a required deployment) may be holding
-       the PR. The verdict is PENDING, below.
+       and wait — do **not** intervene, re-run, or push. The predicate has already
+       ruled out the rules it can evaluate; if it persists, a rule type it ignores
+       (`workflows`, say) may be holding the PR. The verdict is PENDING, below.
      - **`admin-merge-ready`** — the checks and review are in order and an `update` rule
        applies, which on its own keeps a green PR `BLOCKED`. Not lag; do not say wait. The
        verdict is READY (admin merge), below.
@@ -137,7 +143,11 @@ what is actually enforced.
        run); report those, not the rule. The verdict is NOT READY or PENDING by what is
        actually wrong.
      - **Could not tell** (exit 2, a failed call, or any other output) — never lag and
-       never ready. The verdict is COULD NOT TELL, below.
+       never ready. The verdict is COULD NOT TELL, below. When the output is the
+       predicate's `cannot judge a green BLOCKED PR past rules it cannot evaluate: <rules>`
+       line, the rules it names (an approval count, thread resolution, a required
+       deployment, a check pinned to an app …) are the reason; quote them in the verdict
+       instead of a generic caveat.
    - **`mergeable: CONFLICTING`** = the PR is out of date / has conflicts and may be
      running **zero** CI silently. GitHub cannot build the merge ref when a PR is not
      mergeable, so `pull_request` workflows never start — and zero checks looks almost
@@ -253,10 +263,14 @@ what is actually enforced.
      every ruleset the admin cannot bypass, which is why the checks must be green first —
      whether the admin can bypass the ruleset holding them is not visible from here (block
      (c) reads only the rulesets carrying an `update` rule). And
-     it cannot see a rule the verdict does not name (an unresolved conversation, a
-     required deployment, code scanning, a merge queue) — the admin's bypass would skip
-     that too — nor whether a same-named check came from the app the rule requires.
-     `blocked-state.sh` does not read bypass actors; block (c) is what names the identity.
+     this verdict means the predicate was given the parameters of the two rule types that need them and
+     found none it could not judge (`#248`): an approval count, required reviewers, thread resolution,
+     code-owner review, a required deployment, code scanning, signatures, a merge queue or
+     a check pinned to an app each make it COULD NOT TELL instead. A rule type outside
+     that list (`workflows`, a commit-message pattern) it ignores, and the admin's bypass
+     would skip those too.
+     `blocked-state.sh` does not read bypass actors — `current_user_can_bypass` is `never`
+     to a non-admin viewer, so for them it is out of reach; block (c) names the identity.
    - **STALE-RED (auto-clearable)** — only possible when `{review.ci_gate}` is set. The
      *Read the review gate on both surfaces it can post to* step's predicate reads
      `success` and the *only* red is a superseded run of the gate's name (or, on a
@@ -275,15 +289,17 @@ what is actually enforced.
      it is not merely queued — a run that has not started yet is PENDING, not red.
    - **PENDING** — name which checks are still running; or, when `blocked-state.sh`
      printed `lag` and nothing is running, say GitHub is still re-evaluating the merge
-     state — or that a rule this skill cannot see (an unresolved conversation, a required
-     deployment) is holding it. If invoked from a `/loop` or a scheduled run, reschedule
+     state — or that a rule type the predicate ignores is holding it.
+     If invoked from a `/loop` or a scheduled run, reschedule
      another poll, but **bound it**: after a few polls with nothing changing, say so and
      stop rescheduling rather than waiting on a state that will not clear. Otherwise tell
      the user it's still running and offer to re-check.
    - **COULD NOT TELL** — a call this verdict depends on failed, or `blocked-state.sh`
      printed anything but one of the three words the *Classify each required check* step's
      bullet lists (including `not-blocked`, which that block should never produce). Say
-     which, and give no merge-ready verdict.
+     which — when it is the predicate's `cannot judge … rules it cannot evaluate: <rules>`
+     line, name those rules, so the human knows what to check by hand — and give no
+     merge-ready verdict.
 
 5. **Never act on the PR** — with one narrow, documented exception. No `gh pr merge`, no
    `gh pr review --approve`, no `git push --force`, ever. If the user asks you to merge,
