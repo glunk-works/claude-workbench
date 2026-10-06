@@ -23,7 +23,10 @@ writes the ledger PR. A PR that is still open but whose head moved is `show … 
 
 **A loop PR never matches, intentionally** (`WB-D22`): the milestone-2 driver opens PRs under the
 GitHub App's identity, never the login this session runs as, so the one path that starts a review
-under the owner's identity never derives a step from one.
+under the owner's identity never derives a step from one. The backstop is the loop-identity guard:
+`decide` prints `none` when the running login equals `orchestration.loop_identity` (default
+branch's copy, folded for case and a trailing `[bot]`, as `plan-anchor.sh` does; `null` means no guard), so a session that
+happens to run as the loop's own identity derives nothing either.
 
 **Why the gate comes from the default branch.** The PR under review can edit the working tree's
 `.ai/project.yml`; otherwise a PR could blank the gate, or name a check that is always green, and

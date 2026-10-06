@@ -392,6 +392,21 @@ edited it. **Default to the full checklist whenever unsure.**
    CHECK=$(printf '%s' "$DEF_YML" | yq -r '.review.ci_gate.check // ""') &&
    ARCH=$(printf '%s' "$DEF_YML" | yq -r '.models.architect // ""') &&
    BREPO=$(printf '%s' "$DEF_YML" | yq -r '.backlog.repo // ""') &&
+   OHAS=$(printf '%s' "$DEF_YML" | yq -r 'has("orchestration")') &&
+   OTAG=$(printf '%s' "$DEF_YML" | yq -r '.orchestration | tag') &&
+   case "$OHAS/$OTAG" in
+     'true/!!null') LOOPID=- ;;
+     'true/!!map')
+       LHAS=$(printf '%s' "$DEF_YML" | yq -r '.orchestration | has("loop_identity")') &&
+       LTAG=$(printf '%s' "$DEF_YML" | yq -r '.orchestration.loop_identity | tag') &&
+       case "$LHAS/$LTAG" in
+         'true/!!null') LOOPID=- ;;
+         'true/!!str') LOOPID=$(printf '%s' "$DEF_YML" | yq -r '.orchestration.loop_identity') && [ "$LOOPID" != - ] || LOOPID= ;;
+         *) LOOPID= ;;
+       esac ;;
+     *) LOOPID= ;;
+   esac &&
+   [ -n "$LOOPID" ] &&
    T=$(mktemp -d) &&
    gh pr list --repo "$R" --state open --limit 200 \
      --json number,state,isCrossRepository,author,headRefOid,title,body \
@@ -406,6 +421,14 @@ edited it. **Default to the full checklist whenever unsure.**
    with `$TAG` `!!null` is `gate=null`; anything else — including an absent key — is
    `gate=unreadable`, never read as `null`. `{models.architect}` and `{backlog.repo}` are taken
    from that copy; the working tree's own values are not consulted.
+   `$LOOPID` is `orchestration.loop_identity` from that same copy, `-` when it (or the whole
+   `orchestration` block) is `null`: `decide` derives nothing when `$LOGIN` equals it (the loop-identity
+   guard, `WB-D22`), so a session running as the loop's own identity never derives a review step. A failed
+   read of that copy is a failed link like any other, never an empty `$LOOPID`: like the gate, an
+   **absent** `orchestration` block or `loop_identity` key, a non-map block, or a value that is neither
+   `null` nor a non-empty string (a literal `-`, the null sentinel, included) is a failed link (`[ -n "$LOOPID" ]`), never read as `null`. `decide`
+   is passed `$LOOPID` with no `:--` default, so an unset variable in a fresh shell exits 2 there too.
+   `decide` also folds case and a trailing `[bot]` on both sides, as `plan-anchor.sh` does.
 
    When `derive` printed `one <M> <oid>` and the gate is `set`, read the gate on that head
    through the tested predicate, both surfaces, exactly as `/way-of-working:architect-review`'s
@@ -433,7 +456,8 @@ edited it. **Default to the full checklist whenever unsure.**
    ```bash
    review-step.sh decide "derived=$DERIVED" "gate=$GATE" "gate_state=$GS" "state=$STATE" \
      "sr_number=$SRN" "sr_head=$SRH" "next_action=$NA" "task_issue=$N" "backlog_repo=${BREPO:--}" \
-     "repo=$R" "head=$(git rev-parse HEAD)" "tree=$TREE" "model=$MODEL" "architect=$ARCH" "fresh=$FRESH"
+     "repo=$R" "head=$(git rev-parse HEAD)" "tree=$TREE" "model=$MODEL" "architect=$ARCH" "fresh=$FRESH" \
+     "login=$LOGIN" "loop_identity=$LOOPID"
    ```
    `$STATE` is `present` when `.ai/state.json` parsed, else `absent` (then `-` for `$SRN`, `$SRH`,
    `$NA`, `$MODEL`). `$SRN`/`$SRH` are `pointers.review_pr.number` / `.head_oid`, `-` when
@@ -448,7 +472,7 @@ edited it. **Default to the full checklist whenever unsure.**
 
    **Policy, by its one-line verdict** (`appendices/review-step-notes.md` glosses `show`, a stale
    `review_pr`, and loop PRs):
-   - **`none`** — say nothing, except check a `state.json` `review_pr` that names a PR
+   - **`none`** — say nothing (this is also the verdict when `$LOGIN` is the loop identity), except check a `state.json` `review_pr` that names a PR
      (`appendices/review-step-notes.md`, which this case does load): a `review_pr` naming a `MERGED` or
      `CLOSED` PR means the cursor is stale — report which, and **wait**.
    - **`unreadable`** — report it; nothing is derived, nothing starts.

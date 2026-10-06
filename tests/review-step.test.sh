@@ -256,6 +256,7 @@ assert_decide() {
   base_na="next_action=review PR #12 — task #230 — run the architect review on it"
   base_ti=task_issue=230; base_br=backlog_repo=-; base_repo="repo=$REPO"; base_head="head=$O1"
   base_tree=tree=clean; base_model=model=opus; base_arch=architect=opus; base_fresh=fresh=yes
+  base_login="login=$ME"; base_loop=loop_identity=-
   for kv in "$@"; do
     case "$kv" in
       derived=*) base_derived="$kv" ;; gate=*) base_gate="$kv" ;; gate_state=*) base_gs="$kv" ;;
@@ -263,12 +264,13 @@ assert_decide() {
       next_action=*) base_na="$kv" ;; task_issue=*) base_ti="$kv" ;; backlog_repo=*) base_br="$kv" ;;
       repo=*) base_repo="$kv" ;; head=*) base_head="$kv" ;; tree=*) base_tree="$kv" ;;
       model=*) base_model="$kv" ;; architect=*) base_arch="$kv" ;; fresh=*) base_fresh="$kv" ;;
+      login=*) base_login="$kv" ;; loop_identity=*) base_loop="$kv" ;;
     esac
   done
   st=0
   out="$(sh "$script" decide "$base_derived" "$base_gate" "$base_gs" "$base_state" "$base_srn" \
     "$base_srh" "$base_na" "$base_ti" "$base_br" "$base_repo" "$base_head" "$base_tree" \
-    "$base_model" "$base_arch" "$base_fresh" 2>/dev/null)" || st=$?
+    "$base_model" "$base_arch" "$base_fresh" "$base_login" "$base_loop" 2>/dev/null)" || st=$?
   if [ "$out" = "$want_out" ] && [ "$st" = "$want_st" ]; then
     echo "ok - decide: $desc"
   else
@@ -366,6 +368,41 @@ A "fresh outside the vocabulary" "" 2 fresh=maybe
 A "head that is not an oid" "" 2 head=abc
 A "task_issue that is not a number" "" 2 task_issue=abc
 A "an empty value" "" 2 model=
+A "an empty login" "" 2 login=
+A "an empty loop_identity" "" 2 loop_identity=
+
+# the loop-identity guard (WB-D22, #295): running AS the loop's identity derives nothing
+LOOP='glunk-loop[bot]'
+A "login equals loop_identity: nothing derived, though every source agrees" "none" 0 \
+  "login=$LOOP" "loop_identity=$LOOP"
+A "login differs in case only from loop_identity: still nothing derived" "none" 0 \
+  'login=Glunk-Loop[BOT]' "loop_identity=$LOOP"
+A "loop_identity differs in case only from login: still nothing derived" "none" 0 \
+  "login=$LOOP" 'loop_identity=GLUNK-LOOP[bot]'
+A "loop_identity null: the guard does not fire, the step is derived" "auto 12 $O1" 0 \
+  "login=$LOOP" loop_identity=-
+A "a different login than loop_identity: the guard does not fire" "auto 12 $O1" 0 \
+  "loop_identity=$LOOP"
+A "the bare slug matches the App's REST login: the guard fires (as plan-anchor.sh)" "none" 0 \
+  "login=$LOOP" loop_identity=glunk-loop
+A "a bare-slug login matches a [bot] loop_identity: the guard fires" "none" 0 \
+  login=glunk-loop "loop_identity=$LOOP"
+A "a malformed loop_identity (leading dash) exits 2" "" 2 "loop_identity=-bad[bot]"
+A "a malformed loop_identity (space) exits 2" "" 2 "loop_identity=glunk loop"
+A "a malformed loop_identity (quote) exits 2" "" 2 "loop_identity=glunk'x"
+A "a loop_identity stem over 39 characters exits 2" "" 2 \
+  loop_identity=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+A "a malformed loop_identity exits 2 even when derived is none" "" 2 derived=none "loop_identity=a b"
+A "a malformed derived under the guard is still none (nothing derived)" "none" 0 \
+  derived=garbage "login=$LOOP" "loop_identity=$LOOP"
+A "login only a prefix of loop_identity: the guard does not fire" "auto 12 $O1" 0 \
+  login=glunk "loop_identity=$LOOP"
+A "the guard wins over a many derivation" "none" 0 \
+  "derived=many 12 13" "login=$LOOP" "loop_identity=$LOOP"
+A "the guard wins over a null gate (no merge report either)" "none" 0 \
+  gate=null gate_state=- "login=$LOOP" "loop_identity=$LOOP"
+A "the guard wins over an unreadable gate" "none" 0 \
+  gate=unreadable gate_state=- "login=$LOOP" "loop_identity=$LOOP"
 
 # missing / unknown / not key=value, straight against the script
 st=0; out="$(sh "$script" decide "derived=none" 2>/dev/null)" || st=$?
@@ -390,7 +427,7 @@ d="$(printf '%s\n' "$(rec 12 OPEN false app/loop-driver $O1 't' 'Closes #230')" 
   | sh "$script" derive "$ME" "$REPO" - 230 200)"
 a="$(sh "$script" decide "derived=$d" gate=set gate_state=absent state=present sr_number=12 \
   "sr_head=$O1" "next_action=review PR #12 — task #230 — x" task_issue=230 backlog_repo=- \
-  "repo=$REPO" "head=$O1" tree=clean model=opus architect=opus fresh=yes)"
+  "repo=$REPO" "head=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=-)"
 if [ "$a" = none ]; then echo "ok - end to end: an App-authored PR derives nothing and auto-starts nothing"; else
   echo "FAIL - end to end: App-authored PR: got [$a]" >&2; fail=1; fi
 
@@ -398,7 +435,7 @@ d="$(printf '%s\n' "$(rec 12 OPEN false "$ME" $O1 't' 'Closes #230')" \
   | sh "$script" derive "$ME" "$REPO" - 230 200)"
 a="$(sh "$script" decide "derived=$d" gate=set gate_state=absent state=present sr_number=12 \
   "sr_head=$O1" "next_action=review PR #12 — task #230 — x" task_issue=230 backlog_repo=- \
-  "repo=$REPO" "head=$O1" tree=clean model=opus architect=opus fresh=yes)"
+  "repo=$REPO" "head=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=-)"
 if [ "$a" = "auto 12 $O1" ]; then echo "ok - end to end: a maintainer PR derives and auto-starts"; else
   echo "FAIL - end to end: maintainer PR: got [$a]" >&2; fail=1; fi
 

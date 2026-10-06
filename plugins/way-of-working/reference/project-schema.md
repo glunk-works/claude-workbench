@@ -659,7 +659,7 @@ when it is a map, so a `null` repo is asked nothing more.
   declared (plan § 8.13d: optional until a dispatch). A GitHub App's `<slug>[bot]` (the plan's
   decision, § 8.12) or, if that is revisited, a machine user's plain login. **Compare it in
   the form the REST API reports as `user.login`** (`<slug>[bot]`): GraphQL and `gh pr view`
-  show an App as `app/<slug>` or the bare slug, and a comparison against the wrong surface
+  show an App as `app/<slug>` or the bare slug, and a comparison against the wrong surface (e.g. `app/<slug>`)
   finds no match and quietly falls through. Plan § 8.13d decides that `review-sandbox.sh trust`
   and `plan-anchor.sh` treat this name as **untrusted by name**, ahead of their other trust
   checks, whatever `author_association` says (`#235`): `review-sandbox.sh trust` reads it
@@ -669,8 +669,10 @@ when it is a map, so a `null` repo is asked nothing more.
   any drift comparison, a trailing `[bot]` ignored on both sides (so a bare-slug value still matches an App). The name is the only thing either refuses: a `loop_identity` left
   stale after the loop's login changed protects nothing against the new login, which is what
   the driver's preflight login-equality check (plan § 7.3) is for. `/way-of-working:resume`'s
-  review-step derivation does not read it yet (`WB-D22`'s "once `loop_identity` exists"
-  guard, which is still to build). **`null` is a complete answer**; a loop dispatch needs a non-null value, and that refusal is the
+  review-step derivation reads it too (`#295`, `WB-D22`'s loop-identity guard): `review-step.sh
+  decide` prints `none` when the running login equals it, folded as `plan-anchor.sh` folds it
+  (case-insensitively, a trailing `[bot]` ignored on both sides), from the same default-branch read; `null`
+  passes `-` and the guard does not fire. **`null` is a complete answer**; a loop dispatch needs a non-null value, and that refusal is the
   driver's preflight, which does not exist yet. Shape-checked when non-null: a stem of letters,
   digits and `-` (no leading or trailing `-`, at most 39 characters) with an optional trailing
   `[bot]`.
@@ -711,7 +713,7 @@ login. Every caller treats `untrusted` as a refusal: it is never `match`, and it
 for its kind, not that the allowlist names real agents, the ruleset exists, or the paths are
 the right ones; those are the preflight's reads. Until the driver ships, no skill reads these
 keys, except `loop_identity` (`#235`: `plan-anchor.sh`'s callers and `review-sandbox.sh trust`
-read it, as above). They are recorded now so each repo's answer is reviewed in its own PR; "a key documented
+read it, as above; `#295`: `/way-of-working:resume`'s review-step derivation does too). They are recorded now so each repo's answer is reviewed in its own PR; "a key documented
 but unread" (§ *Adding a key*) is therefore a stated, temporary state for this block, not an
 oversight.
 
