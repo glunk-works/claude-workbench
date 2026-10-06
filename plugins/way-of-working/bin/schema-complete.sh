@@ -29,7 +29,8 @@
 #                                matters because this file may be
 #                                adversary-controlled on a branch other than
 #                                the default (see resume/SKILL.md's *Check the
-#                                branch-protection ruleset for drift* step,
+#                                branch-protection ruleset for drift* step
+#                                and skills/resume/appendices/ruleset-migration.md,
 #                                which reads a DIFFERENT copy of this same
 #                                file for exactly that reason). It does NOT
 #                                stop a quoted 200-character string from

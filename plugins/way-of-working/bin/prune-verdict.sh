@@ -33,7 +33,7 @@
 # Fetching by SHA does not depend on the PR's head branch still existing on the remote:
 # GitHub serves a merged PR's head commit by its SHA after the branch is deleted -- the
 # reason the `origin/$b`-based "is my tip pushed?" test is the wrong one (see resume's
-# *Prune squash-merged local branches* step). The fetch writes only FETCH_HEAD; no ref
+# *Prune squash-merged local branches* step, and skills/resume/appendices/prune-rationale.md). The fetch writes only FETCH_HEAD; no ref
 # the caller has is moved.
 #
 # Permitted toolset: git, POSIX sh. No jq, no yq, no python.
