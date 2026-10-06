@@ -33,6 +33,23 @@ the GitHub release notes.
 
 ### Added
 
+- **`orchestration.*` schema keys for the sprint-orchestrator loop** (#234, plan v9 § 8.4, § 8.5,
+  § 8.13d). `.ai/project.yml` gains `orchestration`, a nullable map like `review.ci_gate`:
+  `null` means the loop never dispatches into this repo; a map requires `critics` (the
+  allowlist of critics the loop may spawn) and `human_only_paths` (path prefixes a loop task may
+  never touch), both non-empty lists; `round_cap` (a bare decimal positive integer, at most three
+  digits); `restrict_updates` (the name of the separate ruleset that restricts updates of
+  `pr_base` to the admin bypass actor); and `loop_identity` (a login or an App's `<slug>[bot]`;
+  `null` until one is declared, which a dispatch will refuse). `bin/schema-complete.sh` checks
+  all of it, with fixtures, and `/way-of-working:resume`'s schema interview asks it with no
+  suggested answers. The block is required of every adopting repo, not only one the loop
+  dispatches into: absent stays an unanswered question (`WB-D17`). No skill reads these keys yet;
+  the driver that will is not built, and `WB-D22`'s resume guard on `loop_identity` is still to do.
+
+  **⚠️ Migration:** `orchestration` is a new required key. A repo that pins this release reads
+  `incomplete` (and `/way-of-working:resume` will not auto-start) until it answers it:
+  `orchestration: null` if the loop will never dispatch into it.
+
 - **`/way-of-working:resume` won't auto-start while an orchestrator driver holds its lock**
   (#233, sprint-orchestrator plan § 7.5). New `bin/driver-lock.sh` (no arguments) prints
   `present`, `absent` or `unreadable`; resume waits on anything but `absent` — an unreadable

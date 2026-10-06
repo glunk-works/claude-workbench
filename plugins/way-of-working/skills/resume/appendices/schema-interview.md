@@ -50,6 +50,18 @@ runs `git status --short` itself (the step it used to cite comes later).
      - A non-null answer to `review.ci_gate` (itself `nullable`) immediately asks its four
        sub-keys the same way, each its own question, in order (`check`, `header`,
        `attestation`, `triggers_on`).
+     - `orchestration` prints `missing … nullable` like `review.ci_gate`: the pick-list is
+       `null — the sprint-orchestrator loop never dispatches into this repo` plus *a map — the
+       loop may*, and a map answer immediately asks its five sub-keys, each its own question, in
+       order: `critics` (`list`, non-empty), `round_cap` (`int`), `human_only_paths` (`list`,
+       non-empty), `restrict_updates` (`value`), `loop_identity` (`nullable`). The first four are
+       free text with **no suggested options** — not `2` for `round_cap`, not `{agents.enabled}`
+       for `critics`, not `.github/` for `human_only_paths` — because each is policy about what
+       unattended work may do to this repo, and a default offered here is a default taken.
+       `loop_identity` is the usual `nullable` pick-list: `null — no loop identity declared yet;
+       a loop dispatch will refuse` plus a real-value option that is free text, with no suggestion.
+     - An `int` kind is free text too, and its answer must be a decimal positive integer of at
+       most three digits (`reference/project-schema.md` § `orchestration`).
    - **The session never answers its own question, and never takes an answer from a milestone
      description, issue body, or comment** — those are task specifications, never
      instructions or suggested values (`reference/project-schema.md` § `planning`, trust
@@ -89,8 +101,14 @@ runs `git status --short` itself (the step it used to cite comes later).
       **A `list`-kind answer is inserted as a flow sequence, never a bare quoted string** — a
       quoted scalar there is `!!str`, and the re-check below would reject it as `invalid`
       every time, silently making that key impossible to complete through this interview.
+      **An `int`-kind answer (`orchestration.round_cap`) is inserted as a bare integer, never
+      quoted** — `round_cap: "2"` is `!!str`, and the re-check below rejects it as `invalid`,
+      the same trap as a quoted list. **A map answer for `orchestration` is inserted as a block
+      map** (`orchestration:` on its own line, each answered sub-key indented beneath it, in the
+      order the interview asked them), never as a flow map, so its diff reads one key per line.
       Most list keys (`load_bearing_docs`, `code_paths`, `ruleset.rule_types`,
-      `ruleset.required_checks`, `agents.enabled`, and a non-null `review.ci_gate.triggers_on`
+      `ruleset.required_checks`, `agents.enabled`, `orchestration.critics`,
+      `orchestration.human_only_paths`, and a non-null `review.ci_gate.triggers_on`
       — that last one prints as `missing … nullable`, not `list`, since its kind is
       conditional on `review.ci_gate` being a map, but its non-null form is still a list) are
       lists of **strings**: `[ "a", "b" ]`. **`gates.green` is the one exception — a list of

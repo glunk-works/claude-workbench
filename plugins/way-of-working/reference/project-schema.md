@@ -134,6 +134,10 @@ models:
   architect: opus
   coder: sonnet
   second_opinion: null           # null means no different-model round is offered; absent prompts.
+
+# ── the sprint-orchestrator loop ─────────────────────────────────────────────
+orchestration: null              # null means the loop never dispatches into this repo; absent
+                                 # prompts. A map is "it may" — see below.
 ```
 
 ---
@@ -584,6 +588,103 @@ invocation line (that shortcut selects critics, never this round). See
 offer appears, the spawn-time override and its `bin/spawn-model.sh` provenance check, the
 round's scope, and the budget rule.
 
+### `orchestration`
+
+The sprint-orchestrator loop's per-repo policy (`docs/proposals/sprint-orchestrator-plan-v9.md`
+§ 8.4a, § 8.4d, § 8.5, § 8.13d): what an unattended driver **may** do to this repo, recorded
+in the repo's own `.ai/project.yml` so the repo says so, not the host. It is a nullable map,
+exactly like `review.ci_gate`:
+
+```yaml
+orchestration:
+  critics: [architect, security-critic, docs-consistency]
+  round_cap: 2
+  human_only_paths: [.github/, .ai/, CLAUDE.md]
+  restrict_updates: restrict-updates-to-main
+  loop_identity: "glunk-loop[bot]"      # null until declared -- never omit; see below
+```
+
+**`null` means the loop never dispatches into this repo**, a fully supported configuration.
+
+**The whole block is required of every adopting repo — `orchestration: null` is the answer
+for one the loop will never touch — rather than only of a repo the loop dispatches into.**
+Three reasons, each one a rule this schema already keeps. (1) An absent `orchestration` that
+meant "no loop here" would be a *default*, the thing `WB-D17` removed: `null` is the decision,
+absent is the unanswered question, and a dispatch that read absence as consent or as refusal
+would be guessing either way. (2) `schema-complete.sh`'s verdict is what both `/way-of-working:resume`'s
+auto-start and the driver's dispatch will read, so a repo that never answered must not look like
+one that decided. (3) The cost is one pick-list answer per repo on a pin bump (`null`), the same
+one `migration_base` cost, asked at the same step. The block's sub-keys are required only
+when it is a map, so a `null` repo is asked nothing more.
+
+- **`critics`** — an **allowlist** of the critic agents the loop *may* spawn, never a
+  must-spawn list. The driver computes a deterministic floor (a diff touching `code_paths`
+  needs at least one of `architect` or `security-critic`; one touching `load_bearing_docs`
+  needs `docs-consistency`) and a floor critic missing from this list stops the dispatch as a
+  configuration error. Names are the agent names `agents.enabled` uses, including repo-local
+  ones. A **non-empty** list (an empty allowlist could never satisfy the floor); the checker
+  confirms the sequence, not its elements, as it does for `gates.green`, so a reader binds each
+  name as a value and never splices it into a command.
+- **`round_cap`** — critic re-run rounds before a task stops as non-converged. A positive
+  integer written bare and **in decimal** (`2`; never `"2"`, `0x2`, `02`, `+2` or `1_0`), at most
+  three digits. The checker tests the spelling in the file, not the parsed number, because a
+  later reader gets that spelling back. The usage governor, not this number, bounds spend; the
+  cap bounds how long one task keeps asking. A rejected spelling is reported as its parsed
+  value (`0x2` prints as `2`), so read an `invalid` here against this list.
+- **`human_only_paths`** — path prefixes the loop's diff may never touch, enforced twice (an
+  in-session deny and a post-exit `git diff` check) and a stop on either. **The check must see
+  both sides of a rename**: git's default rename detection prints only the destination in
+  `--name-only`, so moving a protected file out of its prefix would pass; use `--no-renames`
+  (or `--name-status` and test both paths). A **non-empty** list (an empty one protects
+  nothing), in `code_paths`'s form; the checker confirms the sequence, not its elements (a
+  `null` or `""` item protects nothing). **It must cover `.ai/project.yml` and every CI/workflow
+  path**: a task that can edit this block, `ruleset`, or the gate that checks it can widen its
+  own authority, and nothing in the checker sees that. Its elements are paths, so they are
+  *data*: a reader binds each as a value, never splices one into a shell command.
+- **`restrict_updates`** — the name of the **separate** ruleset that restricts updates of
+  `{pr_base}` to its bypass actor (plan § 8.5 option (a): the repository admin role only, never
+  the loop's identity), which is what makes "the loop cannot merge" a property of the
+  repository and not a promise. The driver's preflight reads that ruleset and refuses to
+  dispatch if it is missing or changed. A required, non-empty string, never starting with `-`
+  and carrying no quote or backslash (spaces are fine; no `null`): option (a) is the only
+  mechanism the plan decided, so a repo that cannot have one answers `orchestration: null`
+  instead of naming a ruleset that does not restrict anything. A reader binds it as a value
+  (`jq --arg`, as `ruleset.name` is), never splices it. The ruleset itself is the maintainer's
+  to create; this key only names it. It is deliberately not `ruleset.name`: that one is the
+  ruleset **with** the required checks and no bypass actors, and the two together are the
+  point (the most restrictive rule applies, so putting the restriction into the first would let
+  the admin bypass the checks too).
+- **`loop_identity`** — the login the loop's PRs are authored under, `null` until one is
+  declared (plan § 8.13d: optional until a dispatch). A GitHub App's `<slug>[bot]` (the plan's
+  decision, § 8.12) or, if that is revisited, a machine user's plain login. **Compare it in
+  the form the REST API reports as `user.login`** (`<slug>[bot]`): GraphQL and `gh pr view`
+  show an App as `app/<slug>` or the bare slug, and a comparison against the wrong surface
+  finds no match and quietly falls through. Plan § 8.13d decides that `review-sandbox.sh trust`
+  and `plan-anchor.sh` will treat this name as untrusted ahead of their other trust checks
+  (`#235`); they do not read it yet, and neither does `/way-of-working:resume`'s review-step
+  derivation (`WB-D22`'s "once `loop_identity` exists" guard, which is still to build). **`null`
+  is a complete answer**; a loop dispatch needs a non-null value, and that refusal is the
+  driver's preflight, which does not exist yet. Shape-checked when non-null: a stem of letters,
+  digits and `-` (no leading or trailing `-`, at most 39 characters) with an optional trailing
+  `[bot]`.
+
+**Read it from the default branch's copy, never the task's.** Like `migration_base`, this
+block authorizes work, and the copy on the branch a task is changing — or on `{pr_base}`,
+which on a migration's integration branch is written by whoever can push there — cannot vouch
+for itself. A reader that dispatches or enforces it reads the **default branch's** committed
+`.ai/project.yml` from a freshly fetched remote-tracking ref (resolved from `origin`, as
+`/way-of-working:resume`'s migration check does), and takes `pr_base` from that same copy: a
+task that edits its own `pr_base` must not be choosing which copy is trusted, nor rewriting its
+own `human_only_paths`. `schema-complete.sh`'s verdict on the working tree is resume's
+auto-start input and says nothing about that copy; a dispatch must check the trusted one.
+
+**What `complete` does and does not establish.** It means every key is present and well-formed
+for its kind, not that the allowlist names real agents, the ruleset exists, or the paths are
+the right ones; those are the preflight's reads. Until the driver ships, no skill reads these
+keys. They are recorded now so each repo's answer is reviewed in its own PR; "a key documented
+but unread" (§ *Adding a key*) is therefore a stated, temporary state for this block, not an
+oversight.
+
 ---
 
 ## Worked example — a second repo, to show the seams move
@@ -649,10 +750,17 @@ models:
   architect: opus
   coder: sonnet
   second_opinion: null
+
+orchestration:
+  critics: [architect, security-critic, docs-consistency]
+  round_cap: 2
+  human_only_paths: [.github/, .ai/, CLAUDE.md]
+  restrict_updates: restrict-updates-to-main
+  loop_identity: "loop-orchestrator-loop[bot]"
 ```
 
-The two configurations differ in every value and in one *shape* (`backlog.kind`,
-`review.ci_gate` present vs `null`). That shape difference is the schema's real test: both
+The two configurations differ in every value and in three *shapes* (`backlog.kind`,
+and `review.ci_gate` and `orchestration` each present vs `null`). That shape difference is the schema's real test: both
 must be a clean path through every skill, or the seam is in the wrong place.
 
 ## Adding a key
@@ -668,4 +776,5 @@ legal for it — absent always prompts, never a default — and update every ski
 in the same change. **Add it to `bin/schema-complete.sh`'s key set in the same change** —
 `scripts/invariants-check.sh` fails until the script's `keys` output and this doc's two
 examples agree. A key documented but unread is worse than no key — it reads as configured
-behavior that silently does nothing.
+behavior that silently does nothing. (`orchestration` is the one stated exception: its reader, the
+driver, is a later issue, and its section says so.)

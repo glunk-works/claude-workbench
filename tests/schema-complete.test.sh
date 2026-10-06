@@ -89,6 +89,8 @@ models:
   architect: opus
   coder: sonnet
   second_opinion: null
+
+orchestration: null
 EOF
 
 echo "# keys"
@@ -120,7 +122,13 @@ review.ci_gate
 review.ci_gate.check if-map
 review.ci_gate.header if-map
 review.ci_gate.attestation if-map
-review.ci_gate.triggers_on if-map"
+review.ci_gate.triggers_on if-map
+orchestration
+orchestration.critics if-map
+orchestration.round_cap if-map
+orchestration.human_only_paths if-map
+orchestration.restrict_updates if-map
+orchestration.loop_identity if-map"
 assert_eq "keys: the exact required path set, conditionals suffixed if-map" \
   "$expected_keys" "$("$script" keys)"
 
@@ -229,6 +237,143 @@ awk '{ if ($0 == "  ci_gate: null") {
 assert_eq "review.ci_gate.triggers_on: src/ (a scalar, not a list) is invalid" \
   'incomplete
 invalid review.ci_gate.triggers_on "src/"' "$(run_check "$f")"
+
+echo "# check -- orchestration (#234): a nullable map like review.ci_gate"
+
+# orch_fixture <out> <body-line>... -- the base fixture with `orchestration: null`
+# replaced by `orchestration:` and the given lines (already indented by the caller).
+orch_fixture() {
+  out="$1"; shift
+  { grep -v '^orchestration:' "$base"; echo "orchestration:"; printf '%s\n' "$@"; } >"$out"
+}
+orch_ok='  critics: [architect, security-critic]
+  round_cap: 2
+  human_only_paths: [.github/, .ai/]
+  restrict_updates: restrict-updates-to-main
+  loop_identity: "glunk-loop[bot]"'
+
+f="$tmp/orch_absent.yml"; grep -v '^orchestration:' "$base" >"$f"
+assert_eq "orchestration absent entirely is missing, printed as nullable (the interview asks null-or-map)" \
+  'incomplete
+missing orchestration nullable' "$(run_check "$f")"
+
+assert_eq "orchestration: null is the explicit no-loop answer -- complete (the base fixture)" \
+  "complete" "$(run_check "$base")"
+
+f="$tmp/orch_str.yml"; sed 's/^orchestration: null/orchestration: yes-please/' "$base" >"$f"
+assert_eq "orchestration: a bare string (neither null nor a map) is invalid" \
+  'incomplete
+invalid orchestration "yes-please"' "$(run_check "$f")"
+
+f="$tmp/orch_full.yml"; orch_fixture "$f" "$orch_ok"
+assert_eq "orchestration: a full map is complete" "complete" "$(run_check "$f")"
+
+f="$tmp/orch_empty_map.yml"; { grep -v '^orchestration:' "$base"; echo "orchestration: {}"; } >"$f"
+assert_eq "orchestration: {} reports all five sub-keys missing (absent prompts, loop_identity included)" \
+  'incomplete
+missing orchestration.critics list
+missing orchestration.round_cap int
+missing orchestration.human_only_paths list
+missing orchestration.restrict_updates value
+missing orchestration.loop_identity nullable' "$(run_check "$f")"
+
+for k in critics round_cap human_only_paths restrict_updates loop_identity; do
+  f="$tmp/orch_no_$k.yml"; orch_fixture "$f" "$orch_ok"; grep -v "^  $k:" "$f" >"$f.2"
+  case "$k" in critics|human_only_paths) kind=list ;; round_cap) kind=int ;; loop_identity) kind=nullable ;; *) kind=value ;; esac
+  assert_eq "orchestration.$k removed is missing, kind $kind" \
+    "incomplete
+missing orchestration.$k $kind" "$(run_check "$f.2")"
+done
+
+f="$tmp/orch_loop_null.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  loop_identity:.*/  loop_identity: null/' "$f" >"$f.2"
+assert_eq "orchestration.loop_identity: null (not declared yet; plan 8.13d) is complete" "complete" "$(run_check "$f.2")"
+
+# Empty lists are a control turned off, and a raw spelling the checker's own parse would
+# normalize is not what a later `yq` read returns: both must not read complete.
+f="$tmp/orch_critics_empty.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  critics:.*/  critics: []/' "$f" >"$f.2"
+assert_eq "orchestration.critics: [] is invalid (no critic could satisfy the floor)" \
+  'incomplete
+invalid orchestration.critics []' "$(run_check "$f.2")"
+f="$tmp/orch_paths_empty.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  human_only_paths:.*/  human_only_paths: []/' "$f" >"$f.2"
+assert_eq "orchestration.human_only_paths: [] is invalid (no path protected)" \
+  'incomplete
+invalid orchestration.human_only_paths []' "$(run_check "$f.2")"
+
+for v in 0x2 02 +2 1_0 0o7; do
+  f="$tmp/orch_cap_raw.yml"; orch_fixture "$f" "$orch_ok"; sed "s/^  round_cap:.*/  round_cap: $v/" "$f" >"$f.2"
+  assert_eq "orchestration.round_cap: $v (non-decimal spelling) is not complete" \
+    "incomplete" "$(run_check "$f.2" | head -1)"
+done
+
+for v in 'restrict-updates-to-main' 'Restrict updates (main)'; do
+  f="$tmp/orch_rule_ok.yml"; orch_fixture "$f" "$orch_ok"; sed "s/^  restrict_updates:.*/  restrict_updates: \"$v\"/" "$f" >"$f.2"
+  assert_eq "orchestration.restrict_updates: $v is a legal ruleset name (spaces allowed)" "complete" "$(run_check "$f.2")"
+done
+for v in true 5 '[a]'; do
+  f="$tmp/orch_rule_type.yml"; orch_fixture "$f" "$orch_ok"; sed "s/^  restrict_updates:.*/  restrict_updates: $v/" "$f" >"$f.2"
+  assert_eq "orchestration.restrict_updates: $v (not a string) is not complete" \
+    "incomplete" "$(run_check "$f.2" | head -1)"
+done
+for v in '' '-x' '--jq=.x' 'a"b'; do
+  f="$tmp/orch_rule_bad.yml"; orch_fixture "$f" "$orch_ok"
+  awk -v v="$v" 'BEGIN { q = sprintf("%c", 39) } /^  restrict_updates:/ { print "  restrict_updates: " q v q; next } { print }' "$f" >"$f.2"
+  assert_eq "orchestration.restrict_updates: [$v] is not complete" "incomplete" "$(run_check "$f.2" | head -1)"
+done
+
+for v in '"2"' 0 -1 1000 2.5 '[2]' yes; do
+  f="$tmp/orch_cap.yml"; orch_fixture "$f" "$orch_ok"; sed "s/^  round_cap:.*/  round_cap: $v/" "$f" >"$f.2"
+  assert_eq "orchestration.round_cap: $v is invalid (a positive integer of at most three digits)" \
+    "incomplete
+invalid orchestration.round_cap $(printf '%s' "$v" | sed 's/^yes$/"yes"/; s/^2\.5$/2.5/')" "$(run_check "$f.2")"
+done
+f="$tmp/orch_cap_999.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  round_cap:.*/  round_cap: 999/' "$f" >"$f.2"
+assert_eq "orchestration.round_cap: 999 (three digits) is complete" "complete" "$(run_check "$f.2")"
+
+f="$tmp/orch_cap_null.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  round_cap:.*/  round_cap: null/' "$f" >"$f.2"
+assert_eq "orchestration.round_cap: null is invalid -- a cap with no value is no cap" \
+  'incomplete
+invalid orchestration.round_cap null' "$(run_check "$f.2")"
+
+f="$tmp/orch_critics_scalar.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  critics:.*/  critics: architect/' "$f" >"$f.2"
+assert_eq "orchestration.critics as a scalar is invalid (a list)" \
+  'incomplete
+invalid orchestration.critics "architect"' "$(run_check "$f.2")"
+
+f="$tmp/orch_paths_scalar.yml"; orch_fixture "$f" "$orch_ok"; sed 's#^  human_only_paths:.*#  human_only_paths: .github/#' "$f" >"$f.2"
+assert_eq "orchestration.human_only_paths as a scalar is invalid (a list)" \
+  'incomplete
+invalid orchestration.human_only_paths ".github/"' "$(run_check "$f.2")"
+
+f="$tmp/orch_restrict_null.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  restrict_updates:.*/  restrict_updates: null/' "$f" >"$f.2"
+assert_eq "orchestration.restrict_updates: null is invalid -- opt out with orchestration: null instead" \
+  'incomplete
+invalid orchestration.restrict_updates null' "$(run_check "$f.2")"
+
+# loop_identity's shape: a login, or an App's `<slug>[bot]`. It will be compared with PR
+# authors and handed to commands by a later driver, so a flag-shaped, spaced or
+# metacharacter-bearing value must not read complete. Single-quoted so the fixture-building
+# shell never expands the payload.
+for v in 'glunk-loop' 'glunk-loop[bot]' '603-gh-loop' 'a'; do
+  f="$tmp/orch_id_ok.yml"; orch_fixture "$f" "$orch_ok"; sed "s/^  loop_identity:.*/  loop_identity: \"$v\"/" "$f" >"$f.2"
+  assert_eq "orchestration.loop_identity: $v is a legal login" "complete" "$(run_check "$f.2")"
+done
+for v in '-loop[bot]' 'loop-' 'a b' 'a$(id)' 'a;b' 'a[bot]x' '[bot]' 'a[bot][bot]' 'a/b' '' 'loop[BOT]' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; do
+  f="$tmp/orch_id_bad.yml"; orch_fixture "$f" "$orch_ok"
+  awk -v v="$v" 'BEGIN { q = sprintf("%c", 34) } /^  loop_identity:/ { print "  loop_identity: " q v q; next } { print }' "$f" >"$f.2"
+  out="$(run_check "$f.2" | head -1)"
+  assert_eq "orchestration.loop_identity: [$v] is not complete" "incomplete" "$out"
+done
+
+f="$tmp/orch_id_int.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  loop_identity:.*/  loop_identity: 12345/' "$f" >"$f.2"
+assert_eq "orchestration.loop_identity: a bare integer is invalid (a string)" \
+  'incomplete
+invalid orchestration.loop_identity 12345' "$(run_check "$f.2")"
+
+f="$tmp/orch_id_nl.yml"; orch_fixture "$f" "$orch_ok"
+awk '/^  loop_identity:/ { print "  loop_identity: |"; print "    glunk-loop"; next } { print }' "$f" >"$f.2"
+assert_eq "orchestration.loop_identity: a block scalar (trailing newline) is invalid, ONE line" \
+  'incomplete
+invalid orchestration.loop_identity "glunk-loop\n"' "$(run_check "$f.2")"
 
 echo "# check -- a block-scalar value stays a legal single value, and its invalid form stays ONE line"
 

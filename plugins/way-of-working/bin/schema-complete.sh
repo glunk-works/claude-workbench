@@ -18,7 +18,7 @@
 #                                  missing <dotted.path> <kind>
 #                                  invalid <dotted.path> <json-value>
 #                                <kind> is one of: enum:<a>|<b>  nullable
-#                                value  list. <json-value> is the OFFENDING
+#                                value  list  int. <json-value> is the OFFENDING
 #                                value, compact JSON (`yq -o=json -I=0`),
 #                                truncated. This is STRUCTURAL containment,
 #                                not semantic neutralization: it keeps a
@@ -47,9 +47,10 @@
 #
 #   schema-complete.sh keys
 #     Prints the required dotted key paths, one per line, in schema order.
-#     The four `review.ci_gate.*` sub-keys are suffixed ` if-map` -- they are
-#     required only when `review.ci_gate` itself resolves to a map, never
-#     when it is `null`. Always exits 0.
+#     The four `review.ci_gate.*` sub-keys and the five `orchestration.*` sub-keys
+#     are suffixed ` if-map` -- each group is required only when its parent
+#     (`review.ci_gate`, `orchestration`) itself resolves to a map, never when it
+#     is `null`. Always exits 0.
 #
 # The key set is NOT derived from `.ai/project.yml` or from walking any YAML
 # at all -- it is the union of the dotted paths BOTH documented examples in
@@ -146,8 +147,9 @@ set -eu
 
 # --- the required key table -------------------------------------------------
 # <dotted.path> <kind> <shape>
-#   kind:  value | nullable | enum:<a>|<b>|... | cigate (review.ci_gate only)
-#   shape: - | ownername | branch   (only consulted for value/nullable kinds)
+#   kind:  value | nullable | list | nelist | int | enum:<a>|<b>|...
+#          | cigate (review.ci_gate only) | orchmap (orchestration only)
+#   shape: - | ownername | branch | ghlogin | rulename   (consulted for value/nullable)
 MAIN_KEYS='
 repo value ownername
 pr_base value branch
@@ -173,6 +175,7 @@ agents.enabled list -
 models.architect enum:sonnet|opus|haiku|fable -
 models.coder enum:sonnet|opus|haiku|fable -
 models.second_opinion nullable enum:sonnet|opus|haiku|fable
+orchestration orchmap -
 '
 
 # The four sub-keys, required only when review.ci_gate resolves to a map.
@@ -183,16 +186,38 @@ review.ci_gate.attestation value -
 review.ci_gate.triggers_on nullable list
 '
 
+# `orchestration` is a nullable map exactly like `review.ci_gate`: `null` is the
+# explicit answer "the sprint-orchestrator loop never dispatches into this repo";
+# a map is "it may", and then these sub-keys are required -- present, so absent
+# prompts as everywhere else (WB-D17). `loop_identity` is `nullable`: `null` means
+# "not declared yet" (plan v9 § 8.13d: optional until a dispatch), and a loop dispatch
+# needing it non-null is the driver's own preflight, not this completeness check.
+# `critics` and `human_only_paths` are `nelist`: an empty one is a control turned off
+# (no critic can satisfy the floor; no path is protected) that must not read `complete`.
+ORCH_KEYS='
+orchestration.critics nelist -
+orchestration.round_cap int -
+orchestration.human_only_paths nelist -
+orchestration.restrict_updates value rulename
+orchestration.loop_identity nullable ghlogin
+'
+
 mode="${1:-}"
 case "$mode" in
   keys)
     printf '%s\n' "$MAIN_KEYS" | while IFS=' ' read -r path kind shape; do
       [ -n "$path" ] || continue
       [ "$path" = "review.ci_gate" ] && continue   # printed via CIGATE_KEYS below
+      [ "$path" = "orchestration" ] && continue    # printed via ORCH_KEYS below
       printf '%s\n' "$path"
     done
     printf '%s\n' "review.ci_gate"
     printf '%s\n' "$CIGATE_KEYS" | while IFS=' ' read -r path kind shape; do
+      [ -n "$path" ] || continue
+      printf '%s if-map\n' "$path"
+    done
+    printf '%s\n' "orchestration"
+    printf '%s\n' "$ORCH_KEYS" | while IFS=' ' read -r path kind shape; do
       [ -n "$path" ] || continue
       printf '%s if-map\n' "$path"
     done
@@ -291,6 +316,31 @@ is_owner_name() { # is_owner_name <value> -- exactly one '/', non-empty, non-dot
   return 0
 }
 
+is_rule_name() { # is_rule_name <unquoted-json> -- see the rulename shape
+  case "$1" in
+    '' | -* | *\\* | *'"'*) return 1 ;;
+  esac
+}
+
+is_gh_login() { # is_gh_login <value> -- a GitHub login, optionally an App's `<slug>[bot]`
+  # `orchestration.loop_identity` is compared against PR authors and interpolated by a
+  # later driver, so the stem is held to [A-Za-z0-9-], non-empty, never leading or trailing with
+  # `-` (leading, it would reach a command as a flag), at most 39 characters (GitHub's own cap).
+  # The bracketed suffix is the ONLY place a bracket is allowed, and only exactly `[bot]`.
+  stem="${1%'[bot]'}"
+  case "$stem" in
+    '' | -* | *- | *[!A-Za-z0-9-]*) return 1 ;;
+  esac
+  [ "${#stem}" -le 39 ]
+}
+
+is_pos_int() { # is_pos_int <json> -- digits only, no leading zero, at most three
+  case "$1" in
+    '' | 0* | *[!0-9]*) return 1 ;;
+  esac
+  [ "${#1}" -le 3 ]
+}
+
 is_branch_name() { # is_branch_name <value> -- safe charset, round-trips check-ref-format
   v="$1"
   is_safe_chars "$v" || return 1
@@ -329,7 +379,10 @@ build_rows() { # build_rows <table> -- the yq expression, one row per key
     row="\"$path\t$kind\t$shape\t\""
     row="$row + (((($parent | select(tag == \"!!map\") | has(\"$last\")) // false)) | to_string)"
     row="$row + \"\t\" + (($v | tag | select(. == \"!!str\" or . == \"!!null\" or . == \"!!map\" or . == \"!!seq\" or . == \"!!bool\" or . == \"!!int\" or . == \"!!float\")) // \"other\")"
-    row="$row + \"\t\" + ((($v | select(tag == \"!!str\") | test(\"^[A-Za-z0-9._/-]+\$\")) // false) | to_string)"
+    # `safe`: a string by charset; an INT by its RAW spelling (`to_string` keeps `0x10`,
+    # `+2`, `1_0`, `02` as written, which `to_json` would normalize to a clean number a
+    # later `yq` read would not return).
+    row="$row + \"\t\" + ((($v | select(tag == \"!!str\") | test(\"^[A-Za-z0-9._/-]+\$\")) // ($v | select(tag == \"!!int\") | to_string | test(\"^[1-9][0-9]{0,2}\$\")) // false) | to_string)"
     row="$row + \"\t\" + (($v | to_json(0)) // \"null\")"
     if [ -z "$expr" ]; then expr="$row"; else expr="$expr, $row"; fi
   done <<EOF_ROWS
@@ -338,9 +391,9 @@ EOF_ROWS
   printf '%s' "$expr"
 }
 
-unquote() { # unquote <json-string> -- "abc" -> abc. Only ever called on a string
-            # that already passed `safe` (charset excludes " and \), so there are
-            # no JSON escapes to undo.
+unquote() { # unquote <json-string> -- "abc" -> abc. Only ever called on a string whose
+            # charset has no quote or backslash -- by the `safe` column, or (rulename, ghlogin) by a
+            # check made right after -- so there are no JSON escapes to undo.
   v="${1#\"}"
   printf '%s' "${v%\"}"
 }
@@ -378,6 +431,18 @@ check_value_shape() { # check_value_shape <shape> <tag> <safe> <json> -- exit 0 
     branch)
       [ "$tag" = '!!str' ] && [ "$safe" = true ] && is_branch_name "$(unquote "$json")"
       ;;
+    rulename)
+      # A ruleset NAME a later preflight binds into a lookup: a non-empty string that
+      # cannot start with `-` (a flag) and carries no quote or escape (the JSON form
+      # shows any control character as one). Spaces are legal in a ruleset name.
+      [ "$tag" = '!!str' ] && is_rule_name "$(unquote "$json")"
+      ;;
+    ghlogin)
+      # No `safe` test: its charset has no brackets, and the suffix needs them. The
+      # JSON form is checked instead -- a `"` or `\` (any escape) is outside the stem
+      # charset, so it can never pass.
+      [ "$tag" = '!!str' ] && is_gh_login "$(unquote "$json")"
+      ;;
     enum:*)
       set_str="${shape#enum:}"
       [ "$tag" = '!!str' ] && [ "$safe" = true ] && enum_match "$(unquote "$json")" "$set_str"
@@ -407,7 +472,7 @@ check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
   path="$1"; kind="$2"; shape="$3"; present="$4"; tag="$5"; safe="$6"; json="$7"
 
   if [ "$present" != true ]; then
-    [ "$kind" = cigate ] && kind=nullable   # printed as the interview asks it
+    case "$kind" in cigate | orchmap) kind=nullable ;; nelist) kind=list ;; esac   # printed as the interview asks it
     add_finding "missing $path $kind"
     return
   fi
@@ -434,12 +499,26 @@ check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
     list)
       [ "$tag" = '!!seq' ] || { invalid_finding "$path" "$json"; return; }
       ;;
+    nelist)
+      { [ "$tag" = '!!seq' ] && [ "$json" != '[]' ]; } || { invalid_finding "$path" "$json"; return; }
+      ;;
     cigate)
       case "$tag" in
         '!!null') : ;;
         '!!map') cigate_is_map=1 ;;
         *) invalid_finding "$path" "$json" ;;
       esac
+      ;;
+    orchmap)
+      case "$tag" in
+        '!!null') : ;;
+        '!!map') orch_is_map=1 ;;
+        *) invalid_finding "$path" "$json" ;;
+      esac
+      ;;
+    int)
+      # A quoted "2" is !!str and invalid on purpose: the key is a number, not text.
+      { [ "$tag" = "!!int" ] && [ "$safe" = true ] && is_pos_int "$json"; } || invalid_finding "$path" "$json"
       ;;
   esac
 }
@@ -480,8 +559,10 @@ EOF_ROWS
 }
 
 cigate_is_map=0
+orch_is_map=0
 run_table "$MAIN_KEYS"
 [ "$cigate_is_map" = 1 ] && run_table "$CIGATE_KEYS"
+[ "$orch_is_map" = 1 ] && run_table "$ORCH_KEYS"
 
 if [ -z "$findings" ]; then
   echo complete
