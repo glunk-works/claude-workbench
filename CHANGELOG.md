@@ -31,6 +31,50 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A no-op handoff, and a review step resume derives from GitHub** (#230, `WB-D22`). A work PR
+  was usually followed by a docs-only cursor-sync PR whose only news was "review or merge PR
+  N next". Under `planning.kind: github_milestones`, when that is the only cursor change,
+  `/way-of-working:handoff` now writes `.ai/state.json` (with `pointers.review_pr:
+  {number, head_oid}`, a `review PR #M — task #N — …` or `merge PR #M — task #N — …`
+  `next_action`, and the architect assignment when `review.ci_gate` is set), puts the critic
+  record in the work PR's `## Critic pass` section, and opens no ledger PR.
+  `/way-of-working:resume` derives the step from GitHub only — an open same-repo PR authored by
+  the running login that names the anchored task — and auto-starts
+  `/way-of-working:architect-review <M> --pin <oid>` only when `state.json` exists and names the
+  same PR and head, the token check passes, the checkout is the work branch at the pin with a
+  clean tree, `assigned_model` is the default branch's `models.architect`, and the session is
+  fresh; otherwise it shows the step and waits. A fresh machine with no `state.json` shows it
+  and waits for one "go". Loop PRs, authored by the App, never match. New:
+  `bin/review-step.sh` (derive and decide), `bin/critic-section.sh` (replace or read back the
+  PR-body section), each with fixtures. **Behaviour change:** `WB-D20`'s display property
+  does not hold for a review-step `next_action`, which never reaches `main`. No
+  `.ai/project.yml` key changes; `pointers.review_pr` is a `state.json` field, nulled by every
+  other writer (`archive-sprint`, `park-sprint`, `unpark-sprint`, and any other handoff).
+  `derive` takes the `--limit` it was fed and refuses a list that may be truncated; a green gate
+  on a head the pin does not name reads `head-moved`, not `reviewed`; `critic-section.sh` follows
+  CommonMark fences, and its `put` (not `get`) refuses a body that ends inside an open one. Known
+  residuals are listed in `WB-D22`'s *Build* bullet.
+- **`/way-of-working:architect-review --pin <sha>`**: stops if the head it pins differs, if the
+  gate already reads `success` on the pin, if the head moved before the post, or if the poll
+  sees another head; counts `success` only on the pin; and ends without the `handoff` pointer.
+  On a pinned run it now posts through `POST …/pulls/<N>/reviews` with `commit_id=<pin>` and
+  `event=COMMENT`, so the review attaches to the pin even if a push lands after the pre-post
+  re-read (not verified live: no gate in this repo).
+  **Adopters with `review.ci_gate` set should not bump to a release containing this until #283
+  lands**: the pinned review session still starts on the PR's own tree, so the PR's `CLAUDE.md`
+  is in the reviewer's context.
+
+### Fixed
+
+- **`/way-of-working:archive-sprint` precondition 3 no longer fails at every close** (#209).
+  `/way-of-working:handoff` refuses to write `done` before the sprint's roadmap entry is on
+  `origin/{pr_base}`, and says the entry belongs in the sprint's last work PR.
+- **`/way-of-working:plan-sprint` no longer offers "continue uncommitted" when `handoff` is not
+  next** (#220). A ledger left modified blocked `archive-sprint`'s branch cuts; it now opens the
+  cursor-sync PR unless the cursor's `next_action` is or begins with `/way-of-working:handoff`.
+
 ### Changed
 
 - **The branch prune now deletes a merged branch whose local tip is *behind* the merged head**

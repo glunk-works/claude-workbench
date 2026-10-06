@@ -43,7 +43,7 @@ under `github_milestones` — `{backlog.repo}`.
    a **swap**: seed nothing, run `/way-of-working:unpark-sprint <next-sprint-id>` now, and
    let it open the one PR for both. Otherwise follow `/way-of-working:handoff`'s
    *Determine the new cursor* through *Regenerate `.ai/next-steps.md`* steps by
-   reference — same fields, wholesale rewrite, `hitl_gate` always written — **with two
+   reference — same fields, wholesale rewrite, `hitl_gate` always written, `pointers.review_pr: null` (`WB-D22`) — **with two
    deliberate overrides.** First: **this step never writes a `plan_anchor`**, whatever
    `{planning.kind}` is. Anchoring a spec is a judgment call about an approved plan, and
    this skill is mechanical, run by any model; seeding one here would let a non-judgment

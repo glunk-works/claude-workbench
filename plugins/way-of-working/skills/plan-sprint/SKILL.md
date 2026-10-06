@@ -697,8 +697,18 @@ If any precondition fails, stop and report why — do not proceed.
    generates or alters it (`bin/milestone-close-line.sh` checks every `planning`-status cursor
    for its presence).
 
-   **Ask the human directly** whether the session is stopping here or continuing straight to
-   `/way-of-working:handoff` — never guess. If continuing in the same sitting, leave
+   **First, is "continuing in the same sitting" even on offer?** Only when
+   `/way-of-working:handoff` is what runs next, which the cursor's `next_action`
+   (`.ai/state.json`, read now) says by **being or beginning with** that command (a mere mention in free prose does not count). When it is anything else — above all
+   `/way-of-working:archive-sprint`, whose branch cuts (its precondition 3 and its *Compact the
+   deep record* step) need a clean tracked tree and whose *Seed a fresh `.ai/next-steps.md`*
+   step overwrites the ledger regardless — **do not offer it**: a ledger left modified and
+   uncommitted would block that skill (`#220`, found live on a `done` cursor). Take the
+   "stopping here" path below and say why in one line. An unreadable `next_action` takes it
+   too; never guess that `handoff` is next.
+
+   **Otherwise ask the human directly** whether the session is stopping here or continuing
+   straight to `/way-of-working:handoff` — never guess. If continuing in the same sitting, leave
    `.ai/state.json` and `.ai/next-steps.md` modified, uncommitted, and say so plainly in the
    report; this relies on the same session's own memory of what it staged, not on any
    special-cased logic inside `handoff` — `handoff`'s own next steps in *this* sitting simply

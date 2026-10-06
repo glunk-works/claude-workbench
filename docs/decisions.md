@@ -1365,6 +1365,55 @@ take effect. Full reasoning and the task breakdown that implements them:
       is the roadmap entry written before the close, and `#220` is a dirty ledger left by
       plan-sprint. They are build items, not decisions.
     - **No new `.ai/project.yml` key.** `pointers.review_pr` is a `state.json` field.
+  - **Build (`#230`).** What landed, and the choices the build made inside this entry:
+    - **`bin/review-step.sh`** is both halves as a pure, fixture-tested predicate: `derive`
+      (the qualifying-PR rule, with `@tsv`'s escapes decoded before the word-character test) and
+      `decide` (`auto | show <reasons> | merge | reviewed | many | none | unreadable`). The
+      no-op handoff runs `derive` itself and requires `one <M> <oid>` with `<oid>` equal to its
+      own `HEAD`, so handoff pins only a PR that resume would derive. `bin/critic-section.sh`
+      is the fence-aware replace/read-back for the PR body's `## Critic pass` section.
+    - **`#209`** is closed by option (b): `handoff` refuses to write `done` before the roadmap
+      entry is on `origin/{pr_base}` and says the entry belongs in the sprint's last work PR.
+      **`#220`** by option (a): `plan-sprint` offers "continue uncommitted" only when the
+      cursor's `next_action` is or begins with `/way-of-working:handoff`.
+    - **`next_action` is compared with its exact prefix**, `` review PR #M — task #N — ``, so
+      `#12` cannot match `#123` and `task #230` cannot match `task #2301`.
+    - **`derive` takes the `--limit` the caller gave `gh pr list` (200) and refuses, exit 2, a
+      list of that many records or more.** A truncated list (newest first) could drop a
+      qualifying PR and turn `many` into `one`, so it is never an answer.
+    - **The `<repo>#N` form also rejects `-` and `.` before the owner**, since owner and repo
+      names may contain them (`evil-owner/repo#N` is another repo).
+    - **`reviewed` is honest only about the pin.** A green gate on a head `state.json` does not
+      pin for that PR reads `show … head-moved` (a push landing in the post window).
+    - **`fresh` means no assistant turn or work before the resume**; `/clear` and `/model` do
+      not count, so the new-window, `/model`, resume sequence handoff prescribes is fresh.
+    - **Known residuals, not closed by this build.** (1) The pinned review session starts on the
+      PR's tree (the checkout condition requires HEAD at the pin), so it takes its project
+      settings from that tree. Two halves, one old and one new. *Shell execution* through a
+      `SessionStart` hook is old: it happens in any session opened on the work branch, including
+      the coder session the no-op handoff tells the human to open, so auto-start adds no
+      capability there. *Review integrity* is what this entry introduces: the PR's `CLAUDE.md` is
+      loaded into the "fresh" reviewer as authority and stays in its context after
+      `review-base-anchor.sh` switches to the base, so an author writes standing instructions to
+      their own reviewer. Whether a changed plugin `ref` in that tree substitutes the predicates
+      is unverified (a pin bump needs a marketplace re-add, not a session start). A handoff-side
+      denylist of `.claude/`, `CLAUDE.md`, `.mcp.json` and `.claude-plugin/` was rejected: it is
+      advisory (the human can start on the branch anyway) and open-ended (nested `CLAUDE.md`,
+      base hooks calling scripts the PR edits). The structural fix is tracked as `#283`:
+      start the pinned review from `{pr_base}`, carrying the pin in the git-ignored
+      `state.json`, which amends the checkout condition above and needs its own drift rule. It
+      must land before any adopter with `review.ci_gate` set bumps its plugin ref to a release
+      containing this entry; the auto-start review path is not live in this repo, where the key
+      is `null`. (2) A pinned `architect-review` posts through `…/pulls/<M>/reviews -f
+      commit_id=<pin> -f event=COMMENT`, so the review attaches to the pin when a push lands
+      after the pre-post re-read. A gate keyed on the review's `commit_id` then stays red on the
+      pushed head, and one keyed on the PR's head can still go green there, which the poll
+      reports. Not verified live (no gate here), and a harness denial of that `gh api` write is a
+      stop, never a fall back. (3) The repo's own ledger PRs naming the task also qualify in
+      `derive`, and fail closed to `show` or `many`. A draft work PR is pinned and auto-reviewed
+      like any other.
+    - **`derive` requires the PR's own `state` to read `OPEN`** besides being listed with
+      `--state open`, so a merged or closed record can never qualify if a caller's filter slips.
 
 ## Status
 

@@ -48,6 +48,8 @@ sh tests/cursor-sync-pr.test.sh # resume's cursor-sync PR merge-offer predicate 
 sh tests/blocked-state.test.sh  # pr-checks' BLOCKED lag-vs-update-rule predicate fixtures (not yet required)
 sh tests/blocked-state-block.test.sh  # pr-checks' blocked-state shell block vs a stub gh (not yet required)
 sh tests/prune-verdict.test.sh    # resume/archive-sprint prune: merged-tip-or-ancestor verdict fixtures (not yet required)
+sh tests/review-step.test.sh    # review-step derive/decide predicate fixtures (not yet required)
+sh tests/critic-section.test.sh  # critic-section PR-body section fixtures (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `scripts/invariants-check.sh` needs
