@@ -4,20 +4,22 @@
 milestone 1* (due 2026-10-23). Status: **implementing**.
 
 **Just done (2026-10-06):**
-- #219 built and merged as PR #286 (`477591d`), closing #219: archive-sprint's Snapshot step
-  now checks `.ai/archive/` is git-ignored before writing, and names the tracked-snapshot fix.
-- Critic pass (architect, docs-consistency): 3 rounds, converged; no second-opinion round.
-  security-critic not run (no new input flow).
-- The sprint's plan anchor was re-taken for #231 (baseline verified `match`).
+- #231 built and merged as PR #288 (`f156b2c`), closing #231: resume's `SKILL.md` is a lean
+  auto-start path plus six on-demand appendices (18,165 tokens measured from a real
+  transcript, from ~35k); `workflow.md`'s stale nesting sentence now names the `Agent` tool as
+  the control, with no depth figure.
+- Critic pass (architect, security-critic, docs-consistency): 2 rounds, every finding fixed; no
+  third round on the final wording-only edits; no second-opinion round.
+- The sprint's plan anchor was re-taken for #232 (baseline verified `match`).
 
-**Next:** task #231 — fix `workflow.md`'s stale nesting sentence and split resume's
-`SKILL.md` into a lean auto-start path plus on-demand appendices on **sonnet** (`coder`), under
-20k tokens of plugin prose measured from a real transcript (the measurement goes in the PR
-body), no auto-start condition moved out. Then `/way-of-working:critic-gate` (architect,
-security-critic, docs-consistency — it touches the fail-closed path) and
-`/way-of-working:ship` one PR closing #231.
+**Next:** task #232 — build `plan-sprint`'s human-confirmed per-issue `depends_on` marker on
+**sonnet** (`coder`): proposed in the recommendation table, confirmed by the human like the
+build-order slot, recorded where a reader can get it without reading issue bodies as
+instructions (decide and document where), a fixture reads it back, and an unconfirmed or
+unreadable marker reads as "depends on everything earlier". Then `/way-of-working:critic-gate`
+(architect, security-critic, docs-consistency) and `/way-of-working:ship` one PR closing #232.
 
-**HITL Gate: NONE OPEN** — next gate: the human merge of #231's build PR (no review CI gate in
+**HITL Gate: NONE OPEN** — next gate: the human merge of #232's build PR (no review CI gate in
 this repo).
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
