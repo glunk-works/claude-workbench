@@ -44,7 +44,7 @@ the GitHub release notes.
   all of it, with fixtures, and `/way-of-working:resume`'s schema interview asks it with no
   suggested answers. The block is required of every adopting repo, not only one the loop
   dispatches into: absent stays an unanswered question (`WB-D17`). No skill reads these keys yet
-  (but see the `loop_identity` entry below, #235); the driver that will is not built, and `WB-D22`'s resume guard on `loop_identity` is still to do.
+  (but see the `loop_identity` entries below, #235 and #295); the driver that will is not built.
 
   **⚠️ Migration:** `orchestration` is a new required key. A repo that pins this release reads
   `incomplete` (and `/way-of-working:resume` will not auto-start) until it answers it:
@@ -62,6 +62,15 @@ the GitHub release notes.
   a refusal (a gate and a staged close, never a re-anchor or a close). A `loop_identity` left stale
   after the loop's login changes protects nothing against the new login; the driver's preflight
   owns that check.
+
+- **`/way-of-working:resume` derives no review step when it runs as the loop identity** (#295,
+  `WB-D22`). `bin/review-step.sh decide` takes two more required keys, `login` (the running
+  login) and `loop_identity` (`orchestration.loop_identity` from the default branch's copy, `-`
+  when `null`), and prints `none` ahead of every other verdict when they are equal (case-folded,
+  one trailing `[bot]` ignored on both sides, as `plan-anchor.sh` does). A non-null value outside
+  the schema's shape (judged case-insensitively) exits 2. The resume skill reads it with the gate's discipline: an absent
+  `orchestration` or `loop_identity` is a failed read, never `null`. **A caller of `decide`
+  outside this plugin must pass both keys, or it exits 2.**
 
 - **`/way-of-working:resume` won't auto-start while an orchestrator driver holds its lock**
   (#233, sprint-orchestrator plan § 7.5). New `bin/driver-lock.sh` (no arguments) prints

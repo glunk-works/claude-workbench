@@ -1217,8 +1217,11 @@ take effect. Full reasoning and the task breakdown that implements them:
 
     Two or more qualifying PRs show all of them and wait.
 
-    Once `orchestration.loop_identity` exists (`#234`), resume derives nothing when its
-    running login equals that value. This stops a session running as the loop's own
+    Resume derives nothing when its running login equals `orchestration.loop_identity`
+    (key added in `#234`, guard built in `#295`: `review-step.sh decide` takes `login` and
+    `loop_identity` and prints `none`, ahead of every other verdict). The value comes from the
+    default branch's copy, is folded as `plan-anchor.sh` folds it (case-insensitive, a trailing `[bot]` ignored on both sides), and
+    `null` means no guard. This stops a session running as the loop's own
     identity. It does **not** close § 8.13d's stale-value case: a stale `loop_identity` by
     definition does not equal the running login. That case stays with the driver's
     preflight login-equality check (plan v9 § 7.3).

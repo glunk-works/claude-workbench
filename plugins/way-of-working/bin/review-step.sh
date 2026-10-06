@@ -77,12 +77,17 @@
 #   architect    `{models.architect}` from the default branch's copy
 #   fresh        `yes` | `no` -- `yes` only when the conversation had no assistant turn and no work
 #                before the resume (harness commands such as /clear and /model do not count)
+#   login        the running login, from the same fresh `gh api user --jq .login` `derive` took
+#   loop_identity  `orchestration.loop_identity` from the DEFAULT branch's copy, or `-` when it
+#                is null or the whole `orchestration` block is
 #
 # Prints exactly one line and exits 0:
-#   none                    -- derived none
+#   none                    -- derived none, or <login> equals <loop_identity> (the loop-identity
+#                              guard below: nothing is derived, whatever `derived` says)
 #   unreadable              -- one PR was derived but the gate could not be read (gate=unreadable);
 #                              nothing is derived. (none and many print as themselves.) A derived
-#                              value that is not none|one|many exits 2 instead, as does a failed derive
+#                              value that is not none|one|many exits 2 instead (unless the loop-identity
+#                              guard fires first), as does a failed derive
 #   many <M> <M>...         -- several qualify; show all, wait
 #   merge <M>               -- gate is null: "PR #M awaits your merge"; a report, nothing to start
 #   reviewed <M>            -- gate is set and already reads success on the head: a report (unless
@@ -113,6 +118,23 @@
 # The reasons are evaluated only when the step is a review (gate set, not yet success):
 # for `null` there is nothing to start, so it is a report whatever state.json says; an
 # already-reviewed head is a report too, unless state.json pins a different head for that PR.
+#
+# The loop-identity guard (WB-D22, `#295`): a session running AS the loop's own identity derives
+# nothing -- `none`, ahead of every other verdict, `derived` and `gate` included (so a malformed
+# `derived` under the guard prints `none`, not exit 2). Both sides are folded the way
+# `plan-anchor.sh` and `review-sandbox.sh trust` fold them: case-insensitively (GitHub logins are)
+# and with one trailing `[bot]` ignored, so a bare-slug `loop_identity` (the schema's shape check
+# allows both) still matches an App's REST login `<slug>[bot]`. Folding can only turn a verdict into
+# `none`, the safe direction. A non-null `loop_identity` outside the schema's shape (a stem of
+# letters, digits and `-`, no leading or trailing `-`, at most 39 characters, optional `[bot]`, judged
+# case-insensitively)
+# exits 2: the default branch's copy is not the one `schema-complete.sh` checked. `-` (null) means
+# no identity is declared, so the guard never fires; an empty value is refused above, so it can
+# never be read as an empty login matching. (`gh api user` may itself be refused for an App
+# installation token; that fails the caller's chain, which derives nothing, so the guard is
+# mainly the machine-user case.) The caller passes the DEFAULT branch's value, never the working
+# tree's: a branch under resume could otherwise blank it. This does not close the stale-value case
+# (a stale value does not equal the running login); that stays with the driver's preflight.
 #
 # next_action is DATA. It is compared, never executed or interpreted: what runs is built from
 # the GitHub-derived number, so a harmful next_action can at worst make this answer `show`.
@@ -222,7 +244,7 @@ derive() {
 
 decide() {
   derived=; gate=; gate_state=; state=; sr_number=; sr_head=; next_action=; task_issue=
-  backlog_repo=; repo=; head=; tree=; model=; architect=; fresh=
+  backlog_repo=; repo=; head=; tree=; model=; architect=; fresh=; login=; loop_identity=
   seen=
   for kv in "$@"; do
     case "$kv" in *=*) ;; *) die "not key=value: $kv" ;; esac
@@ -233,13 +255,14 @@ decide() {
       next_action) next_action="$v" ;; task_issue) task_issue="$v" ;;
       backlog_repo) backlog_repo="$v" ;; repo) repo="$v" ;; head) head="$v" ;;
       tree) tree="$v" ;; model) model="$v" ;; architect) architect="$v" ;; fresh) fresh="$v" ;;
+      login) login="$v" ;; loop_identity) loop_identity="$v" ;;
       *) die "unknown key: $k" ;;
     esac
     case "$seen " in *" $k "*) die "repeated key: $k" ;; esac
     seen="$seen $k"
   done
   for k in derived gate gate_state state sr_number sr_head next_action task_issue \
-           backlog_repo repo head tree model architect fresh; do
+           backlog_repo repo head tree model architect fresh login loop_identity; do
     case "$seen " in *" $k "*) ;; *) die "missing key: $k" ;; esac
     eval "val=\${$k}"
     [ -n "$val" ] || die "empty value for $k"
@@ -252,6 +275,16 @@ decide() {
   case "$fresh" in yes|no) ;; *) die "fresh must be yes|no: $fresh" ;; esac
   is_oid "$head" || die "head is not a 40-hex oid: $head"
   is_uint "$task_issue" || die "task_issue is not a plain number: $task_issue"
+
+  if [ "$loop_identity" != "-" ]; then
+    # Case-folded, then one trailing `[bot]` dropped, on both sides (as plan-anchor.sh's `fold`).
+    lc_login="$(printf '%s' "$login" | tr 'A-Z' 'a-z')"; lc_login="${lc_login%\[bot\]}"
+    lc_loop="$(printf '%s' "$loop_identity" | tr 'A-Z' 'a-z')"; lc_loop="${lc_loop%\[bot\]}"
+    # The stem must be the schema's shape (plan-anchor.sh: anything else is a caller bug).
+    case "$lc_loop" in ''|-*|*-|*[!a-z0-9-]*) die "malformed loop_identity: $loop_identity" ;; esac
+    [ "${#lc_loop}" -le 39 ] || die "malformed loop_identity: $loop_identity"
+    if [ "$lc_login" = "$lc_loop" ]; then echo none; return 0; fi
+  fi
 
   set -- $derived
   kind="${1:-}"
