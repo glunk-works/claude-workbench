@@ -220,12 +220,13 @@ github_milestones` — `{backlog.repo}`.
    that is **the only cursor change** — the anchored task's work now sits in an open PR
    awaiting review or merge, and no gate opens, no sprint status changes, no new task
    starts, and no model changes other than the architect assignment below — write
-   `.ai/state.json` and **nothing else**: skip the *Regenerate `.ai/next-steps.md`* and
-   *Commit `.ai/next-steps.md` as its own docs-only PR* steps, and leave the checkout on the
-   work branch. A regenerated, uncommitted ledger would leave the tree dirty, and
-   `/way-of-working:resume` would wait. Any other cursor change still gets the ledger PR.
-   The test is mechanical, in this order, and **every failed link falls back to the ledger
-   PR** — say which link failed:
+   `.ai/state.json` and **nothing else** (link 5's switch aside): skip the *Regenerate `.ai/next-steps.md`* and
+   *Commit `.ai/next-steps.md` as its own docs-only PR* steps, and end with a switch to
+   `{pr_base}`, synced (link 5 below), so the checkout does not stay on the work branch. A regenerated,
+   uncommitted ledger would leave the tree dirty, and `/way-of-working:resume` would wait. Any other cursor change still gets the ledger PR.
+   The test is mechanical, in this order, and **every failed link in 1–4 falls back to the
+   ledger PR** — say which link failed (link 5's switch runs after the cursor is written and
+   has its own rule):
 
    1. **The PR is the one resume will derive.** On a clean tree (`git status --short` prints
       nothing), with this session's login from a fresh `gh api user --jq .login`:
@@ -240,7 +241,8 @@ github_milestones` — `{backlog.repo}`.
       (`<N>` is the anchored task issue; the block makes its own `$T`; the `&&` chain is load-bearing —
       a failed `gh` call must never reach the predicate, since a missing document reads as
       `none`). Require exactly `one <M> <oid>` **and** `<oid>` equal to this checkout's own
-      `git rev-parse HEAD`. `none`, `many`, a refusal, or a head that differs (unpushed local
+      `git rev-parse HEAD` (taken here, on the work branch, before link 5's switch). `none`,
+      `many`, a refusal, or a head that differs (unpushed local
       commits, or a remote commit not pulled) opens the ledger PR instead. The pin binds the
       review to the commit this checkout holds, not to commits the owner wrote: a
       collaborator's commit the maintainer has pulled is pinned like any other.
@@ -285,8 +287,9 @@ github_milestones` — `{backlog.repo}`.
         plan check). `/way-of-working:resume` compares this line as a vote against a step it
         derives from GitHub; it never runs it.
       - `sprint_status` stays `implementing`, not `awaiting_review`, which auto-start does
-        not accept. `last_commit` is the work branch's HEAD, as always — that is what lets
-        `cursor-drift.sh` read `clean` on the work branch. `hitl_gate` is `NONE OPEN` plus the
+        not accept. `last_commit` is the work branch's HEAD, as always — it equals the pin, and it
+        is what `/way-of-working:resume`'s `last-commit` check compares on the base
+        (`cursor-drift.sh` reads `drift` there by construction and is not consulted). `hitl_gate` is `NONE OPEN` plus the
         next gate (the human's merge).
       - **With `{review.ci_gate}` set, `assigned_model` and `assigned_persona` become the
         architect's** (`{models.architect}`): the review runs on the architect model, and
@@ -295,8 +298,26 @@ github_milestones` — `{backlog.repo}`.
         the human's call, made after reading it: they start a session on `{models.coder}` on
         the work branch and direct it, and resume there reports the mismatch and waits, which
         is expected.
-   5. **Report** the PR, the next model, and the next-session block (the *Report* step's),
-      saying plainly that no ledger PR was opened and the checkout stays on the work branch.
+   5. **Switch to the base, synced** (`WB-D22`, `#283`), after `.ai/state.json` is written:
+      ```bash
+      git switch {pr_base} && git pull --ff-only origin {pr_base}
+      ```
+      The pin, `last_commit` and the rest of the cursor are in `.ai/state.json`, which is
+      git-ignored, so they carry across the switch untouched. The reviewer session must start
+      from the base, not the PR's tree: a session opened on the work branch loads that branch's
+      own `.claude/settings.json` hooks, `CLAUDE.md` and `.mcp.json`, so the author's `CLAUDE.md`
+      would sit in the reviewer's context as authority (and stay there after
+      `review-base-anchor.sh` switches to the base). `/way-of-working:resume`'s auto-start
+      therefore requires the base, synced and clean, and shows `checkout` on the work branch.
+      Not every outcome is "synced": a local `{pr_base}` ahead of origin makes
+      `--ff-only` a no-op, and a failed pull leaves the checkout on `{pr_base}` unsynced. A
+      failed switch or pull is **not** a fallback to the ledger PR — the cursor is already
+      written and correct. Report where the checkout actually is (`git branch --show-current`),
+      and give the human the commands; resume there shows `checkout` and waits, which is the
+      safe direction.
+   6. **Report** the PR, the next model, and the next-session block (the *Report* step's),
+      saying plainly that no ledger PR was opened and where the checkout is now (`{pr_base}`,
+      synced, or whatever link 5 left).
 
    Handoff picks the `review PR` or `merge PR` form from its own working-tree copy of
    `{review.ci_gate}`; resume reads the default branch's. If they disagree, resume's token
@@ -486,7 +507,11 @@ github_milestones` — `{backlog.repo}`.
    it as `/way-of-working:architect-review <PR>` — in the cursor and in this block — so the
    next session runs the gate's satisfier rather than improvising one.
 
-   **After a no-op handoff** the block is the same three lines and nothing else: a new
+   **After a no-op handoff** the block is the same three lines and nothing else — run from the
+   checkout this handoff left, on `{pr_base}`; never open the new window on the work branch to
+   run the review (`WB-D22`, `#283`: it would load the PR's own hooks, `CLAUDE.md` and
+   `.mcp.json`). Open a session on the work branch only when the human is directing a fix after
+   reading the review. The three lines: a new
    window, `/model <the cursor's assigned_model>` (the architect with a gate set; unchanged with `null`), `/way-of-working:resume`, which derives the review
    from the PR and auto-starts it as `/way-of-working:architect-review <M> --pin <oid>`.
    Leave the `/way-of-working:architect-review` line out — typing it by hand starts an unpinned review. With

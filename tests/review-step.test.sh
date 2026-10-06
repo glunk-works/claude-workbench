@@ -18,8 +18,9 @@
 #     newline and manufacturing a mention;
 #   - the author check passing for a bot, a fork, a closed PR, or another login;
 #   - auto-start firing on one source alone: no state.json, a different review_pr, a moved
-#     head, a next_action that does not begin `review PR #M — task #N — `, a dirty tree or a
-#     checkout off the pin, an assigned_model that is not the architect, a same-conversation
+#     head, a next_action that does not begin `review PR #M — task #N — `, a dirty tree, a checkout
+#     that is not the base synced to origin (the work branch included, `#283`), a last_commit
+#     that is not the pin, an assigned_model that is not the architect, a same-conversation
 #     switch.
 #
 # Records are built with printf '%s' and a literal backslash held in a variable, not with
@@ -30,7 +31,8 @@
 # `before != "/"` test (the URL fixture goes red); drop the digit test (`#2301` goes red);
 # decode `\\` as itself (the escaped-backslash fixture goes red); drop the isCrossRepository
 # test; compare the author case-sensitively; skip the head-moved check; skip the checkout
-# check; compare the model to the running model's name instead of architect. Checked by
+# check; drop the `branch` comparison (the `branch=other` and detached-HEAD fixtures go red);
+# drop the `base = -` guard (the unreadable-pr_base-and-detached-HEAD fixture goes red); skip the last-commit check; compare the model to the running model's name instead of architect. Checked by
 # doing it, not by reading.
 #
 # Permitted toolset: POSIX sh. No jq, no yq, no python.
@@ -254,7 +256,8 @@ assert_decide() {
   base_derived="derived=one 12 $O1"; base_gate=gate=set; base_gs=gate_state=absent
   base_state=state=present; base_srn=sr_number=12; base_srh="sr_head=$O1"
   base_na="next_action=review PR #12 — task #230 — run the architect review on it"
-  base_ti=task_issue=230; base_br=backlog_repo=-; base_repo="repo=$REPO"; base_head="head=$O1"
+  base_ti=task_issue=230; base_br=backlog_repo=-; base_repo="repo=$REPO"; base_head="head=$O3"
+  base_branch=branch=main; base_base=base=main; base_bhead="base_head=$O3"; base_lc="last_commit=$O1"
   base_tree=tree=clean; base_model=model=opus; base_arch=architect=opus; base_fresh=fresh=yes
   base_login="login=$ME"; base_loop=loop_identity=-
   for kv in "$@"; do
@@ -263,14 +266,16 @@ assert_decide() {
       state=*) base_state="$kv" ;; sr_number=*) base_srn="$kv" ;; sr_head=*) base_srh="$kv" ;;
       next_action=*) base_na="$kv" ;; task_issue=*) base_ti="$kv" ;; backlog_repo=*) base_br="$kv" ;;
       repo=*) base_repo="$kv" ;; head=*) base_head="$kv" ;; tree=*) base_tree="$kv" ;;
+      branch=*) base_branch="$kv" ;; base=*) base_base="$kv" ;; base_head=*) base_bhead="$kv" ;;
+      last_commit=*) base_lc="$kv" ;;
       model=*) base_model="$kv" ;; architect=*) base_arch="$kv" ;; fresh=*) base_fresh="$kv" ;;
       login=*) base_login="$kv" ;; loop_identity=*) base_loop="$kv" ;;
     esac
   done
   st=0
   out="$(sh "$script" decide "$base_derived" "$base_gate" "$base_gs" "$base_state" "$base_srn" \
-    "$base_srh" "$base_na" "$base_ti" "$base_br" "$base_repo" "$base_head" "$base_tree" \
-    "$base_model" "$base_arch" "$base_fresh" "$base_login" "$base_loop" 2>/dev/null)" || st=$?
+    "$base_srh" "$base_na" "$base_ti" "$base_br" "$base_repo" "$base_head" "$base_branch" \
+    "$base_base" "$base_bhead" "$base_lc" "$base_tree" "$base_model" "$base_arch" "$base_fresh" "$base_login" "$base_loop" 2>/dev/null)" || st=$?
   if [ "$out" = "$want_out" ] && [ "$st" = "$want_st" ]; then
     echo "ok - decide: $desc"
   else
@@ -290,13 +295,30 @@ A "no state.json: show the step, wait" "show 12 no-state" 0 \
 # disagreement
 A "state.json names a different PR" "show 12 review-pr,token" 0 \
   sr_number=13 'next_action=review PR #13 — task #230 — x'
-A "state.json names no PR (an older cursor)" "show 12 review-pr,token" 0 \
+A "state.json names no PR (an older cursor)" "show 12 review-pr,token,last-commit" 0 \
   sr_number=null sr_head=null 'next_action=task #230 — build it'
-A "review_pr is the PR but the head moved since the pin" "show 12 head-moved,checkout" 0 \
+A "review_pr is the PR but the head moved since the pin" "show 12 head-moved" 0 \
   "derived=one 12 $O2"
-A "the pin matches the derived head but this checkout is behind it" "show 12 checkout" 0 \
-  "head=$O3"
-A "a dirty tree is not the checkout the handoff left" "show 12 checkout" 0 tree=dirty
+
+# the checkout: the base, synced to origin, clean -- never the work branch (`#283`)
+A "the work branch at the pin is no longer the checkout" "show 12 checkout" 0 \
+  branch=feat/work "head=$O1"
+A "the base, but behind origin/base" "show 12 checkout" 0 "head=$O2"
+A "the base at origin/base with a dirty tree" "show 12 checkout" 0 tree=dirty
+A "a detached HEAD, even at origin/base's tip" "show 12 checkout" 0 branch=-
+A "origin/base unreadable (a failed fetch)" "show 12 checkout" 0 base_head=-
+A "the default branch's pr_base unreadable" "show 12 checkout" 0 base=-
+A "another branch at origin/base's tip is not the base" "show 12 checkout" 0 branch=other
+A "a detached HEAD with an unreadable pr_base cannot match itself" "show 12 checkout" 0 \
+  branch=- base=- "head=$O3" "base_head=$O3"
+A "a work branch cannot pass by being named the base" "show 12 checkout" 0 \
+  branch=feat/work base=main "head=$O1" "base_head=$O3"
+A "a forged pr_base naming the work branch still never matches origin/base" "show 12 checkout" 0 \
+  branch=feat/work base=feat/work base_head=- "head=$O1"
+
+# the review-shape drift rule: the cursor's own two fields agree on the pin
+A "last_commit is not the pin" "show 12 last-commit" 0 "last_commit=$O2"
+A "last_commit did not resolve" "show 12 last-commit" 0 last_commit=-
 
 # the token
 A "next_action is the old task-first form" "show 12 token" 0 'next_action=task #230 — build the thing'
@@ -318,6 +340,16 @@ A "another backlog repo: the repo-prefixed task token is the form" "auto 12 $O1"
 A "another backlog repo: the bare task token is refused" "show 12 token" 0 \
   backlog_repo=603-identity/hub
 A "backlog equal to repo uses the bare token" "auto 12 $O1" 0 "backlog_repo=$REPO"
+
+# the consumed vote (`#283`): architect-review rewrote next_action once its post succeeded,
+# leaving review_pr intact -- never auto, `reviewed` on a green gate, head-moved still guarded
+A "a consumed vote on a not-yet-green gate is shown, never auto" "show 12 token" 0 \
+  'next_action=reviewed PR #12 — awaiting the human'"'"'s merge, or a fix they direct'
+A "a consumed vote on a green gate is a report" "reviewed 12" 0 gate_state=success \
+  'next_action=reviewed PR #12 — awaiting the human'"'"'s merge, or a fix they direct'
+A "a consumed vote on a green gate for a moved head is still head-moved" "show 12 head-moved" 0 \
+  gate_state=success "derived=one 12 $O2" \
+  'next_action=reviewed PR #12 — awaiting the human'"'"'s merge, or a fix they direct'
 
 # the model and the fresh session
 A "assigned_model is not the architect" "show 12 model" 0 model=sonnet
@@ -366,6 +398,9 @@ A "state outside the vocabulary" "" 2 state=maybe
 A "tree outside the vocabulary" "" 2 tree=untracked
 A "fresh outside the vocabulary" "" 2 fresh=maybe
 A "head that is not an oid" "" 2 head=abc
+A "base_head that is not an oid" "" 2 base_head=abc
+A "last_commit that is not an oid" "" 2 last_commit=e5b7a4f
+A "an empty branch" "" 2 branch=
 A "task_issue that is not a number" "" 2 task_issue=abc
 A "an empty value" "" 2 model=
 A "an empty login" "" 2 login=
@@ -427,7 +462,7 @@ d="$(printf '%s\n' "$(rec 12 OPEN false app/loop-driver $O1 't' 'Closes #230')" 
   | sh "$script" derive "$ME" "$REPO" - 230 200)"
 a="$(sh "$script" decide "derived=$d" gate=set gate_state=absent state=present sr_number=12 \
   "sr_head=$O1" "next_action=review PR #12 — task #230 — x" task_issue=230 backlog_repo=- \
-  "repo=$REPO" "head=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=-)"
+  "repo=$REPO" "head=$O3" branch=main base=main "base_head=$O3" "last_commit=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=-)"
 if [ "$a" = none ]; then echo "ok - end to end: an App-authored PR derives nothing and auto-starts nothing"; else
   echo "FAIL - end to end: App-authored PR: got [$a]" >&2; fail=1; fi
 
@@ -435,7 +470,7 @@ d="$(printf '%s\n' "$(rec 12 OPEN false "$ME" $O1 't' 'Closes #230')" \
   | sh "$script" derive "$ME" "$REPO" - 230 200)"
 a="$(sh "$script" decide "derived=$d" gate=set gate_state=absent state=present sr_number=12 \
   "sr_head=$O1" "next_action=review PR #12 — task #230 — x" task_issue=230 backlog_repo=- \
-  "repo=$REPO" "head=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=-)"
+  "repo=$REPO" "head=$O3" branch=main base=main "base_head=$O3" "last_commit=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=-)"
 if [ "$a" = "auto 12 $O1" ]; then echo "ok - end to end: a maintainer PR derives and auto-starts"; else
   echo "FAIL - end to end: maintainer PR: got [$a]" >&2; fail=1; fi
 

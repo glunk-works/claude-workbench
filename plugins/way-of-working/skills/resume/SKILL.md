@@ -200,7 +200,12 @@ edited it. **Default to the full checklist whenever unsure.**
      hasn't merged yet, this is the **correct** answer: the cursor describes work `{pr_base}`
      does not have yet. Wait. Never widen the allowlist to "docs-shaped paths" — a roadmap or
      sprint-plan edit between sessions can invalidate the very `next_action` auto-start is about
-     to run unattended.
+     to run unattended. **The review-shape cursor (`WB-D22`, `#283`) reads `drift` here by
+     construction** — its `last_commit` is the work branch's HEAD, and the no-op handoff then
+     switched to `{pr_base}`, which lacks that work. That is expected, and for that shape this
+     result is not consulted: the *Derive the review step from GitHub* step's `last-commit` check
+     (`last_commit` equals the pin) is its drift rule, and nothing runs `next_action`, so the base
+     moving past the work is not what a drift check guards there.
    - **`unreadable`** — git cannot read `last_commit` at all. Wait.
 
    Say which case you found in one line, e.g. `HEAD differs from last_commit only in
@@ -407,6 +412,11 @@ edited it. **Default to the full checklist whenever unsure.**
      *) LOOPID= ;;
    esac &&
    [ -n "$LOOPID" ] &&
+   BASE=$(printf '%s' "$DEF_YML" | yq -r '.pr_base // ""') &&
+   case "$BASE" in ''|-*|*[!A-Za-z0-9._/-]*) BASE=- ;; esac &&
+   if [ "$BASE" != - ] && git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"; then
+     BHEAD=$(git -C "$TOPLEVEL" rev-parse --verify -q "refs/remotes/origin/$BASE^{commit}") || BHEAD=-
+   else BHEAD=-; fi &&
    T=$(mktemp -d) &&
    gh pr list --repo "$R" --state open --limit 200 \
      --json number,state,isCrossRepository,author,headRefOid,title,body \
@@ -421,6 +431,11 @@ edited it. **Default to the full checklist whenever unsure.**
    with `$TAG` `!!null` is `gate=null`; anything else — including an absent key — is
    `gate=unreadable`, never read as `null`. `{models.architect}` and `{backlog.repo}` are taken
    from that copy; the working tree's own values are not consulted.
+   `$BASE` is `pr_base` from that same copy (`-` when unreadable or outside a branch name's plain
+   characters) and `$BHEAD` is `origin/$BASE`'s tip after a fetch of it (`-` when that failed):
+   the auto-start checkout is the base **synced to origin**, and the working tree's own `pr_base`
+   could name the work branch itself. Neither is a failed link: `-` for either simply makes
+   `decide` say `checkout`.
    `$LOOPID` is `orchestration.loop_identity` from that same copy, `-` when it (or the whole
    `orchestration` block) is `null`: `decide` derives nothing when `$LOGIN` equals it (the loop-identity
    guard, `WB-D22`), so a session running as the loop's own identity never derives a review step. A failed
@@ -443,7 +458,9 @@ edited it. **Default to the full checklist whenever unsure.**
    NA=$(jq -r 'if (.next_action // "") == "" then "-" else .next_action end' .ai/state.json) &&
    MODEL=$(jq -r 'if (.assigned_model // "") == "" then "-" else .assigned_model end' .ai/state.json) &&
    SRN=$(jq -r '.pointers.review_pr.number // "-"' .ai/state.json) &&
-   SRH=$(jq -r '.pointers.review_pr.head_oid // "-"' .ai/state.json)
+   SRH=$(jq -r '.pointers.review_pr.head_oid // "-"' .ai/state.json) &&
+   LC=$(jq -r '.last_commit // ""' .ai/state.json) &&
+   case "$LC" in ''|*[!0-9a-f]*) LCO=- ;; *) LCO=$(git rev-parse --verify -q "$LC^{commit}" 2>/dev/null) || LCO=- ;; esac
    ```
 
    **Each Bash call is a fresh shell.** Run the derive chain, the state block and `decide` so each
@@ -456,11 +473,15 @@ edited it. **Default to the full checklist whenever unsure.**
    ```bash
    review-step.sh decide "derived=$DERIVED" "gate=$GATE" "gate_state=$GS" "state=$STATE" \
      "sr_number=$SRN" "sr_head=$SRH" "next_action=$NA" "task_issue=$N" "backlog_repo=${BREPO:--}" \
-     "repo=$R" "head=$(git rev-parse HEAD)" "tree=$TREE" "model=$MODEL" "architect=$ARCH" "fresh=$FRESH" \
+     "repo=$R" "head=$(git rev-parse HEAD)" "branch=$(git branch --show-current | grep . || echo -)" "base=$BASE" "base_head=$BHEAD" \
+     "last_commit=${LCO:--}" "tree=$TREE" "model=$MODEL" "architect=$ARCH" "fresh=$FRESH" \
      "login=$LOGIN" "loop_identity=$LOOPID"
    ```
    `$STATE` is `present` when `.ai/state.json` parsed, else `absent` (then `-` for `$SRN`, `$SRH`,
-   `$NA`, `$MODEL`). `$SRN`/`$SRH` are `pointers.review_pr.number` / `.head_oid`, `-` when
+   `$NA`, `$MODEL`, and `-` for `$LCO`). `$LCO` is `last_commit` resolved to a full oid, `-` when it
+   does not resolve or is not a hex commit id (what handoff wrote, never a revision expression); the
+   `branch` argument is the current branch, `-` when HEAD is detached, and is read in the `decide` call itself
+   so it is set whether or not `state.json` exists. `$SRN`/`$SRH` are `pointers.review_pr.number` / `.head_oid`, `-` when
    missing — an older cursor reads as no vote. `$TREE` is `clean` or `dirty` from the
    `git status --short` the *Check reality vs. the cursor* step already ran. `$MODEL` is
    `assigned_model`. `$FRESH` is `yes` only when this conversation has had **no assistant turn
@@ -571,7 +592,8 @@ edited it. **Default to the full checklist whenever unsure.**
      `review-step.sh decide` printed `auto <M> <oid>`, and what starts is
      `/way-of-working:architect-review <M> --pin <oid>` built from **that line**, never from
      `next_action`'s text. A `merge PR #M` form never auto-starts: there is nothing to start,
-     and the human merges. Every other condition in this list, and the author-trust checks
+     and the human merges. Every other condition in this list — except the `cursor-drift.sh` and clean-tree one, replaced
+     below — and the author-trust checks
      below, still hold — including the plan verified, which the no-op handoff re-takes after
      the PR exists.
 
@@ -581,6 +603,16 @@ edited it. **Default to the full checklist whenever unsure.**
      equal to `plan_anchor.task_issue`. The ledger's **Next:** is **not** compared, because
      during a review it still names the task, by design; the cursor's `next_action` is a vote
      on a step derived elsewhere.
+
+     **Nor does the generic checkout-and-drift condition above (`cursor-drift.sh` `clean` or
+     `cursor-sync`).** The review shape starts from the **base, synced and clean** — never the
+     work branch, whose own `.claude/settings.json` hooks, `CLAUDE.md` and `.mcp.json` a session
+     started there would load, the author's `CLAUDE.md` standing in the reviewer's context as
+     authority (`WB-D22`, `#283`). `decide` requires the branch to equal `pr_base` and HEAD to
+     equal `origin/<pr_base>`, both from the default branch's copy and a fetch, with a clean tree,
+     and requires `last_commit` to equal the pin: that is the review shape's drift rule, in place of
+     `cursor-drift.sh`, which reads `drift` on the base by construction. A resume on the work branch
+     — the one the human opens to direct a fix — shows `checkout` and waits.
 
      **The leading-token cross-check.** `next_action` and the ledger's **Next:** line both
      begin with the exact literal `` task #N — `` when `{backlog.repo}` is `{repo}`, or

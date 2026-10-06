@@ -103,14 +103,14 @@ the GitHub release notes.
   the running login that names the anchored task — and auto-starts
   `/way-of-working:architect-review <M> --pin <oid>` only when `state.json` exists and names the
   same PR and head, the token check passes, HEAD is the pin with a
-  clean tree, `assigned_model` is the default branch's `models.architect`, and the session is
+  clean tree, (as first built; #283 moved this to the synced base), `assigned_model` is the default branch's `models.architect`, and the session is
   fresh; otherwise it shows the step and waits. A fresh machine with no `state.json` shows it
   and waits for one "go". Loop PRs, authored by the App, never match. New:
   `bin/review-step.sh` (derive and decide), `bin/critic-section.sh` (replace or read back the
   PR-body section), each with fixtures. **Behaviour change:** `WB-D20`'s display property
   does not hold for a review-step `next_action`, which never reaches `main`. No
   `.ai/project.yml` key changes; `pointers.review_pr` is a `state.json` field, nulled by every
-  other writer (`archive-sprint`, `park-sprint`, `unpark-sprint`, and any other handoff).
+  other writer that sets pointers (`archive-sprint`, `park-sprint`, `unpark-sprint`, and any other handoff).
   `derive` takes the `--limit` it was fed and refuses a list that may be truncated; a green gate
   on a head the pin does not name reads `head-moved`, not `reviewed`; `critic-section.sh` follows
   CommonMark fences, and its `put` (not `get`) refuses a body that ends inside an open one. Known
@@ -121,9 +121,10 @@ the GitHub release notes.
   On a pinned run it now posts through `POST …/pulls/<N>/reviews` with `commit_id=<pin>` and
   `event=COMMENT`, so the review attaches to the pin even if a push lands after the pre-post
   re-read (not verified live: no gate in this repo).
-  **Adopters with `review.ci_gate` set should not bump to a release containing this until #283
-  lands**: the pinned review session still starts on the PR's own tree, so that PR's project
-  settings (hooks, permissions, env), `.mcp.json` and `CLAUDE.md` are active in the reviewer's session.
+  **Adopters with `review.ci_gate` set should not bump to a release containing this without
+  #283** (see *Changed*): without it the pinned review session starts on the PR's own tree, so that PR's
+  project settings (hooks, permissions, env), `.mcp.json` and `CLAUDE.md` are active in the
+  reviewer's session.
   The `commit_id` post is likely to be refused by the harness on org repos on a host that blocks
   `gh api` writes; that is a stop, never a fallback.
 
@@ -142,6 +143,16 @@ the GitHub release notes.
   before your next sprint close.
 
 ### Changed
+
+- **The pinned review session starts from the base branch, not the PR's tree** (#283, `WB-D22`).
+  The no-op handoff now ends with `git switch {pr_base} && git pull --ff-only origin {pr_base}`
+  (the pin travels in the git-ignored `.ai/state.json`), so **a no-op handoff now changes the
+  checkout**. Resume's review-step auto-start requires the base, synced to `origin/{pr_base}` and
+  clean, instead of HEAD at the pin; `review-step.sh decide` takes four new keys (`branch`, `base`,
+  `base_head`, `last_commit`) and prints the new reason `last-commit`. The review shape's drift
+  rule is `last_commit` equal to the pin, in place of `cursor-drift.sh`, which reads `drift` on the
+  base. `architect-review` rewrites the local cursor's `next_action` once its post succeeds, so a later
+  resume on the base never starts a second review. Residuals are listed in `WB-D22`.
 
 - **The branch prune now deletes a merged branch whose local tip is *behind* the merged head**
   (#271). `/way-of-working:resume` and `/way-of-working:archive-sprint` deleted a branch only

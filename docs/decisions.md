@@ -1121,7 +1121,8 @@ take effect. Full reasoning and the task breakdown that implements them:
     - It does not regenerate `.ai/next-steps.md`. A regenerated, uncommitted ledger would
       leave the tree dirty, and resume would wait.
     - It opens no ledger PR.
-    - It leaves the checkout on the work branch.
+    - It ends with a synced switch to `{pr_base}` (amended by `#283`, below), not on the work
+      branch.
 
     What it writes into `.ai/state.json`, in this order:
     - **The PR**, as `pointers.review_pr: {number, head_oid}`. `head_oid` is this
@@ -1140,8 +1141,9 @@ take effect. Full reasoning and the task breakdown that implements them:
       re-anchor. A `drift`, an `unreadable` or a no-baseline result opens `hitl_gate`, and
       a gate change takes the ledger-PR route below. That is the main way a no-op falls
       back, visibly, to a ledger PR.
-    - **`last_commit`** is the work branch's HEAD, as handoff writes it today. That is what
-      lets `cursor-drift.sh` read `clean` on the work branch.
+    - **`last_commit`** is the work branch's HEAD, as handoff writes it today. It equals the
+      pin. (As first written this let `cursor-drift.sh` read `clean` on the work branch; see
+      the `#283` amendment, below, for what replaces that.)
     - **`sprint_status` stays `implementing`.** It is not `awaiting_review`, which
       auto-start does not accept.
     - **With `review.ci_gate` set, `assigned_model` and `assigned_persona` become the
@@ -1161,7 +1163,7 @@ take effect. Full reasoning and the task breakdown that implements them:
 
     Every other `state.json` writer that sets pointers sets `review_pr` to `null`:
     archive-sprint, park-sprint, unpark-sprint, and handoff writing any other cursor.
-    plan-sprint writes only `hitl_gate`, so it never touches `review_pr`. A value left
+    plan-sprint writes only `hitl_gate`, and `architect-review` only `next_action` (`#283`, below), so neither touches `review_pr`. A value left
     behind still has to match an open PR at its pinned head, so it fails closed. A missing
     field reads as `null`, so an older cursor never auto-starts a review step.
 
@@ -1243,9 +1245,14 @@ take effect. Full reasoning and the task breakdown that implements them:
       task token, with `M` equal to `review_pr.number` and `N` equal to
       `plan_anchor.task_issue`. The ledger's **Next:** is not compared, because during a
       review it still names the task by design (below).
-    - **The checkout is the work branch at `head_oid`.** On `main`, `cursor-drift.sh`
-      correctly reads `drift`, because `main` lacks the work. So the step auto-starts only
-      from the branch the no-op handoff left checked out, with a clean tree.
+    - **The checkout is the base, synced and clean** (amended by `#283`; first written as
+      "the work branch at `head_oid`"). `branch` equals `pr_base`, `HEAD` equals
+      `origin/{pr_base}` after a fetch, and the tree is clean. `pr_base` is the **default
+      branch's** copy, for the same reason `{models.architect}` is: the working tree's could
+      name the work branch itself. See *The reviewer session starts from the base*, below.
+    - **The cursor's own two fields agree** (`#283`). `last_commit`, resolved to a full oid,
+      equals `review_pr.head_oid`. This is the review shape's drift rule, in place of
+      `cursor-drift.sh`.
     - **The model is the repo's architect.** `assigned_model` must equal
       `{models.architect}`, not merely match the running model, so a `state.json` naming
       another model cannot start the review on it. The value is read from the **default
@@ -1271,20 +1278,84 @@ take effect. Full reasoning and the task breakdown that implements them:
       - on step 8's poll, counts `success` only on the pinned SHA, never re-pins and
         reposts, and reports any head other than the pin as a stop;
       - ends **without** step 10's `/way-of-working:handoff` pointer. The cursor already
-        names PR #M, and what comes next is the human's merge or the coder's fix. A
+        records PR #M, and what comes next is the human's merge or the coder's fix. A
         handoff from the PR's base branch, where `review-base-anchor.sh` leaves the
-        checkout, would fail the pin and open exactly the relay PR this rule removes. Every
-        later resume on that branch reads `drift`, so it never auto-starts. It shows the
-        derived "reviewed, awaits your merge" step and waits.
+        checkout, would fail the pin and open exactly the relay PR this rule removes. A later
+        resume there never auto-starts a second review: the pinned `architect-review` run
+        rewrites the cursor's `next_action` as soon as its post succeeds (`#283`), so `decide`
+        prints `show … token`, or `reviewed` once the gate reads success. Before `#283` the base
+        checkout read `drift`, which was what stopped a re-run; that stop is replaced, not
+        lost.
 
       Today's step 8 polls the current head and accepts `success` there without comparing
       it to what was reviewed. That gap is closed for the pinned run only.
-    - Every other auto-start condition in resume still holds unchanged.
+    - Every other auto-start condition in resume still holds unchanged, except the two the
+      `#283` entry below replaces: the checkout condition above and resume's generic
+      `cursor-drift.sh` `clean`/`cursor-sync` condition.
 
     What runs is built from the GitHub-derived number. `next_action`'s text is a vote that
     must match, never the command. Disagreement, a moved head, or a missing `state.json`
     shows the derived step and waits. This is fail-closed, like every other auto-start
     condition.
+  - **The reviewer session starts from the base, not the PR's tree** (`#283`; the first
+    residual of this decision). As first built, auto-start required `HEAD` to equal
+    `review_pr.head_oid`, so the fresh reviewer session loaded `.claude/settings.json` hooks,
+    `CLAUDE.md` and `.mcp.json` from the PR under review.
+    - **What is new, and what is not.** Shell execution through a `SessionStart` hook is old:
+      any session opened on the work branch runs it, including the coder fix session a
+      no-op handoff points at, so auto-start added nothing there. The new harm is to the
+      review's integrity: the author's `CLAUDE.md` is in the reviewer's context as authority,
+      and it stays there after `review-base-anchor.sh` switches to the base. Whether a changed
+      plugin `ref` in that tree substitutes the predicates is unverified.
+    - **The review needs nothing from the PR's working tree.** `architect-review` syncs to
+      the base, pins from GitHub, and executes PR code only in a `review-sandbox.sh` checkout.
+    - **The change.** The no-op handoff ends with a synced switch to `{pr_base}`;
+      `.ai/state.json` is git-ignored and carries the pin across it. Resume's auto-start
+      checkout condition is "clean, on `{pr_base}` equal to `origin/{pr_base}`", plus the
+      existing pin equal to the PR's `headRefOid`. `review-step.sh decide` takes `branch`,
+      `base`, `base_head` and `last_commit` for it, and prints the new reason `last-commit`.
+    - **The review-shape drift rule.** `last_commit` is the work branch's HEAD, so on the base
+      `cursor-drift.sh` reads `drift` by construction (a fixture in
+      `tests/cursor-drift.test.sh` pins that premise). It is therefore not consulted for this
+      shape. Its job is to stop a `next_action` that a changed repo has invalidated from
+      running unattended, and nothing here runs `next_action`: what starts is built from the
+      derived PR. The replacement is the internal check that `last_commit` equals the pin, so a
+      cursor whose two fields disagree shows the step and waits.
+    - **The handoff block** tells the human to open a session on the work branch only when
+      directing a fix.
+    - **Rejected: a handoff-side denylist** of `.claude/`, `CLAUDE.md`, `.mcp.json` and
+      `.claude-plugin/`. It is advisory (the human can start on the branch anyway) and
+      open-ended (nested `CLAUDE.md`, base hooks calling scripts the PR edits).
+    - **The pinned run consumes the vote.** With the base now the auto-start checkout, nothing
+      but the gate would stop a later resume there from starting a second review on the same pin
+      while the gate reads `pending`, `absent` or `failure`. So `architect-review` rewrites the
+      git-ignored cursor's `next_action` (so it no longer begins `review PR #M — `) the moment
+      its post succeeds, pinned or not, and before the gate poll, so an interrupted poll leaves
+      no live vote. A failed post leaves it, so the run can be retried. It deliberately leaves
+      `pointers.review_pr` intact: handoff finds the earlier critic record through that field,
+      and nulling it would erase the record on the fix-and-repost loop and at the ledger carry.
+    - **Residuals, stated plainly.**
+      - The check runs when resume runs, not when the session loads its config. A session
+        opened on the work branch has already loaded the PR's hooks, `CLAUDE.md` and
+        `.mcp.json`; a hook there that switches the checkout to the base first would pass the
+        predicate. The guard defends the honest path (the handoff block names the base), not a
+        hostile branch author who also controls how the session is opened.
+      - Ignored local files (`.claude/settings.local.json`, `CLAUDE.local.md`) survive the
+        switch and are invisible to the clean-tree check. Anything that ran on the work branch,
+        the coder session included, could have written them. That is the old host-execution
+        risk, not a new one.
+      - A human who opens the review session on the work branch anyway gets `show … checkout`
+        and a "go" prompt, not an auto-start; nothing prevents the "go".
+      - **Strict sync.** Any merge to `{pr_base}` between the handoff and the resume leaves
+        `HEAD` behind `origin/{pr_base}` and shows `checkout`. That is fail-closed, not a bug:
+        `git pull --ff-only origin {pr_base}` clears it. Likewise a local `{pr_base}` ahead of
+        origin, or a dirty tree that stops the switch, shows `checkout`.
+      - **Migration branches.** The handoff switches to its own working-tree `pr_base`, which
+        on a migration's integration branch is that branch; resume compares against the
+        default branch's copy. The two differ for the whole migration, so the review step shows
+        `checkout` and waits, never auto-starts. Fail-closed; resolving the base from the PR's
+        `baseRefName`, validated as `review-base-anchor.sh` does, is the follow-up if a
+        migration adopts `review.ci_gate`.
   - **A fresh machine with no `state.json`** derives the step, shows it beside the ledger's
     **Next:**, says the ledger is behind by design, and waits. This is the existing rule
     that `next-steps.md` alone never auto-starts, applied to the new step. One "go" from the
@@ -1391,9 +1462,10 @@ take effect. Full reasoning and the task breakdown that implements them:
       pin for that PR reads `show … head-moved` (a push landing in the post window).
     - **`fresh` means no assistant turn or work before the resume**; `/clear` and `/model` do
       not count, so the new-window, `/model`, resume sequence handoff prescribes is fresh.
-    - **Known residuals, not closed by this build.** (1) The pinned review session starts on the
-      PR's tree (the checkout condition requires HEAD at the pin), so it takes its project
-      settings from that tree. Two halves, one old and one new. *Shell execution* through a
+    - **Known residuals, not closed by this build.** (1) *Closed by `#283`, which moved the checkout to the
+      synced base; the text that follows is the record of what was open.* The pinned review
+      session starts on the PR's tree (the checkout condition requires HEAD at the pin), so it
+      takes its project settings from that tree. Two halves, one old and one new. *Shell execution* through a
       `SessionStart` hook is old: it happens in any session opened on the work branch, including
       the coder session the no-op handoff tells the human to open, so auto-start adds no
       capability there. *Review integrity* is what this entry introduces: the PR's `CLAUDE.md`
