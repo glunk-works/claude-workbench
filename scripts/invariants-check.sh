@@ -441,6 +441,114 @@ if [ -n "$prbody_hits" ]; then
     "PR (Dependabot, any [bot] author) embeds third-party text -- say so where it is read."
 fi
 
+# --- 11. `gh` output is never piped straight into a bin/ predicate (#243) ---------
+#
+# A predicate script (blocked-state.sh, review-gate-state.sh, ...) reads records on stdin
+# and cannot observe how it was fed. In `gh api ... | predicate.sh` a failed `gh api`
+# yields an empty record list and the predicate reads that as "no rule" / "no review" --
+# a fail-open, because a pipe's exit status is the LAST command's. The fail-closed shape is
+# to capture first (`T=$(gh api ...) &&`) and feed the captured text, so a failed call
+# breaks the chain before the predicate runs. Only prose guarded that shape; this is the
+# mechanical half. review-gate-state.sh's header states the same rule.
+#
+# Scope, stated so nobody reads it as the whole invariant: this matches the PIPE form only.
+# `pred < <(gh ...)`, `pred <<< "$(gh ...)"`, and a capture joined to its feed by `;`
+# instead of `&&` have the same failure mode and are not matched. A `$(gh ... | jq ...)`
+# capture is also out of scope (without pipefail it takes jq's status), which is why the
+# real skills use `gh --jq` instead. Also not matched, because a line-based matcher cannot
+# parse bash: a group or subshell producer (`{ gh a; gh b; } | pred`, `( gh a ) | pred`),
+# escaped quotes inside a double-quoted --jq filter, a single-quoted argument spanning
+# several lines (a `gh api graphql` query), unquoted arithmetic or nested substitution in a
+# gh argument, and wrappers beyond sh/bash/env/timeout (`command`, `xargs`, long options).
+# This is a regression guard for the common shapes, not a proof that no such pipe exists. Prose that quotes the bad form to warn against it
+# trips the check too -- word the warning without the literal pipe.
+#
+# Every plugins/*/bin/*.sh basename is a target, not a hand-kept list, so a later
+# stdin-fed predicate is covered the day it lands. Each file is normalised before matching:
+# CR stripped (a CRLF checkout), backslash- and trailing-`|`-continued lines joined (bash
+# continues after either; a markdown table row, which starts with `|`, is neither joined
+# nor matched),
+# the opening of `"$(...)"` unwrapped to `$(` so a quoted capture is still seen, then
+# single-quoted spans and pipe-free `$(...)` substitutions collapsed, and every double-quoted
+# span PAIRED first (left to right, so a later quote is never re-paired across the pipe) and
+# only then stripped of the paren, `&`, `;` and `|` characters inside it, with its quotes
+# dropped (a `--jq` filter or query string would otherwise stop the matcher, while a quoted
+# path such as `"$BIN"/pred.sh` stays readable), `2>&1` dropped and `|&` read as `|`. The
+# predicate may be run by path, or under sh/bash/env/timeout. `||` is not a pipe: the middle of the pattern refuses it. Line numbers are those
+# of the joined text, so approximate. An apostrophe in prose on the same line as code pairs
+# with the code's quote and can hide it -- the gate reads code, not sentences.
+ghpipe_hits=""
+ghpipe_err=""
+bin_names=""
+for f in "${BIN_SCRIPTS[@]}"; do
+  [ -f "$f" ] || continue
+  b=$(basename "$f")
+  case "$b" in
+    *[!A-Za-z0-9_.-]*) ghpipe_err+="  $f (name outside [A-Za-z0-9_.-])"$'\n'; continue;;
+  esac
+  bin_names+="${bin_names:+|}${b//./\\.}"
+done
+if [ -z "$bin_names" ]; then
+  ghpipe_err+="  no plugins/*/bin/*.sh found to build the predicate list from"$'\n'
+else
+  ghpipe_re="(^|[^[:alnum:]_.-])gh[[:space:]][^|;&)(]*(\|[^|;&)(]+)*\|[[:space:]]*(((ba)?sh|env|timeout)([[:space:]]+-?[A-Za-z0-9_=.]+)*[[:space:]]+)?([^[:space:]|]*/)?($bin_names)([^[:alnum:]_.-]|\$)"
+  # The shared front half: pipe/redirect spellings, then the two kinds of line join.
+  ghpipe_join() {
+    sed -e 's/|&/|/g' -e 's/[0-9]*>&[0-9-]//g' |
+      sed -e ':a' -e '/\\$/{N;s/\\\n/ /;ba' -e '}' |
+      sed -e ':b' -e '/^[[:space:]]*|/b' -e '/[^|]|[[:space:]]*$/{N;s/\n/ /;bb' -e '}'
+  }
+  for f in "${SKILLS[@]}" "${AGENTS[@]}"; do
+    [ -f "$f" ] || continue
+    # Two passes, and the check fails if EITHER hits. The normalised pass collapses quoted
+    # spans so a --jq filter's parens cannot stop the matcher; the raw pass only deletes
+    # double quotes and so cannot be fooled by a quote the collapse mis-pairs (a leftover
+    # closing quote, an apostrophe inside a double-quoted string). Each pass covers shapes
+    # the other misses, and the raw pass also fires on single-quoted text that merely
+    # contains the form (a false positive, which fails closed). A shape neither sees --
+    # e.g. an apostrophe in a double-quoted string together with parens in a single-quoted
+    # gh argument -- still passes: this is a regression guard, not a proof.
+    # Normalise and match are separate steps, each with its own status: under pipefail a
+    # failed tr/sed upstream of grep would otherwise surface as grep's "no match" (1).
+    nrc=0
+    norm=$(tr -d '\r' <"$f" | ghpipe_join |
+        sed -e 'y/@/A/' -e 's/"\$([^()|]*)"/S/g' -e 's/"\$(/$(/g' -e "s/'[^']*'/Q/g" -e 's/\$([^()|]*)/S/g' \
+            -e 's/"\([^"]*\)"/@Q1@\1@Q2@/g' \
+            -e ':q' -e 's/\(@Q1@[^@]*\)[][()&;|]\([^@]*@Q2@\)/\1\2/' -e 'tq' \
+            -e 's/@Q[12]@//g' -e 's/^[[:space:]]*|.*$//') || nrc=$?
+    raw=$(tr -d '\r"' <"$f" | ghpipe_join | sed -e 's/^[[:space:]]*|.*$//') || nrc=$?
+    if [ "$nrc" -ne 0 ]; then
+      ghpipe_err+="  $f (normalising failed, status $nrc)"$'\n'
+      continue
+    fi
+    # Each pass's grep output and status are captured on their own: grep exits 1 for no
+    # match and >=2 for a real error, and reads its whole input (no -q, which would
+    # SIGPIPE the writer on a large file and surface as 141).
+    h=""
+    for pass in "$norm" "$raw"; do
+      prc=0
+      ph=$(printf '%s\n' "$pass" | grep -nE "$ghpipe_re") || prc=$?
+      case "$prc" in
+        0) case "$h" in *"$ph"*) ;; *) h+="${h:+$'\n'}$ph";; esac;;
+        1) ;;
+        *) ghpipe_err+="  $f (the matcher itself failed, status $prc)"$'\n';;
+      esac
+    done
+    [ -z "$h" ] || ghpipe_hits+="  $f"$'\n'"$h"$'\n'
+  done
+fi
+if [ -n "$ghpipe_err" ]; then
+  report "check 11 could not run -- a gate that cannot look must fail, not pass (#243)" \
+    "$ghpipe_err"
+fi
+if [ -n "$ghpipe_hits" ]; then
+  report "gh output is piped directly into a bin/ predicate script (#243)" \
+    "$ghpipe_hits" \
+    "A failed gh call yields empty stdin, which the predicate reads as 'nothing there'." \
+    "Capture first so the failure breaks the chain, and feed nothing when it is empty:" \
+    "  T=\$(gh api ...) && { [ -z \"\$T\" ] || printf '%s\\n' \"\$T\"; } | script.sh"
+fi
+
 if [ "$fail" -ne 0 ]; then
   cat >&2 <<'EOF'
 
