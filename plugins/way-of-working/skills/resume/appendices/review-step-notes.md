@@ -9,7 +9,11 @@ ledger's **Next:** is behind by design and says so; `review-pr` — `state.json`
 different PR or none; `head-moved` — the PR's head moved since the pin, so a new no-op handoff
 from the fixed head re-pins it (also when the gate already reads green on a head the pin does not
 name: say so, it is not an unreviewed PR); `token` — `next_action` is not `` review PR #M — ``
-then the task token; `checkout` — not on the pinned commit with a clean tree; `model` —
+then the task token (**when it begins `` reviewed PR #M — ``, the review was already posted and the
+vote consumed — `/way-of-working:architect-review`'s *Compose and post* step, `#283` — so report that
+and do not offer the "go" below: a second review on the same pin is what the consumption prevents**);
+`checkout` — not on `{pr_base}` at `origin/{pr_base}`'s tip with a clean tree (the work branch is never the checkout: it would load the PR's own hooks, `CLAUDE.md` and `.mcp.json`; `git switch {pr_base} && git pull --ff-only origin {pr_base}`, or the no-op handoff's own switch, fixes it);
+`last-commit` — `state.json`'s `last_commit` is not the pin, so the cursor disagrees with itself; `model` —
 `assigned_model` is not `{models.architect}`; `not-fresh` — not a fresh session), and wait. One
 "go" from the human runs the derived step.
 

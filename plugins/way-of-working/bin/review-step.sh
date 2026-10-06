@@ -72,6 +72,11 @@
 #   backlog_repo `{backlog.repo}` from the default branch's copy, or `-` when null
 #   repo         `{repo}`
 #   head         this checkout's `git rev-parse HEAD`, 40 hex
+#   branch       this checkout's branch (`git branch --show-current`), or `-` when HEAD is detached
+#   base         `pr_base` from the DEFAULT branch's copy, never the working tree's
+#   base_head    `git rev-parse origin/<base>` after a fetch of it, 40 hex, or `-` when unreadable
+#   last_commit  state.json's `last_commit` resolved to a full oid (`git rev-parse --verify -q
+#                "<last_commit>^{commit}"`), or `-` when it does not resolve or is missing
 #   tree         `clean` | `dirty`
 #   model        assigned_model from state.json
 #   architect    `{models.architect}` from the default branch's copy
@@ -96,7 +101,7 @@
 #                              <M> --pin <oid>
 #   show <M> <reason,...>   -- the review step is derived but must not start; show it, wait.
 #                              Reasons, in this order: no-state, review-pr, head-moved,
-#                              token, checkout, model, not-fresh
+#                              token, checkout, last-commit, model, not-fresh
 #
 # What `auto` requires beyond the derivation, and why each is here (WB-D22, § 8.4b):
 #   no-state    .ai/state.json must exist. A fresh machine derives the step and waits: one
@@ -108,8 +113,21 @@
 #   token       next_action begins `review PR #M — ` and then `task #N — ` (or
 #               `task <backlog-repo>#N — `), M the derived number and N task_issue. The
 #               ledger's Next: is NOT compared; during a review it still names the task.
-#   checkout    HEAD is the pin, with a clean tree. On the base, cursor-drift.sh correctly
-#               reads `drift`.
+#   checkout    the checkout is the BASE, synced: <branch> equals <base>, HEAD equals <base_head>
+#               (origin/<base>'s tip), and the tree is clean (WB-D22, `#283`). Never the work
+#               branch: a session that starts there loads the PR's own `.claude/settings.json`
+#               hooks, `CLAUDE.md` and `.mcp.json`, and the author's `CLAUDE.md` would sit in the
+#               reviewer's context as authority. /way-of-working:architect-review needs nothing from the PR's
+#               working tree (it syncs to the base, pins from GitHub, and runs PR code only in a
+#               review-sandbox.sh checkout). <base> is the default branch's copy of `pr_base`:
+#               the working tree's could name the work branch itself. state.json is git-ignored,
+#               so the pin survives the switch to the base.
+#   last-commit state.json's `last_commit` (resolved) equals the pin, `review_pr.head_oid`. The
+#               review-shape drift rule: `last_commit` is the work branch's HEAD, which is the
+#               pin, so on the base cursor-drift.sh reads `drift` by construction and is NOT
+#               consulted for this shape. Nothing here runs `next_action` (what starts is built
+#               from the derived PR), so the base moving past the work is not what drift
+#               guards; a cursor whose own two fields disagree is, and reads `show`.
 #   model       assigned_model equals {models.architect} from the default branch. Not merely
 #               "matches the running model": a state.json naming another model must not start
 #               the review on it. resume checks the running model separately.
@@ -244,7 +262,8 @@ derive() {
 
 decide() {
   derived=; gate=; gate_state=; state=; sr_number=; sr_head=; next_action=; task_issue=
-  backlog_repo=; repo=; head=; tree=; model=; architect=; fresh=; login=; loop_identity=
+  backlog_repo=; repo=; head=; branch=; base=; base_head=; last_commit=; tree=; model=; architect=
+  fresh=; login=; loop_identity=
   seen=
   for kv in "$@"; do
     case "$kv" in *=*) ;; *) die "not key=value: $kv" ;; esac
@@ -254,6 +273,8 @@ decide() {
       state) state="$v" ;; sr_number) sr_number="$v" ;; sr_head) sr_head="$v" ;;
       next_action) next_action="$v" ;; task_issue) task_issue="$v" ;;
       backlog_repo) backlog_repo="$v" ;; repo) repo="$v" ;; head) head="$v" ;;
+      branch) branch="$v" ;; base) base="$v" ;; base_head) base_head="$v" ;;
+      last_commit) last_commit="$v" ;;
       tree) tree="$v" ;; model) model="$v" ;; architect) architect="$v" ;; fresh) fresh="$v" ;;
       login) login="$v" ;; loop_identity) loop_identity="$v" ;;
       *) die "unknown key: $k" ;;
@@ -262,7 +283,8 @@ decide() {
     seen="$seen $k"
   done
   for k in derived gate gate_state state sr_number sr_head next_action task_issue \
-           backlog_repo repo head tree model architect fresh login loop_identity; do
+           backlog_repo repo head branch base base_head last_commit tree model architect fresh \
+           login loop_identity; do
     case "$seen " in *" $k "*) ;; *) die "missing key: $k" ;; esac
     eval "val=\${$k}"
     [ -n "$val" ] || die "empty value for $k"
@@ -274,6 +296,8 @@ decide() {
   case "$tree" in clean|dirty) ;; *) die "tree must be clean|dirty: $tree" ;; esac
   case "$fresh" in yes|no) ;; *) die "fresh must be yes|no: $fresh" ;; esac
   is_oid "$head" || die "head is not a 40-hex oid: $head"
+  if [ "$base_head" != "-" ]; then is_oid "$base_head" || die "base_head is not a 40-hex oid: $base_head"; fi
+  if [ "$last_commit" != "-" ]; then is_oid "$last_commit" || die "last_commit is not a 40-hex oid: $last_commit"; fi
   is_uint "$task_issue" || die "task_issue is not a plain number: $task_issue"
 
   if [ "$loop_identity" != "-" ]; then
@@ -337,7 +361,12 @@ decide() {
     # The token must be the line's very first characters. A bare token with nothing after it
     # is not a next action either, so the trailing ` — ` is part of what is matched.
     case "$next_action" in "$want"*) ;; *) add token ;; esac
-    if [ "$head" != "$oid" ] || [ "$tree" != clean ]; then add checkout; fi
+    # The base, synced and clean -- never the work branch (`#283`). `base` and `base_head` come
+    # from the default branch's copy and a fetch of it; `-` for either never equals a real value.
+    if [ "$base" = "-" ] || [ "$base_head" = "-" ] || [ "$branch" != "$base" ] \
+       || [ "$head" != "$base_head" ] || [ "$tree" != clean ]; then add checkout; fi
+    # The review-shape drift rule: the cursor's two fields agree on the pinned commit.
+    [ "$last_commit" != "-" ] && [ "$last_commit" = "$sr_head" ] || add last-commit
     [ "$model" = "$architect" ] || add model
   fi
   [ "$fresh" = yes ] || add not-fresh

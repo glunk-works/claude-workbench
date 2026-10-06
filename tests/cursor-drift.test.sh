@@ -203,4 +203,24 @@ echo a >a.txt && git add a.txt && git commit -qm a
 assert_eq "unreadable: last_commit is not a commit git has" \
   "unreadable" "$("$script" 0000000000000000000000000000000000dead)"
 
+# --- drift: the review shape's cursor, read from the base (WB-D22, `#283`) ---
+# After a no-op handoff `last_commit` is the work branch's HEAD, and the checkout
+# is switched to the base. The base lacks that work, so this script reads `drift`
+# -- and must. That is why the review shape does not consult it: review-step.sh
+# `decide` checks the cursor's own two fields agree on the pin instead. This
+# fixture pins the premise the rule rests on (a work-branch last_commit read from
+# the base is `drift`, never `clean` or `cursor-sync`), so the rule is not
+# quietly dropped on the theory that the base would read clean.
+new_repo review-shape
+base="$(base_branch)"
+echo a >a.txt && git add a.txt && git commit -qm "initial"
+git checkout -qb work
+echo work >a.txt && git add a.txt && git commit -qm "the work"
+last="$(git rev-parse HEAD)"
+assert_eq "review shape: last_commit is clean on the work branch it names" \
+  "clean" "$("$script" "$last")"
+git checkout -q "$base"
+assert_eq "review shape: the same last_commit read from the base is drift" \
+  "drift" "$("$script" "$last")"
+
 exit "$fail"

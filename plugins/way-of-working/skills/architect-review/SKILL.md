@@ -248,6 +248,26 @@ guess a gate (`reference/project-schema.md`).
    fall back to `gh pr review`. **Not yet verified live**: it runs only where `{review.ci_gate}`
    is set, and a hand-started run keeps `gh pr review` unchanged.
 
+   **Consume the cursor's vote the moment a post succeeds — pinned or not, and before the poll
+   below** (`WB-D22`, `#283`). The base, synced and clean, is the checkout resume auto-starts
+   from, so nothing but the gate would stop a later resume there from starting a second review
+   on the same pin while the gate still reads `pending`, `absent` or `failure`; an interrupted
+   poll or a failed issue filing must not leave the vote behind. In the git-ignored local cursor,
+   if it exists and its `pointers.review_pr.number` is this PR, rewrite `next_action` so it no
+   longer begins `` review PR #M — ``, **leaving `pointers.review_pr` intact**: handoff finds the
+   earlier critic record through that field, and resume's stale-`review_pr` report reads it.
+   `<N>` is the PR number validated above:
+   ```bash
+   S="$(git rev-parse --show-toplevel)/.ai/state.json"
+   if [ -f "$S" ]; then
+     T=$(mktemp) && jq --arg m "<N>" 'if ((.pointers.review_pr.number // "") | tostring) == $m
+       then .next_action = ("reviewed PR #" + $m + " — awaiting the human'"'"'s merge, or a fix they direct")
+       else . end' "$S" >"$T" && mv "$T" "$S" || { rm -f "$T"; echo "STOP: cursor vote not consumed"; }
+   fi
+   ```
+   A later resume then derives the step and prints `show <M> token` (or `reviewed <M>` once the
+   gate reads success): never `auto`. A failed `jq` or `mv` is reported, never ignored.
+
 8. **Verify the post took.** Poll until `{review.ci_gate.check}` reads `success` on the
    head SHA — bounded, about 90 s — through the tested predicate, reading **both**
    surfaces it posts to; name which carried it. The `&&` chain is load-bearing: a failed
@@ -301,11 +321,12 @@ guess a gate (`reference/project-schema.md`).
 
 10. **End with the pointer:** `/way-of-working:handoff`. Next: the human's merge, or the
     fix-and-repost loop — never a second review from this session. **With `--pin`, end
-    without that pointer:** the cursor already names the PR, and what comes next is the
+    without that pointer:** the cursor already records the PR (`pointers.review_pr`), and what comes next is the
     human's merge or the coder's fix. A handoff from the PR's base branch, where
     `review-base-anchor.sh` leaves the checkout, would fail the no-op handoff's own pin and
-    open exactly the relay PR that shape removes. Every later resume on that branch reads
-    `drift`, so it never auto-starts: it reports the derived step (`reviewed`, awaiting the human's merge, once the gate reads success on the pin) and waits.
+    open exactly the relay PR that shape removes. The cursor's vote was already consumed
+    when the post succeeded (the *Compose and post* step), so a later resume there never starts a second review.
+
 
 ## Guardrails
 
