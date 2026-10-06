@@ -33,6 +33,16 @@ the GitHub release notes.
 
 ### Added
 
+- **`/way-of-working:plan-sprint` records a per-issue `depends_on` marker** (#232).
+  The recommendation table proposes it, the human confirms it like the build-order slot, and
+  a NEW milestone's drafted **Build order:** list carries it as a last-on-the-line
+  ` [depends_on: none]` / ` [depends_on: #N, #M]` token. New `bin/plan-depends.sh read
+  <description-file> <N>` reads it back (`independent`, `after <N>…`, or `all-earlier
+  <reason>`) and reads anything it cannot confirm — no token, a malformed or repeated one, a
+  dependency on a later or unlisted item, a damaged list — as `all-earlier` (the item waits for every
+  earlier one). A placement into an existing milestone never rewrites its description, so
+  those issues read `all-earlier` (`not-listed`, or `unreadable` when the description has no well-formed list). No `.ai/project.yml` key changes.
+
 - **A no-op handoff, and a review step resume derives from GitHub** (#230, `WB-D22`). A work PR
   was usually followed by a docs-only cursor-sync PR whose only news was "review or merge PR
   N next". Under `planning.kind: github_milestones`, when that is the only cursor change,

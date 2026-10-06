@@ -332,6 +332,19 @@ planning:
   under this kind). `/way-of-working:plan-sprint` is where the concrete template for this
   shape lives — it drafts new-milestone descriptions from it and proposes it in its own
   dialogue; this doc states the shape's required elements, not the literal prose.
+  **Each Build order item may carry a `depends_on` marker** `/way-of-working:plan-sprint`
+  writes from the human's confirmation — a trailing ` [depends_on: none]` or
+  ` [depends_on: #N, #M]` token that `bin/plan-depends.sh read` returns as `independent`,
+  `after <N>…`, or `all-earlier <reason>`. It lives here, in the description, because the
+  description is the one place a reader already gets the plan from without opening an issue
+  body. It is written only for a new milestone's drafted list; anything unconfirmed, absent,
+  or malformed reads `all-earlier` (the item waits for every earlier item), never
+  `independent`. **The token is description text, and trust rule 1 applies to it:** the reader
+  cannot tell who wrote it. The plan anchor binds whatever description is live when
+  `/way-of-working:handoff` anchors it, so after that a change is detected — but a token a
+  write-level collaborator added before the anchor, or to a milestone never anchored, reads
+  as confirmed. A consumer that schedules from `independent` is therefore acting on a hint
+  from the plan prose, not on a proof of the human's confirmation.
 - **The milestone's issues are the task list.** Open = remaining, closed = done; a task is
   cited `#N`. Completion is **0 open true issues** — the issues API returns milestoned PRs
   too, and an open milestoned PR does not block completion (it is a vehicle, not a task).
