@@ -93,6 +93,8 @@ jobs:
         run: sh tests/blocked-state-block.test.sh
       - name: invariants-check.sh reach-order fixtures
         run: sh tests/invariants-reach-order.test.sh
+      - name: invariants-check.sh gh-pipe fixtures
+        run: sh tests/invariants-gh-pipe.test.sh
 
   # WB-D15 (#45): workflow security scanner, modeled on bounty-infra's own `zizmor` job
   # (`ci.yml`). Unchained like `coupling`/`invariants` above -- a future required check
