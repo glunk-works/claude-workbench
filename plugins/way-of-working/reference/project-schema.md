@@ -452,7 +452,11 @@ critics on a diff that does not build.
 `required_checks` every check it requires. `/way-of-working:resume` verifies the live ruleset against all
 three; `/way-of-working:pr-checks` reports every name in `required_checks` and, beyond them,
 only a context the branch's own `required_status_checks` rule names (as *also required by
-the branch's rule*, on its `BLOCKED` path).
+the branch's rule*, on its `BLOCKED` path). `/way-of-working:resume` also passes the list to
+`cursor-sync-pr.sh`, which offers a `BLOCKED` cursor-sync PR for an `--admin` merge only if
+every name in it is present in the PR's rollup as a green check — so an entry that no
+longer reports refuses every such PR, and a missing one is a check that offer never looks
+for.
 
 Keep `required_checks` in sync with the **live** ruleset, not with a plan or a wish. The
 list here is what skills report as authoritative, so a stale entry produces a confident

@@ -13,7 +13,13 @@
 # milestone-close-line.sh. The display, the confirmation, and the merge itself stay
 # in the skill; this script never merges.
 #
-# Usage: cursor-sync-pr.sh <repo> <pr_base>     (run from inside the checkout)
+# Usage: cursor-sync-pr.sh <repo> <pr_base> [<required_checks>]   (run from inside the checkout)
+#   <required_checks> is a comma-separated list of check names (the caller passes
+#   `{ruleset.required_checks}`, so this shared script names no repo value), matched
+#   literally against CheckRun `name` and StatusContext `context`; a name containing a
+#   comma, a backslash or a control character cannot be listed (it is never matched, so
+#   it refuses). Omitted or empty is no evidence: a BLOCKED PR is then never
+#   offered (#245).
 # Prints exactly one line, to stdout, and always exits 0 (the caller decides policy):
 #   none                    -- no open PR against <pr_base> whose head branch starts
 #                              with `docs/sync-cursor-` (the name handoff's own step
@@ -62,8 +68,8 @@
 #     deliberately not checked: `author_association` is viewer-relative, and read by a
 #     `gh` account other than the PR's author it reports `CONTRIBUTOR` for the repo's
 #     own maintainer (observed live on PR #210).
-#   - `mergeStateStatus` is CLEAN, or BLOCKED with every PRESENT check green and no
-#     blocking review (#229). Everything else -- BEHIND, DIRTY (conflicts, the usual
+#   - `mergeStateStatus` is CLEAN, or BLOCKED with every PRESENT check green, every name in
+#     <required_checks> among them, and no blocking review (#229, #245). Everything else -- BEHIND, DIRTY (conflicts, the usual
 #     shape of a stale sync), DRAFT, UNSTABLE, UNKNOWN (GitHub still computing), and a
 #     BLOCKED that fails that test -- is refused with its name, for the human.
 #     Why BLOCKED is admitted at all: under a restrict-updates ruleset whose only bypass
@@ -76,15 +82,22 @@
 #     non-empty with every entry green (CheckRun COMPLETED with SUCCESS, NEUTRAL or
 #     SKIPPED; StatusContext SUCCESS -- an empty rollup is no evidence, so it is not
 #     green), and `reviewDecision` neither REVIEW_REQUIRED nor CHANGES_REQUESTED. All
-#     present checks, not only the required ones: stricter is the safe direction. A
-#     BLOCKED PR on that evidence is offered like a CLEAN one, once the bypass check
-#     below passes too.
+#     present checks, not only the required ones: stricter is the safe direction. And
+#     every name in <required_checks> must itself be present as a green entry (#245): a
+#     required check that never REPORTED (a workflow `paths:` filter that excludes `.ai/`,
+#     a job not yet registered) is absent from the rollup and so could not turn the
+#     all-green test to 0 on its own. An empty or missing list fails closed. A BLOCKED PR
+#     on that evidence is offered like a CLEAN one, once the bypass check below passes too.
 #     Residuals, stated so the confirmation is not mistaken for more than it is:
-#       - A required check that never REPORTED (a workflow `paths:` filter that excludes
-#         `.ai/`, a job not yet registered) is absent from the rollup, so it cannot
-#         turn `green` to 0. It matters only where the admin's bypass also covers the
-#         required-checks rule; where the server enforces that rule (as on this plugin's
-#         own repo) the merge is refused there.
+#       - <required_checks> is what the caller's working-tree `.ai/project.yml` says is
+#         required (a branch that edited it changes it), not what the ruleset on <base>
+#         currently requires: a context added to the ruleset and not to the file is not
+#         looked for. Where the admin's bypass also covers the required-checks rule that
+#         is the exposure; where the server enforces that rule (as on this plugin's own
+#         repo) the merge is refused there.
+#       - A name is matched by name only, with no binding to the app that posted it, so a
+#         check of the same name from another workflow, or a commit status with that
+#         context, satisfies it. It needs write access to produce.
 #       - Any other rule the admin role can bypass and this script cannot see --
 #         unresolved conversations, required deployments, code-scanning or merge-queue
 #         rules -- is bypassed with it.
@@ -115,12 +128,13 @@ tab="$(printf '\t')"
 limit=200
 prefix=docs/sync-cursor-
 
-if [ "$#" -ne 2 ] || [ -z "$1" ] || [ -z "$2" ]; then
-  echo "cursor-sync-pr.sh: usage: cursor-sync-pr.sh <repo> <pr_base>" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ] || [ -z "$1" ] || [ -z "$2" ]; then
+  echo "cursor-sync-pr.sh: usage: cursor-sync-pr.sh <repo> <pr_base> [<required_checks>]" >&2
   echo unreadable
   exit 0
 fi
-repo="$1"; base="$2"
+repo="$1"; base="$2"; required="${3:-}"
+us="$(printf '\037')"
 
 git rev-parse --git-dir >/dev/null 2>&1 || {
   echo "cursor-sync-pr.sh: not inside a git checkout" >&2
@@ -136,18 +150,21 @@ trap 'rm -rf "$tmp"' EXIT
 # non-candidate titles and bodies never reach this script.
 if ! gh pr list --repo "$repo" --base "$base" --state open --limit "$limit" \
      --json number,headRefName,headRefOid,isCrossRepository,mergeStateStatus,files,statusCheckRollup,reviewDecision \
-     --jq 'length, (.[] | select(.headRefName | startswith("docs/sync-cursor-")) |
+     --jq 'def green: (.__typename == "CheckRun" and .status == "COMPLETED"
+                        and (.conclusion == "SUCCESS" or .conclusion == "NEUTRAL"
+                             or .conclusion == "SKIPPED"))
+                       or (.__typename == "StatusContext" and .state == "SUCCESS");
+           length, (.[] | select(.headRefName | startswith("docs/sync-cursor-")) |
            [.number, .headRefName, .headRefOid, .isCrossRepository, .mergeStateStatus,
             (.files | length),
             (if (((.statusCheckRollup // []) | length) > 0
-                 and all((.statusCheckRollup // [])[];
-                       (.__typename == "CheckRun" and .status == "COMPLETED"
-                        and (.conclusion == "SUCCESS" or .conclusion == "NEUTRAL"
-                             or .conclusion == "SKIPPED"))
-                       or (.__typename == "StatusContext" and .state == "SUCCESS"))
+                 and all((.statusCheckRollup // [])[]; green)
                  and ((.reviewDecision // "") != "REVIEW_REQUIRED")
                  and ((.reviewDecision // "") != "CHANGES_REQUESTED"))
              then "1" else "0" end),
+            ("\u001f" + ([(.statusCheckRollup // [])[] | select(green)
+                          | (.name // .context) | select(type == "string" and (explode | all(. > 31)))]
+                         | join("\u001f")) + "\u001f"),
             (.files[0].path // "")] | @tsv)' \
      >"$tmp/rows" 2>"$tmp/err"; then
   echo "cursor-sync-pr.sh: gh pr list failed for $repo (base $base):" >&2
@@ -166,7 +183,7 @@ total=""
 count=0
 numbers=""
 # `|| [ -n "$number" ]` keeps a final row that lacks a trailing newline.
-while IFS="$tab" read -r number branch oid cross state nfiles green path rest || [ -n "$number" ]; do
+while IFS="$tab" read -r number branch oid cross state nfiles green names path rest || [ -n "$number" ]; do
   if [ -z "$total" ]; then
     is_digits "$number" && [ -z "$branch" ] || { echo unreadable; exit 0; }
     total="$number"
@@ -181,12 +198,13 @@ while IFS="$tab" read -r number branch oid cross state nfiles green path rest ||
   case "$cross" in true | false) ;; *) echo unreadable; exit 0 ;; esac
   is_digits "$nfiles" || { echo unreadable; exit 0; }
   case "$green" in 0 | 1) ;; *) echo unreadable; exit 0 ;; esac
+  case "$names" in "$us"*"$us") ;; *) echo unreadable; exit 0 ;; esac
   [ -z "${rest:-}" ] || { echo unreadable; exit 0; }
   count=$((count + 1))
   numbers="$numbers $number"
   c_number="$number"; c_branch="$branch"; c_oid="$oid"; c_cross="$cross"
   c_state="$state"; c_nfiles="$nfiles"; c_path="$path"
-  c_green="$green"
+  c_green="$green"; c_names="$names"
 done <"$tmp/rows"
 
 [ -n "$total" ] && [ "$count" -le "$total" ] || { echo unreadable; exit 0; }
@@ -214,6 +232,24 @@ if [ "$count" -eq 1 ]; then
   if [ "$local_tip" != "$c_oid" ]; then
     echo "refuse $c_number not-local"
     exit 0
+  fi
+  # Every required check must be present in the rollup as a green entry (#245). An
+  # empty or missing list is no evidence, the same reading as an empty rollup. Only
+  # BLOCKED reaches the green column's result, so this never changes a CLEAN offer.
+  if [ "$c_green" = 1 ]; then
+    c_green=0
+    if [ -n "$required" ]; then
+      c_green=1; nwant=0
+      oldifs="$IFS"; IFS=,; set -f
+      for want in $required; do
+        nwant=$((nwant + 1))
+        case "$want" in '' | *"$us"*) c_green=0 ;; esac
+        case "$c_names" in *"$us$want$us"*) ;; *) c_green=0 ;; esac
+      done
+      set +f; IFS="$oldifs"
+      # Fail closed even if a non-empty list ever split into no fields.
+      [ "$nwant" -ge 1 ] || c_green=0
+    fi
   fi
   if [ "$c_state" != CLEAN ] && { [ "$c_state" != BLOCKED ] || [ "$c_green" != 1 ]; }; then
     lower="$(printf '%s' "$c_state" | tr 'A-Z' 'a-z')"

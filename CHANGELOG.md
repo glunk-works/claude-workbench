@@ -33,6 +33,17 @@ the GitHub release notes.
 
 ### Changed
 
+- **`/way-of-working:resume`'s `BLOCKED` cursor-sync offer now sees a required check that
+  never reported** (#245). `bin/cursor-sync-pr.sh` took a rollup of all-green present checks
+  as enough, so a required check absent from it (a workflow `paths:` filter excluding
+  `.ai/`, a job not yet registered) could not refuse the PR. It now takes
+  `{ruleset.required_checks}` as an optional third argument, comma-separated, and offers a
+  `BLOCKED` PR only if every listed name is a green entry (CheckRun `name` or StatusContext
+  `context`, matched whole and case-sensitively). An empty or missing list refuses; a `CLEAN`
+  PR is unaffected. resume passes the list from `.ai/project.yml`. No key changes. **Known
+  limit:** it checks the list in `.ai/project.yml`, not the contexts the ruleset currently
+  carries.
+
 - **`/way-of-working:resume` no longer offers an `--admin` cursor-sync merge the active
   `gh` identity cannot perform** (#250). `--admin` only gets past `gh`'s client-side
   refusal; the server applies the ruleset bypass per account, so a session whose `gh` was

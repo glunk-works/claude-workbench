@@ -301,13 +301,16 @@ itself would take to decide whether to skip it — always run it.
    — and that PR is easy to forget (`#215`). Look for one now, before the
    *Read the cursor* step reads what it would change:
    ```bash
-   cursor-sync-pr.sh {repo} {pr_base}
+   cursor-sync-pr.sh {repo} {pr_base} "$(yq -r '(.ruleset.required_checks // []) | join(",")' .ai/project.yml 2>/dev/null)"
    ```
-   (bare name, same `bin/` `PATH` as `cursor-drift.sh`; if the *Ensure the schema is
-   complete* step left `{repo}` or `{pr_base}` unanswered, treat this as `unreadable` without
+   (bare name, same `bin/` `PATH` as `cursor-drift.sh`; the third argument is
+   `{ruleset.required_checks}` comma-joined, which the script requires to be present in the
+   rollup as green checks before it offers a `BLOCKED` PR (`#245`) — an empty or failed read
+   passes an empty string, which only ever refuses; if the *Ensure the schema is complete*
+   step left `{repo}` or `{pr_base}` unanswered, treat this as `unreadable` without
    running it). It prints one line. Which PRs qualify, and why each check is the one it is —
    same repository, exactly `.ai/next-steps.md`, a local branch at exactly the PR's head,
-   `CLEAN`, or `BLOCKED` with green checks and no blocking review — is argued in the
+   `CLEAN`, or `BLOCKED` with every check green, every required one present, and no blocking review — is argued in the
    script's own header; read that rather than restating it here.
    The policy:
 
@@ -356,7 +359,8 @@ itself would take to decide whether to skip it — always run it.
      role, shows the admin `mergeStateStatus: BLOCKED` on a green PR and `gh` refuses the
      plain merge client-side (`#229`); `--admin` only gets past `gh`'s own
      refusal (the server applies the bypass whatever the client sends). So
-     `cursor-sync-pr.sh` offers a `BLOCKED` PR only when every present check is green, the
+     `cursor-sync-pr.sh` offers a `BLOCKED` PR only when every present check is green, every
+     name in `{ruleset.required_checks}` is among them (`#245`), the
      review is not blocking, an `update` rule applies to the base, and the active identity
      can bypass each such ruleset (`#250`) — that script is what keeps a red PR from being *offered*,
      and where the admin's bypass also covers required checks it is the only thing; its
@@ -374,10 +378,12 @@ itself would take to decide whether to skip it — always run it.
    - **`refuse <N> <reason>`** or **`ambiguous <N> <N>...`** — never merge. Report one line
      naming the PR(s) and the reason (`Cursor-sync PR #210 is open but not offered:
      state-dirty — resolve or close it by hand.`) and continue. Four reasons need a word
-     more. `state-blocked` now means a check is not recognisably green, the check
-     list is empty, a review is blocking, or no `update` rule applies to the base to explain
-     it — not merely the restriction — so look at the PR's checks before saying
-     what to do. `bypass-never` means the PR is `BLOCKED` by a restrict-updates ruleset and
+     more. `state-blocked` now means a check is not recognisably green, the rollup
+     is empty, a name in `{ruleset.required_checks}` is missing from the rollup (a required
+     check that never reported — everything shown may be green) or that list came back
+     empty, a review is blocking, or no `update` rule applies to the base to explain
+     it — not merely the restriction — so look at the PR's checks, and at which required
+     ones are absent from them, before saying what to do. `bypass-never` means the PR is `BLOCKED` by a restrict-updates ruleset and
      the **active `gh` identity** cannot bypass it (`current_user_can_bypass: never`), so the
      `--admin` merge would be refused by the server (`#250`): name the identity
      (`gh api user --jq .login`) and tell the human to merge in the web UI signed in as a
