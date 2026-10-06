@@ -6,7 +6,9 @@
 # additionalContext back out of the hook's JSON. The behaviour under test is
 # the `Parked:` line added for /way-of-working:park-sprint (issue #88): present
 # with the ids when .ai/parked/*-state.json files exist, absent otherwise, and
-# derived from the directory rather than from any cursor field.
+# derived from the directory rather than from any cursor field. Also under test:
+# every interpolated value, the Parked id list included, is capped at 200
+# characters (issue #246).
 #
 # Permitted toolset: POSIX sh, plus the hook's own dependencies (bash, jq). The
 # hook no-ops without jq, so without jq these assertions could only ever pass
@@ -93,5 +95,29 @@ rm .ai/state.json
 mkdir .ai/parked
 echo '{}' >.ai/parked/s13-state.json
 assert_eq "nocursor: no state.json means no banner, parked or not" "" "$(banner)"
+
+# --- over-long fields: each interpolated field is capped at 200 characters ----
+new_project long
+long="$(jq -rn '"x" * 300')"
+jq --arg l "$long" '.assigned_persona = $l | .assigned_model = $l | .current_sprint_id = $l | .sprint_status = $l | .next_action = $l' \
+  .ai/state.json >.ai/state.tmp && mv .ai/state.tmp .ai/state.json
+cap200="$(jq -rn '"x" * 200')"
+assert_eq "long: every field is truncated to 200 characters" \
+  "[.ai cursor] Assigned: $cap200/$cap200 for $cap200 (sprint_status: $cap200)." \
+  "$(banner | sed -n 1p)"
+assert_eq "long: next_action is truncated to 200 characters" \
+  "Next action: $cap200." \
+  "$(banner | sed -n 2p)"
+assert_eq "long: assigned_model is truncated in both places of the wrong-session line" \
+  "If THIS session is not running $cap200, it is the wrong session for planning/review/architecture work: /way-of-working:handoff -> new session -> /model $cap200 -> /way-of-working:resume (\`models\` in .ai/project.yml). Mechanical/coder tasks are fine on any model." \
+  "$(banner | sed -n 3p)"
+
+# --- many long parked ids: the joined Parked list is capped too ---------------
+new_project longparked
+mkdir .ai/parked
+for n in 1 2 3; do echo '{}' >".ai/parked/$(jq -rn '"p" * 150')$n-state.json"; done
+assert_eq "longparked: the Parked ids are capped at 200 characters" \
+  "Parked: $(jq -rn '"p" * 150')1, $(jq -rn '"p" * 47') (restore with /way-of-working:unpark-sprint <id>)." \
+  "$(parked_line)"
 
 exit "$fail"

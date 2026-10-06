@@ -9,6 +9,12 @@
 # Reads .ai/state.json (relative to the session cwd = project root). Emits a
 # SessionStart additionalContext block. No-ops silently outside the repo root
 # or if jq/the cursor file is missing — a hook that errors is worse than none.
+#
+# Every interpolated value (the cursor fields and the Parked id list) is capped
+# at 200 characters each (`cap` in the jq program), and next_action is also
+# trimmed to its first sentence: in a cloned untrusted repo this text becomes
+# model context at session start, so it must not be unbounded. The cap bounds
+# length only; it does not strip newlines.
 set -euo pipefail
 
 state=".ai/state.json"
@@ -27,14 +33,16 @@ for f in .ai/parked/*-state.json; do
   parked="${parked:+$parked, }$id"
 done
 
-jq --arg parked "$parked" '{
+jq --arg parked "$parked" '
+def cap: tostring | .[0:200];
+{
   hookSpecificOutput: {
     hookEventName: "SessionStart",
     additionalContext: (
-      "[.ai cursor] Assigned: \(.assigned_persona)/\(.assigned_model) for \(.current_sprint_id) (sprint_status: \(.sprint_status)).\n"
-      + "Next action: \((.next_action // "unset") | split(". ")[0]).\n"
-      + (if $parked == "" then "" else "Parked: \($parked) (restore with /way-of-working:unpark-sprint <id>).\n" end)
-      + "If THIS session is not running \(.assigned_model), it is the wrong session for planning/review/architecture work: /way-of-working:handoff -> new session -> /model \(.assigned_model) -> /way-of-working:resume (`models` in .ai/project.yml). Mechanical/coder tasks are fine on any model."
+      "[.ai cursor] Assigned: \(.assigned_persona | cap)/\(.assigned_model | cap) for \(.current_sprint_id | cap) (sprint_status: \(.sprint_status | cap)).\n"
+      + "Next action: \((.next_action // "unset") | split(". ")[0] | cap).\n"
+      + (if $parked == "" then "" else "Parked: \($parked | cap) (restore with /way-of-working:unpark-sprint <id>).\n" end)
+      + "If THIS session is not running \(.assigned_model | cap), it is the wrong session for planning/review/architecture work: /way-of-working:handoff -> new session -> /model \(.assigned_model | cap) -> /way-of-working:resume (`models` in .ai/project.yml). Mechanical/coder tasks are fine on any model."
     )
   }
 }' "$state" 2>/dev/null || exit 0
