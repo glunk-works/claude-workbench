@@ -101,6 +101,8 @@ jobs:
         run: sh tests/critic-section.test.sh
       - name: invariants-check.sh gh-pipe fixtures
         run: sh tests/invariants-gh-pipe.test.sh
+      - name: plan-depends.sh fixtures
+        run: sh tests/plan-depends.test.sh
 
   # WB-D15 (#45): workflow security scanner, modeled on bounty-infra's own `zizmor` job
   # (`ci.yml`). Unchained like `coupling`/`invariants` above -- a future required check

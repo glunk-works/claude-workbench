@@ -42,6 +42,7 @@ sh tests/review-sandbox.test.sh # architect-review's PR-execution sandbox fixtur
 sh tests/milestone-close-line.test.sh  # archive-sprint's Milestone close: ledger-line predicate fixtures (not yet required)
 sh tests/schema-complete.test.sh  # WB-D17 .ai/project.yml completeness-checker fixtures (not yet required)
 sh tests/plan-gather.test.sh    # plan-sprint's read-only gather-step fixtures (not yet required)
+sh tests/plan-depends.test.sh   # plan-sprint's depends_on marker read-back fixtures (not yet required)
 sh tests/invariants-reach-order.test.sh  # invariants-check.sh check 3 (reach precedes ruleset) fixtures (not yet required)
 sh tests/invariants-gh-pipe.test.sh  # invariants-check.sh check 11 (no gh output piped into a bin/ predicate) fixtures (not yet required)
 sh tests/cursor-sync-pr.test.sh # resume's cursor-sync PR merge-offer predicate fixtures (not yet required)
