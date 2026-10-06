@@ -84,16 +84,19 @@ guess a gate (`reference/project-schema.md`).
    paste in the *Compose and post* step turns reviewing your own work into a *knowing false
    statement*.
 
-3. **Pin the target.** `review-sandbox.sh trust <N>` — one read, `{repo}` resolved from
+3. **Pin the target.** `review-sandbox.sh trust <N>` — one read of the PR (plus a fetch of the default branch's
+   `.ai/project.yml`, which writes its remote-tracking ref), `{repo}` resolved from
    this checkout's own `origin` (never a script argument): prints `sha=<40hex>
-   head_repo=<owner/name> base=<branch> assoc=<association> trusted=0|1`. `base` must
+   head_repo=<owner/name> base=<branch> assoc=<association> loop=0|1 trusted=0|1`. `base` must
    be the anchored `{pr_base}` — any other branch is a stop. Pin the head SHA from
    THIS line, never a second, separate read. **With `--pin`, stop here if that `sha` is not
    byte-for-byte the pin** — the head moved since resume derived the step, and a review of a
-   commit nobody pinned is not the review that was approved to start. `trusted=1` only when `assoc` is on
+   commit nobody pinned is not the review that was approved to start. `trusted=1` only when `loop=0`, `assoc` is on
    `/way-of-working:resume`'s own author-trust allowlist (point at it, never restate it
    a third time) and `head_repo` equals `{repo}` — a fork head is untrusted whoever
-   opened the PR. Then `gh pr view <N> --json files` for `{code_paths}` (or
+   opened the PR. `loop=1` means the PR's author is the default branch's
+   `orchestration.loop_identity` (`reference/project-schema.md` § `orchestration`):
+   untrusted by name, whatever `assoc` says. Then `gh pr view <N> --json files` for `{code_paths}` (or
    `{review.ci_gate.triggers_on}`). An exempt PR (docs, sprint plan, `.ai/` cursor)
    gets one plain statement, no review posted.
 

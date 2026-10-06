@@ -38,7 +38,8 @@
 #
 # Permitted toolset: git, POSIX sh, real (or stubbed, per fixture) `gh` on PATH,
 # `sha256sum`/`shasum` (to assert on the marker's hash, same as the script itself
-# needs). No jq, no python.
+# needs), and `yq` (the script reads `orchestration.loop_identity` with it, as
+# review-base-anchor.sh reads `migration_base`). No jq, no python.
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,6 +47,10 @@ script="$root_dir/plugins/way-of-working/bin/review-sandbox.sh"
 
 if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
   echo "skip - review-sandbox.sh fixtures: no sha256sum or shasum on PATH" >&2
+  exit 0
+fi
+if ! command -v yq >/dev/null 2>&1; then
+  echo "skip - review-sandbox.sh fixtures: no yq on PATH (trust reads orchestration.loop_identity)" >&2
   exit 0
 fi
 hash_str() {
@@ -93,7 +98,10 @@ cat > "$gh_stub" <<'STUB'
 set -eu
 if [ "$1 $2" = "repo view" ]; then
   [ -n "${3:-}" ] || { echo "fake-gh: repo view got an empty URL" >&2; exit 1; }
-  printf '%s\n' "${FAKE_GH_REPO:?}"
+  case "$*" in
+    *defaultBranchRef*) printf '%s\n' "${FAKE_GH_DEFAULT_BRANCH-main}" ;;
+    *) printf '%s\n' "${FAKE_GH_REPO:?}" ;;
+  esac
   exit 0
 fi
 if [ "$1" = "api" ]; then
@@ -102,17 +110,18 @@ if [ "$1" = "api" ]; then
     repos/*/pulls/*)
       n="${path##*/pulls/}"
       case "$*" in
-        *'.head.sha'*'.head.repo.full_name'*'.base.ref'*'.author_association'*'@tsv'*) : ;;
+        *'.head.sha'*'.head.repo.full_name'*'.base.ref'*'.author_association'*'.user.login'*'@tsv'*) : ;;
         *) echo "fake-gh: unexpected pulls jq: $*" >&2; exit 1 ;;
       esac
       eval "sha=\${FAKE_GH_PULLS_${n}_SHA:-}"
       eval "hr=\${FAKE_GH_PULLS_${n}_HEAD_REPO:-}"
       eval "base=\${FAKE_GH_PULLS_${n}_BASE:-main}"
       eval "assoc=\${FAKE_GH_PULLS_${n}_ASSOC:-}"
+      eval "login=\${FAKE_GH_PULLS_${n}_LOGIN-someone}"
       eval "shouldfail=\${FAKE_GH_PULLS_${n}_FAIL:-0}"
       [ "$shouldfail" = 0 ] || { echo "fake-gh: simulated failure for PR $n" >&2; exit 1; }
       [ -n "$sha" ] || { echo "fake-gh: no fixture data for PR $n" >&2; exit 1; }
-      printf '%s\t%s\t%s\t%s\n' "$sha" "$hr" "$base" "$assoc"
+      printf '%s\t%s\t%s\t%s\t%s\n' "$sha" "$hr" "$base" "$assoc" "$login"
       ;;
     *) echo "fake-gh: unexpected api path: $path" >&2; exit 1 ;;
   esac
@@ -125,18 +134,23 @@ chmod +x "$gh_stub"
 
 # --- repo builders -------------------------------------------------------------------
 
-# new_workspace <name> -- an "origin" bare-ish repo plus a "workspace" checkout cloned
-# from it, autocrlf pinned off on both from the first commit. Echoes the workspace dir.
+# new_workspace <name> [<project-yml>] -- an "origin" bare-ish repo plus a "workspace"
+# checkout cloned from it, autocrlf pinned off on both from the first commit. The
+# default branch (main) commits `.ai/project.yml` -- <project-yml> verbatim, default
+# `orchestration: null` (no loop here) -- which `trust` reads the loop identity from.
+# Echoes the workspace dir.
 new_workspace() {
-  name="$1"
+  name="$1"; project_yml="${2:-orchestration: null}"
   origin="$tmp/$name-origin"
-  git init -q "$origin"
+  git init -q -b main "$origin"
   (
     cd "$origin"
     git config user.email t@example.com
     git config user.name t
     git config core.autocrlf false
     echo base > base.txt
+    mkdir -p .ai
+    printf '%s\n' "$project_yml" > .ai/project.yml
     git add -A
     git commit -qm init
   )
@@ -243,7 +257,7 @@ run_script "$ws" env FAKE_GH_REPO=acme/repo \
   FAKE_GH_PULLS_7_HEAD_REPO=acme/repo FAKE_GH_PULLS_7_BASE=main FAKE_GH_PULLS_7_ASSOC=MEMBER \
   "$script" trust 7
 assert_eq "trust: a member's own-repo PR is trusted" \
-  "sha=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef head_repo=acme/repo base=main assoc=MEMBER trusted=1/0" \
+  "sha=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef head_repo=acme/repo base=main assoc=MEMBER loop=0 trusted=1/0" \
   "$out/$st"
 
 run_script "$ws" env FAKE_GH_REPO=acme/repo \
@@ -251,7 +265,7 @@ run_script "$ws" env FAKE_GH_REPO=acme/repo \
   FAKE_GH_PULLS_8_HEAD_REPO=someone/fork FAKE_GH_PULLS_8_BASE=main FAKE_GH_PULLS_8_ASSOC=NONE \
   "$script" trust 8
 assert_eq "trust: a fork head from an outside author is untrusted" \
-  "sha=cafebabecafebabecafebabecafebabecafebabe head_repo=someone/fork base=main assoc=NONE trusted=0/0" \
+  "sha=cafebabecafebabecafebabecafebabecafebabe head_repo=someone/fork base=main assoc=NONE loop=0 trusted=0/0" \
   "$out/$st"
 
 # A fork head from an ACCOUNT that happens to be a collaborator elsewhere must still
@@ -262,7 +276,7 @@ run_script "$ws" env FAKE_GH_REPO=acme/repo \
   FAKE_GH_PULLS_9_HEAD_REPO=member-fork/repo FAKE_GH_PULLS_9_BASE=main FAKE_GH_PULLS_9_ASSOC=MEMBER \
   "$script" trust 9
 assert_eq "trust: a member's PR from a FORK (not head_repo==repo) is untrusted" \
-  "sha=1111111111111111111111111111111111111111 head_repo=member-fork/repo base=main assoc=MEMBER trusted=0/0" \
+  "sha=1111111111111111111111111111111111111111 head_repo=member-fork/repo base=main assoc=MEMBER loop=0 trusted=0/0" \
   "$out/$st"
 
 run_script "$ws" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_10_FAIL=1 "$script" trust 10
@@ -275,6 +289,124 @@ if printf '%s\n' "$out" | grep -q '^STOP '; then
 else
   echo "FAIL - trust: a failed API read prints a STOP line, got [$out]" >&2; fail=1
 fi
+
+# --- the name rule (#235): the loop identity is untrusted BY NAME, before any ------------
+# --- association check, read from the DEFAULT branch's committed copy -------------------
+
+loop_yml="orchestration:
+  loop_identity: loop-app[bot]"
+ws_loop="$(new_workspace loopid "$loop_yml")"
+sha_l=cafecafecafecafecafecafecafecafecafecafe
+
+run_script "$ws_loop" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_20_SHA=$sha_l \
+  FAKE_GH_PULLS_20_HEAD_REPO=acme/repo FAKE_GH_PULLS_20_BASE=main FAKE_GH_PULLS_20_ASSOC=MEMBER \
+  FAKE_GH_PULLS_20_LOGIN='someone-else' "$script" trust 20
+assert_eq "trust: a different author is trusted when a loop_identity is declared" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=0 trusted=1/0" "$out/$st"
+
+# The failing-open case: the loop is (or was) a machine user, and its MEMBER association
+# would pass the association check. The name rule fires first.
+run_script "$ws_loop" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_21_SHA=$sha_l \
+  FAKE_GH_PULLS_21_HEAD_REPO=acme/repo FAKE_GH_PULLS_21_BASE=main FAKE_GH_PULLS_21_ASSOC=MEMBER \
+  FAKE_GH_PULLS_21_LOGIN='loop-app[bot]' "$script" trust 21
+assert_eq "trust: the loop identity is untrusted by name though its association is MEMBER" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=1 trusted=0/0" "$out/$st"
+
+run_script "$ws_loop" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_22_SHA=$sha_l \
+  FAKE_GH_PULLS_22_HEAD_REPO=acme/repo FAKE_GH_PULLS_22_BASE=main FAKE_GH_PULLS_22_ASSOC=OWNER \
+  FAKE_GH_PULLS_22_LOGIN='LOOP-APP[BOT]' "$script" trust 22
+assert_eq "trust: the name comparison is case-insensitive, and beats OWNER" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=OWNER loop=1 trusted=0/0" "$out/$st"
+
+# A STALE loop_identity: the declared login no longer names the loop. The rule refuses
+# only the NAME it was given, so this pins both halves honestly: the stale name's own
+# login is still refused (a COLLABORATOR machine user whose association would pass), and
+# a DIFFERENT login is judged by association alone -- the residual the driver's
+# preflight login-equality check (plan 7.3) exists to close, not this predicate.
+loop_yml_stale="orchestration:
+  loop_identity: old-machine-user"
+ws_stale="$(new_workspace loopid-stale "$loop_yml_stale")"
+run_script "$ws_stale" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_23_SHA=$sha_l   FAKE_GH_PULLS_23_HEAD_REPO=acme/repo FAKE_GH_PULLS_23_BASE=main FAKE_GH_PULLS_23_ASSOC=COLLABORATOR   FAKE_GH_PULLS_23_LOGIN='old-machine-user' "$script" trust 23
+assert_eq "trust: a stale loop_identity still refuses its own login (a COLLABORATOR machine user)"   "sha=$sha_l head_repo=acme/repo base=main assoc=COLLABORATOR loop=1 trusted=0/0" "$out/$st"
+
+run_script "$ws_stale" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_29_SHA=$sha_l   FAKE_GH_PULLS_29_HEAD_REPO=acme/repo FAKE_GH_PULLS_29_BASE=main FAKE_GH_PULLS_29_ASSOC=COLLABORATOR   FAKE_GH_PULLS_29_LOGIN='new-machine-user' "$script" trust 29
+assert_eq "trust: a login the stale loop_identity does not name is judged by association (the stated residual)"   "sha=$sha_l head_repo=acme/repo base=main assoc=COLLABORATOR loop=0 trusted=1/0" "$out/$st"
+
+# The REST form is `<slug>[bot]`; the bare slug (GraphQL's form) names the same App, so [bot] is folded.
+run_script "$ws_loop" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_30_SHA=$sha_l   FAKE_GH_PULLS_30_HEAD_REPO=acme/repo FAKE_GH_PULLS_30_BASE=main FAKE_GH_PULLS_30_ASSOC=MEMBER   FAKE_GH_PULLS_30_LOGIN='loop-app' "$script" trust 30
+assert_eq "trust: the bare slug author is the App's name too ([bot] folded on both sides)"   "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=1 trusted=0/0" "$out/$st"
+
+# The copy read is origin's default branch, not the checkout's own commit: a local
+# branch whose COMMITTED project.yml differs (HEAD != origin/main) must not decide it.
+git -C "$ws_loop" checkout -q -b local-edit
+printf 'orchestration:
+  loop_identity: nobody
+' > "$ws_loop/.ai/project.yml"
+git -C "$ws_loop" commit -qam "local edit of loop_identity"
+run_script "$ws_loop" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_31_SHA=$sha_l FAKE_GH_PULLS_31_HEAD_REPO=acme/repo FAKE_GH_PULLS_31_BASE=main FAKE_GH_PULLS_31_ASSOC=MEMBER FAKE_GH_PULLS_31_LOGIN='loop-app[bot]' "$script" trust 31
+assert_eq "trust: a COMMITTED local edit of project.yml does not change who is untrusted" "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=1 trusted=0/0" "$out/$st"
+git -C "$ws_loop" checkout -q main
+
+# `trust` FETCHES the default branch: a loop_identity committed to origin AFTER this
+# checkout last fetched must still count (a stale remote-tracking ref would read "none").
+ws_fresh="$(new_workspace loopid-fresh 'orchestration: null')"
+origin_fresh="$(git -C "$ws_fresh" remote get-url origin)"
+printf 'orchestration:
+  loop_identity: loop-app[bot]
+' > "$origin_fresh/.ai/project.yml"
+git -C "$origin_fresh" commit -qam "declare loop_identity"
+run_script "$ws_fresh" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_33_SHA=$sha_l FAKE_GH_PULLS_33_HEAD_REPO=acme/repo FAKE_GH_PULLS_33_BASE=main FAKE_GH_PULLS_33_ASSOC=MEMBER FAKE_GH_PULLS_33_LOGIN='loop-app[bot]' "$script" trust 33
+assert_eq "trust: fetches the default branch, so a just-declared loop_identity counts" "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=1 trusted=0/0" "$out/$st"
+
+# An unparseable default-branch copy is a STOP (yq fails), never a silent "no loop identity".
+ws_bad="$(new_workspace loopid-bad 'orchestration: [unterminated')"
+run_script "$ws_bad" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_32_SHA=$sha_l FAKE_GH_PULLS_32_HEAD_REPO=acme/repo FAKE_GH_PULLS_32_BASE=main FAKE_GH_PULLS_32_ASSOC=MEMBER "$script" trust 32
+assert_eq "trust: an unparseable default-branch .ai/project.yml is a STOP" "1" "$st"
+
+# `make` re-verifies mechanically: a loop-authored PR never builds, whatever the caller says.
+sha_m="$(pr_ref "$ws_loop" 24)"
+sbx_root_counter=$((sbx_root_counter + 1))
+root="$tmp/roots/$sbx_root_counter"
+out="" st=0
+out="$(cd "$ws_loop" && REVIEW_SANDBOX_ROOT="$root" REVIEW_SANDBOX_GH="$gh_stub" \
+  FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_24_HEAD_REPO=acme/repo FAKE_GH_PULLS_24_BASE=main \
+  FAKE_GH_PULLS_24_ASSOC=MEMBER FAKE_GH_PULLS_24_LOGIN='loop-app[bot]' FAKE_GH_PULLS_24_SHA="$sha_m" \
+  "$script" make 24 "$sha_m" 2>&1)" || st=$?
+assert_eq "make: a PR authored by the loop identity is a STOP though its association passes" "1" "$st"
+assert_true "make: no sandbox is built for a loop-authored PR" \
+  "$([ -e "$root/24" ] && echo 0 || echo 1)"
+
+# A PR cannot choose which login is untrusted: a PR-side edit to the checkout's own
+# `.ai/project.yml` is invisible, because the copy read is the default branch's.
+printf 'orchestration:\n  loop_identity: nobody\n' > "$ws_loop/.ai/project.yml"
+run_script "$ws_loop" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_25_SHA=$sha_l \
+  FAKE_GH_PULLS_25_HEAD_REPO=acme/repo FAKE_GH_PULLS_25_BASE=main FAKE_GH_PULLS_25_ASSOC=MEMBER \
+  FAKE_GH_PULLS_25_LOGIN='loop-app[bot]' "$script" trust 25
+assert_eq "trust: the checkout's own edited .ai/project.yml does not change who is untrusted" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=1 trusted=0/0" "$out/$st"
+git -C "$ws_loop" checkout -q -- .ai/project.yml
+
+# Unreadable inputs are a STOP, never a silent "no loop identity".
+ws_nofile="$tmp/nofile-workspace"
+origin_nofile="$tmp/nofile-origin"
+git init -q -b main "$origin_nofile"
+(cd "$origin_nofile" && git config user.email t@example.com && git config user.name t \
+  && git config core.autocrlf false && echo b > b.txt && git add -A && git commit -qm init)
+git clone -q -c core.autocrlf=false "$origin_nofile" "$ws_nofile"
+run_script "$ws_nofile" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_26_SHA=$sha_l \
+  FAKE_GH_PULLS_26_HEAD_REPO=acme/repo FAKE_GH_PULLS_26_BASE=main FAKE_GH_PULLS_26_ASSOC=MEMBER \
+  "$script" trust 26
+assert_eq "trust: a default branch with no .ai/project.yml is a STOP, not 'no loop identity'" "1" "$st"
+
+run_script "$ws_loop" env FAKE_GH_REPO=acme/repo FAKE_GH_DEFAULT_BRANCH= FAKE_GH_PULLS_27_SHA=$sha_l \
+  FAKE_GH_PULLS_27_HEAD_REPO=acme/repo FAKE_GH_PULLS_27_BASE=main FAKE_GH_PULLS_27_ASSOC=MEMBER \
+  "$script" trust 27
+assert_eq "trust: an unresolvable default branch is a STOP" "1" "$st"
+
+run_script "$ws_loop" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_28_SHA=$sha_l \
+  FAKE_GH_PULLS_28_HEAD_REPO=acme/repo FAKE_GH_PULLS_28_BASE=main FAKE_GH_PULLS_28_ASSOC=MEMBER \
+  FAKE_GH_PULLS_28_LOGIN= "$script" trust 28
+assert_eq "trust: an empty author login is a STOP, never a pass" "1" "$st"
 
 # =========================================================================================
 # --- make: refuses to build for an untrusted PR, mechanically -- not by trusting the ----

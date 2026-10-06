@@ -50,6 +50,9 @@ case "$path" in
   repos/*/milestones/*)
     [ "${FAKE_MS_FAIL:-0}" = 1 ] && exit 1
     case "$*" in
+      *'.creator'*)
+        [ "${FAKE_AUTHOR_FAIL:-0}" = 1 ] && exit 1
+        printf '%s\n' "${FAKE_MS_CREATOR-maintainer}" ;;
       *'.state'*) printf '%s\n' "${FAKE_MS_STATE:-open}" ;;
       *'.description'*) printf '%s' "${FAKE_MS_DESC-}" ;;
       *) echo "fake gh: unrecognised milestone jq: $*" >&2; exit 1 ;;
@@ -58,6 +61,9 @@ case "$path" in
   repos/*/issues/comments/*)
     [ "${FAKE_COMMENT_FAIL:-0}" = 1 ] && exit 1
     case "$*" in
+      *'.user.login'*)
+        [ "${FAKE_COMMENT_AUTHOR_FAIL:-0}" = 1 ] && exit 1
+        printf '%s\n' "${FAKE_COMMENT_AUTHOR-maintainer}" ;;
       *'@tsv'*) printf '%s\t%s\n' "${FAKE_COMMENT_UPDATED:-2026-01-01T00:00:00Z}" "${FAKE_COMMENT_ISSUE_URL:-}" ;;
       *) printf '%s\n' "${FAKE_COMMENT_UPDATED:-2026-01-01T00:00:00Z}" ;;
     esac
@@ -65,6 +71,9 @@ case "$path" in
   repos/*/issues/*)
     [ "${FAKE_ISSUE_FAIL:-0}" = 1 ] && exit 1
     case "$*" in
+      *'.user.login'*)
+        [ "${FAKE_ISSUE_AUTHOR_FAIL:-0}" = 1 ] && exit 1
+        printf '%s\n' "${FAKE_ISSUE_AUTHOR-maintainer}" ;;
       *'@tsv'*)
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
           "${FAKE_ISSUE_STATE:-open}" "${FAKE_ISSUE_UPDATED:-2026-01-01T00:00:00Z}" \
@@ -334,5 +343,95 @@ out="$(FAKE_MS_STATE=open FAKE_MS_DESC="$plan_desc" \
        FAKE_COMMENT_UPDATED="2026-09-21T09:00:00Z" FAKE_COMMENT_ISSUE_URL="https://api.github.com/repos/$REPO/issues/86" \
        run verify "$REPO" "$POINTER" "$pretty_anchor")"
 assert_eq "verify: a pretty-printed anchor (space after each colon) still matches" "match" "$out"
+
+echo "# the name rule: --loop-identity (#235) -- untrusted BY NAME, before any drift comparison"
+
+spec_anchor="{\"milestone\":12,\"description_sha256\":\"$hash\",\"task_issue\":86,\"task_issue_updated_at\":\"2026-09-20T12:00:00Z\",\"spec_comment\":{\"id\":335,\"updated_at\":\"2026-09-21T09:00:00Z\"}}"
+
+# lrun -- `run` with every artifact live and matching; a fixture prefixes the one
+# variable it varies (FAKE_ISSUE_AUTHOR=x lrun verify ...), which reaches the fake gh
+# the same way it does for `run` itself.
+lrun() {
+  FAKE_MS_STATE=open FAKE_MS_DESC="$plan_desc" FAKE_ISSUE_STATE=open   FAKE_ISSUE_UPDATED="2026-09-20T12:00:00Z" FAKE_ISSUE_REPO_URL="https://api.github.com/repos/$REPO"   FAKE_ISSUE_NUMBER=86 FAKE_ISSUE_MILESTONE=12   FAKE_COMMENT_UPDATED="2026-09-21T09:00:00Z" FAKE_COMMENT_ISSUE_URL="https://api.github.com/repos/$REPO/issues/86"   run "$@"
+}
+out="$(lrun verify --loop-identity loop-app[bot] "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a different author on every artifact still matches" "match" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR='loop-app[bot]' lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a task issue authored by the loop identity is untrusted" "untrusted" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR='LOOP-App[BOT]' lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: the comparison is case-insensitive" "untrusted" "$out"
+
+out="$(FAKE_MS_CREATOR='loop-app[bot]' lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a milestone created by the loop identity is untrusted" "untrusted" "$out"
+
+out="$(FAKE_COMMENT_AUTHOR='loop-app[bot]' lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$spec_anchor")"
+assert_eq "verify --loop-identity: a spec comment authored by the loop identity is untrusted" "untrusted" "$out"
+
+out="$(lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$spec_anchor")"
+assert_eq "verify --loop-identity: a different spec-comment author still matches" "match" "$out"
+
+# The name rule comes BEFORE every drift comparison: a loop-authored task whose
+# artifacts have ALSO drifted reads untrusted, never drift or unreadable.
+out="$(FAKE_MS_STATE=closed FAKE_MS_DESC='edited since' FAKE_ISSUE_AUTHOR='loop-app[bot]' \
+       run verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: untrusted wins over a closed milestone and an edited description" "untrusted" "$out"
+
+# The failing-open case: a STALE loop_identity (the loop is now a machine user whose
+# association would pass any association check). The name rule fires on the login alone.
+out="$(FAKE_ISSUE_AUTHOR='old-machine-user' lrun verify --loop-identity 'old-machine-user' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a plain machine-user login is untrusted by name too" "untrusted" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR='old-machine-user2' lrun verify --loop-identity 'old-machine-user' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a login that merely starts with the identity is not it" "match" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR='loop-app[bot]' lrun verify --plan --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --plan --loop-identity: --plan ignores the task issue's author" "match" "$out"
+
+out="$(FAKE_MS_CREATOR='loop-app[bot]' lrun verify --plan --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --plan --loop-identity: --plan still refuses a loop-created milestone" "untrusted" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR='loop-app[bot]' lrun verify "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify: without the flag no author is read, and the verdict is unchanged" "match" "$out"
+
+out="$(FAKE_AUTHOR_FAIL=1 lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a failed author read is unreadable, never a pass" "unreadable" "$out"
+
+out="$(FAKE_MS_CREATOR= lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: an empty author is unreadable, never a pass" "unreadable" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR_FAIL=1 lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a failed task-issue author read is unreadable" "unreadable" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR= lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: an empty task-issue author is unreadable" "unreadable" "$out"
+
+out="$(FAKE_COMMENT_AUTHOR_FAIL=1 lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$spec_anchor")"
+assert_eq "verify --loop-identity: a failed spec-comment author read is unreadable" "unreadable" "$out"
+
+out="$(FAKE_COMMENT_AUTHOR= lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$spec_anchor")"
+assert_eq "verify --loop-identity: an empty spec-comment author is unreadable" "unreadable" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR='loop-app' lrun verify --loop-identity 'loop-app[bot]' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: the bare slug author is the App's name too" "untrusted" "$out"
+
+out="$(FAKE_ISSUE_AUTHOR='loop-app[bot]' lrun verify --loop-identity 'loop-app' "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a bare-slug loop_identity still matches the App's login" "untrusted" "$out"
+
+long40="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+long39="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+out="$(lrun verify --loop-identity "$long40" "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a 40-character stem is unreadable (cap is 39)" "unreadable" "$out"
+out="$(lrun verify --loop-identity "$long39" "$REPO" "$POINTER" "$good_anchor")"
+assert_eq "verify --loop-identity: a 39-character stem is accepted" "match" "$out"
+
+for bad in '' '-x' 'x-' 'a b' 'a/b' 'a;b' '[bot]'; do
+  out="$(lrun verify --loop-identity "$bad" "$REPO" "$POINTER" "$good_anchor")"
+  assert_eq "verify --loop-identity: a malformed login [$bad] is unreadable" "unreadable" "$out"
+done
+
+out="$(lrun verify --loop-identity)"
+assert_eq "verify --loop-identity: the flag with no value is unreadable" "unreadable" "$out"
 
 exit "$fail"

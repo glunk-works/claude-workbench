@@ -177,13 +177,22 @@
 #
 # Usage:
 #   review-sandbox.sh trust <N>
-#     One read: gh api repos/<repo>/pulls/<N>, <repo> resolved from THIS checkout's
+#     One read of the PR: gh api repos/<repo>/pulls/<N>, <repo> resolved from THIS checkout's
 #     own `origin` (same derivation review-base-anchor.sh uses), never a script
 #     argument. Prints `sha=<40hex> head_repo=<owner/name> base=<branch>
-#     assoc=<association> trusted=0|1` to stdout and exits 0 whatever the verdict --
-#     trusted=1 only when assoc is OWNER, MEMBER or COLLABORATOR AND head_repo equals
-#     the resolved repo (a fork head is untrusted whoever opened the PR). A failed API
-#     read is a STOP (exit 1); a non-numeric <N> is a malformed invocation (exit 2).
+#     assoc=<association> loop=0|1 trusted=0|1` to stdout and exits 0 whatever the
+#     verdict -- trusted=1 only when loop=0, assoc is OWNER, MEMBER or COLLABORATOR AND
+#     head_repo equals the resolved repo (a fork head is untrusted whoever opened the
+#     PR). loop=1 means the PR's author login equals `orchestration.loop_identity`,
+#     compared case-insensitively, a trailing `[bot]` ignored on both sides, and BEFORE
+#     any association check (#235: the loop's
+#     name is untrusted whatever its association says); that value is read from the
+#     DEFAULT branch's committed `.ai/project.yml`, fetched from `origin` (this writes the
+#     remote-tracking ref refs/remotes/origin/<default> in the checkout), never from
+#     this checkout's own copy or the PR's. A failed API read, an unresolvable default
+#     branch, or an unreadable copy of that file (or a missing `yq`) is a STOP (exit 1)
+#     -- never a silent "no loop identity". A non-numeric <N> is a malformed invocation
+#     (exit 2).
 #
 #   review-sandbox.sh make <N> <sha>
 #     <sha> must be the 40-hex value `trust` printed -- validated, along with <N>,
@@ -233,9 +242,10 @@
 # exit 1, except `run`'s own pre-execution refusal, which is 111 (see above).
 #
 # Permitted toolset: git, $REVIEW_SANDBOX_GH (default: gh), POSIX sh, `timeout`
-# (ships in Git for Windows' usr/bin, same as the rest of this toolset), and
-# `sha256sum` or `shasum -a 256` for the marker hash (same permitted pair
-# plan-anchor.sh uses). No jq, no python.
+# (ships in Git for Windows' usr/bin, same as the rest of this toolset), `sha256sum`
+# or `shasum -a 256` for the marker hash (same permitted pair plan-anchor.sh uses),
+# and `yq` for `trust`'s one read of `orchestration.loop_identity` (the permission
+# review-base-anchor.sh already holds for `migration_base`). No jq, no python.
 #
 # Windows note: the leftover-process kill after `run` does NOT reach a detached child
 # under Git Bash -- confirmed live, not a theoretical gap: `(cmd &)` inside a `run`
@@ -303,7 +313,7 @@ hash_str() {
 }
 
 # read_trust <N> -- the one gh api read `trust` reports and `make` re-verifies before
-# building anything. Sets SHA, HEAD_REPO, BASE, ASSOC, TRUSTED (0/1) as script-global
+# building anything. Sets SHA, HEAD_REPO, BASE, ASSOC, AUTHOR, LOOP, TRUSTED (0/1) as script-global
 # vars; the caller checks its own exit status, never a stale value from a prior call.
 # {repo} is resolved from THIS checkout's own origin, never a caller-supplied value.
 read_trust() {
@@ -312,14 +322,40 @@ read_trust() {
   R=$("$REVIEW_SANDBOX_GH" repo view "$U" --json nameWithOwner --jq .nameWithOwner) \
     || { echo "cannot resolve repo from origin url" >&2; return 1; }
   OUT=$("$REVIEW_SANDBOX_GH" api "repos/$R/pulls/$n" \
-    --jq '[.head.sha, .head.repo.full_name, .base.ref, .author_association] | @tsv') \
+    --jq '[.head.sha, .head.repo.full_name, .base.ref, .author_association, .user.login] | @tsv') \
     || { echo "cannot read PR #$n in $R" >&2; return 1; }
   SHA=$(printf '%s' "$OUT" | cut -f1)
   HEAD_REPO=$(printf '%s' "$OUT" | cut -f2)
   BASE=$(printf '%s' "$OUT" | cut -f3)
   ASSOC=$(printf '%s' "$OUT" | cut -f4)
-  [ -n "$SHA" ] && [ -n "$ASSOC" ] || { echo "PR #$n in $R answered no head/assoc" >&2; return 1; }
+  AUTHOR=$(printf '%s' "$OUT" | cut -f5)
+  [ -n "$SHA" ] && [ -n "$ASSOC" ] && [ -n "$AUTHOR" ] \
+    || { echo "PR #$n in $R answered no head/assoc/author" >&2; return 1; }
+  # The name rule (plan 8.1, 8.13d; #235): the loop's own login is untrusted BY NAME,
+  # ahead of any association check -- a machine user's MEMBER or COLLABORATOR
+  # association would pass one, and so would a `loop_identity` left stale after the
+  # loop's login changed. Read from the DEFAULT branch's committed copy, resolved from
+  # `origin` exactly as review-base-anchor.sh does, never from this checkout's own
+  # file or the PR's: a PR that edits `orchestration.loop_identity` must not be the one
+  # choosing which login is untrusted. Any failed step is a STOP (return 1), never a
+  # silent "no loop identity" -- an unreadable copy is not an absent name.
+  D=$("$REVIEW_SANDBOX_GH" repo view "$U" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') \
+    && [ -n "$D" ] || { echo "cannot resolve the default branch from origin" >&2; return 1; }
+  TOP=$(git rev-parse --show-toplevel) || { echo "not inside a git checkout" >&2; return 1; }
+  git -C "$TOP" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" \
+    || { echo "cannot fetch the default branch $D" >&2; return 1; }
+  DEF_YML=$(git -C "$TOP" show "refs/remotes/origin/$D:./.ai/project.yml") \
+    || { echo "cannot read .ai/project.yml on the default branch $D" >&2; return 1; }
+  LOOP_ID=$(printf '%s' "$DEF_YML" | yq -r '.orchestration.loop_identity // ""') \
+    || { echo "cannot read orchestration.loop_identity (is yq on PATH?)" >&2; return 1; }
+  LOOP=0
+  # Case-folded and `[bot]`-folded on both sides (see plan-anchor.sh's `fold`).
+  fold() { printf '%s' "$1" | tr 'A-Z' 'a-z' | sed 's/\[bot\]$//'; }
+  if [ -n "$LOOP_ID" ] && [ "$(fold "$AUTHOR")" = "$(fold "$LOOP_ID")" ]; then
+    LOOP=1
+  fi
   TRUSTED=0
+  [ "$LOOP" = 1 ] && return 0
   case "$ASSOC" in
     OWNER|MEMBER|COLLABORATOR)
       [ "$HEAD_REPO" = "$R" ] && TRUSTED=1
@@ -369,8 +405,8 @@ case "$cmd" in
     N="$2"
     is_digits "$N" || usage
     read_trust "$N" || stop "trust read failed for PR #$N"
-    printf 'sha=%s head_repo=%s base=%s assoc=%s trusted=%s\n' \
-      "$SHA" "$HEAD_REPO" "$BASE" "$ASSOC" "$TRUSTED"
+    printf 'sha=%s head_repo=%s base=%s assoc=%s loop=%s trusted=%s\n' \
+      "$SHA" "$HEAD_REPO" "$BASE" "$ASSOC" "$LOOP" "$TRUSTED"
     ;;
 
   make)
@@ -384,7 +420,7 @@ case "$cmd" in
     # have honored an untrusted verdict. Also re-pins the sha from this fresh read,
     # rather than trusting whatever the caller passed.
     read_trust "$N" || stop "trust read failed for PR #$N"
-    [ "$TRUSTED" = 1 ] || stop "PR #$N is not trusted (assoc=$ASSOC head_repo=$HEAD_REPO) -- make refuses to build a sandbox for it"
+    [ "$TRUSTED" = 1 ] || stop "PR #$N is not trusted (assoc=$ASSOC loop=$LOOP head_repo=$HEAD_REPO) -- make refuses to build a sandbox for it"
     [ "$SHA" = "$CALLER_SHA" ] || stop "PR #$N's current head ($SHA) does not match the sha this was asked to build ($CALLER_SHA)"
 
     ROOT=$(sandbox_root)

@@ -452,8 +452,10 @@ If any precondition fails, STOP and report why — do not archive.
    a sprint archives, by design (`reference/project-schema.md` § `planning`), so gating this
    close on full verify would make the close dead code.
    ```bash
-   plan-anchor.sh verify --plan {backlog.repo} <pointers.sprint_plan> <pointers.plan_anchor, as jq -c>
+   plan-anchor.sh verify --plan [--loop-identity <login>] {backlog.repo} <pointers.sprint_plan> <pointers.plan_anchor, as jq -c>
    ```
+   (`--loop-identity` per `reference/project-schema.md` § `orchestration`, *Passing it to
+   `plan-anchor.sh verify`*; a read of it that cannot be made is `unreadable` here.)
    **No usable baseline** covers two cases, per the approved spec (issue #128's "Build
    notes" comment, point 1):
    - `pointers.plan_anchor` is `null` — never anchored: a blank-seeded next sprint (this
@@ -472,9 +474,11 @@ If any precondition fails, STOP and report why — do not archive.
      human cannot say → **no usable baseline**: skip `verify --plan` entirely and go
      straight to staging the close, exactly as a `drift` or `unreadable` answer would.
    - **`match`** (on a `verify --plan` this step actually ran) → proceed to the close, below.
-   - **`drift`, `unreadable`, or no usable baseline** → do **not** close. Stage the close
+   - **`drift`, `unreadable`, `untrusted`, or no usable baseline** → do **not** close. Stage the close
      command below for the human and open `hitl_gate`, naming exactly which case fired
-     (`drift` / `unreadable` / `no-baseline`). For `drift` or `no-baseline`, where a live
+     (`drift` / `unreadable` / `untrusted` / `no-baseline`); `untrusted` means the milestone
+     was created by the loop's own login, so what is shown is for the human to trust, not
+     for this session to. For `drift`, `untrusted` or `no-baseline`, where a live
      description exists to show, get it the same way `plan-anchor.sh write` itself would —
      never a raw, unprojected fetch into context — so the human sees exactly what the check
      saw:
@@ -715,4 +719,4 @@ move — the milestone description stays on GitHub, untouched by this step. Noth
 touches git history.
 - Never archive an un-approved or uncommitted sprint.
 - The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, the current branch, or a branch whose local tip has a commit the commit GitHub merged lacks, or whose merged commit could not be fetched or compared. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git) — but that argument covers the commit GitHub merged and nothing added since, which is why the tip check (`bin/prune-verdict.sh`, against `headRefOid` — never against `origin/<branch>` — passing only a tip that is that commit or an ancestor of it) is part of the prune and not an optional refinement.
-- The *Close the sprint's milestone* step never closes a milestone with an open true issue on it (reported and skipped, no command staged, no `hitl_gate` opened — that is always a human call, never forced by moving or editing an issue), and never closes one that isn't a confirmed `verify --plan` `match` on an anchor known to be usable — a `drift`/`unreadable` result, `plan_anchor: null`, or a restored-since-unpark anchor the human cannot confirm was re-anchored since are all staged for the human with `hitl_gate` open instead. It never reports a close as done unless the write's own read-back confirms `closed` (a refusal, an error, or an unconfirmed read-back is staged with `hitl_gate` open too). An already-closed milestone, or a sprint with no milestone pointer to close, is reported as such and neither staged nor gated. A failed precondition read stages nothing and opens no gate either — there is nothing trustworthy to stage against.
+- The *Close the sprint's milestone* step never closes a milestone with an open true issue on it (reported and skipped, no command staged, no `hitl_gate` opened — that is always a human call, never forced by moving or editing an issue), and never closes one that isn't a confirmed `verify --plan` `match` on an anchor known to be usable — a `drift`/`unreadable`/`untrusted` result, `plan_anchor: null`, or a restored-since-unpark anchor the human cannot confirm was re-anchored since are all staged for the human with `hitl_gate` open instead. It never reports a close as done unless the write's own read-back confirms `closed` (a refusal, an error, or an unconfirmed read-back is staged with `hitl_gate` open too). An already-closed milestone, or a sprint with no milestone pointer to close, is reported as such and neither staged nor gated. A failed precondition read stages nothing and opens no gate either — there is nothing trustworthy to stage against.

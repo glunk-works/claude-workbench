@@ -181,7 +181,8 @@ github_milestones` — `{backlog.repo}`.
      anchor>` from the *previous* cursor: `jq -c .pointers.plan_anchor .ai/state.json` —
      **compact, on one line**, never pretty-printed `jq .`; `plan-anchor.sh`'s parser only
      matches a key and its value on the same line.
-   - Run `plan-anchor.sh verify --plan {backlog.repo} <old pointer> <baseline anchor>` before
+   - Run `plan-anchor.sh verify --plan [--loop-identity <login>] {backlog.repo} <old pointer> <baseline anchor>` (the flag per
+     `reference/project-schema.md` § `orchestration`, *Passing it to `plan-anchor.sh verify`*) before
      overwriting it, and branch on its **exact** printed word — not on an inferred cause,
      which the word alone cannot always distinguish (a `drift` here can mean the description
      changed, the milestone closed, or the milestone number no longer matches; that
@@ -199,13 +200,16 @@ github_milestones` — `{backlog.repo}`.
        anchor"* — **and open `hitl_gate`** naming it. Gates are routinely open at handoff
        already, and the ledger's **Next:** line carries them, so this fits the existing flow
        without a new surface.
+     - **`untrusted`** (the milestone was created by the loop's own login) → never re-anchor
+       over it: a named ledger line — *"milestone created by the loop identity"* — **and open
+       `hitl_gate`**, exactly like `drift`; a human decides whether the milestone is trusted.
      - **`unreadable`** (the baseline verify call itself failed) → treat exactly like `drift`:
        a named ledger line — *"could not re-verify the prior anchor"* — **and open
        `hitl_gate`**. An unreadable baseline is not evidence the description is unchanged;
        silence here is exactly the laundering this rule exists to prevent.
      - **No baseline at all** — the sprint's first handoff (park/archive seeded a bare
        `planning` cursor), a milestone switch (above), or a resume that printed
-       `drift`/`unreadable` and was overridden by a human "go" — is itself loud: a ledger
+       `drift`/`unreadable`/`untrusted` and was overridden by a human "go" — is itself loud: a ledger
        line, *"first anchor for milestone M, description sha `<hash>`"* **and open
        `hitl_gate`**. One human gate per sprint start, where a human is already in the loop;
        skip it and the sprint's first handoff would silently launder whatever the description
@@ -265,7 +269,7 @@ github_milestones` — `{backlog.repo}`.
       anyone with write access can edit; it reaches `main` only through the next ordinary
       handoff's ledger PR, which the human merges.
    3. **Re-take the anchor** with `task_issue: N`, per *The plan anchor* above — after the
-      body edit, never before. A `drift`, an `unreadable`, or a no-baseline result **opens
+      body edit, never before. A `drift`, an `unreadable`, an `untrusted`, or a no-baseline result **opens
       `hitl_gate`**, and a gate change is a cursor change: the ledger PR, not a no-op. That is
       the main way a no-op falls back, visibly.
    4. **Write `.ai/state.json`** (the next step) with these differences from an ordinary

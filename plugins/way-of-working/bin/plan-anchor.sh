@@ -12,11 +12,29 @@
 #   plan-anchor.sh write  <repo> <milestone> <N|-> [<comment-id|->]
 #     Prints the anchor JSON (one line, compact, fixed key order) on stdout,
 #     or `unreadable`.
-#   plan-anchor.sh verify [--plan] <repo> <pointer-url> <anchor-json>
-#     Prints exactly one of `match | drift | unreadable`.
+#   plan-anchor.sh verify [--plan] [--loop-identity <login>] <repo> <pointer-url> <anchor-json>
+#     Prints exactly one of `match | drift | unreadable | untrusted`.
 #
 # Both modes always exit 0 -- the verdict is stdout, exactly like
 # cursor-drift.sh; the caller decides policy.
+#
+# `--loop-identity <login>` is the name rule (plan § 8.1, § 8.13d; `#235`): the
+# loop's own login (`orchestration.loop_identity`, reference/project-schema.md §
+# `orchestration`) is untrusted BY NAME, whatever `author_association` says -- a
+# machine user's MEMBER or COLLABORATOR association would pass any association
+# check, and a `loop_identity` left stale after the loop's login changed must not
+# turn that into a trusted author. The login arrives as an ARGUMENT, never read here
+# (this script forbids `yq`, and the caller already holds the value from the default
+# branch's own copy -- the one a task cannot edit). When given, `verify` reads the
+# author of the milestone (`creator`), and in full mode of `#N` and of the anchored
+# spec comment, BEFORE any drift comparison, and prints `untrusted` when any of them
+# equals the login, compared case-insensitively (GitHub logins are) and with a trailing
+# `[bot]` ignored on both sides, so a bare-slug configuration still matches an App. A failed author
+# read, or an empty author, is `unreadable`, never a pass. A caller whose
+# `loop_identity` is `null` omits the flag; an EMPTY or malformed value is a caller
+# bug and prints `unreadable` rather than silently disabling the rule. Everything
+# else about the verdict is unchanged: without the flag no author is read at all,
+# and `untrusted` is never printed.
 #
 # `verify` (full) checks: the milestone is open, its number equals the anchor's
 # and the pointer's; `#N` is open, a true issue (no `pull_request` key), its
@@ -139,7 +157,7 @@ case "$mode" in
   write | verify) shift ;;
   *)
     echo "plan-anchor.sh: usage: plan-anchor.sh write <repo> <milestone> <N|-> [<comment-id|->]" >&2
-    echo "                       plan-anchor.sh verify [--plan] <repo> <pointer-url> <anchor-json>" >&2
+    echo "                       plan-anchor.sh verify [--plan] [--loop-identity <login>] <repo> <pointer-url> <anchor-json>" >&2
     echo unreadable
     exit 0
     ;;
@@ -188,10 +206,20 @@ fi
 # =============================================================================
 # mode = verify
 plan_only=0
-if [ "${1:-}" = "--plan" ]; then plan_only=1; shift; fi
+loop_login=
+have_loop=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --plan) plan_only=1; shift ;;
+    --loop-identity)
+      [ "$#" -ge 2 ] || { echo unreadable; exit 0; }
+      have_loop=1; loop_login="$2"; shift 2 ;;
+    *) break ;;
+  esac
+done
 
 if [ "$#" -ne 3 ]; then
-  echo "plan-anchor.sh: verify needs [--plan] <repo> <pointer-url> <anchor-json>" >&2
+  echo "plan-anchor.sh: verify needs [--plan] [--loop-identity <login>] <repo> <pointer-url> <anchor-json>" >&2
   echo unreadable
   exit 0
 fi
@@ -213,6 +241,58 @@ a_milestone="$(anchor_num milestone "$anchor")"
 a_hash="$(anchor_str description_sha256 "$anchor")"
 if [ -z "$a_milestone" ] || [ "$a_milestone" = null ] || [ -z "$a_hash" ] || [ "$a_hash" = null ]; then
   echo unreadable; exit 0
+fi
+
+# --- the name rule (see header): before ANY drift comparison -------------------
+if [ "$have_loop" -eq 1 ]; then
+  # A login is a stem of letters, digits and `-` (no leading or trailing `-`, at
+  # most 39 characters) plus an optional `[bot]`; anything else is a caller bug.
+  stem="${loop_login%\[bot\]}"
+  case "$stem" in
+    '' | -* | *- | *[!A-Za-z0-9-]*) echo unreadable; exit 0 ;;
+  esac
+  [ "${#stem}" -le 39 ] || { echo unreadable; exit 0; }
+  # Case-folded AND `[bot]`-folded on both sides: REST reports an App as `<slug>[bot]`,
+  # and a `loop_identity` configured as the bare slug (the schema's shape check allows
+  # both) must not quietly match nothing. Over-refusing a human whose login is the slug
+  # is the safe direction.
+  fold() { printf '%s' "$1" | tr 'A-Z' 'a-z' | sed 's/\[bot\]$//'; }
+  lc_loop="$(fold "$loop_login")"
+
+  is_loop() { # is_loop <login> -- true iff it names the loop identity (folded)
+    [ "$(fold "$1")" = "$lc_loop" ]
+  }
+
+  author="$(gh api "repos/$repo/milestones/$a_milestone" --jq '.creator.login // empty' 2>/dev/null)" \
+    && [ -n "$author" ] || { echo unreadable; exit 0; }
+  if is_loop "$author"; then echo untrusted; exit 0; fi
+
+  if [ "$plan_only" -eq 0 ]; then
+    n_task="$(anchor_num task_issue "$anchor")"
+    case "$n_task" in
+      '' | null) : ;;   # nothing anchored, or malformed -- the full checks below answer
+      *)
+        author="$(gh api "repos/$repo/issues/$n_task" --jq '.user.login // empty' 2>/dev/null)" \
+          && [ -n "$author" ] || { echo unreadable; exit 0; }
+        if is_loop "$author"; then echo untrusted; exit 0; fi
+        ;;
+    esac
+    n_comment="$(anchor_obj spec_comment "$anchor")"
+    case "$n_comment" in
+      '' | null) : ;;
+      *)
+        n_cid="$(anchor_num id "$n_comment")"
+        case "$n_cid" in
+          '' | null) : ;;
+          *)
+            author="$(gh api "repos/$repo/issues/comments/$n_cid" --jq '.user.login // empty' 2>/dev/null)" \
+              && [ -n "$author" ] || { echo unreadable; exit 0; }
+            if is_loop "$author"; then echo untrusted; exit 0; fi
+            ;;
+        esac
+        ;;
+    esac
+  fi
 fi
 
 if [ "$a_milestone" != "$num_pointer" ]; then echo drift; exit 0; fi
