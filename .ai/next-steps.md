@@ -4,27 +4,26 @@
 milestone 1* (due 2026-10-23). Status: **implementing**.
 
 **Just done (2026-10-06):**
-- #235 built and merged as PR #298 (`f1526f4`): `plan-anchor.sh verify` takes
-  `--loop-identity <login>` and prints `untrusted` before any drift comparison;
-  `review-sandbox.sh trust` reads `orchestration.loop_identity` from the default branch's copy
-  and refuses that author before any association check (output gains `loop=0|1`; needs `yq`);
-  resume waits on `untrusted`, handoff and archive-sprint refuse it. Critic pass (security-critic,
-  architect, docs-consistency): 3 rounds, converged; second-opinion round not run.
-- Known residuals, recorded in the PR: the `--loop-identity` flag is optional for callers (a
-  forgotten flag disables the rule); the rule checks creator/author, not last editor; a stale
-  `loop_identity` protects only its own old name.
-- The installed plugin cache predates #298, so `plan-anchor.sh` there rejects the new flag until
-  the pin is bumped.
+- #295 built and merged as PR #300 (`e5b7a4f`): `review-step.sh decide` takes `login` and
+  `loop_identity` and prints `none`
+  ahead of every other verdict when they match (case and one trailing `[bot]` folded, as
+  `plan-anchor.sh` does; `-` = null = no guard; a malformed value exits 2). Resume reads the value
+  from the default branch's copy and treats an absent or malformed value as a failed read. Critic
+  pass (architect, security-critic, docs-consistency): 2 rounds; round 2's one substantive finding
+  (a quoted `"-"` colliding with the null sentinel) was fixed and hand-tested, not re-run through a
+  critic; second-opinion round not run.
+- Unverified: `gh api user` may be refused for an App installation token, which would make the
+  guard mainly a machine-user control.
+- Three local branches were skipped by the resume prune (merged, but their tips are not what
+  GitHub merged): `docs/sync-cursor-271-next-b`, `docs/sync-cursor-sprint-08-orchestrator-plan`,
+  `fix/hook-exec-bit-214` — check for unpushed work.
 
-**Next:** task #295 — build the WB-D22 guard on **sonnet** (`coder`): resume's review-step
-derivation (`bin/review-step.sh`, the decide path) derives nothing when the running login
-equals `orchestration.loop_identity` (REST `user.login` form, case-insensitive, `null` = no
-guard; read from the default branch's trusted copy), with fixtures, WB-D22 in `docs/decisions.md`
-and the schema doc's "no skill reads these keys yet" sentence updated. Then
+**Next:** task #283 — build the WB-D22 residual on **sonnet** (`coder`): the pinned review
+session starts from the base branch, not the PR's tree (spec in issue #283). Then
 `/way-of-working:critic-gate` (architect, security-critic, plus docs-consistency for skill prose)
-and `/way-of-working:ship` one PR closing #295. After it: #283, #236.
+and `/way-of-working:ship` one PR closing #283. After it: #236, a human task on the loop host.
 
-**HITL Gate: NONE OPEN** — next gate: the human merge of #295's build PR (no review CI gate in
+**HITL Gate: NONE OPEN** — next gate: the human merge of #283's build PR (no review CI gate in
 this repo).
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
