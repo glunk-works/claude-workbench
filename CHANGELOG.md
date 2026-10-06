@@ -33,6 +33,19 @@ the GitHub release notes.
 
 ### Changed
 
+- **The branch prune now deletes a merged branch whose local tip is *behind* the merged head**
+  (#271). `/way-of-working:resume` and `/way-of-working:archive-sprint` deleted a branch only
+  when its local tip equalled the `headRefOid` GitHub merged, so a branch whose PR picked up
+  more commits after the local copy stopped (pushed from another checkout, edited on
+  GitHub) was skipped and re-reported as possible stranded work every session, though every
+  local commit was in what merged. The tip test is now `bin/prune-verdict.sh <branch> <oid>`:
+  `delete` when the tip is the merged commit or an ancestor of it (it fetches the oid by
+  SHA when not already local, bounded and without prompting; that does not need the remote
+  branch to exist), `skip-ahead` when the tip has a commit the merged head lacks (the real
+  stranded-work case, still reported), `skip-unfetchable` when the oid cannot be fetched,
+  `unreadable` on bad input. The oid is validated as full lowercase hex before it reaches
+  `git fetch`. No `.ai/project.yml` key changes.
+
 - **`/way-of-working:pr-checks` no longer reads a rule it cannot see as absent** (#248).
   `bin/blocked-state.sh` was fed rule type names only, so a green `BLOCKED` PR under a
   `pull_request` rule demanding thread resolution or required reviewers, or under

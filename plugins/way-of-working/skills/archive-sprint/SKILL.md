@@ -609,11 +609,12 @@ If any precondition fails, STOP and report why — do not archive.
        case "$b" in "$base"|"$cur") continue;; esac
        tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$1 == b { print $2; exit }')
        [ -n "$tip_gh" ] || continue                    # no merged PR -- not a candidate
-       if [ "$(git rev-parse "$b")" = "$tip_gh" ]; then
-         git branch -D "$b" && echo "pruned $b"
-       else
-         echo "skipped $b -- merged, but its tip is not the commit GitHub merged"
-       fi
+       case "$(prune-verdict.sh "$b" "$tip_gh")" in   # tip IS, or is behind, the merged commit
+         delete)           git branch -D "$b" && echo "pruned $b" ;;
+         skip-ahead)       echo "skipped $b -- merged, but its tip has commits the merged head lacks" ;;
+         skip-unfetchable) echo "skipped $b -- merged, but the merged commit could not be fetched to compare" ;;
+         *)                echo "skipped $b -- merged, but its tip could not be compared with the merged commit" ;;
+       esac
      done
    fi
    ```
@@ -621,7 +622,7 @@ If any precondition fails, STOP and report why — do not archive.
    **deliberate** guard against the loop ever targeting `{pr_base}` by name, and an empty
    or `"null"` pattern matches nothing, so a silent fallback would leave `{pr_base}`
    protected only by accident — by whether some merged PR's `headRefName` happens to equal
-   it and its local tip happens to match. Guard on it before the `gh` call, not after.
+   it and its local tip happens to be that commit or an ancestor of it. Guard on it before the `gh` call, not after.
 
    Report which branches were pruned, and every skip the loop printed, with its reason (or "none"). A branch with no merged PR is not a candidate and is correctly silent — it is not a skip and does not belong in the report. Hygiene, not a gate — if `pr_base` can't be read or the `gh` call fails, skip and say so.
 
@@ -631,7 +632,11 @@ If any precondition fails, STOP and report why — do not archive.
    because a squash-merged branch's commits are unreachable that work is gone with no
    warning. `headRefOid` — the commit GitHub actually merged — comes free in the `gh pr
    list` call already being made, so the branch is deleted only when its local tip **is**
-   that commit, and the skip message names the real reason.
+   that commit or an **ancestor** of it, and the skip message names the real reason. A tip
+   *behind* the merged head carries nothing the merge lacks, so `-D` loses nothing;
+   `bin/prune-verdict.sh` fetches the oid by SHA when it is not already local and answers
+   `delete`, `skip-ahead` (a commit the merged head lacks — the real stranded-work case),
+   `skip-unfetchable` or `unreadable` (`#271`).
 
    **Why not `origin/<branch>`.** The obvious test — "is my tip pushed?", `git rev-list
    --count origin/$b..$b` — reads the remote-tracking ref, and that ref stops resolving
@@ -685,5 +690,5 @@ sprint_plan files stay in place; under `github_milestones`, there is no sprint_p
 move — the milestone description stays on GitHub, untouched by this step. Nothing here ever
 touches git history.
 - Never archive an un-approved or uncommitted sprint.
-- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, the current branch, or a branch whose local tip is not the commit GitHub merged. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git) — but that argument covers the commit GitHub merged and nothing added since, which is why the tip check (against `headRefOid`, never against `origin/<branch>`) is part of the prune and not an optional refinement.
+- The branch prune deletes **only** branches whose PR GitHub reports `merged` (via `gh`); it never touches an unmerged branch, a branch with no PR, `{pr_base}`, the current branch, or a branch whose local tip has a commit the commit GitHub merged lacks, or whose merged commit could not be fetched or compared. `git branch -D` is safe here precisely because merged-ness is confirmed out-of-band (a squash-merged branch looks "unmerged" to git) — but that argument covers the commit GitHub merged and nothing added since, which is why the tip check (`bin/prune-verdict.sh`, against `headRefOid` — never against `origin/<branch>` — passing only a tip that is that commit or an ancestor of it) is part of the prune and not an optional refinement.
 - The *Close the sprint's milestone* step never closes a milestone with an open true issue on it (reported and skipped, no command staged, no `hitl_gate` opened — that is always a human call, never forced by moving or editing an issue), and never closes one that isn't a confirmed `verify --plan` `match` on an anchor known to be usable — a `drift`/`unreadable` result, `plan_anchor: null`, or a restored-since-unpark anchor the human cannot confirm was re-anchored since are all staged for the human with `hitl_gate` open instead. It never reports a close as done unless the write's own read-back confirms `closed` (a refusal, an error, or an unconfirmed read-back is staged with `hitl_gate` open too). An already-closed milestone, or a sprint with no milestone pointer to close, is reported as such and neither staged nor gated. A failed precondition read stages nothing and opens no gate either — there is nothing trustworthy to stage against.
