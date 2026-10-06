@@ -4,28 +4,27 @@
 milestone 1* (due 2026-10-23). Status: **implementing**.
 
 **Just done (2026-10-06):**
-- #234 built and merged as PR #294 (`31973ea`): `orchestration` is a nullable map required of
-  every adopting repo (`null` = no loop here), with `critics`, `round_cap`, `human_only_paths`,
-  `restrict_updates` and a nullable `loop_identity`; `schema-complete.sh`, its fixtures, resume's
-  interview appendix, the CHANGELOG migration line and this repo's answers all landed. Critic
-  pass (architect, security-critic, docs-consistency): 2 rounds, converged; second-opinion round
-  declined. This repo's `human_only_paths` leaves `plugins/way-of-working/bin/` off on purpose.
-- Plan-sprint pass: #283 (the WB-D22 residual, release-blocking) placed in milestone 9; #295
-  (WB-D22 guard on `loop_identity`) filed there; #296 (driver post-exit check on the trust
-  predicates) filed unmilestoned; #273, #227, #223 left unmilestoned with reasons recorded as
-  issue comments.
-- Milestone 9's description was edited by hand to the new build order (#235, #295, #283, #236);
-  the plan anchor was re-baselined `match` after that edit and re-taken for #235.
+- #235 built and merged as PR #298 (`f1526f4`): `plan-anchor.sh verify` takes
+  `--loop-identity <login>` and prints `untrusted` before any drift comparison;
+  `review-sandbox.sh trust` reads `orchestration.loop_identity` from the default branch's copy
+  and refuses that author before any association check (output gains `loop=0|1`; needs `yq`);
+  resume waits on `untrusted`, handoff and archive-sprint refuse it. Critic pass (security-critic,
+  architect, docs-consistency): 3 rounds, converged; second-opinion round not run.
+- Known residuals, recorded in the PR: the `--loop-identity` flag is optional for callers (a
+  forgotten flag disables the rule); the rule checks creator/author, not last editor; a stale
+  `loop_identity` protects only its own old name.
+- The installed plugin cache predates #298, so `plan-anchor.sh` there rejects the new flag until
+  the pin is bumped.
 
-**Next:** task #235 — build the loop-identity name rule on **sonnet** (`coder`):
-`plan-anchor.sh verify` gains an `untrusted` verdict (login passed as an argument, compared
-case-insensitively before any other comparison; the script forbids `yq`) and handoff and
-archive-sprint learn it; `review-sandbox.sh trust` refuses `orchestration.loop_identity` before
-any association check; fixtures include a stale `loop_identity` on a machine user. Then
+**Next:** task #295 — build the WB-D22 guard on **sonnet** (`coder`): resume's review-step
+derivation (`bin/review-step.sh`, the decide path) derives nothing when the running login
+equals `orchestration.loop_identity` (REST `user.login` form, case-insensitive, `null` = no
+guard; read from the default branch's trusted copy), with fixtures, WB-D22 in `docs/decisions.md`
+and the schema doc's "no skill reads these keys yet" sentence updated. Then
 `/way-of-working:critic-gate` (architect, security-critic, plus docs-consistency for skill prose)
-and `/way-of-working:ship` one PR closing #235. After it: #295, #283, #236.
+and `/way-of-working:ship` one PR closing #295. After it: #283, #236.
 
-**HITL Gate: NONE OPEN** — next gate: the human merge of #235's build PR (no review CI gate in
+**HITL Gate: NONE OPEN** — next gate: the human merge of #295's build PR (no review CI gate in
 this repo).
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
