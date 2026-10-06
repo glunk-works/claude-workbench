@@ -12,7 +12,8 @@
 set -euo pipefail
 
 fail=0
-SKILLS=(plugins/*/skills/*/SKILL.md)
+# Appendices are prose a session is told to read on demand; they carry the same procedures.
+SKILLS=(plugins/*/skills/*/SKILL.md plugins/*/skills/*/appendices/*.md)
 AGENTS=(plugins/*/agents/*.md)
 BIN_SCRIPTS=(plugins/*/bin/*.sh)
 HOOK_SCRIPTS=(plugins/*/hooks/*.sh)

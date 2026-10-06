@@ -73,6 +73,10 @@ append "$(skill_in "$d")" 'gh api repos/x \
   | blocked-state.sh BLOCKED 1'
 assert_fires "pipe on a backslash-continued line" "$d"
 
+d="$(tree appendix)"
+append "$(ls "$d"/plugins/*/skills/resume/appendices/cursor-sync-offer.md)" 'gh api repos/x | blocked-state.sh BLOCKED 1'
+assert_fires "a skill appendix, not only SKILL.md" "$d"
+
 d="$(tree agent)"
 append "$(agent_in "$d")" 'gh pr view 1 | blocked-state.sh BLOCKED 1'
 assert_fires "an agent file, not only a skill" "$d"
@@ -212,12 +216,12 @@ d="$(tree raw5)"
 append "$(skill_in "$d")" 'X="$(f "$(g)")"; gh api x | blocked-state.sh "y"'
 assert_fires 'nested "$(...)" captures before the pipe' "$d"
 
-# A hit near the TOP of a file larger than a pipe buffer (resume is ~78 KB) must be reported
+# A hit near the TOP of a file larger than a pipe buffer (padded below, so it stays past 64 KiB however small resume gets) must be reported
 # as the hit it is, not as "the matcher itself failed": an early-exiting grep SIGPIPEs the
 # writer on a big file, and under pipefail that surfaces as status 141.
 d="$(tree bigfile)"
 rs="$(ls "$d"/plugins/*/skills/resume/SKILL.md)"
-{ printf '%s\n' 'gh api x | blocked-state.sh B 1'; cat "$rs"; } >"$rs.new" && mv "$rs.new" "$rs"
+{ printf '%s\n' 'gh api x | blocked-state.sh B 1'; cat "$rs"; i=0; while [ "$i" -lt 1500 ]; do echo "padding line $i to keep this fixture past a 64 KiB pipe buffer, xxxxxxxx"; i=$((i+1)); done; } >"$rs.new" && mv "$rs.new" "$rs"
 assert_fires "an early hit in a large file is reported as a hit" "$d"
 assert_silent_msg() { # <desc> <dir> <message>
   if run "$2" | grep -qF -- "$3"; then echo "FAIL - $1: unexpected [$3]" >&2; fail=1
