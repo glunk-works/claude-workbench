@@ -76,6 +76,11 @@ the GitHub release notes.
 - **`/way-of-working:plan-sprint` no longer offers "continue uncommitted" when `handoff` is not
   next** (#220). A ledger left modified blocked `archive-sprint`'s branch cuts; it now opens the
   cursor-sync PR unless the cursor's `next_action` is or begins with `/way-of-working:handoff`.
+- **`/way-of-working:archive-sprint` checks that `.ai/archive/` is git-ignored before it
+  snapshots** (#219). The Snapshot step assumed it; a repo whose `.gitignore` never listed it saw
+  the snapshot as untracked, and `/way-of-working:resume` would read the tree as dirty. The step now
+  stops before writing, with a one-line fix. Adopters: list `.ai/archive/` in `.gitignore`
+  before your next sprint close.
 
 ### Changed
 
