@@ -1086,6 +1086,28 @@ take effect. Full reasoning and the task breakdown that implements them:
     touch `.ai/parked/`, so the predicate refuses them as `files`. Setting a sprint aside or
     restoring one stays the human's separate decision. No `.ai/project.yml` key.
 
+- **WB-D21 (`#247`) — `hooks.json` keeps invoking the SessionStart hook directly, not
+  through `bash`.** #240 (#214) stores `hooks/ai-cursor-banner.sh` as mode 100755, with
+  invariants check 9 keeping it that way, which fixes every install that takes the git index
+  mode. It left open whether `hooks.json` should run the hook as `bash
+  "${CLAUDE_PLUGIN_ROOT}/hooks/ai-cursor-banner.sh"` so that a copy which drops mode bits
+  (`cp` without `-p`, a zip extract) would still show the banner. It should not.
+  - **A `bash` prefix would fix one script in thirteen.** The plugin's `bin/` scripts are
+    called by bare name on the Bash tool's `PATH` (`WB-D10`) and need the exec bit just as
+    much, and nothing in `hooks.json` can reach them. A copy that drops modes breaks
+    `/way-of-working:resume`'s own preflight whichever way the hook is invoked; the prefix
+    would only make the banner the one part that still works, hiding a broken install.
+  - **That copy is not how the plugin is installed.** It arrives through the marketplace
+    cache, which keeps the index mode (this machine's `v0.16.0` cache holds the hook and every
+    `bin/` script as `-rwxr-xr-x`), and check 9 stops the mode regressing at the source for
+    the hook and `bin/` alike.
+  - **Rejected for its cost too:** it changes how every session starts, on every host, and
+    would need checking on each, Windows under Git Bash included, against a failure no real
+    install path produces.
+  - **What remains.** `tests/ai-cursor-banner.test.sh` runs the hook as `bash "$hook"`, so the
+    exec-bit path the harness uses is covered by check 9, not by that suite. No
+    `.ai/project.yml` key.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
