@@ -13,8 +13,13 @@
 # Every interpolated value (the cursor fields and the Parked id list) is capped
 # at 200 characters each (`cap` in the jq program), and next_action is also
 # trimmed to its first sentence: in a cloned untrusted repo this text becomes
-# model context at session start, so it must not be unbounded. The cap bounds
-# length only; it does not strip newlines.
+# model context at session start, so it must not be unbounded. `cap` cuts to 200
+# characters first (jq's gsub is superlinear in the match count, and the hook
+# has a 10s timeout), then replaces each line-breaking or control character
+# (newline, carriage return, tab, the C0/C1 ranges, DEL, U+2028/U+2029) with a
+# space, so a field cannot start a forged banner line of its own; the banner's
+# line count is fixed. next_action goes through `cap` before the first-sentence
+# split, so a non-string value cannot kill the banner either.
 set -euo pipefail
 
 state=".ai/state.json"
@@ -34,13 +39,13 @@ for f in .ai/parked/*-state.json; do
 done
 
 jq --arg parked "$parked" '
-def cap: tostring | .[0:200];
+def cap: tostring | .[0:200] | gsub("[\u0000-\u001f\u007f-\u009f\u2028\u2029]"; " ");
 {
   hookSpecificOutput: {
     hookEventName: "SessionStart",
     additionalContext: (
       "[.ai cursor] Assigned: \(.assigned_persona | cap)/\(.assigned_model | cap) for \(.current_sprint_id | cap) (sprint_status: \(.sprint_status | cap)).\n"
-      + "Next action: \((.next_action // "unset") | split(". ")[0] | cap).\n"
+      + "Next action: \((.next_action // "unset") | cap | split(". ")[0]).\n"
       + (if $parked == "" then "" else "Parked: \($parked | cap) (restore with /way-of-working:unpark-sprint <id>).\n" end)
       + "If THIS session is not running \(.assigned_model | cap), it is the wrong session for planning/review/architecture work: /way-of-working:handoff -> new session -> /model \(.assigned_model | cap) -> /way-of-working:resume (`models` in .ai/project.yml). Mechanical/coder tasks are fine on any model."
     )
