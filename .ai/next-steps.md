@@ -4,22 +4,25 @@
 banner and branch prune* (due 2026-10-13). Status: **implementing**.
 
 **Just done (2026-10-06):**
-- Filed #270 and #271; `/way-of-working:plan-sprint` created milestone 12 for them (#270,
-  then #271) and left #223 and #227 unmilestoned.
-- Archived sprint-09: marked done in `docs/decisions.md` by PR #272 (`f878603`); milestone 11
-  closed. The live smoke of its `--admin` offer path is tracked as #273.
-- First anchor for milestone 12, description sha `018e1324…89ff4`.
-- No code diff this session, so no critic pass applied.
+- Human confirmed the milestone 12 plan; task #270 built and shipped as PR #275
+  (`85f2574`, open, awaiting the human's merge): the banner's `cap` now cuts to 200 then
+  replaces control and line-breaking characters, `next_action` runs through `cap` before
+  its sentence split; new `ctrl`, `sep` and `huge` fixtures.
+- Critic pass (security-critic + architect): 2 rounds, converged. Round 1 caught the
+  `gsub`-before-slice perf regression; round 2 tightenings only. Second-opinion round
+  offered and declined.
+- Plan anchor re-pointed from #270 to #271 (baseline `match`, same description sha).
 
-**Next:** task #270 — in `plugins/way-of-working/hooks/ai-cursor-banner.sh`, make the jq
-`cap` replace control characters (at least newline, carriage return and tab) with a space
-before slicing to 200; update the header comment; add a `tests/ai-cursor-banner.test.sh`
-fixture whose field embeds a newline and a forged `Next action:` line, asserting a fixed
-output line count; run the green gate, then `/way-of-working:critic-gate` (security-critic +
-architect). On **sonnet** (`coder`).
+**Next:** task #271 — in the resume skill's *Prune squash-merged local branches* step, when
+a merged branch's local tip differs from `headRefOid`, fetch that oid and `-D` the branch
+when `git merge-base --is-ancestor <branch> <oid>` succeeds; keep the skip when the fetch
+fails or the tip has commits outside the oid; put the predicate in a fixture-tested `bin/`
+script (pattern: `cursor-drift.sh`) with a `tests/*.test.sh` listed in the `CLAUDE.md`
+green gate; run the green gate, then `/way-of-working:critic-gate`. On **sonnet**
+(`coder`). Merge PR #275 first so #271 branches from a `main` that carries #270.
 
-**HITL Gate: OPEN** — first anchor for milestone 12; the human confirms its plan (#270, then
-#271) before task #270 starts.
+**HITL Gate: NONE OPEN** — the next gate is the human merging PR #275 and this cursor-sync
+PR.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 12](https://github.com/glunk-works/claude-workbench/milestone/12) ·
