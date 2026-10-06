@@ -29,7 +29,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
-## [Unreleased]
+## [0.17.0] — 2026-10-06
+
+**⚠️ Migration required** — one new required `.ai/project.yml` key, `orchestration` (see the
+first *Added* entry for the exact answer). This is the first release of the sprint-orchestrator
+work (milestone 9): the loop's schema keys, its identity guard, and a no-op handoff with a
+review step `/way-of-working:resume` derives from GitHub. Two behaviour changes to expect: a
+no-op handoff now ends by switching the checkout to `{pr_base}`, and `/way-of-working:resume`
+will not auto-start while an orchestrator driver holds its lock.
 
 ### Added
 
@@ -121,10 +128,10 @@ the GitHub release notes.
   On a pinned run it now posts through `POST …/pulls/<N>/reviews` with `commit_id=<pin>` and
   `event=COMMENT`, so the review attaches to the pin even if a push lands after the pre-post
   re-read (not verified live: no gate in this repo).
-  **Adopters with `review.ci_gate` set should not bump to a release containing this without
-  #283** (see *Changed*): without it the pinned review session starts on the PR's own tree, so that PR's
-  project settings (hooks, permissions, env), `.mcp.json` and `CLAUDE.md` are active in the
-  reviewer's session.
+  **This release carries both** this and #283 (see *Changed*), so the pair is safe to take
+  together. Neither is safe alone: the pin-only form starts the pinned review session on the PR's
+  own tree, where that PR's project settings (hooks, permissions, env), `.mcp.json` and
+  `CLAUDE.md` are active in the reviewer's session. Do not pin a commit between them.
   The `commit_id` post is likely to be refused by the harness on org repos on a host that blocks
   `gh api` writes; that is a stop, never a fallback.
 
