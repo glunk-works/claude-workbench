@@ -66,3 +66,23 @@ models:
   architect: opus
   coder: sonnet
   second_opinion: fable
+
+# ── the sprint-orchestrator loop ─────────────────────────────────────────────
+# Plan v9 § 8.4 / § 8.5 / § 8.12. human_only_paths keeps a loop task off CI, the repo gate
+# scripts under scripts/, the cursor, this file and the release manifests -- a task
+# that could edit them could widen its own authority. plugins/way-of-working/bin/ is
+# deliberately NOT listed: it is this repo's product, so the loop must be able to work
+# there, under the critic floor (code_paths) and the human merge.
+orchestration:
+  critics: [architect, security-critic, docs-consistency]
+  round_cap: 2
+  human_only_paths:
+    - .github/
+    - .ai/
+    - .claude/
+    - .claude-plugin/
+    - plugins/way-of-working/.claude-plugin/
+    - scripts/
+    - CLAUDE.md
+  restrict_updates: restrict-updates-to-main
+  loop_identity: "glunk-loop[bot]"
