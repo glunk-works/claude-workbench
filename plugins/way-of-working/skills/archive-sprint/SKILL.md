@@ -160,7 +160,27 @@ If any precondition fails, STOP and report why — do not archive.
 
 ## Steps
 
-1. **Snapshot** the current `.ai/next-steps.md` to `.ai/archive/<current_sprint_id>-next-steps.md` (`.ai/archive/` is git-ignored). This preserves the sprint's final cursor for manual history queries.
+1. **Snapshot** the current `.ai/next-steps.md` to `.ai/archive/<current_sprint_id>-next-steps.md`. This preserves the sprint's final cursor for manual history queries.
+
+   **Check the snapshot path is git-ignored — before writing it, not after.** The plugin
+   cannot assume it is: adoption copies `.ai/project.yml` and leaves `.gitignore` to the
+   adopter, so a repo that never listed `.ai/archive/` would see the snapshot as untracked
+   and `/way-of-working:resume`'s clean-tree check would read the tree as dirty (found live,
+   `#219`).
+   ```bash
+   git check-ignore .ai/archive/<current_sprint_id>-next-steps.md   # from the repo root; must name the path
+   ```
+   Read its *output*, not its exit status — the same reading as the *Check the destinations
+   are not ignored* check below, inverted: here an **empty** output is the failure. If it
+   names the path, write the snapshot. If it prints nothing, **STOP before writing**: report
+   "`.ai/archive/` is not git-ignored here — add it to `.gitignore` (beside
+   `.ai/state.json`), land that, then re-run." `git check-ignore` is index-aware, so if
+   `.gitignore` already lists it, the snapshot path is **tracked** (`git ls-files
+   .ai/archive/<current_sprint_id>-next-steps.md` shows it) — say so instead, and name `git rm
+   --cached .ai/archive/<current_sprint_id>-next-steps.md` as the fix, landed before the
+   re-run like the `.gitignore` edit. Never add the line yourself and never write
+   the snapshot anyway, since either leaves the tree dirty or edits an adopter's ignore file
+   unreviewed.
 
 2. **Compact the deep record (move, don't rewrite) — before the cursor advances**, while
    `current_sprint_id` still names the closed sprint. A sprint close is the compaction
