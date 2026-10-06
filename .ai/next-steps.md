@@ -4,24 +4,25 @@
 hardening*. Status: **implementing**.
 
 **Just done (2026-10-05):**
-- Built #250 (`resume` no longer offers an `--admin` merge the active `gh` identity cannot
-  perform; `pr-checks` names the identity); merged as PR #256 (`c81f18f`).
+- Built #245 (`cursor-sync-pr.sh` takes `{ruleset.required_checks}` as a third argument and
+  offers a `BLOCKED` sync PR only if every listed name is a green entry in the rollup);
+  merged as PR #258 (`7476419`).
 - Critic pass on that diff: architect, security-critic and docs-consistency, 2 rounds,
-  converged; no second-opinion round run. No review CI gate exists, so that pass was the
-  only critic look the diff had.
-- Pruned two squash-merged local branches; `fix/hook-exec-bit-214` and
-  `docs/sync-cursor-sprint-08-orchestrator-plan` were skipped (tip is not what GitHub merged)
-  and may be stranded work.
+  converged; second-opinion round offered and declined. No review CI gate exists, so that
+  pass was the only critic look the diff had.
+- Left open on purpose: the required list is the working-tree `.ai/project.yml`, not the
+  live ruleset's contexts, and matching is by name only. The architect suggested reading the
+  contexts from `rules/branches/<base>` instead; deferred to #248, not yet confirmed there.
 
-**Next:** task #245 — `cursor-sync-pr.sh` requires every named required check to appear green
-in the rollup. Then the green gate, critic-gate (architect + security-critic) and ship;
-#248, #244, #243, #246 and #247 follow in the milestone's build order. On **sonnet**
-(`coder`).
+**Next:** task #248 — `pr-checks` reads the rules the blocked-state predicate cannot see.
+Read the issue first, since #245 left the live `required_status_checks` contexts to it. Then
+the green gate, critic-gate (architect + security-critic) and ship; #244, #243, #246 and
+#247 follow in the milestone's build order. On **sonnet** (`coder`).
 
-**HITL Gate: OPEN** — first anchor for milestone 11 (no verified baseline this session),
-description sha `267c67978b0a48a26b8706dd5fba09b5c9dd95c4b3c6841986140840fe8bded5`, unchanged
-since the previous anchor: a human confirms the description is still the intended plan, then
-says go.
+**HITL Gate: OPEN** — first anchor for milestone 11 in this handoff (no verified baseline
+this session), description sha
+`267c67978b0a48a26b8706dd5fba09b5c9dd95c4b3c6841986140840fe8bded5`, unchanged since the
+previous anchor: a human confirms the description is still the intended plan, then says go.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 11](https://github.com/glunk-works/claude-workbench/milestone/11) ·
