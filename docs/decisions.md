@@ -1220,3 +1220,10 @@ rule it cannot evaluate (#248, PR #260), with a stub-`gh` fixture for that block
 #264). `ai-cursor-banner.sh` caps the length of each field it injects (#246, PR #266).
 `WB-D21` keeps `hooks.json` invoking that hook directly (#247, PR #268). Sprint 9 closed at
 `7be385a` (PR #268), not at a release tag.
+
+Sprint 10 (milestone 12, *Session-start hardening: banner and branch prune*, both issues
+closed) adds no `.ai/project.yml` key and is unreleased; it ships in the milestone 9 release.
+`ai-cursor-banner.sh` strips control characters from each field it injects (#270, PR #275).
+`/way-of-working:resume` and `/way-of-working:archive-sprint` prune a merged branch whose
+local tip is the commit GitHub merged or an ancestor of it, through `bin/prune-verdict.sh`
+(#271, PR #278). Sprint 10 closed at `542827e` (PR #278), not at a release tag.
