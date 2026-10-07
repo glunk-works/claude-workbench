@@ -1741,7 +1741,7 @@ hand-back lists each case.
 | 6 | **Eval set**: 20–50 real past tasks (from merged PRs), code-graded first, re-run per driver release; read the transcripts. | none | pass^k stable release over release |
 
 Steps 1–2 are one milestone (five issues, the stale-sentence fix, and the WB-D's step-1 half).
-Steps 4–6 are a second milestone that cannot start before the human decisions in § 8.
+Steps 4–6 are a second milestone. The § 8 decisions it waited on are all made; see `docs/proposals/orchestrator-m2-decisions.md` for how it is cut.
 
 ### 7.2 Step 4 — identities and credentials
 - Model auth: `claude setup-token` minted by the maintainer, stored only on the loop host in
@@ -2974,8 +2974,7 @@ each taken by the maintainer. § 9 lists what is still unbuilt; no decision is o
     break out of it;
   - a Windows service bound to all interfaces, and the `_ipv6` twin, under `isolated` mode
     (§ 8.7's listener was bound to loopback; IPv6 was off);
-  - the § 8.1 name rule is decided for milestone 1 (§ 8.13d) and not yet written:
-    `plan-anchor.sh` checks no author today;
+  - the § 8.1 name rule is written (#235, #295): `plan-anchor.sh` and resume refuse the loop identity;
   - whether `viewerCanMergeAsAdmin` tracks only legacy branch protection is an inference
     from one reading, not tested; the field is no longer used (§ 8.5).
   - **Preconditions, not open questions (§ 8.5, D2):** a merge-queue merge under the
