@@ -4,29 +4,26 @@
 proven*. Status: **implementing**.
 
 **Just done (2026-10-07):**
-- Task #317 shipped as PR #344 (`7b07b01`), **open, awaiting the human's merge**:
-  `scripts/loop/launch.sh` assembles the whole plan v9 § 7.3 container (base provenance check, loop
-  layer, isolated network with the allowlisting proxy, outside and inside preflight, the coder launch
-  line); a trivial task ran to completion in it several times. Proxy fixtures:
-  `tests/loop-proxy.test.sh` (not wired into `ci.yml`, not yet in CLAUDE.md's gate list).
-- Critic pass on #344: architect, security-critic and docs-consistency; 2 fix-and-re-run rounds, the
-  second still returning real findings, then a third fix round that **no critic re-checked**
-  (stopped by the human's call to ship; no second-opinion round). This repo has no review CI gate,
-  so that was the only critic look before the merge.
-- Known residual: the allowed `git` subcommands can read `/proc/<pid>/environ`, where the session's
-  credential sits. No secret was committed or pushed. Filed as #345 (milestone 13), to land before
-  the attack pass #318.
+- Task #318 shipped as PR #351 (`1f111b7`): `scripts/loop/attack.sh`, sourced by `launch.sh` under
+  `LOOP_ATTACK=1`, probes the assembled container for each of the issue's six items, and the pass
+  closed plan v9 § 9's live items. One hole found and fixed: the injecting proxy forwarded any
+  request body, so the session could ask the API for server tools, `mcp_servers`, or a `url`/`file`
+  source; `inject.py` now refuses those. Results are in plan v9 § 9 and `scripts/loop/README.md`.
+- PR #354 (`a18e7f3`): probe coverage for nested url sources and `mcp_toolset`.
+- Critic pass: `security-critic` on its default model. #351: 2 rounds, converged (round 2 found no
+  reachable bypass). #354: 1 round, tightenings only, fixed. No second-opinion round. This repo has
+  no review CI gate, so that was the only critic look before the merge.
+- Follow-ups filed in milestone 13: #352 (surface the proxy's deny lines in the driver report) and
+  #353 (decide the allowlisted hosts' tunnel residual).
 
-**Next:** task #345 — keep the credential out of the loop session container (a credential-injecting
-proxy plus fixed git tools in place of the free-form git allows, under `scripts/loop/`), per the
-issue body; ship it as one PR. On **sonnet** (coder). It depends on #344 being merged.
+**Next:** task #319 — driver core: tree copy, checks and commit against stubbed docker and gh,
+hermetic, per the issue body; ship it as one PR. On **sonnet** (coder). First in the build order
+whose dependency (#315) is done.
 
-**HITL Gate: OPEN** — (1) PR #344 awaits the human's merge; (2) first anchor for milestone 13:
-this session's resume never ran `verify`, so handoff treats the prior anchor as no baseline
-(description sha `ada92ac23e7fbff5b1543d5ad2272f37e257e8a416cb658fc0bb486f0cf2a159`, unchanged);
-(3) the human confirms #345 comes before #318 and settles whether the proxy's credential injection
-works for the subscription OAuth token (decision 4). The human merges #344, confirms, and starts
-#345 with a go. No review CI gate in this repo.
+**HITL Gate: OPEN** — first anchor for milestone 13: this session's resume never ran `verify`, so
+handoff treats the prior anchor as no baseline (description sha
+`ada92ac23e7fbff5b1543d5ad2272f37e257e8a416cb658fc0bb486f0cf2a159`, unchanged). The human merges
+this cursor-sync PR, then starts #319 with a go. No review CI gate in this repo.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 13](https://github.com/glunk-works/claude-workbench/milestone/13) ·
