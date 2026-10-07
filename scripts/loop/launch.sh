@@ -23,6 +23,9 @@
 #                            (comma-separated; name api.anthropic.com and the other defaults too)
 #   LOOP_ID                  default <epoch>-<pid>; names every resource this run creates
 #   LOOP_PREFLIGHT_ONLY=1    stop after the preflight (no credential, no model call)
+#   LOOP_ATTACK=1            after the preflight, run attack.sh (issue #318): probes of the assembled container,
+#                            some with model calls; needs LOOP_CREDENTIAL_FILE for those and for the secret search;
+#                            LOOP_ATTACK_ITEMS picks a subset. Add LOOP_PREFLIGHT_ONLY=1 to skip the trivial task
 #
 # On this host, run it under Git Bash: the MSYS path conversion is switched off below, since it
 # rewrites `/tmp` in a docker argument into a Windows path.
@@ -52,7 +55,8 @@ bad() { echo "  FAIL $*" >&2; failed=1; }
 
 cleanup() {
   docker rm -f "$sess" "$proxy" "$inj" >/dev/null 2>&1 || true
-  docker network rm "$net" "$ext" >/dev/null 2>&1 || true
+  docker network rm "$net" "$ext" "wow-loop-v6-$id" >/dev/null 2>&1 || true
+  docker rmi -f "wow-loop-rules:$id" >/dev/null 2>&1 || true
   docker volume rm -f "$vol" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -62,7 +66,7 @@ case "$cred_env" in CLAUDE_CODE_OAUTH_TOKEN | ANTHROPIC_API_KEY) ;; *) fail "LOO
 # The session gets a placeholder in the credential variable; the injecting proxy swaps in the real one.
 dummy="loop-dummy-credential-not-real"
 cred="preflight-only-not-a-credential"
-if [ -z "$preflight_only" ]; then
+if [ -z "$preflight_only" ] || [ -n "${LOOP_CREDENTIAL_FILE:-}" ]; then
   [ -n "${LOOP_CREDENTIAL_FILE:-}" ] || fail "LOOP_CREDENTIAL_FILE is required (or LOOP_PREFLIGHT_ONLY=1)"
   [ -s "$LOOP_CREDENTIAL_FILE" ] || fail "LOOP_CREDENTIAL_FILE is empty or unreadable"
   cred="$(head -n 1 "$LOOP_CREDENTIAL_FILE" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"   # the same strip inject.py's .strip() does
@@ -262,6 +266,11 @@ for t in 1.1.1.1:443 host.docker.internal:443 github.com:443 api.anthropic.com:8
 done
 
 [ "$failed" = 0 ] || fail "preflight failed; the session was not started"
+# The attack pass (#318): probes against this same container, before any session runs.
+if [ -n "${LOOP_ATTACK:-}" ]; then
+  . "$here/attack.sh"
+  [ "$failed" = 0 ] || fail "the attack pass found a hole (ATTACK ... FAIL above); the session was not started"
+fi
 [ -z "$preflight_only" ] || { echo; echo "launch: preflight passed (LOOP_PREFLIGHT_ONLY=1, no session run)"; exit 0; }
 
 # ---------------------------------------------------------------------------------------------

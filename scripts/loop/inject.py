@@ -13,7 +13,7 @@ environment variable. LOOP_CREDENTIAL_ENV says which header it becomes:
                               header itself, as it does for any OAuth token)
 
 Fixed on purpose: the upstream is api.anthropic.com:443 whatever Host the session sends;
-only POST /v1/messages, POST /v1/messages/count_tokens and GET /v1/models are forwarded; the target address is resolved once and must be global (the same
+only POST /v1/messages, POST /v1/messages/count_tokens and GET /v1/models are forwarded, and a POST body that names mcp_servers, a container, a server-side tool, a content block of another type or a url or file source is refused (#318); the target address is resolved once and must be global (the same
 DNS-rebinding refusal as proxy.py), and the TLS connection is made to that checked address with
 the name verified.
 
@@ -22,6 +22,7 @@ the name verified.
 """
 import http.client
 import http.server
+import json
 import os
 import socket
 import ssl
@@ -55,6 +56,109 @@ def path_verdict(method, path):
         decoded = unquote(decoded)
     if "\\" in decoded or any(s in (".", "..") for s in decoded.split("/")):
         return "dot segment in the path"
+    return None
+
+
+# Fields that make the API act for the caller beyond answering: remote MCP servers, a code-execution
+# container with skills, and server-side tools (web_search, web_fetch, code_execution ...), which
+# fetch or run on Anthropic's side and so reach any URL the session names. Claude Code's own tools
+# are plain custom tools (no `type`, or "custom"), so this allowlist costs inference nothing.
+BODY_REFUSED_KEYS = ("mcp_servers", "container")
+
+
+def _no_duplicate_keys(pairs):
+    d = {}
+    for k, v in pairs:
+        if k in d:
+            raise ValueError("duplicate key")
+        d[k] = v
+    return d
+
+
+# Content blocks Claude Code sends. Anything else (server_tool_use, mcp_tool_use, container_upload,
+# search results ...) is refused, and a block's `source` may only carry its data inline: a url or a
+# file_id source makes the API fetch a URL or read a stored file on the caller's behalf.
+CONTENT_TYPES = {"text", "image", "document", "tool_use", "tool_result", "thinking", "redacted_thinking"}
+SOURCE_TYPES = {"base64", "text"}
+
+
+def _blocks_verdict(blocks, depth=0):
+    if depth > 4:
+        return "content nests too deep"
+    if isinstance(blocks, str):
+        return None
+    if not isinstance(blocks, list):
+        return "content is neither a string nor a list"
+    for b in blocks:
+        if not isinstance(b, dict):
+            return "a content block is not an object"
+        if b.get("type") not in CONTENT_TYPES:
+            return "content block type %s is not allowed" % str(b.get("type"))[:40]
+        if "source" in b:
+            s = b["source"]
+            if not isinstance(s, dict) or s.get("type") not in SOURCE_TYPES:
+                return "a %s block has a source that is not inline data" % b["type"]
+        if b["type"] == "tool_result" and "content" in b:
+            why = _blocks_verdict(b["content"], depth + 1)
+            if why:
+                return why
+    return None
+
+
+def _no_constant(name):
+    raise ValueError("non-finite number")
+
+
+def body_verdict(method, body, headers=()):
+    """Return None when the body may be forwarded, else a reason. Pure. Only POST bodies are read.
+    headers is the session's (name, value) pairs: the bytes are parsed here exactly once, strictly
+    (UTF-8, no BOM, no NaN, no repeated key), and only as the plain JSON the API is sent."""
+    if method != "POST":
+        return None
+    if not body:
+        return "empty body on a POST"
+    names = [k.lower() for k, _ in headers]
+    if names.count("content-type") > 1 or names.count("content-encoding") > 1:
+        return "a repeated Content-Type or Content-Encoding header"  # the check reads one copy, the API may read another
+    h = {k.lower(): v.strip().lower().replace(" ", "") for k, v in headers}
+    if h.get("content-encoding") not in (None, "", "identity"):
+        return "a Content-Encoding is not forwarded"
+    ct = h.get("content-type", "application/json")
+    if ct not in ("application/json", "application/json;charset=utf-8"):
+        return "Content-Type is not application/json"
+    try:
+        text = body.decode("utf-8")
+        if text.startswith("﻿"):
+            return "body starts with a byte-order mark"
+        doc = json.loads(text, object_pairs_hook=_no_duplicate_keys, parse_constant=_no_constant)
+    except (ValueError, RecursionError):  # a duplicate key is a ValueError too: parsers disagree on which one wins
+        return "body is not strict UTF-8 JSON, or repeats a key"
+    if not isinstance(doc, dict):
+        return "body is not a JSON object"
+    for k in BODY_REFUSED_KEYS:
+        if k in doc:
+            return "body asks for %s" % k
+    tools = doc.get("tools", [])
+    if not isinstance(tools, list):
+        return "tools is not a list"
+    for t in tools:
+        if not isinstance(t, dict):
+            return "a tool is not an object"
+        if t.get("type", "custom") != "custom":
+            return "body asks for a server-side tool (%s)" % str(t.get("type"))[:40]
+    if "system" in doc:
+        why = _blocks_verdict(doc["system"])
+        if why:
+            return why
+    msgs = doc.get("messages", [])
+    if not isinstance(msgs, list):
+        return "messages is not a list"
+    for m in msgs:
+        if not isinstance(m, dict):
+            return "a message is not an object"
+        why = _blocks_verdict(m.get("content", ""))
+        if why:
+            return why
     return None
 
 
@@ -124,6 +228,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if n < 0 or n > MAX_BODY:
             return self.refuse(413, "body too large")
         body = self.rfile.read(n) if n else None
+        why = body_verdict(self.command, body, self.headers.items())
+        if why:
+            return self.refuse(403, why)
         conn = None
         try:
             conn = open_upstream()

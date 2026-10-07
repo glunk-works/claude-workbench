@@ -60,8 +60,9 @@ by `603-Identity`); it is passed to that one command only.
 | `Dockerfile` | The loop layer: base pinned by tag and digest, `claude` pinned by version and sha256 in `/usr/local/bin`, auto-update off, non-root `USER`, the files below baked in root-owned |
 | `managed-settings.json` | Root-owned `/etc/claude-code/managed-settings.json`: the `allowManaged*` and `strictPluginOnlyCustomization` keys, `sandbox.enabled: false`, the allow list and the deny rules. The plan's PreToolUse guards are not in it yet (`allowManagedHooksOnly` means no hook runs); the attack pass (`#318`) decides what is missing |
 | `proxy.py` | CONNECT-only allowlisting proxy, run from the same image; refuses IP literals, `host.docker.internal` and allowlisted names that resolve to a non-global address |
-| `inject.py` | Credential-injecting reverse proxy, its own container: the session sends plain HTTP (`ANTHROPIC_BASE_URL`) with a placeholder token; this swaps in the real credential (`Authorization: Bearer` for a `CLAUDE_CODE_OAUTH_TOKEN` credential, `x-api-key` for an API key) and forwards over HTTPS to `api.anthropic.com`, only `POST /v1/messages`, `POST /v1/messages/count_tokens` and `GET /v1/models` (exact method and path, a query string allowed), the resolved address checked as global |
+| `inject.py` | Credential-injecting reverse proxy, its own container: the session sends plain HTTP (`ANTHROPIC_BASE_URL`) with a placeholder token; this swaps in the real credential (`Authorization: Bearer` for a `CLAUDE_CODE_OAUTH_TOKEN` credential, `x-api-key` for an API key) and forwards over HTTPS to `api.anthropic.com`, only `POST /v1/messages`, `POST /v1/messages/count_tokens` and `GET /v1/models` (exact method and path, a query string allowed), the resolved address checked as global; a POST body that names `mcp_servers`, a `container`, a repeated key or a `tools` entry whose `type` is not `custom` is refused (`#318`) |
 | `git_tools.py`, `managed-mcp.json` | The managed `loopgit` MCP server: `git_status`, `git_diff(staged)`, `git_log(count)`, `git_add(paths)`, `git_commit(message)`. The model supplies values, never options, so git's option parsing is not in reach; `managed-settings.json` allows these and no `Bash(git …)` |
+| `attack.sh` | The attack pass (`#318`), sourced by `launch.sh` under `LOOP_ATTACK=1`; see below |
 | `entrypoint.sh` | Makes the config directory and execs `claude`; no credential passes through it |
 | `stop-schema.json` | The `--json-schema` the coder must answer with |
 
@@ -73,7 +74,7 @@ in `.ai/project.yml`): `allowManagedPermissionRulesOnly` ignores deny rules from
 a second repo's loop image needs its own copy. `LOOP_ALLOW_HOSTS` replaces the proxy's list
 rather than adding to it, so a widened list names the four defaults as well. The `#317` residual (the allowed `git` subcommands could read `/proc/<pid>/environ`, where the session's
 credential sat) is closed by construction in `#345`: there is no credential in the session to read, and
-no free-form git option surface. What the attack pass (`#318`) still tests: git option reads against the
+no free-form git option surface. The attack pass (`#318`, `attack.sh`) tested what was left, and the results are in plan v9 § 9: git option reads against the
 fixed tools' argv, implicit no-index `git diff`, `.git`/config writes, and the injecting proxy's host-side
 reachability. The session no longer *holds* the credential but can still *use* it through the proxy, for exactly those three requests. "No credential in the session's filesystem" holds by construction (nothing writes it there): the preflight checks `docker inspect` and the environment, not the volume. The launch line is plan § 7.3's minus `Bash` in `--tools` and minus `--strict-mcp-config` (claude refuses that flag beside a managed MCP config; `allowManagedMcpServersOnly` and the `.mcp.json` write denies stand in for it). `Bash` has no allow rules, so the coder cannot run commands (the repo's gate included) until
 the driver issues decide how, and whoever adds a `Bash(git …)` allow must re-add the git-option denies this change removed (`--no-index`, `--output`, `commit -F`/`--file`); `GIT_CONFIG_GLOBAL=/dev/null` and the `.git` denies still close the git-config
@@ -81,3 +82,26 @@ code-execution route. Tests: `sh tests/loop-proxy.test.sh` (the proxy's
 decision), `sh tests/loop-inject.test.sh` (the injecting proxy's path and header decisions),
 `sh tests/loop-git-tools.test.sh` (the fixed git tools, driven over MCP); the in-container probes are
 `launch.sh`'s preflight.
+
+## attack.sh: the attack pass (`#318`)
+
+```
+LOOP_ATTACK=1 LOOP_CREDENTIAL_FILE=<file> bash scripts/loop/launch.sh                       # every probe, then the trivial task
+LOOP_ATTACK=1 LOOP_PREFLIGHT_ONLY=1 LOOP_ATTACK_ITEMS="network breakout" bash scripts/loop/launch.sh   # a subset
+```
+
+Sourced by `launch.sh` after its preflight, so every probe sees the container exactly as built:
+a throwaway container with the session's flags and network, running what a tool-started process
+could run, and `claude -p` runs in the launch form for the live items. It prints `ATTACK <item>
+<PASS|FAIL|NOTE> <text>` lines and fails the run on any `FAIL`. Items: `secret` (the credential
+in env, `/proc`, files), `body` (what the session may ask the injecting proxy for), `network`
+(host listeners on `0.0.0.0` and `[::]`, the `_ipv6` twin, host-side reach of the proxies),
+`breakout` (writes outside the tmpfs, capabilities, the Docker socket, 22 CONNECT forms against
+the allowlisting proxy), then the four that make model calls through the credential: `config`
+(files seeded in the config dir), `agent` (`--append-system-prompt` with `--agent`), `rules` (a
+matrix of Bash commands against candidate managed allow rules) and `autoallow` (Bash with none), and
+`gitwrites` (the git tools outside a repository; Write against `.git`, symlinks into it, and the
+other human-only paths). Run it after any change to the image, the managed settings, either proxy or the
+launch line. Two rules it taught, for whoever adds a `Bash(...)` allow: use one exact rule per
+script, never a glob (`Bash(sh tests/*.test.sh)` also matched `tests/../x.test.sh`), and know that Claude Code
+allows a small read-only set with no rule at all (`echo`, `id`, `ps aux`, `git status|log|show|ls-files`).
