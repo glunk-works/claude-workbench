@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "loopgit": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["/opt/loop/git_tools.py"]
+    }
+  }
+}

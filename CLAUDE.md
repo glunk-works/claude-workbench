@@ -53,6 +53,9 @@ sh tests/prune-verdict.test.sh    # resume/archive-sprint prune: merged-tip-or-a
 sh tests/review-step.test.sh    # review-step derive/decide predicate fixtures (not yet required)
 sh tests/critic-section.test.sh  # critic-section PR-body section fixtures (not yet required)
 sh tests/loop-baseline.test.sh  # scripts/loop/baseline.sh derivation fixtures on canned gh output (not yet required)
+sh tests/loop-proxy.test.sh     # scripts/loop/proxy.py allow/deny fixtures (not yet required)
+sh tests/loop-inject.test.sh    # scripts/loop/inject.py path and header fixtures (not yet required)
+sh tests/loop-git-tools.test.sh # scripts/loop/git_tools.py fixed-tool fixtures, over MCP (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `scripts/invariants-check.sh` needs
