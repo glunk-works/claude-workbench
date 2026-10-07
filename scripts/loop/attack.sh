@@ -384,8 +384,8 @@ print("mcp_toolset tool", post("/v1/messages", {"model": m, "max_tokens": 1, "me
   denies_after="$(docker logs "$inj" 2>&1 | grep -c "^deny " || true)"
   sed 's/^/       /' "$out_dir/body.txt"
   if grep -q '^plain count_tokens 200' "$out_dir/body.txt" && grep -q '^custom tool count_tokens 200' "$out_dir/body.txt" \
-     && [ "$(grep -c ' 403$' "$out_dir/body.txt")" = 11 ] && [ $((denies_after - denies_before)) -ge 11 ]; then
-    attack 1 PASS "the injecting proxy forwards a plain and a custom-tool count_tokens (200) and refuses server-side tools, mcp_servers, url or file sources (also inside tool_result, system and a content source), a repeated key and a non-JSON body (403)"
+     && [ "$(grep -c ' 403$' "$out_dir/body.txt")" = 11 ] && [ $((denies_after - denies_before)) = 11 ]; then
+    attack 1 PASS "the injecting proxy forwards a plain and a custom-tool count_tokens (200) and refuses server-side tools, mcp_servers, url or file sources (also inside tool_result and system), any content-typed source, a repeated key and a non-JSON body (403)"
   else
     attack 1 FAIL "the injecting proxy's body filter did not behave as expected (see above)"
   fi
