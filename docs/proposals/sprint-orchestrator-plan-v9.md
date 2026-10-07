@@ -63,6 +63,9 @@ launch line names the agent's tools (§ 8.4a), the per-PR merge check drops
 conversation and taken by the maintainer: the driver pushes after exit and the session holds
 no GitHub token; loop-spawned critics get no Bash; loop PRs stay outside resume's derived
 step; the § 8.1 name rule is implemented in milestone 1. What remains open is in § 9.
+**Synced 2026-10-07 (#315)** to the decisions in `orchestrator-m2-decisions.md`: § 7.1 steps
+4–6 cut into three milestones, the driver in `scripts/loop/` (WB-D23), and the loop image's
+base named in § 7.3 and § 8.2. No review round; not a v10.
 
 ---
 
@@ -1736,12 +1739,24 @@ hand-back lists each case.
 | 1 | **No-op handoff rule.** When the only cursor change is "review or merge PR N next", handoff writes `.ai/state.json` and skips the ledger PR; resume derives that step **from GitHub state only** (an open same-repo PR whose head was pushed by the maintainer's login and whose title or body names the anchored task issue), never from `state.json`'s `next_action`. (v9: loop PRs are pushed by the App and never match; **intended**, § 8.13.) Milestone 1 also implements § 8.1's name rule (§ 8.13). Fix #209 (roadmap entry written before close) and #220 (dirty ledger) so a sprint close is one PR. | **small, and it needs the WB-D**: `main`'s ledger stops being the complete record during a review (WB-D20's display property), and resume gains a GitHub-derived step. Because that step is a fresh-session review that mints the gate under the owner's ID, the derivation must be from GitHub state the session cannot shape. The WB-D must say what a fresh machine with no `state.json` does, and must state the derivation rule. | cursor PRs per work PR < 0.5 on devcontainers within one week; relay PRs = 0; plus **minutes the human spends per work PR**, measured from merge timestamps, so reading load is visible |
 | 2 | Fix the stale nesting sentence (`workflow.md` L140 only). Split `resume` into a lean auto-start path plus on-demand appendices (target < 20 k tokens of plugin prose per task session). Update the CLI to ≥ 2.1.259 on the host that will run anything headless. | none | prose loaded per task session measured from transcripts |
 | 3 | **Fresh-session review stays human-started**, locally, as today (after step 1 it costs one session and zero PRs). Automating it is **blocked on #122 and #93**. If and when they are decided: `workflow_dispatch` from the driver only, no `pull_request*` trigger, no PR checkout, the OAuth secret in a GitHub Environment with required reviewers, tools limited to read + inline-comment, `--max-turns`, `timeout-minutes`, concurrency group. Posted under an identity **not** in any reviewer allowlist. | blocked | n/a |
-| 4 | **Headless coder loop** (`bin/run-sprint.sh`, fixture-tested) running as a **hardened container built from the devcontainers image**, hosted on Docker Desktop on the maintainer's always-on desktop to start (§ 8.2; the image is unchanged if it later moves to a VM or box). Details in 7.2–7.5. **Two further prerequisites (v6), both now decided:** a separate restrict-updates ruleset on each repo, tested first on a scratch repo, so the loop identity cannot merge (§ 8.5); and devcontainers excluded from the first proving round, then run with native linters and CI as the gate of record for the image build and template proof (§ 8.6). Step 4 does **not** wait for 2026-10-17 (§ 8.1). **Three tests preceded v9 [T]:** the `--restricted` launch form (§ 8.8), the `isolated` gateway probe (§ 8.7) and § 8.5's checks 1–3, all run on 2026-10-04/05, plus the GitHub App test (§ 8.12); the first build step is the full § 7.3 container assembled as one piece, without the sandbox. Waves of **independent** tasks; task PRs to `pr_base`; the human merges the wave **serially** in one sitting (no repo has a merge queue, and strict status checks are off on every repo, so there are no CI re-runs between merges, § 4.4). On the Docker Desktop host the loop dispatches only into one-shot away-blocks the human marks per sitting; the host's `placement` lives in the driver's own config, not in any repo (§ 8.2, D3). **Prerequisite not in the plugin today:** plan-sprint emits a numbered build order with no independence marker, so either plan-sprint gains a per-issue `depends_on` (human-confirmed at planning, like the build-order slot) or the driver treats the whole order as one chain and dispatches one task per sitting. | **the same WB-D** (which human authorizations become plan-time policy, including the critic allowlist and the critic-selection judgment slot; the loop identity's trust class; the human-only path key; the independence marker — all decided in § 8.4) | a 3–4 task wave completes with no session above the context cap and spend under the ceiling; zero human touches between dispatch and the merge sitting; **and** human minutes per work PR not above the step-1 baseline |
+| 4 | **Headless coder loop** (the driver in `scripts/loop/`, fixture-tested; not `bin/`, WB-D23) running as a **hardened container built from `ghcr.io/603-identity/devcontainer-base` plus a loop layer** (§ 7.3), hosted on Docker Desktop on the maintainer's always-on desktop to start (§ 8.2; the image is unchanged if it later moves to a VM or box). Details in 7.2–7.5. **Two further prerequisites (v6), both now decided:** a separate restrict-updates ruleset on each repo, tested first on a scratch repo, so the loop identity cannot merge (§ 8.5); and devcontainers excluded from the first proving round, then run with native linters and CI as the gate of record for the image build and template proof (§ 8.6). Step 4 does **not** wait for 2026-10-17 (§ 8.1). **Three tests preceded v9 [T]:** the `--restricted` launch form (§ 8.8), the `isolated` gateway probe (§ 8.7) and § 8.5's checks 1–3, all run on 2026-10-04/05, plus the GitHub App test (§ 8.12); the first build step is the full § 7.3 container assembled as one piece, without the sandbox. Waves of **independent** tasks; task PRs to `pr_base`; the human merges the wave **serially** in one sitting (no repo has a merge queue, and strict status checks are off on every repo, so there are no CI re-runs between merges, § 4.4). On the Docker Desktop host the loop dispatches only into one-shot away-blocks the human marks per sitting; the host's `placement` lives in the driver's own config, not in any repo (§ 8.2, D3). | **the same WB-D** (which human authorizations become plan-time policy, including the critic allowlist and the critic-selection judgment slot; the loop identity's trust class; the human-only path key; the independence marker — all decided in § 8.4) | a 3–4 task wave completes with no session above the context cap and spend under the ceiling; zero human touches between dispatch and the merge sitting; **and** human minutes per work PR not above the step-1 baseline |
 | 5 | **Usage governor and operations** (7.4, 7.5). | none | no "hit your limit" error during the maintainer's declared hours over two weeks |
 | 6 | **Eval set**: 20–50 real past tasks (from merged PRs), code-graded first, re-run per driver release; read the transcripts. | none | pass^k stable release over release |
 
 Steps 1–2 are one milestone (five issues, the stale-sentence fix, and the WB-D's step-1 half).
-Steps 4–6 are a second milestone. The § 8 decisions it waited on are all made; see `docs/proposals/orchestrator-m2-decisions.md` for how it is cut.
+Steps 4–6 are three milestones, cut by what each proves (confirmed by the maintainer on
+2026-10-06; `docs/proposals/orchestrator-m2-decisions.md` has the decisions and data):
+- **M2a, loop container proven** (milestone 13). The whole § 7.3 container assembled as one
+  piece and attacked; § 9's open live items closed; the driver core built hermetic, with stub
+  `docker` and `gh`, beside the container proof; the minimal per-task limits, kill file and
+  recovery the first dispatch needs (taken forward from step 5, § 7.4–7.5); `--model fable`
+  smoke-tested headless; the baseline script.
+- **M2b, first waves on claude-workbench** (milestone 14). Live App preflight, one task per
+  away-block, then a small wave; the batch-merge helper; merge-triggered dispatch, opt-in.
+  Carries step 4's exit metric.
+- **M2c, governor and eval** (milestone 15). The rest of step 5 (day caps, window and
+  away-block, reserve, the scoped-lock decision) and step 6's eval set, plus the
+  subscription-vs-key and Fable-vs-Opus comparisons.
 
 ### 7.2 Step 4 — identities and credentials
 - Model auth: `claude setup-token` minted by the maintainer, stored only on the loop host in
@@ -1961,6 +1976,22 @@ Steps 4–6 are a second milestone. The § 8 decisions it waited on are all made
   writable is consulted, a changed hash tells you the session tried, which is worth a stopped
   wave and a look at the transcript, but it is not what keeps the session narrow.
 - Host-level, as a container (§ 8.2):
+  - **The image** (named 2026-10-07, #315). `603-Identity/devcontainers` publishes three
+    images, `devcontainer-base`, `-tofu` (base + OpenTofu + tflint) and `-node` (base +
+    Node.js + npm), and none ships the `claude` CLI, so "the devcontainers image" alone
+    named nothing buildable. The loop image is built `FROM
+    ghcr.io/603-identity/devcontainer-base`, pinned by tag **and** digest and verified against
+    that repo's `build.yml` provenance (`gh attestation verify`, as its consumers' `verify`
+    check does). Base already runs as a non-root uid 1000 with no sudo, strips every setuid
+    bit and is built for a read-only root. The **loop layer**, a Dockerfile in `scripts/loop/`
+    (WB-D23), adds `claude` in `/usr/local/bin`, pinned by version and checksum, with
+    auto-update off: the native installer's per-user location would put the binary on
+    writable state, where the session could replace it, and an updater needs the update hosts on the proxy list (§ 4.2). It also
+    bakes in the managed settings below. **One loop image per toolchain, not one image:**
+    claude-workbench's gate needs only what base carries plus `claude`; bounty-infra, when it
+    joins, gets a second loop image `FROM devcontainer-tofu` plus `claude` and `hatch`. No
+    new variant is published from devcontainers for now: one consumer does not justify it,
+    and devcontainers is outside the first proving round (§ 8.6). Revisit when it joins.
   - Root-owned `/etc/claude-code/managed-settings.json` carrying the keys above,
     `sandbox.enabled: false`, the deny rules and the PreToolUse guards is **baked into the
     image**; the `--settings` value is inline JSON or a second root-owned file beside it.
@@ -1975,8 +2006,8 @@ Steps 4–6 are a second milestone. The § 8 decisions it waited on are all made
   - **Egress** through a user-defined `--internal` Docker network whose only other member is
     a proxy container, which is also attached to an external network. The proxy allows only
     the hosts Claude Code needs (v7, from network-config.md: `api.anthropic.com`,
-    `claude.ai`, `claude.com`, `platform.claude.com`; the update hosts only if auto-update
-    stays on in the image, § 4.2). **github.com and api.github.com are off the coder's
+    `claude.ai`, `claude.com`, `platform.claude.com`; not the update hosts, since auto-update
+    is off in the image, above and § 4.2). **github.com and api.github.com are off the coder's
     list** (§ 8.13a): the session has no remote and no token, so for it those hosts would
     be an exfiltration route only, and a repo whose gate fetches from GitHub names them in
     its own `orchestration.*` list.
@@ -2192,6 +2223,8 @@ each taken by the maintainer. § 9 lists what is still unbuilt; no decision is o
    dispatch window exists only while the laptop is awake and logged in. The image moves to a
    VM or always-on box unchanged when the `depends_on` measurement (§ 8.3) shows the loop
    earns one. No security reviewer has looked at this placement; § 9 records that.
+   *Named (2026-10-07, maintainer, #315):* "the devcontainers image" is
+   `devcontainer-base` plus a loop layer, one loop image per toolchain (§ 7.3).
    *v6 review note (not a change to the decision):*
    - The host is an **always-on desktop**, not a laptop (maintainer, 2026-10-04). The "awake
      and logged in" residual reduces to "logged in after a reboot". The machine is already
