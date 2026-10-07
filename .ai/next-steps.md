@@ -4,29 +4,29 @@
 proven*. Status: **implementing**.
 
 **Just done (2026-10-07):**
-- Task #324 shipped as PR #342 (`67c0ed7`), merged: `scripts/loop/baseline.sh` derives a repo's
-  PR-flow numbers read-only from merged-PR history, with a fixture test
-  (`tests/loop-baseline.test.sh`) and the run-before-enabling adoption step in
-  `scripts/loop/README.md`. On this repo it reproduces the brief's ratios (cursor PRs per work PR,
-  dependent share, overlap); work-PR count and median differ slightly, cause unconfirmed.
-- Its `open_to_merge_min_per_work_pr` is wait-to-merge time, **not** the M2b exit metric; #341 files
-  the replacement (human actions and sittings per work PR) under milestone 14. The new test is not
-  wired into `ci.yml` (human-only path).
-- Critic pass on #342: architect, security-critic and docs-consistency; 3 fix-and-re-run rounds,
-  converged; no second-opinion round. This repo has no review CI gate, so that was the only critic
-  look before the merge.
-- Tasks #316 and #315 merged earlier the same day.
+- Task #317 shipped as PR #344 (`7b07b01`), **open, awaiting the human's merge**:
+  `scripts/loop/launch.sh` assembles the whole plan v9 § 7.3 container (base provenance check, loop
+  layer, isolated network with the allowlisting proxy, outside and inside preflight, the coder launch
+  line); a trivial task ran to completion in it several times. Proxy fixtures:
+  `tests/loop-proxy.test.sh` (not wired into `ci.yml`, not yet in CLAUDE.md's gate list).
+- Critic pass on #344: architect, security-critic and docs-consistency; 2 fix-and-re-run rounds, the
+  second still returning real findings, then a third fix round that **no critic re-checked**
+  (stopped by the human's call to ship; no second-opinion round). This repo has no review CI gate,
+  so that was the only critic look before the merge.
+- Known residual: the allowed `git` subcommands can read `/proc/<pid>/environ`, where the session's
+  credential sits. No secret was committed or pushed. Filed as #345 (milestone 13), to land before
+  the attack pass #318.
 
-**Next:** task #317 — assemble the full plan v9 § 7.3 loop container as one piece under
-`scripts/loop/`, per the issue body: one scripted build-and-launch runs a trivial task; the attack
-pass is #318, not this issue. Ship it as one PR. On **sonnet** (coder). Next in the milestone's
-build order; `depends_on: #315`, which is merged. The issue has one comment, a triage note, not
-anchored as a spec comment.
+**Next:** task #345 — keep the credential out of the loop session container (a credential-injecting
+proxy plus fixed git tools in place of the free-form git allows, under `scripts/loop/`), per the
+issue body; ship it as one PR. On **sonnet** (coder). It depends on #344 being merged.
 
-**HITL Gate: OPEN** — no verified baseline for milestone 13's anchor: this session's resume never
-ran `verify`, so handoff's rule treats the prior anchor as no baseline (description sha
-`ada92ac23e7fbff5b1543d5ad2272f37e257e8a416cb658fc0bb486f0cf2a159`, unchanged from the prior
-anchor). The human confirms and starts #317 with a go. No review CI gate in this repo.
+**HITL Gate: OPEN** — (1) PR #344 awaits the human's merge; (2) first anchor for milestone 13:
+this session's resume never ran `verify`, so handoff treats the prior anchor as no baseline
+(description sha `ada92ac23e7fbff5b1543d5ad2272f37e257e8a416cb658fc0bb486f0cf2a159`, unchanged);
+(3) the human confirms #345 comes before #318 and settles whether the proxy's credential injection
+works for the subscription OAuth token (decision 4). The human merges #344, confirms, and starts
+#345 with a go. No review CI gate in this repo.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 13](https://github.com/glunk-works/claude-workbench/milestone/13) ·
