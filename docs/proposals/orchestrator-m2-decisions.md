@@ -92,7 +92,53 @@ Size honestly: milestone 1 was planned at five issues and closed 14.
 3. #296 scope as above. Confirmed.
 4. Baseline script and the adoption step. Confirmed.
 5. Fable routing for architect work: case by case, not blanket; `models` unchanged.
-6. The subscription terms for headless `-p`, and whether Fable is available through the API: unknown; an M2a verification issue settles both before M2b's first live dispatch.
+6. The subscription terms for headless `-p`, and whether Fable is available through the API: unknown; an M2a verification issue settles both before M2b's first live dispatch. Answered 2026-10-07 (#316), see below: Fable is on the API; the terms are unsettled.
+
+## Platform facts verified for item 6 (#316, 2026-10-07)
+
+Verified by a sonnet session on the maintainer's host (CLI 2.1.289, logged in with `claude.ai`
+OAuth, no `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` set). Sources are the pages as fetched
+that day.
+
+1. **Subscription terms for unattended `claude -p`: not settled by the published text; the
+   maintainer's call.** Nothing says `-p` is forbidden and nothing says unattended driver-started
+   `-p` is permitted.
+   - For: `headless.md` documents `claude -p` as a normal mode and says only `--bare` skips the
+     subscription login. `legal-and-compliance.md` says OAuth "is designed to support ordinary use
+     of Claude Code", and that an end user may sign in to the unmodified binary with their own
+     subscription.
+   - Against, or at least a risk: Consumer Terms § 3 (effective 2025-10-08) bars access "through
+     automated or non-human means, whether through a bot, script, or otherwise", except via an API
+     key "or where we otherwise explicitly permit it". `legal-and-compliance.md` also says the
+     advertised Pro and Max limits "assume ordinary, individual usage of Claude Code and the Agent
+     SDK", and that developers building products should use API keys. The loop is the maintainer's
+     own use, not a product offered to others, which the second sentence of that page does not
+     address either way.
+   - Sources: <https://code.claude.com/docs/en/headless.md>,
+     <https://code.claude.com/docs/en/legal-and-compliance.md>,
+     <https://www.anthropic.com/legal/consumer-terms>.
+   - Consequence for M2b: decision 4's fallback (a Console API key) is the only path the terms
+     clearly permit. Staying on the subscription is a risk the maintainer accepts, or closes by
+     asking Anthropic (the compliance page points to sales). Not a technical blocker.
+2. **Fable is available through the API.** Model id `claude-fable-5-1`, released 2026-09-01, status
+   Active, retirement not sooner than 2027-09-01, on the Claude API and four other platforms; $10 /
+   $50 per MTok, cache reads $0.25. No waitlist is stated for Fable; the sibling Mythos 5.1 is the
+   verification-gated one. Source: <https://platform.claude.com/docs/en/models/fable-5-1/overview>.
+3. **Headless `--model fable` smoke run: passed.** `claude -p "Reply with exactly: ok" --model
+   fable --output-format json --max-turns 1`, run from a scratch directory: exit 0, `is_error`
+   false, `terminal_reason` `completed`, result `ok`, 1.8 s.
+   - **Where the resolved id is.** The alias `fable` resolved to `claude-fable-5-1`; it is the key in
+     the result's `modelUsage` map (there is no top-level `model` field). A second key,
+     `claude-haiku-4-5-20251001`, is Claude Code's own small-model call, so the driver must not take
+     "the one key" as the session model. The `system/init` event also carries the model under
+     `stream-json`; not checked here.
+   - **Cost shape.** `total_cost_usd` was 0.26 (a `costBasis: "list"` estimate, not a bill) for one
+     trivial turn, almost all of it a 12.7k-token cache write plus 26.8k cache reads: the run loaded
+     this host's user plugins, CLAUDE.md and memory because it was not `--bare`. That is the
+     per-session floor for M2b's budgets on an un-bare run, and `--bare` is not an option on the
+     subscription login.
+   - Not measured: Fable's own usage limit and its draw on the subscription pool (the smoke run
+     did not hit one).
 
 ## Stale plan text (fixed in the same PR as this file, or left)
 
@@ -104,6 +150,6 @@ and named the loop image's base (`devcontainer-base`, one loop image per toolcha
 
 ## Could not verify
 
-Headless `--model fable`; Fable's usage limit; API prices; Console spend-limit and revocation
+Fable's usage limit (headless `--model fable` itself is verified, see above); API prices; Console spend-limit and revocation
 behaviour; the App's behaviour under a ruleset on `sprint/*`; whether devcontainers adopted the
 no-op handoff; native stacked-PR behaviour under squash and restrict-updates.
