@@ -49,7 +49,7 @@ LOOP_PREFLIGHT_ONLY=1 bash scripts/loop/launch.sh    # everything except the mod
 LOOP_CREDENTIAL_FILE=<file> bash scripts/loop/launch.sh
 ```
 
-Run it under Git Bash on the loop host; the variables are listed in the script's header. The
+Keep the credential file outside every repo (for example `~/.loop/credential.txt`, user-only permissions). Run it under Git Bash on the loop host; the variables are listed in the script's header. The
 credential is the first line of `LOOP_CREDENTIAL_FILE`, piped to the injecting proxy's stdin: never
 mounted, never in `docker inspect`, never in the session container. `LOOP_VERIFY_GH_TOKEN` is the token for the provenance check
 when the ambient `gh` identity cannot read the base image's attestations (the base is published
