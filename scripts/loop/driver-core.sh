@@ -40,7 +40,7 @@
 #
 # Rules, in order (each refuses and stops):
 #   1. liveness   `docker ps -q --filter label=loop.session=ID` prints nothing. The launcher does
-#                 not set that label yet and no issue tracks that (a follow-up is needed), so until it lands this rule cannot see a
+#                 not set that label yet (#357 owns it), so until it lands this rule cannot see a
 #                 live session; do not call this script on a session it cannot label. A docker error
 #                 is a refusal: unknown is not dead.
 #   2. tree-scan  no special file (fifo, socket, device); no name that folds onto .git (any case,
