@@ -125,7 +125,7 @@ is off, so a move out of one lists its old path as a deletion); a diff under `pl
 the commit grammar, with closing keywords, the final trailer paragraph and any Co-authored-by or Signed-off-by line stripped; the staged diff's added lines (symlink targets and converted encodings included), the changed paths and the
 message hold no token prefix (default `sk-ant-oat`); then the commit, with
 `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`, the bot as author and committer, no signing and no hooks.
-Liveness reads a `loop.session` label that `launch.sh` does not set yet (no issue tracks it; a follow-up is needed), so until then that rule cannot see a running session. No git command runs in the session's tree and nothing here calls `gh`. One stdout line: `committed
+Liveness reads a `loop.session` label that `launch.sh` does not set yet (#357 owns it), so until then that rule cannot see a running session. No git command runs in the session's tree and nothing here calls `gh`. One stdout line: `committed
 <sha> <branch>`, `empty`, or `refused <rule>: <detail>` (exit 3); exit 2 is a usage or environment fault.
 
 Not covered, by design of this task: the clone should live on a volume and the driver's git should run in a Linux driver container (plan § 7.3), which is the caller's placement, not
