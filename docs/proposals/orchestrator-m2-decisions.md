@@ -20,28 +20,28 @@ shrink the maintainer's own work; the human merge stays the only approval.
 
 | # | Question | Status | Outcome |
 |---|---|---|---|
-| 1 | Cut of steps 4-6 | Recommended | Three milestones by what each proves (below), after a plan-sync PR |
-| 2 | Fewer PRs for dependent tasks | Maintainer (measure first) + Recommended | Keep one PR per task. Waves of independent PRs, a human-run batch-merge helper, opt-in merge-triggered dispatch. Sprint branch and driver merge stay off until data justifies them |
-| 3 | Model map under the loop | Recommended | Keep `models` literal (judgment slots on Opus). Smoke-test `--model fable` headless in M2a; compare in M2c using a scratch `project.yml`, no new key. Open: is the Fable routing blanket for architect work? |
-| 4 | Subscription or API key | Maintainer (subscription first) + Recommended | Subscription for the loop. M2a is credential-agnostic (env name and path from driver config; prefix grep and Read deny cover both). Small bounded API test to measure cost. Decide again at M2c from M2b's audit-line costs |
-| 5 | Driver location | Recommended | A new directory under `scripts/`: already in `code_paths` (critic floor) and in `human_only_paths` (the loop cannot edit its own driver); off every adopter's PATH; outside the coupling gate. Departs from plan text `bin/run-sprint.sh`; needs a WB-D |
-| 6 | #296 scope | Recommended | Hard-stop diffs touching the trust predicates (`plan-anchor.sh`, `review-sandbox.sh`, `review-step.sh`, `driver-lock.sh`, `blocked-state.sh`, `cursor-sync-pr.sh`, `spawn-model.sh`, `review-base-anchor.sh`) and their `tests/` fixtures; not all of `tests/` |
-| 7 | Baseline | Recommended | A read-only script derives PR-flow numbers from GitHub history; record only the enable date and window per repo, never the numbers. Adoption step: run it before enabling the loop on a repo |
-| 8 | M2c metric | Recommended | Close M2c on deliverables; track the two-week "no limit hit" metric as a dated follow-up issue |
-| 9 | Restrict-updates ruleset on other repos | Recommended | The loop refuses to dispatch on a repo whose default-branch rules lack the `update` rule; the first wave is claude-workbench only |
+| 1 | Cut of steps 4-6 | Maintainer (2026-10-06) | Three milestones by what each proves (below), after a plan-sync PR |
+| 2 | Fewer PRs for dependent tasks | Maintainer (measure first; confirmed 2026-10-06) | Keep one PR per task. Waves of independent PRs, a human-run batch-merge helper, opt-in merge-triggered dispatch. Sprint branch and driver merge stay off until data justifies them |
+| 3 | Model map under the loop | Maintainer (2026-10-06) | Keep `models` literal (judgment slots on Opus). Smoke-test `--model fable` headless in M2a; compare in M2c using a scratch `project.yml`, no new key. Fable routing is case by case, not blanket: `models.architect` stays Opus |
+| 4 | Subscription or API key | Maintainer (subscription first; confirmed 2026-10-06) | Subscription for the loop. M2a is credential-agnostic (env name and path from driver config; prefix grep and Read deny cover both). Small bounded API test to measure cost. Decide again at M2c from M2b's audit-line costs |
+| 5 | Driver location | Maintainer (2026-10-06) | A new directory under `scripts/`: already in `code_paths` (critic floor) and in `human_only_paths` (the loop cannot edit its own driver); off every adopter's PATH; outside the coupling gate. Departs from plan text `bin/run-sprint.sh`; needs a WB-D |
+| 6 | #296 scope | Maintainer (2026-10-06) | Hard-stop diffs touching the trust predicates (`plan-anchor.sh`, `review-sandbox.sh`, `review-step.sh`, `driver-lock.sh`, `blocked-state.sh`, `cursor-sync-pr.sh`, `spawn-model.sh`, `review-base-anchor.sh`) and their `tests/` fixtures; not all of `tests/` |
+| 7 | Baseline | Maintainer (2026-10-06) | A read-only script derives PR-flow numbers from GitHub history; record only the enable date and window per repo, never the numbers. Adoption step: run it before enabling the loop on a repo |
+| 8 | M2c metric | Maintainer (2026-10-06) | Close M2c on deliverables; track the two-week "no limit hit" metric as a dated follow-up issue |
+| 9 | Restrict-updates ruleset on other repos | Maintainer (2026-10-06) | The loop refuses to dispatch on a repo whose default-branch rules lack the `update` rule; the first wave is claude-workbench only |
 
-## Proposed cut (recommended, option C: split by proof)
+## Cut (confirmed 2026-10-06, option C: split by proof)
 
-- **M2a, loop container proven, driver core hermetic.** Assemble the whole plan § 7.3 container and
+- **M2a, loop container proven, driver core hermetic** (milestone: *Orchestrator M2a: loop container proven*). Assemble the whole plan § 7.3 container and
   attack it; close the plan's § 9 open live items; hermetic driver core with stub `docker`/`gh`
   fixtures (tree-copy then check then commit, the human-only-path check with renames, the critic
   staging bundle, preflight evaluators, result parsing and recovery); minimal per-task limits, kill
   file and recovery (the first dispatch needs them, though § 7.4 files them under step 5); #296;
   `--model fable` smoke test; the baseline script. Build the hermetic code beside the container proof.
-- **M2b, first waves on claude-workbench.** Live App preflight, one task per away-block, then a small
+- **M2b, first waves on claude-workbench** (milestone: *Orchestrator M2b: first waves on claude-workbench*). Live App preflight, one task per away-block, then a small
   wave; the batch-merge helper; merge-triggered dispatch (opt-in). Exit metric: human minutes per work PR
   not above baseline.
-- **M2c, governor and eval.** Day caps, window and away-block, reserve, scoped lock decision, the
+- **M2c, governor and eval** (milestone: *Orchestrator M2c: governor and eval*). Day caps, window and away-block, reserve, scoped lock decision, the
   20-50 task eval set (record resolved model ids per session); subscription-vs-key and Fable-vs-Opus
   comparisons.
 
@@ -85,14 +85,14 @@ Size honestly: milestone 1 was planned at five issues and closed 14.
 - **Ralph-style loops** (fresh context per iteration, state in files): the plan already does this
   (principle 4, state in `.ai/` and GitHub). Not researched in depth here.
 
-## Confirm with the maintainer before issues are drafted
+## Confirmed with the maintainer (2026-10-06)
 
-1. The three-milestone cut and its names, by content, not "Sprint N".
-2. Driver under `scripts/`, with a WB-D for the departure from `bin/`.
-3. #296 scope as above.
-4. Baseline script and the adoption step.
-5. Whether the Fable routing is blanket for architect work (makes decision 3 a one-line change).
-6. The subscription terms question for headless `-p`, and whether Fable is available through the API.
+1. The three-milestone cut and its names (above), by content, not "Sprint N". Confirmed.
+2. Driver under `scripts/`, with a WB-D for the departure from `bin/`. Confirmed.
+3. #296 scope as above. Confirmed.
+4. Baseline script and the adoption step. Confirmed.
+5. Fable routing for architect work: case by case, not blanket; `models` unchanged.
+6. The subscription terms for headless `-p`, and whether Fable is available through the API: unknown; an M2a verification issue settles both before M2b's first live dispatch.
 
 ## Stale plan text (fixed in the same PR as this file, or left)
 
