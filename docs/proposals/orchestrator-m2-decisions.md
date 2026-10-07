@@ -101,7 +101,7 @@ OAuth, no `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` set). Sources are the
 that day.
 
 1. **Subscription terms for unattended `claude -p`: not settled by the published text; the
-   maintainer's call.** Nothing says `-p` is forbidden and nothing says unattended driver-started
+   maintainer accepted the risk (below).** Nothing says `-p` is forbidden and nothing says unattended driver-started
    `-p` is permitted.
    - For: `headless.md` documents `claude -p` as a normal mode and says only `--bare` skips the
      subscription login. `legal-and-compliance.md` says OAuth "is designed to support ordinary use
@@ -120,6 +120,9 @@ that day.
    - Consequence for M2b: decision 4's fallback (a Console API key) is the only path the terms
      clearly permit. Staying on the subscription is a risk the maintainer accepts, or closes by
      asking Anthropic (the compliance page points to sales). Not a technical blocker.
+   - **Maintainer decision (2026-10-07):** accepts the subscription-terms risk for the loop. No
+     question to Anthropic, no API-key switch now; decision 4's "decide again at M2c from M2b's
+     audit-line costs" stands.
 2. **Fable is available through the API.** Model id `claude-fable-5-1`, released 2026-09-01, status
    Active, retirement not sooner than 2027-09-01, on the Claude API and four other platforms; $10 /
    $50 per MTok, cache reads $0.25. No waitlist is stated for Fable; the sibling Mythos 5.1 is the
