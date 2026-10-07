@@ -97,8 +97,10 @@ Size honestly: milestone 1 was planned at five issues and closed 14.
 ## Stale plan text (fixed in the same PR as this file, or left)
 
 Fixed: § 7.1 steps 4-6 no longer claims to wait on § 8; § 9 no longer says the § 8.1 name rule is
-unwritten. Left, as it is long: step 4's "prerequisite not in the plugin today" sentence
-(`depends_on` shipped in #232, the resume lock in #233, the CLI floor in #236).
+unwritten. Left at first, as it is long, then dropped in #315: step 4's "prerequisite not in
+the plugin today" sentence (`depends_on` shipped in #232, the resume lock in #233, the CLI floor
+in #236). #315 also synced § 7.1 to the cut above, moved the driver to `scripts/loop/` (WB-D23),
+and named the loop image's base (`devcontainer-base`, one loop image per toolchain; § 7.3).
 
 ## Could not verify
 
