@@ -28,10 +28,11 @@ RUN set -eu; \
     mkdir -p /etc/claude-code /opt/loop; \
     chmod 0755 /etc/claude-code /opt/loop
 
-# Root-owned, read-only to everyone: the managed settings, and the loop's own scripts.
+# Root-owned, read-only to everyone: the managed settings and MCP servers, and the loop's own scripts.
 COPY --chown=root:root --chmod=0444 managed-settings.json /etc/claude-code/managed-settings.json
+COPY --chown=root:root --chmod=0444 managed-mcp.json /etc/claude-code/managed-mcp.json
 COPY --chown=root:root --chmod=0444 stop-schema.json /opt/loop/stop-schema.json
-COPY --chown=root:root --chmod=0555 proxy.py entrypoint.sh /opt/loop/
+COPY --chown=root:root --chmod=0555 proxy.py inject.py git_tools.py entrypoint.sh /opt/loop/
 
 # Auto-update off, and no traffic the session does not need (the proxy would refuse it anyway).
 ENV DISABLE_AUTOUPDATER=1 \
