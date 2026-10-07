@@ -56,6 +56,7 @@ sh tests/loop-baseline.test.sh  # scripts/loop/baseline.sh derivation fixtures o
 sh tests/loop-proxy.test.sh     # scripts/loop/proxy.py allow/deny fixtures (not yet required)
 sh tests/loop-inject.test.sh    # scripts/loop/inject.py path and header fixtures (not yet required)
 sh tests/loop-git-tools.test.sh # scripts/loop/git_tools.py fixed-tool fixtures, over MCP (not yet required)
+sh tests/driver-core.test.sh   # scripts/loop/driver-core.sh tree copy, checks and commit, stub docker/gh (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `scripts/invariants-check.sh` needs

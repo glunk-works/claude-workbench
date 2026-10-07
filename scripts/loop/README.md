@@ -105,3 +105,30 @@ other human-only paths). Run it after any change to the image, the managed setti
 launch line, and after any `claude` pin bump (a new version can send new request shapes the body filter would refuse; the proxy's `deny` log line names the block). Two rules it taught, for whoever adds a `Bash(...)` allow: use one exact rule per
 script, never a glob (`Bash(sh tests/*.test.sh)` also matched `tests/../x.test.sh`), and know that Claude Code
 allows a small read-only set with no rule at all (`echo`, `id`, `ps aux`, `git status|log|show|ls-files`).
+
+## driver-core.sh: tree copy, checks and commit (`#319`)
+
+```
+bash scripts/loop/driver-core.sh run --session-tree DIR --session-id ID --origin URL --base BRANCH \
+  --workdir DIR --branch task/NAME --stop-json FILE --author-name N --author-email E \
+  --human-only-path PATH... [--token-prefix STR]
+```
+
+The hermetic core of plan v9 § 7.3 / § 8.13a, from a dead session's working tree to one local
+commit. It stops there: the App token, the push and the PR are later tasks. It runs, in order and
+refusing at the first that fires: docker says no session container is running (an error from docker
+is a refusal); the tree has no special file, no name that folds onto `.git` (any case, `.git.`, `GIT~1`) and no symlink that leaves it or names a `.git`; a fresh clone of
+`origin/{base}` made by the driver is emptied and the tree is copied in with a non-dereferencing
+`tar` that excludes `.git` at any depth; the staged diff touches no human-only path (rename detection
+is off, so a move out of one lists its old path as a deletion); a diff under `plugins/*/bin/` or
+`scripts/` also changes something under `tests/`; the `commit_message` from the stop output passes
+the commit grammar, with closing keywords, the final trailer paragraph and any Co-authored-by or Signed-off-by line stripped; the staged diff's added lines (symlink targets and converted encodings included), the changed paths and the
+message hold no token prefix (default `sk-ant-oat`); then the commit, with
+`GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`, the bot as author and committer, no signing and no hooks.
+Liveness reads a `loop.session` label that `launch.sh` does not set yet (no issue tracks it; a follow-up is needed), so until then that rule cannot see a running session. No git command runs in the session's tree and nothing here calls `gh`. One stdout line: `committed
+<sha> <branch>`, `empty`, or `refused <rule>: <detail>` (exit 3); exit 2 is a usage or environment fault.
+
+Not covered, by design of this task: the clone should live on a volume and the driver's git should run in a Linux driver container (plan § 7.3), which is the caller's placement, not
+something the script can enforce. The symlink and case-fold fixtures skip themselves where the
+filesystem cannot make the case (Git Bash without developer mode); run the suite under WSL or Linux
+to exercise them. Tests: `sh tests/driver-core.test.sh`.
