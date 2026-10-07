@@ -102,6 +102,6 @@ the allowlisting proxy), then the four that make model calls through the credent
 matrix of Bash commands against candidate managed allow rules) and `autoallow` (Bash with none), and
 `gitwrites` (the git tools outside a repository; Write against `.git`, symlinks into it, and the
 other human-only paths). Run it after any change to the image, the managed settings, either proxy or the
-launch line. Two rules it taught, for whoever adds a `Bash(...)` allow: use one exact rule per
+launch line, and after any `claude` pin bump (a new version can send new request shapes the body filter would refuse; the proxy's `deny` log line names the block). Two rules it taught, for whoever adds a `Bash(...)` allow: use one exact rule per
 script, never a glob (`Bash(sh tests/*.test.sh)` also matched `tests/../x.test.sh`), and know that Claude Code
 allows a small read-only set with no rule at all (`echo`, `id`, `ps aux`, `git status|log|show|ls-files`).

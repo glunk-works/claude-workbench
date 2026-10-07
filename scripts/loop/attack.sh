@@ -374,14 +374,18 @@ print("duplicate tools key", post("/v1/messages", None, raw="{\"model\":\"" + m 
 print("not json", post("/v1/messages", None, raw="nope"))
 print("image url source", post("/v1/messages", {"model": m, "max_tokens": 1, "messages": [{"role": "user", "content": [{"type": "image", "source": {"type": "url", "url": "https://example.com/x.png?d=1"}}]}]}))
 print("document file source", post("/v1/messages", {"model": m, "max_tokens": 1, "messages": [{"role": "user", "content": [{"type": "document", "source": {"type": "file", "file_id": "file_1"}}]}]}))
+print("url source in tool_result", post("/v1/messages", {"model": m, "max_tokens": 1, "messages": [{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "image", "source": {"type": "url", "url": "https://example.com/x.png"}}]}]}]}))
+print("url source in system", post("/v1/messages", {"model": m, "max_tokens": 1, "system": [{"type": "document", "source": {"type": "url", "url": "https://example.com/x.pdf"}}], "messages": msgs}))
+print("document content source", post("/v1/messages", {"model": m, "max_tokens": 1, "messages": [{"role": "user", "content": [{"type": "document", "source": {"type": "content", "content": [{"type": "image", "source": {"type": "url", "url": "https://example.com/x.png"}}]}}]}]}))
+print("mcp_toolset tool", post("/v1/messages", {"model": m, "max_tokens": 1, "messages": msgs, "tools": [{"type": "mcp_toolset", "mcp_server_name": "x"}]}))
 '
   denies_before="$(docker logs "$inj" 2>&1 | grep -c "^deny " || true)"
   in_session python3 -c "$body_py" "$inj" >"$out_dir/body.txt" 2>&1 || true
   denies_after="$(docker logs "$inj" 2>&1 | grep -c "^deny " || true)"
   sed 's/^/       /' "$out_dir/body.txt"
   if grep -q '^plain count_tokens 200' "$out_dir/body.txt" && grep -q '^custom tool count_tokens 200' "$out_dir/body.txt" \
-     && [ "$(grep -c ' 403$' "$out_dir/body.txt")" = 7 ] && [ $((denies_after - denies_before)) -ge 7 ]; then
-    attack 1 PASS "the injecting proxy forwards a plain and a custom-tool count_tokens (200) and refuses server-side tools, mcp_servers, a repeated key and a non-JSON body (403)"
+     && [ "$(grep -c ' 403$' "$out_dir/body.txt")" = 11 ] && [ $((denies_after - denies_before)) = 11 ]; then
+    attack 1 PASS "the injecting proxy forwards a plain and a custom-tool count_tokens (200) and refuses server-side tools, mcp_servers, url or file sources (also inside tool_result and system), any content-typed source, a repeated key and a non-JSON body (403)"
   else
     attack 1 FAIL "the injecting proxy's body filter did not behave as expected (see above)"
   fi
