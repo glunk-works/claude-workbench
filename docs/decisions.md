@@ -1494,6 +1494,33 @@ take effect. Full reasoning and the task breakdown that implements them:
     - **`derive` requires the PR's own `state` to read `OPEN`** besides being listed with
       `--state open`, so a merged or closed record can never qualify if a caller's filter slips.
 
+- **WB-D23 (`#315`) — the orchestrator driver lives in `scripts/loop/`, not `bin/`.**
+  Orchestrator plan v9 § 7.1 step 4 named it `bin/run-sprint.sh`; the maintainer chose a new
+  directory under `scripts/` on 2026-10-06 (`docs/proposals/orchestrator-m2-decisions.md`,
+  decision 5). The plan text now says `scripts/loop/`.
+  - **The loop cannot edit its own driver.** `scripts/` is already in this repo's
+    `orchestration.human_only_paths`, so a loop task whose diff touches the driver fails the
+    post-exit human-only-path check. Under `bin/` the driver would sit beside the plugin's
+    predicates, which a loop task may legitimately change.
+  - **It gets the critic floor.** `scripts/` is already in `code_paths`, so every diff to the
+    driver triggers `/way-of-working:critic-gate`'s critics, as `bin/` would.
+  - **It is never shipped to adopters.** `bin/` here means `plugins/way-of-working/bin/`, which
+    the plugin puts on every adopter's Bash tool `PATH` while it is enabled (`WB-D10`). The
+    driver is host tooling for one maintainer's loop, not a predicate a skill calls, and has no
+    business on that `PATH`. Repo-root `scripts/` is not in the plugin at all.
+  - **It stays outside the coupling gate.** `scripts/coupling-check.sh` scans
+    `plugins/*/` only, and the driver must name host- and repo-specific values (its own config
+    path, the App's installation, the image digest) that `WB-D2` forbids in shared plugin code.
+    Its repo-specific values still come from driver config, not literals, but that is the
+    driver's own discipline, not a CI gate.
+  - **The loop image's Dockerfile lives there too** (plan v9 § 7.3), for the same first reason:
+    the image bakes in the managed settings that hold the session narrow, and the loop must not
+    be able to change them.
+  - **Cost.** Tests for the driver live under `tests/` like every other suite, and the driver
+    is called by path, never by bare name. If the driver ever becomes something adopters run,
+    this decision is reopened rather than the driver copied into `bin/`. No `.ai/project.yml`
+    key.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of
