@@ -32,3 +32,46 @@ ending on the `--until` day, that day included. Tests: `sh tests/loop-baseline.t
 
 | Repo | Loop enabled | Baseline window |
 |---|---|---|
+
+## launch.sh: the assembled loop container
+
+One scripted build-and-launch of the whole plan v9 § 7.3 container (`#317`): verify the base
+image's build provenance, build the loop image, create the `--internal`,
+`gateway_mode_ipv4=isolated` network and the allowlisting proxy, run the preflight from outside
+(`docker inspect`) and from inside (probes by IP), then run the coder launch line on a trivial
+task in a seeded work volume and check the result. It refuses to start the session if any
+preflight check fails. It is the container, not the driver: the clone, the post-exit checks,
+the push and the PR belong to the driver-core issues, and the attack pass is `#318`.
+
+```
+LOOP_PREFLIGHT_ONLY=1 bash scripts/loop/launch.sh    # everything except the model call; no credential
+LOOP_CREDENTIAL_FILE=<file> bash scripts/loop/launch.sh
+```
+
+Run it under Git Bash on the loop host; the variables are listed in the script's header. The
+credential is the first line of `LOOP_CREDENTIAL_FILE`, piped to the container's stdin: never
+mounted, never in `docker inspect`. `LOOP_VERIFY_GH_TOKEN` is the token for the provenance check
+when the ambient `gh` identity cannot read the base image's attestations (the base is published
+by `603-Identity`); it is passed to that one command only.
+
+| File | What it is |
+|---|---|
+| `Dockerfile` | The loop layer: base pinned by tag and digest, `claude` pinned by version and sha256 in `/usr/local/bin`, auto-update off, non-root `USER`, the files below baked in root-owned |
+| `managed-settings.json` | Root-owned `/etc/claude-code/managed-settings.json`: the `allowManaged*` and `strictPluginOnlyCustomization` keys, `sandbox.enabled: false`, the allow list and the deny rules. The plan's PreToolUse guards are not in it yet (`allowManagedHooksOnly` means no hook runs); the attack pass (`#318`) decides what is missing |
+| `proxy.py` | CONNECT-only allowlisting proxy, run from the same image; refuses IP literals, `host.docker.internal` and allowlisted names that resolve to a non-global address |
+| `entrypoint.sh` | Reads the credential from stdin and hands it to the `claude` process only |
+| `stop-schema.json` | The `--json-schema` the coder must answer with |
+
+Bumping a pin is an edit in the `Dockerfile` (the base: one line; `claude`: the version and its
+sha256): `launch.sh` reads the base digest and the
+`claude` version back out of it, and the provenance check then covers the new digest. The
+managed settings' human-only-path denies are this repo's own list (`orchestration.human_only_paths`
+in `.ai/project.yml`): `allowManagedPermissionRulesOnly` ignores deny rules from anywhere else, so
+a second repo's loop image needs its own copy. `LOOP_ALLOW_HOSTS` replaces the proxy's list
+rather than adding to it, so a widened list names the four defaults as well. Known residual, handed to the attack pass (`#318`) by name: the managed deny rules stop the file tools,
+not the allowed `git` subcommands, whose options (`--pathspec-from-file`, `commit -F`, `diff` on a path
+outside the tree) can read files such as `/proc/<pid>/environ`, where the credential sits. A deny
+list cannot express git's option parsing, so this container does not claim the credential is
+unreadable by the session; `GIT_CONFIG_GLOBAL=/dev/null` and the `.git` denies only close the
+git-config code-execution route. Tests: `sh tests/loop-proxy.test.sh` (the proxy's
+decision; the in-container probes are `launch.sh`'s preflight).
