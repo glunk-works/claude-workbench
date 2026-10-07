@@ -2,7 +2,7 @@
 # One scripted build-and-launch of the whole plan v9 § 7.3 loop container (issue #317).
 #
 #   verify base provenance -> build the loop image -> create the isolated internal network ->
-#   start the allowlisting proxy -> seed a work volume -> preflight, from outside and from
+#   start the allowlisting proxy and the credential-injecting proxy -> seed a work volume -> preflight, from outside and from
 #   inside -> run the coder launch line on a trivial task -> check the result -> clean up
 #
 # This is the assembled container, not the driver: the clone, the post-exit checks, the push
@@ -11,7 +11,9 @@
 #
 # Needs on PATH: docker, gh, jq, bash. Configuration, all environment:
 #   LOOP_CREDENTIAL_FILE     (required) host file whose first line is the credential; it is piped
-#                            to the container's stdin and never mounted, never in `docker inspect`
+#                            to the stdin of the credential-injecting proxy container (inject.py)
+#                            and nowhere else: the session container never holds it (#345), and it
+#                            is never mounted, never in `docker inspect`
 #   LOOP_CREDENTIAL_ENV      CLAUDE_CODE_OAUTH_TOKEN (default) or ANTHROPIC_API_KEY
 #   LOOP_VERIFY_GH_TOKEN     token for `gh attestation verify` on the base image, when the
 #                            ambient gh identity cannot read that package; used for that one
@@ -38,6 +40,7 @@ preflight_only="${LOOP_PREFLIGHT_ONLY:-}"
 net="wow-loop-net-$id"
 ext="wow-loop-ext-$id"
 proxy="wow-loop-proxy-$id"
+inj="wow-loop-inject-$id"
 vol="wow-loop-work-$id"
 sess="wow-loop-session-$id"
 out_dir="$(mktemp -d)"
@@ -48,7 +51,7 @@ ok() { echo "  ok   $*"; }
 bad() { echo "  FAIL $*" >&2; failed=1; }
 
 cleanup() {
-  docker rm -f "$sess" "$proxy" >/dev/null 2>&1 || true
+  docker rm -f "$sess" "$proxy" "$inj" >/dev/null 2>&1 || true
   docker network rm "$net" "$ext" >/dev/null 2>&1 || true
   docker volume rm -f "$vol" >/dev/null 2>&1 || true
 }
@@ -56,9 +59,14 @@ trap cleanup EXIT
 
 for c in docker gh jq; do command -v "$c" >/dev/null 2>&1 || fail "$c is not on PATH"; done
 case "$cred_env" in CLAUDE_CODE_OAUTH_TOKEN | ANTHROPIC_API_KEY) ;; *) fail "LOOP_CREDENTIAL_ENV must be CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY" ;; esac
+# The session gets a placeholder in the credential variable; the injecting proxy swaps in the real one.
+dummy="loop-dummy-credential-not-real"
+cred="preflight-only-not-a-credential"
 if [ -z "$preflight_only" ]; then
   [ -n "${LOOP_CREDENTIAL_FILE:-}" ] || fail "LOOP_CREDENTIAL_FILE is required (or LOOP_PREFLIGHT_ONLY=1)"
   [ -s "$LOOP_CREDENTIAL_FILE" ] || fail "LOOP_CREDENTIAL_FILE is empty or unreadable"
+  cred="$(head -n 1 "$LOOP_CREDENTIAL_FILE" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"   # the same strip inject.py's .strip() does
+  [ -n "$cred" ] || fail "LOOP_CREDENTIAL_FILE has no credential on its first line"
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -109,6 +117,21 @@ proxy_ip="$(docker inspect -f "{{(index .NetworkSettings.Networks \"$net\").IPAd
 [ -n "$proxy_ip" ] || fail "no proxy address on $net"
 ok "proxy $proxy up at $proxy_ip on $net, also on the external network $ext"
 
+# The credential-injecting proxy: its own container, so the credential sits in a process the
+# session cannot reach. It reads the credential from stdin once (docker start -ai below);
+# preflight-only mode hands it a placeholder, and no probe sends a request upstream.
+docker create -i --name "$inj" --network "$net" "${harden[@]}" --memory 256m \
+  --tmpfs /tmp:rw,nosuid,size=16m -e "LOOP_CREDENTIAL_ENV=$cred_env" \
+  --entrypoint python3 "$image" /opt/loop/inject.py >/dev/null
+docker network connect "$ext" "$inj"
+printf '%s\n' "$cred" | docker start -ai "$inj" >/dev/null 2>&1 &   # a pipe from a builtin: never a host temp file or a command line
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  docker logs "$inj" 2>&1 | grep -q '^inject up' && break
+  sleep 1
+done
+docker logs "$inj" 2>&1 | grep -q '^inject up' || { docker logs "$inj" >&2; fail "injecting proxy did not start"; }
+ok "injecting proxy $inj up on $net and $ext"
+
 # The session container is described once, in this array, and used both for the real run and
 # for the probe containers, so a probe sees exactly the network and hardening the session gets.
 session_args=(
@@ -118,8 +141,8 @@ session_args=(
   --tmpfs /run/loop:rw,nosuid,uid=1000,gid=1000,mode=0700,size=64m
   -v "$vol:/work"
   -e HOME=/home/app -e CLAUDE_CONFIG_DIR=/run/loop/config
-  -e "HTTPS_PROXY=http://$proxy:3128" -e "HTTP_PROXY=http://$proxy:3128"
-  -e "LOOP_CREDENTIAL_ENV=$cred_env"
+  -e "HTTPS_PROXY=http://$proxy:3128" -e "HTTP_PROXY=http://$proxy:3128" -e "NO_PROXY=$inj" -e "no_proxy=$inj"
+  -e "ANTHROPIC_BASE_URL=http://$inj:8080" -e "$cred_env=$dummy"
   -e GIT_CONFIG_GLOBAL=/dev/null -e GIT_CONFIG_NOSYSTEM=1
   -e GIT_AUTHOR_NAME=loop-session -e GIT_AUTHOR_EMAIL=loop-session@invalid
   -e GIT_COMMITTER_NAME=loop-session -e GIT_COMMITTER_EMAIL=loop-session@invalid
@@ -142,7 +165,7 @@ ok "seeded $vol with a one-commit repository"
 step "Preflight, from outside (docker inspect)"
 failed=0
 # docker create gives an inspectable container with the real session's flags, never started.
-docker create -i --name "$sess" "${session_args[@]}" "$image" --version >/dev/null
+docker create --name "$sess" "${session_args[@]}" "$image" --version >/dev/null
 sj="$(docker inspect "$sess")"
 user="$(jq -r '.[0].Config.User' <<<"$sj")"
 case "$user" in "" | root | 0 | 0:*) bad "User is root ('$user')" ;; *) ok "User is non-root ($user)" ;; esac
@@ -161,13 +184,19 @@ nj="$(docker network inspect "$net")"
 # An isolated network has no gateway; Docker gives the subnet's .1 to a container, so no probe
 # may derive one from the subnet.
 [ "$(jq -r '[.[0].IPAM.Config[]? | select(.Gateway != null and .Gateway != "")] | length' <<<"$nj")" = 0 ] && ok "no Gateway in IPAM" || bad "IPAM has a Gateway"
-[ "$(jq -r '.[0].Containers | length' <<<"$nj")" = 1 ] && ok "only the proxy is on the network (the session is created, not started)" || bad "unexpected members on the network"
+[ "$(jq -r '.[0].Containers | length' <<<"$nj")" = 2 ] && ok "only the two proxies are on the network (the session is created, not started)" || bad "unexpected members on the network"
 [ "$(docker inspect -f '{{.State.Running}}' "$proxy")" = true ] && ok "proxy running" || bad "proxy not running"
+[ "$(docker inspect -f '{{.State.Running}}' "$inj")" = true ] && ok "injecting proxy running" || bad "injecting proxy not running"
+# The credential is in no inspectable field of the session or the CONNECT proxy: not Env, not Cmd, not a label.
+# The pattern goes in by process substitution and the haystack by file, so the credential is never on a command line.
+printf '%s\n%s\n' "$sj" "$(docker inspect "$proxy" "$inj")" >"$out_dir/inspect.json"
+if grep -qF -f <(printf '%s\n' "$cred") -- "$out_dir/inspect.json"; then bad "the credential appears in docker inspect output"; else ok "no credential in docker inspect of the session, the proxy or the injecting proxy"; fi
+[ "$(jq -r '.[0].Config.Env | map(select(startswith("'"$cred_env"'="))) | .[0]' <<<"$sj")" = "$cred_env=$dummy" ] && ok "$cred_env in the session is the placeholder" || bad "$cred_env in the session is not the placeholder"
 
 step "Preflight, from inside (probes by IP, in a throwaway container with the session's network and flags)"
 # One python probe run in the session's netns. It prints one line per check.
 probe_py='
-import socket, sys
+import os, socket, sys
 def reach(ip, port):
     s = socket.socket(); s.settimeout(3)
     try:
@@ -188,7 +217,20 @@ def connect_via_proxy(proxy, target):
         return "error %s" % e
     finally:
         s.close()
+def inject_status(host, path):
+    s = socket.socket(); s.settimeout(10)
+    try:
+        s.connect((host, 8080))
+        s.sendall(("GET %s HTTP/1.0\r\nHost: x\r\n\r\n" % path).encode())
+        return s.recv(256).split(b"\r\n", 1)[0].decode("latin-1")
+    except OSError as e:
+        return "error %s" % e
+    finally:
+        s.close()
 proxy, vm_ips = sys.argv[1], sys.argv[2:]
+print("env credential-looking:", sorted(k for k in os.environ if "TOKEN" in k or "KEY" in k or "CRED" in k))
+for p in ("/etc/passwd", "/api/oauth/profile", "/v1/../etc/passwd"):
+    print("inject", p, inject_status(os.environ["INJ_HOST"], p))
 print("direct 1.1.1.1:443", "REACHED" if reach("1.1.1.1", 443) else "unreachable")
 for ip in vm_ips:
     for port in (80, 443, 2375, 2376):
@@ -206,11 +248,15 @@ vm_ips="$(docker network inspect bridge "$ext" | jq -r '.[].IPAM.Config[]?.Gatew
 hdi="$(docker run --rm --network bridge --cap-drop ALL --read-only --entrypoint getent "$image" ahostsv4 host.docker.internal 2>/dev/null | awk '{print $1; exit}')" || hdi=
 [ -n "$hdi" ] || bad "host.docker.internal did not resolve on a non-internal network, so its address was not probed"
 # shellcheck disable=SC2086
-probe_out="$(docker run --rm "${session_args[@]}" --entrypoint python3 "$image" -c "$probe_py" "$proxy_ip" $vm_ips $hdi)"
+probe_out="$(docker run --rm -e "INJ_HOST=$inj" "${session_args[@]}" --entrypoint python3 "$image" -c "$probe_py" "$proxy_ip" $vm_ips $hdi)"
 printf '%s\n' "$probe_out" | sed 's/^/       /'
 grep -q 'REACHED' <<<"$probe_out" && bad "a direct connection left the isolated network" || ok "no direct connection to a public host, the VM's addresses (${vm_ips:-none} ${hdi:-no host.docker.internal address}) or the Docker API ports"
 grep -q 'RESOLVED' <<<"$probe_out" && bad "an external name resolved on the internal network" || ok "no external DNS on the internal network"
 grep -q '^proxy api.anthropic.com:443 HTTP/1.1 200' <<<"$probe_out" && ok "proxy tunnels api.anthropic.com:443" || bad "proxy does not tunnel api.anthropic.com:443"
+for p in /etc/passwd /api/oauth/profile /v1/../etc/passwd; do
+  grep -q "^inject $p HTTP/1.[01] 403" <<<"$probe_out" && ok "injecting proxy refuses $p" || bad "injecting proxy does not refuse $p"
+done
+grep -qF "env credential-looking: ['$cred_env']" <<<"$probe_out" && ok "the session's only credential-named variable is $cred_env (the placeholder)" || bad "unexpected credential-named variables in the session environment"
 for t in 1.1.1.1:443 host.docker.internal:443 github.com:443 api.anthropic.com:80; do
   grep -q "^proxy $t HTTP/1.1 403" <<<"$probe_out" && ok "proxy refuses $t" || bad "proxy does not refuse $t"
 done
@@ -220,21 +266,25 @@ done
 
 # ---------------------------------------------------------------------------------------------
 step "Coder session (trivial task)"
-prompt='Create a file named hello.txt in the current directory containing exactly the single word ok. Then commit it using two separate Bash calls, never chained: first git add hello.txt, then git commit -m "feat: add hello.txt". Finally reply with the stop schema: status done, a one-line summary, and the commit message you used. If a command is denied, reply with status blocked and say which one.'
-# The § 7.3 coder launch line. No Agent tool and no --plugin-dir: the coder spawns nothing and
+prompt='Create a file named hello.txt in the current directory containing exactly the single word ok. Then commit it with the git_add tool (paths: hello.txt) and then the git_commit tool (message: feat: add hello.txt). Finally reply with the stop schema: status done, a one-line summary, and the commit message you used. If a tool is denied, reply with status blocked and say which one.'
+# The § 7.3 coder launch line, minus two things (#345). Bash is out of --tools: no Bash allow rule
+# exists, so every call would only cost a turn until a driver issue adds one. --strict-mcp-config is
+# out: claude refuses it ("cannot use --strict-mcp-config when an enterprise MCP config is present")
+# beside the managed-mcp.json that carries the loopgit server; allowManagedMcpServersOnly and the
+# .mcp.json write denies hold that line instead. No Agent tool and no --plugin-dir: the coder spawns nothing and
 # loads no plugin. --settings is inline JSON and carries no permission keys (the managed file
 # holds every allow and deny rule).
 settings='{"env":{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1"}}'
 schema="$(cat "$here/stop-schema.json")"
 set +e
 docker rm -f "$sess" >/dev/null 2>&1
-docker run -i --name "$sess" "${session_args[@]}" "$image" \
-  -p --restricted --tools "Bash,Read,Edit,Write,Glob,Grep" --add-dir /tmp \
+docker run --name "$sess" "${session_args[@]}" "$image" \
+  -p --restricted --tools "Read,Edit,Write,Glob,Grep" --add-dir /tmp \
   --model "$model" --max-turns "$max_turns" --max-budget-usd "$max_budget" --autocompact 100k \
   --permission-mode dontAsk --permission-prompts none \
-  --settings "$settings" --strict-mcp-config \
+  --settings "$settings" \
   --output-format json --json-schema "$schema" "$prompt" \
-  <"$LOOP_CREDENTIAL_FILE" >"$out_dir/result.json" 2>"$out_dir/stderr.txt"
+  >"$out_dir/result.json" 2>"$out_dir/stderr.txt"
 rc=$?
 set -e
 echo "  claude exit code: $rc (result: $out_dir/result.json)"
@@ -245,9 +295,15 @@ jq -e '.is_error == false' >/dev/null <"$out_dir/result.json" || fail "result is
 jq -r '"  terminal_reason: \(.terminal_reason // "-")  turns: \(.num_turns // "-")  cost_usd: \(.total_cost_usd // "-")"' <"$out_dir/result.json"
 jq -r '"  structured_output: \(.structured_output // "none" | tostring)"' <"$out_dir/result.json"
 jq -e '.structured_output.status == "done"' >/dev/null <"$out_dir/result.json" || fail "stop schema status is not done"
-# The driver runs no git in a clone the session touched, so read the tree, not the repo.
+# The driver runs no git in a clone the session touched, so read the tree, not the repo. The one
+# git read below is the test's own, in a --network none, read-only, credential-free container, with
+# fsmonitor and hooks overridden and no global or system config.
 got="$(docker run --rm --network none --read-only --cap-drop ALL -v "$vol:/work:ro" --entrypoint cat "$image" /work/hello.txt)"
 [ "$got" = ok ] || fail "hello.txt is '$got', expected 'ok'"
 ok "hello.txt contains ok"
+n="$(docker run --rm --network none --read-only --cap-drop ALL -v "$vol:/work:ro" -e GIT_CONFIG_GLOBAL=/dev/null -e GIT_CONFIG_NOSYSTEM=1 --entrypoint git "$image" -c safe.directory=/work -c core.fsmonitor=false -c core.hooksPath=/dev/null -C /work log -n 1 --format=%s)"
+[ "$n" = "feat: add hello.txt" ] && ok "the git_commit tool made the commit" || bad "last commit is '$n'"
+if grep -qF -f <(printf '%s\n' "$cred") -- "$out_dir/result.json" "$out_dir/stderr.txt"; then bad "the credential appears in the session's output"; else ok "no credential in the session's stdout or stderr"; fi
+[ "$failed" = 0 ] || fail "post-run checks failed"
 echo
 echo "launch: the assembled container ran a trivial task"

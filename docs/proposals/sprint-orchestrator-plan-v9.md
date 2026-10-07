@@ -1769,7 +1769,11 @@ Steps 4–6 are three milestones, cut by what each proves (confirmed by the main
   a sandbox `denyRead` beside that; **v9:** the sandbox is off in the loop container
   (§ 8.8), so the managed `Read` deny carries it alone. **[T]** with the sandbox running,
   the token was absent from Bash's environment (`printenv … | wc -c` → 0); without the
-  sandbox this is untested (§ 9). The residual is recorded in § 6.2.
+  sandbox this is untested (§ 9). The residual is recorded in § 6.2. **#345 (after v9):**
+  the session no longer holds the credential at all: it carries a placeholder and
+  `ANTHROPIC_BASE_URL`, and a credential-injecting proxy in its own container
+  (`scripts/loop/inject.py`) adds the real one. The mitigations above are superseded for the
+  loop container; a `setup-token` credential works through the proxy **[T]** (2026-10-07).
 - GitHub: a **GitHub App**, not a machine user (*decided 2026-10-05, after the App test*,
   § 8.12; the maintainer: "unless/until there is a reason to switch"). One private App per
   org (glunk-works, 603-Identity), plus a dedicated App for infrastructure-core, so that no
@@ -1805,7 +1809,8 @@ Steps 4–6 are three milestones, cut by what each proves (confirmed by the main
   defence in depth. v7's option (e) (a fork, read access only) was the fallback if that
   test failed; it did not, and an App cannot fork.
 - Allowed git/gh surface for the session: local `git` only (`add`, `commit`, `diff`,
-  `log`, `status`); no `push`, no `gh`, no remote (v5–v9 before § 8.13 allowed `git push
+  `log`, `status`; **#345:** as five fixed tools of a managed `loopgit` MCP server, not
+  `Bash(git …)` allows); no `push`, no `gh`, no remote (v5–v9 before § 8.13 allowed `git push
   origin task/*` and `gh pr create`). Everything else denied. The allowlist and the deny
   rules both live in managed
   settings, because `allowManagedPermissionRulesOnly` makes Claude Code ignore
@@ -1863,7 +1868,8 @@ Steps 4–6 are three milestones, cut by what each proves (confirmed by the main
   under `round_cap` gets its clone seeded from the driver's committed clone (it cannot
   fetch a private repo with no token) and is always a **new** session: the previous one's
   `CLAUDE_CONFIG_DIR` was discarded at exit.
-- **Launch, coder session (v9):** `claude -p --restricted --tools "Bash,Read,Edit,Write,Glob,Grep"
+- **Launch, coder session (v9; #345 drops `Bash` from `--tools` and `--strict-mcp-config`,
+  which claude refuses beside a managed MCP config; see `scripts/loop/README.md`):** `claude -p --restricted --tools "Bash,Read,Edit,Write,Glob,Grep"
   --add-dir /tmp --model <models.coder> --max-turns N --max-budget-usd X --autocompact 100k
   --permission-mode dontAsk --permission-prompts none --settings '<inline JSON>'
   --strict-mcp-config --output-format json --json-schema <stop-schema> "<task prompt>"`.
