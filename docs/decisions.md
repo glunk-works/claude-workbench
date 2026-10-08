@@ -1004,7 +1004,9 @@ take effect. Full reasoning and the task breakdown that implements them:
     itself can move.
 
 - **WB-D20 (`#215`) — a forgotten cursor-sync PR is merged at `/resume`, on confirmation;
-  handoff still never merges.** Handoff's docs-only cursor-sync PR was regularly left open,
+  handoff still never merges.** *Superseded by `WB-D24` (2026-10-08): the agent-run merge
+  is removed at each repo's cutover. Until then the text below still describes live
+  behaviour.* Handoff's docs-only cursor-sync PR was regularly left open,
   so `{pr_base}`'s cursor went stale. `/way-of-working:resume` now runs
   `bin/cursor-sync-pr.sh` before it reads the cursor. When exactly one qualifying PR is
   open, it shows the PR's **Next:** paragraph and **HITL Gate** line (if any) read at its
@@ -1520,6 +1522,98 @@ take effect. Full reasoning and the task breakdown that implements them:
     is called by path, never by bare name. If the driver ever becomes something adopters run,
     this decision is reopened rather than the driver copied into `bin/`. No `.ai/project.yml`
     key.
+- **WB-D24 (`#368`) — Claude stops acting as the maintainer; human code-owner approval,
+  not the admin role, is the merge gate.** Decided by the maintainer on 2026-10-08. It
+  **supersedes `WB-D20`**, **reverses** plan v9 § 8.5 option (a) (`restrict-updates-to-main`,
+  chosen 2026-10-04 and confirmed by the 2026-10-05 test), and **amends** `WB-D22`,
+  `WB-D13`, plan v9 principle 2, § 8.13c and decision 9 of
+  `docs/proposals/orchestrator-m2-decisions.md` (the loop's `update`-rule precondition). It rolls out in sprints ("Identity M0…M8"). Until a repo's
+  cutover task lands, that repo keeps today's model.
+  - **Why.**
+    - **Admin was the gate only because Claude pushes as the maintainer.** § 8.5 rejected a
+      required approval because GitHub does not let authors approve their own PRs, and nearly
+      every PR was authored by the maintainer's login (the rest were Dependabot's), which the agent held. That made "is an
+      admin" the only gate left. It also meant every interactive session held an
+      admin-capable, long-lived login while reading untrusted issue and PR text.
+    - **The capability that justified it was barely used.** Measured over two months of
+      transcripts and the merged-PR history of this repo and devcontainers:
+      - the agent-run `--admin` cursor-sync merge (`WB-D20`) took effect **once in 219**
+        cursor-sync PRs; the median time from open to merge is about three minutes
+      - **30 of 341** GitHub-touching sessions ran admin-class commands of other kinds
+      - devcontainers' command-text merge hook needed four non-converging review rounds,
+        and stayed a tripwire, not a boundary
+  - **The model.**
+    1. **Agent identities are GitHub Apps, not the maintainer.** Each org gets three:
+       - a *dev* App: Contents, Pull requests and Issues write; Checks, Actions and Commit
+         statuses read; no Administration, Workflows, statuses write, Environments or
+         Secrets
+       - a *reviewer* App, which only posts the fresh-session COMMENT review
+       - an *admin* App, used only in admin mode (item 5)
+
+       They are kept separate from the loop Apps (`orchestration.loop_identity`). Tokens are
+       one-hour installation tokens. The keys stay on the host and a host broker mints the
+       tokens, so no key enters a container.
+    2. **The merge gate is one approval from a human code owner, with no bypass actors.**
+       - `CODEOWNERS` names both of the maintainer's accounts. Either one approves the
+         other's PRs, and the maintainer's own pushes.
+       - Stale approvals are dismissed, and the last push must be approved by someone other
+         than its pusher.
+       - Required checks are pinned to their source app (`integration_id`). The pins were
+         added to each repo's existing checks ruleset on 2026-10-08. At cutover, the checks
+         move to a ruleset of their own with no bypass, apart from the approval rules.
+       - `restrict-updates-to-main` is removed at each repo's cutover. 603-Identity, on the
+         Team plan, carries the approval rules as an org ruleset with an explicit include
+         list.
+    3. **Merging is mechanical.** `ship` arms auto-merge (`--auto --squash
+       --match-head-commit`). The approval is the control, the merge click is not, and
+       "the human's merge is the approval" becomes "the human's code-owner approval is the
+       approval". `/resume`'s agent-run merge is **removed**, not kept for cursor-sync PRs.
+       Routine cursor fields later move to an unprotected `ai/cursor` branch, while
+       `plan_anchor` changes stay on `{pr_base}` through an approved PR.
+    4. **Claude runs in per-repo dev containers.** They hold no human credential (no
+       keyring, browser profile, GPG or `gh` login) and no cloud credential. There is no
+       Docker socket. AWS work from a container goes through CI's read-only plan roles;
+       applies run in CI behind an Environment, or by the maintainer on the host.
+    5. **Admin mode is explicit and time-boxed.** On the host, the maintainer mints a
+       one-hour admin-App token scoped to one repo and a subset of permissions, behind a
+       passphrase. It reaches one container, and revoking it kills it server-side. While
+       it is live, it elevates **everything** in that container. Cloud admin has no such
+       mode: it stays on the host.
+    6. **Trust is by declared identity, not `author_association`.** Read through an App
+       token, association changes with the viewer: the maintainer's own issues read as
+       `CONTRIBUTOR`. So trusted and untrusted identities are declared as `{login, id}`
+       pairs in a new `identities` key, which reopens `WB-D22`'s rejection of a
+       maintainer-login key. Unattended `/resume` auto-start also requires the
+       maintainer's **reaction** on the exact spec comment, created after its last edit.
+       An App can edit comments but cannot react as another user.
+  - **Rejected.**
+    - **Keeping `--admin` for cursor-sync only.** It needs a bypass-capable login in the
+      agent's shell, which is the exposure itself.
+    - **An admin bypass on the approval ruleset for the maintainer's own PRs.** The second
+      code owner does the same job with no standing bypass.
+    - **Reusing the loop Apps for interactive sessions.** That shares revocation and audit,
+      and muddies the loop's "cannot do X" preflight.
+    - **A machine user.** It needs a seat, a long-lived token and a mailbox.
+    - **Docker-socket access for image builds.** The socket controls the VM that mounts
+      the host's drives.
+    - **A cloud admin mode.** No measured demand: zero cloud-touching commands from agent
+      sessions in the transcript window. It has the highest blast radius, and AWS
+      sessions cannot be revoked on demand.
+  - **Accepted residuals.**
+    - The Claude login credential lives in each container's home volume.
+    - Admin mode elevates the whole container.
+    - The reviewer token exists for a few minutes after the review sandbox is destroyed.
+    - Prefix deny rules stay a seatbelt.
+    - Until each repo's cutover, its sessions run under the old login, so admin-class work
+      happens in the browser.
+  - **Cost.**
+    - Approve replaces Merge, and Dependabot PRs need an approval, with a `GITHUB_TOKEN`
+      workflow arming their auto-merge.
+    - Workflow-file changes need admin mode or a human push.
+    - Possibly one more GitHub Team seat, so the second code owner reaches the private
+      603-Identity repos.
+    - New schema keys (`identities`, a `rulesets` list) and a dual-mode plugin release
+      before any repo cuts over.
 
 ## Status
 
