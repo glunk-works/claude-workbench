@@ -1,41 +1,16 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 12** (cursor id `sprint-12`) on milestone 13, *Orchestrator M2a: loop container
-proven*. Status: **implementing**.
+**Now:** **Sprint 13** (cursor id `sprint-13`), the identity rollout ([WB-D24](../docs/decisions.md), #370). Status: **planning**. No milestone picked yet.
 
-**Just done (2026-10-08):**
-- Task #321: the spec for the in-container critic run was written, reviewed and approved by the
-  human. It is posted as [the spec comment on #321](https://github.com/glunk-works/claude-workbench/issues/321#issuecomment-6060514332)
-  and anchored in the cursor. No code changed.
-- It decides three things:
-  - The plugin, the bundle and the work tree reach the container as named volumes, filled by
-    tar over stdin and mounted read-only.
-  - `critic.sh run --docker` creates, preflights and starts the container, then judges the
-    init event and kills the container from the host.
-  - A separate critic image with no managed MCP config keeps `--strict-mcp-config`.
-- It also fixes an existing bug: `critic.sh` bundle drops dot-path base copies under Git Bash.
-- Critic pass, on the spec rather than a code diff: `security-critic` and `architect`, 5 rounds,
-  converged after the human approved going past the cap. Then +1 on `fable` (second_opinion),
-  confirmed for both agents, with two delta re-runs. The final rev 9 edits were not
-  re-reviewed. This repo has no review CI gate.
-- Follow-up issues the spec proposes, not yet filed:
-  - the attack pass against the critic image;
-  - a Linux CI job for the loop fixture suites;
-  - `.mcp.json` in `human_only_paths`.
+**Just done (2026-10-08):** parked sprint-12. It's set aside for the identity rollout, because the loop preflight and token minting change under M2a. It resumes against the new model; unpark is task #404.
 
-**Next:** task #321 — build the in-container critic run from the anchored spec comment, on
-**sonnet** (coder).
-- Part 1: `pin`, `stage-work` and `bundle --stage-log` with their fixtures.
-- Part 2: `run --docker`, the `launch.sh` critic step, the `Dockerfile`, `preflight.sh`, the in-image
-  fixture run and the recorded architect run on #366's diff.
-- Each part ships as its own PR, `Refs #321`. #321 closes only on a `completed` run.
+**Next:** `/way-of-working:plan-sprint`, on **opus** (architect).
+- It places the identity-rollout backlog into Identity milestones M0–M8, with build order and `depends_on` markers. The backlog is claude-workbench #371–#419, filed 2026-10-08, and each issue body names its plan task and suggested milestone.
+- The human accepts or adjusts the proposal. `/way-of-working:handoff` then anchors the first milestone.
+- The other repos' rollout issues get milestones from `/plan-sprint` in each repo when their sprint comes up.
 
-**HITL Gate: NONE OPEN.** Milestone 13's anchor re-verified (`match`) and now carries the spec
-comment. Next gates:
-- the human's merge of each #321 PR;
-- the human's call on any first-run refusal the spec names in §4.
+**HITL Gate: OPEN.** No milestone is picked yet. The human accepts or adjusts `/plan-sprint`'s Identity milestone proposal before any task starts.
 
-**Pointers:** [docs/decisions.md](../docs/decisions.md) ·
-[milestone 13](https://github.com/glunk-works/claude-workbench/milestone/13) ·
-[docs/proposals/orchestrator-m2-decisions.md](../docs/proposals/orchestrator-m2-decisions.md) ·
-[.ai/parked/](parked/)
+**Milestone close:** no milestone to close (previous sprint parked, not archived)
+
+**Pointers:** [docs/decisions.md](../docs/decisions.md) · [#368](https://github.com/glunk-works/claude-workbench/issues/368) · [.ai/parked/](parked/)
