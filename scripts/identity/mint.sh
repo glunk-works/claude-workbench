@@ -1,9 +1,12 @@
 #!/bin/sh
 # Mint a scoped GitHub App installation token (WB-D24, issue #373).
 #
-#   mint.sh --app-id ID --installation-id ID --key PEM_FILE \
+#   mint.sh --client-id ID --installation-id ID --key PEM_FILE \
 #           --repos name[,name...] --perms perm=level[,perm=level...] \
 #           --out FILE
+#
+# --client-id is the App's Client ID (Iv...), which GitHub uses as the JWT `iss` in place of the
+# numeric App ID.
 #
 # Signs a short-lived App JWT (RS256, via openssl) and POSTs
 # https://api.github.com/app/installations/{id}/access_tokens with a `repositories` and
@@ -24,15 +27,16 @@
 # Toolset: POSIX sh, openssl, curl, jq.
 set -eu
 set -f # --repos / --perms are split unquoted below; never let a `*` glob into file names
+LC_ALL=C; export LC_ALL # so [!A-Za-z0-9] means ASCII only in every shell and locale
 
 die() { echo "mint.sh: $1" >&2; exit "${2:-1}"; }
-usage() { die "usage: mint.sh --app-id ID --installation-id ID --key PEM --repos a,b --perms p=l,... --out FILE" 2; }
+usage() { die "usage: mint.sh --client-id ID --installation-id ID --key PEM --repos a,b --perms p=l,... --out FILE" 2; }
 
-app_id= inst_id= key= repos= perms= out=
+client_id= inst_id= key= repos= perms= out=
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
-    --app-id) app_id=$2 ;;
+    --client-id) client_id=$2 ;;
     --installation-id) inst_id=$2 ;;
     --key) key=$2 ;;
     --repos) repos=$2 ;;
@@ -45,7 +49,7 @@ done
 
 is_num() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 
-is_num "$app_id" || die "--app-id must be a number" 2
+case "$client_id" in ""|*[!A-Za-z0-9]*) die "--client-id must be the App's Client ID (letters and digits)" 2 ;; esac
 is_num "$inst_id" || die "--installation-id must be a number" 2
 [ -n "$key" ] && [ -r "$key" ] || die "--key must name a readable PEM file" 2
 [ -n "$out" ] || die "--out is required" 2
@@ -87,7 +91,7 @@ b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 now=$(date +%s)
 header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
 # iat is back-dated 60s for clock skew; exp stays inside GitHub's 10-minute ceiling.
-claims=$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$app_id" | b64url)
+claims=$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$client_id" | b64url)
 sig=$(printf '%s.%s' "$header" "$claims" | openssl dgst -sha256 -sign "$key" -binary | b64url) \
   || die "openssl could not sign with $key"
 [ -n "$sig" ] || die "openssl produced no signature"
