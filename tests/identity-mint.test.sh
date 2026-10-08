@@ -9,7 +9,7 @@
 #   success          token + expires_at land in --out (two lines), mode 600
 #   request          POST to /app/installations/<id>/access_tokens with the repositories and
 #                    permissions subset, and the JWT in the config, never in argv
-#   jwt              RS256, verifies against the public key, iss = app id, exp - iat <= 10 min
+#   jwt              RS256, verifies against the public key, iss = client id, exp - iat <= 10 min
 #   secrecy          neither the token nor the JWT reaches stdout, stderr or argv
 #   API failure      non-201, and a 201 with no token: exit 1, no --out file left behind
 #   usage            missing/odd arguments exit 2 before curl is ever called
@@ -84,7 +84,7 @@ run() {
 }
 
 good_args() {
-  echo --app-id 12345 --installation-id 678 --key "$tmp/key.pem" \
+  echo --client-id Iv23liTestClient0001 --installation-id 678 --key "$tmp/key.pem" \
        --repos claude-workbench,devcontainers --perms contents=write,pull_requests=write \
        --out "$tmp/token"
 }
@@ -137,7 +137,7 @@ unb64() { # base64url on stdin -> bytes on stdout
 
 assert_eq "JWT header" '{"alg":"RS256","typ":"JWT"}' "$(printf '%s' "$h" | unb64)"
 claims=$(printf '%s' "$c" | unb64)
-assert_eq "JWT iss is the app id" 12345 "$(printf '%s' "$claims" | jq -r '.iss | tonumber')"
+assert_eq "JWT iss is the client id" Iv23liTestClient0001 "$(printf '%s' "$claims" | jq -r .iss)"
 iat=$(printf '%s' "$claims" | jq '.iat')
 exp=$(printf '%s' "$claims" | jq '.exp')
 # GitHub's rules: iat not in the future, exp at most ten minutes ahead of the request.
@@ -213,7 +213,7 @@ assert_contains "pretty-printed 401 reports status and message" "$se" "HTTP 401:
 # If --out becomes a directory during the round-trip, mv would drop the token inside it.
 mkdir "$tmp/racedir"
 STUB_MKDIR=$tmp/racedir/token
-run 201 "$GOOD_BODY" --app-id 1 --installation-id 2 --key "$tmp/key.pem" --repos a \
+run 201 "$GOOD_BODY" --client-id 1 --installation-id 2 --key "$tmp/key.pem" --repos a \
   --perms contents=read --out "$tmp/racedir/token"
 unset STUB_MKDIR
 assert_eq "out turning into a directory exits 1" 1 "$rc"
@@ -238,13 +238,13 @@ assert_eq "failed mint keeps the old out file" "old" "$(sed -n 1p "$tmp/token")"
 rm -f "$tmp/token"
 
 # --- usage messages read cleanly (no stray exit code appended) -------------------------------
-run 201 "$GOOD_BODY" --app-id x --installation-id 1 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/token"
-assert_eq "usage message has no stray exit code" "mint.sh: --app-id must be a number" "$se"
+run 201 "$GOOD_BODY" --client-id "a b" --installation-id 1 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/token"
+assert_eq "usage message has no stray exit code" "mint.sh: --client-id must be the App's Client ID (letters and digits)" "$se"
 
 # --- a glob in --repos is a bad name, never expanded against the working directory -----------
 mkdir "$tmp/globdir" && : >"$tmp/globdir/other-repo"
 (cd "$tmp/globdir" && STUB_DIR=$tmp STUB_STATUS=201 STUB_BODY=$GOOD_BODY PATH="$tmp/bin:$PATH" \
-  sh "$script" --app-id 1 --installation-id 2 --key "$tmp/key.pem" --repos '*' \
+  sh "$script" --client-id 1 --installation-id 2 --key "$tmp/key.pem" --repos '*' \
     --perms contents=read --out "$tmp/token" >/dev/null 2>&1) && globrc=0 || globrc=$?
 assert_eq "--repos '*' exits 2" 2 "$globrc"
 
@@ -256,7 +256,7 @@ usage_case() { # desc <args...>
   [ ! -e "$tmp/calls" ] && ok || bad "$desc never calls curl" "curl was called"
 }
 
-base="--app-id 12345 --installation-id 678 --key $tmp/key.pem --out $tmp/token"
+base="--client-id Iv23liTestClient0001 --installation-id 678 --key $tmp/key.pem --out $tmp/token"
 # shellcheck disable=SC2086
 {
   usage_case "no repos"            $base --perms contents=write
@@ -267,15 +267,16 @@ base="--app-id 12345 --installation-id 678 --key $tmp/key.pem --out $tmp/token"
   usage_case "perm without level"  $base --repos a --perms contents
   usage_case "perm bad level"      $base --repos a --perms contents=owner
   usage_case "perm bad name"       $base --repos a --perms 'Contents=write'
-  usage_case "non-numeric app id"  --app-id abc --installation-id 678 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/token"
-  usage_case "non-numeric install" --app-id 1 --installation-id x --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/token"
-  usage_case "missing key file"    --app-id 1 --installation-id 2 --key "$tmp/nope.pem" --repos a --perms contents=read --out "$tmp/token"
+  usage_case "client id with a symbol" --client-id "Iv23li-x" --installation-id 678 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/token"
+  usage_case "client id with a non-ASCII letter" --client-id "Iv23liCaf$(printf '\303\251')" --installation-id 678 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/token"
+  usage_case "non-numeric install" --client-id 1 --installation-id x --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/token"
+  usage_case "missing key file"    --client-id 1 --installation-id 2 --key "$tmp/nope.pem" --repos a --perms contents=read --out "$tmp/token"
   usage_case "--api-url is gone"   $base --repos a --perms contents=read --api-url https://attacker.example
   usage_case "unknown flag"        $base --repos a --perms contents=read --bogus x
   usage_case "dangling flag"       $base --repos a --perms contents=read --out
   usage_case "duplicate perm"      $base --repos a --perms contents=read,contents=admin
-  usage_case "out is a directory"  --app-id 1 --installation-id 2 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp"
-  usage_case "out dir is missing"  --app-id 1 --installation-id 2 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/nodir/token"
+  usage_case "out is a directory"  --client-id 1 --installation-id 2 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp"
+  usage_case "out dir is missing"  --client-id 1 --installation-id 2 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/nodir/token"
 }
 
 if [ "$fail" -eq 0 ]; then
