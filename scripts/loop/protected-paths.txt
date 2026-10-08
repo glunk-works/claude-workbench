@@ -1,0 +1,28 @@
+# Trust predicates and their own fixtures (#296, decision 6 of docs/proposals/orchestrator-m2-decisions.md).
+# A loop diff touching any entry here is refused by driver-core.sh (rule `protected`), so an edit
+# to one always needs the human. One literal path per line, matched as the file or as `entry/...`,
+# case-folded; blank lines and lines starting with # are skipped. Narrow on purpose: the rest of
+# plugins/way-of-working/bin/ and the rest of tests/ stay open to the loop.
+#
+# This list does not protect itself or driver-core.sh: that is the caller's --human-only-path (scripts/).
+# The driver must pass THIS file from its own checkout, never from the session tree.
+# It is not the whole protected set: driver-core.sh itself also refuses any .gitattributes. And the
+# SKILL.md blocks that call these predicates (e.g. pr-checks) are not covered: decision 6 scoped
+# #296 to the predicates and their fixtures, so widening that is the maintainer's call.
+plugins/way-of-working/bin/plan-anchor.sh
+plugins/way-of-working/bin/review-sandbox.sh
+plugins/way-of-working/bin/review-step.sh
+plugins/way-of-working/bin/driver-lock.sh
+plugins/way-of-working/bin/blocked-state.sh
+plugins/way-of-working/bin/cursor-sync-pr.sh
+plugins/way-of-working/bin/spawn-model.sh
+plugins/way-of-working/bin/review-base-anchor.sh
+tests/plan-anchor.test.sh
+tests/review-sandbox.test.sh
+tests/review-step.test.sh
+tests/driver-lock.test.sh
+tests/blocked-state.test.sh
+tests/blocked-state-block.test.sh
+tests/cursor-sync-pr.test.sh
+tests/spawn-model.test.sh
+tests/review-base-anchor.test.sh
