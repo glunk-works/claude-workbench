@@ -1,0 +1,426 @@
+#!/bin/sh
+# Fixture tests for scripts/loop/preflight.sh (issue #320).
+#
+# Hermetic: the evaluators read JSON files, so there is no docker, no gh and no network here.
+# Each check gets a pass, a fail and an unreadable case. Fixtures are built from one good
+# document per input with jq, then broken one field at a time.
+#
+# Permitted toolset: POSIX sh, its standard utilities, bash (the script is bash), jq.
+set -eu
+
+root_dir="$(cd "$(dirname "$0")/.." && pwd)"
+script="$root_dir/scripts/loop/preflight.sh"
+
+for tool in jq bash; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "SKIP - $tool not on PATH; preflight fixtures not run" >&2
+    exit 0
+  fi
+done
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+fail=0
+NET=wow-loop-net-1
+
+assert_eq() {
+  if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: expected [$2], got [$3]" >&2; fail=1; fi
+}
+assert_has() { # desc, haystack, needle
+  case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]" >&2; fail=1 ;; esac
+}
+
+# run <args...>: stdout and exit code in $out and $rc
+run() { set +e; out=$(bash "$script" "$@" 2>"$tmp/err"); rc=$?; set -e; }
+
+# --- container fixtures ----------------------------------------------------------------------
+cat >"$tmp/session.json" <<EOF
+[{"Config":{"User":"loop"},
+  "HostConfig":{"ReadonlyRootfs":true,"CapDrop":["ALL"],"CapAdd":null,"Privileged":false,"NetworkMode":"$NET","Binds":["wow-loop-vol-1:/work"]},
+  "NetworkSettings":{"Networks":{"$NET":{}}},
+  "Mounts":[{"Type":"volume","Source":"/var/lib/docker/volumes/work/_data","Destination":"/work"}]}]
+EOF
+cat >"$tmp/network.json" <<EOF
+[{"Name":"$NET","Internal":true,"EnableIPv6":false,
+  "Options":{"com.docker.network.bridge.gateway_mode_ipv4":"isolated"},
+  "IPAM":{"Config":[{"Subnet":"172.30.0.0/24"}]}}]
+EOF
+cat >"$tmp/proxy.json" <<EOF
+[{"Name":"/proxy","State":{"Running":true},"NetworkSettings":{"Networks":{"$NET":{}}}}]
+EOF
+cat >"$tmp/inject.json" <<EOF
+[{"Name":"/inject","State":{"Running":true},"NetworkSettings":{"Networks":{"$NET":{}}}}]
+EOF
+
+cont() { # session network [proxy...]
+  s=$1; n=$2; shift 2
+  [ $# -gt 0 ] || set -- "$tmp/proxy.json" "$tmp/inject.json"
+  pargs=; for p in "$@"; do pargs="$pargs --proxy $p"; done
+  # shellcheck disable=SC2086
+  run container --session "$s" --network "$n" --expect-network "$NET" $pargs
+}
+
+cont "$tmp/session.json" "$tmp/network.json"
+assert_eq "container: good inputs pass" "pass/0" "$out/$rc"
+
+mut() { # name file jq-filter: write a mutated copy to $tmp/name
+  jq -c "$3" "$2" >"$tmp/$1"
+}
+
+for case_ in \
+  'user-group-root|.[0].Config.User="loop:0"|refused user' \
+  'user-group-name|.[0].Config.User="loop:root"|refused user' \
+  'cap-add|.[0].HostConfig.CapAdd=["SYS_ADMIN"]|refused cap-add' \
+  'cap-drop-unset|del(.[0].HostConfig.CapDrop)|unreadable cap-drop' \
+  'privileged-unset|del(.[0].HostConfig.Privileged)|unreadable privileged' \
+  'netmode-unset|del(.[0].HostConfig.NetworkMode)|unreadable network-mode' \
+  'pid-host|.[0].HostConfig.PidMode="host"|refused privilege' \
+  'userns-host|.[0].HostConfig.UsernsMode="host"|refused privilege' \
+  'devices|.[0].HostConfig.Devices=[{"PathOnHost":"/dev/sda"}]|refused privilege' \
+  'unconfined|.[0].HostConfig.SecurityOpt=["seccomp=unconfined"]|refused privilege' \
+  'second-network|.[0].NetworkSettings.Networks={"wow-loop-net-1":{},"bridge":{}}|refused session-networks' \
+  'other-network|.[0].NetworkSettings.Networks={"bridge":{}}|refused session-networks' \
+  'networks-unset|del(.[0].NetworkSettings)|unreadable session-networks' \
+  'bind-var-run|.[0].Mounts+=[{"Type":"bind","Source":"/var/run","Destination":"/h"}]|refused mounts' \
+  'bind-root|.[0].Mounts+=[{"Type":"bind","Source":"/","Destination":"/h"}]|refused mounts' \
+  'bind-untyped|.[0].Mounts+=[{"Source":"/srv","Destination":"/h"}]|refused mounts' \
+  'binds-var-run|.[0].HostConfig.Binds=["/var/run:/h"]|refused binds' \
+  'pid-container|.[0].HostConfig.PidMode="container:proxy"|refused privilege' \
+  'ipc-container|.[0].HostConfig.IpcMode="container:proxy"|refused privilege' \
+  'ipc-host|.[0].HostConfig.IpcMode="host"|refused privilege' \
+  'uts-host|.[0].HostConfig.UTSMode="host"|refused privilege' \
+  'cgroupns-host|.[0].HostConfig.CgroupnsMode="host"|refused privilege' \
+  'group-add-root|.[0].HostConfig.GroupAdd=["0"]|refused privilege' \
+  'device-requests|.[0].HostConfig.DeviceRequests=[{"Count":-1}]|refused privilege' \
+  'hc-mounts-bind|.[0].HostConfig.Mounts=[{"Type":"bind","Source":"/","Target":"/h"}]|refused privilege' \
+  'binds-drive|.[0].HostConfig.Binds=["C:/x:/x"]|refused binds' \
+  'binds-volume-plus-host|.[0].HostConfig.Binds=["wow-loop-vol-1:/work","/srv:/x"]|refused binds' \
+  'user-plus0|.[0].Config.User="+0"|refused user' \
+  'user-group-plus0|.[0].Config.User="loop:+0"|refused user' \
+  'user-group-minus0|.[0].Config.User="loop:-0"|refused user' \
+  'group-add-plus0|.[0].HostConfig.GroupAdd=["+0"]|refused privilege' \
+  'group-add-minus0|.[0].HostConfig.GroupAdd=["-0"]|refused privilege' \
+  'group-add-root-name|.[0].HostConfig.GroupAdd=["root"]|refused privilege' \
+  'seccomp-inline|.[0].HostConfig.SecurityOpt=["seccomp={\"defaultAction\":\"SCMP_ACT_ALLOW\"}"]|refused privilege' \
+  'secopt-spc|.[0].HostConfig.SecurityOpt=["no-new-privileges","label=type:spc_t"]|refused privilege' \
+  'secopt-string|.[0].HostConfig.SecurityOpt="no-new-privileges"|refused privilege' \
+  'hc-mounts-string|.[0].HostConfig.Mounts="x"|refused privilege' \
+  'user-root|.[0].Config.User="root"|refused user' \
+  'user-uid0|.[0].Config.User="0:0"|refused user' \
+  'user-empty|.[0].Config.User=""|refused user' \
+  'user-unset|del(.[0].Config.User)|unreadable user' \
+  'rofs-off|.[0].HostConfig.ReadonlyRootfs=false|refused readonly-rootfs' \
+  'rofs-unset|del(.[0].HostConfig.ReadonlyRootfs)|unreadable readonly-rootfs' \
+  'caps-kept|.[0].HostConfig.CapDrop=[]|refused cap-drop' \
+  'privileged|.[0].HostConfig.Privileged=true|refused privileged' \
+  'netmode|.[0].HostConfig.NetworkMode="bridge"|refused network-mode' \
+  'mnt|.[0].Mounts+=[{"Type":"volume","Source":"/mnt/c/Users","Destination":"/x"}]|refused mounts' \
+  'mnt-upper|.[0].Mounts+=[{"Type":"volume","Source":"/MNT/c","Destination":"/x"}]|refused mounts' \
+  'drive|.[0].Mounts+=[{"Type":"volume","Source":"C:/Users/x","Destination":"/x"}]|refused mounts' \
+  'drive-lower|.[0].Mounts+=[{"Type":"volume","Source":"d:/x","Destination":"/x"}]|refused mounts' \
+  'sock|.[0].Mounts+=[{"Type":"volume","Source":"/var/run/docker.sock","Destination":"/var/run/docker.sock"}]|refused mounts' \
+  'sock-dest|.[0].Mounts+=[{"Type":"volume","Source":"/some/where","Destination":"/run/docker.sock"}]|refused mounts' \
+  'pipe|.[0].Mounts+=[{"Type":"volume","Source":"//./pipe/docker_engine","Destination":"/x"}]|refused mounts' \
+  'bind-sock|.[0].HostConfig.Binds=["/var/run/docker.sock:/s"]|refused binds' \
+  'bind-mnt|.[0].HostConfig.Binds=["/mnt/c/x:/x:ro"]|refused binds' \
+  'binds-shape|.[0].HostConfig.Binds="x"|unreadable binds' \
+  'mounts-unset|del(.[0].Mounts)|unreadable mounts' \
+  'two-containers|. + .|unreadable container'
+do
+  name=${case_%%|*}; rest=${case_#*|}; filt=${rest%|*}; want=${rest##*|}
+  mut "s-$name.json" "$tmp/session.json" "$filt"
+  cont "$tmp/s-$name.json" "$tmp/network.json"
+  assert_eq "container session $name exits 3" 3 "$rc"
+  assert_has "container session $name says [$want]" "$out" "$want"
+done
+
+for case_ in \
+  'ipv6-unset|del(.[0].EnableIPv6)|unreadable ipv6' \
+  'name-unset|del(.[0].Name)|unreadable network-name' \
+  'not-internal|.[0].Internal=false|refused internal' \
+  'internal-unset|del(.[0].Internal)|unreadable internal' \
+  'ipv6-on|.[0].EnableIPv6=true|refused ipv6' \
+  'mode-bridge|.[0].Options["com.docker.network.bridge.gateway_mode_ipv4"]="nat"|refused gateway-mode' \
+  'mode-unset|del(.[0].Options)|unreadable gateway-mode' \
+  'gateway|.[0].IPAM.Config[0].Gateway="172.30.0.1"|refused ipam' \
+  'gateway-second|.[0].IPAM.Config+=[{"Subnet":"fd00::/64","Gateway":"fd00::1"}]|refused ipam' \
+  'ipam-null|.[0].IPAM.Config=null|unreadable ipam' \
+  'ipam-empty|.[0].IPAM.Config=[]|unreadable ipam' \
+  'wrong-name|.[0].Name="other"|refused network-name'
+do
+  name=${case_%%|*}; rest=${case_#*|}; filt=${rest%|*}; want=${rest##*|}
+  mut "n-$name.json" "$tmp/network.json" "$filt"
+  cont "$tmp/session.json" "$tmp/n-$name.json"
+  assert_eq "container network $name exits 3" 3 "$rc"
+  assert_has "container network $name says [$want]" "$out" "$want"
+done
+
+# a gateway is never derived: a subnet whose .1 is unused still passes
+cont "$tmp/session.json" "$tmp/network.json"
+assert_eq "container: no Gateway is derived from a Subnet" "pass/0" "$out/$rc"
+
+mut p-down.json "$tmp/proxy.json" '.[0].State.Running=false'
+cont "$tmp/session.json" "$tmp/network.json" "$tmp/p-down.json" "$tmp/inject.json"
+assert_has "container: a stopped proxy is refused" "$out" "refused proxy-running"
+mut p-off.json "$tmp/proxy.json" '.[0].NetworkSettings.Networks={"bridge":{}}'
+cont "$tmp/session.json" "$tmp/network.json" "$tmp/p-off.json"
+assert_has "container: a proxy off the network is refused" "$out" "refused proxy-network"
+mut p-state.json "$tmp/proxy.json" 'del(.[0].State)'
+cont "$tmp/session.json" "$tmp/network.json" "$tmp/p-state.json"
+assert_has "container: a proxy with no State is unreadable" "$out" "unreadable proxy-running"
+
+: >"$tmp/empty.json"
+cont "$tmp/empty.json" "$tmp/network.json"
+assert_eq "container: an empty session file is unreadable" 3 "$rc"
+assert_has "container: empty file named" "$out" "unreadable input"
+printf '{not json' >"$tmp/garbage.json"
+cont "$tmp/session.json" "$tmp/garbage.json"
+assert_has "container: garbage network file is unreadable" "$out" "unreadable input"
+cont "$tmp/nope.json" "$tmp/network.json"
+assert_has "container: a missing file is unreadable" "$out" "unreadable input"
+printf '{}' >"$tmp/obj.json"
+cont "$tmp/obj.json" "$tmp/network.json"
+assert_has "container: a non-array session is unreadable" "$out" "unreadable container"
+
+# several findings at once all print
+mut s-multi.json "$tmp/session.json" '.[0].Config.User="root"|.[0].HostConfig.ReadonlyRootfs=false'
+cont "$tmp/s-multi.json" "$tmp/network.json"
+assert_eq "container: two findings, two lines" 2 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+
+# a control character in a quoted path cannot forge a line
+mut s-nl.json "$tmp/session.json" '.[0].Mounts+=[{"Source":"/mnt/x\npass","Destination":"/x"}]'
+cont "$tmp/s-nl.json" "$tmp/network.json"
+assert_eq "container: a newline in a mount source stays on one line" 1 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+
+# --- github-dispatch fixtures ------------------------------------------------------------------
+APP=424242
+cat >"$tmp/rules.json" <<EOF
+[{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":1},{"type":"update","ruleset_id":2}]
+EOF
+cat >"$tmp/rulesets.json" <<EOF
+[{"id":1,"bypass_actors":[]},
+ {"id":2,"bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"pull_request"}]}]
+EOF
+cat >"$tmp/issue.json" <<EOF
+{"number":320,"author_association":"MEMBER"}
+EOF
+cat >"$tmp/comment.json" <<EOF
+{"id":777,"author_association":"OWNER","issue_url":"https://api.github.com/repos/glunk-works/claude-workbench/issues/320"}
+EOF
+
+disp() { # rules rulesets issue [comment|-]
+  c=$4
+  if [ "$c" = - ]; then
+    run github-dispatch --rules "$1" --rulesets "$2" --app-id $APP --issue "$3" --issue-number 320 --no-spec-comment
+  else
+    run github-dispatch --rules "$1" --rulesets "$2" --app-id $APP --issue "$3" --issue-number 320 --spec-comment "$c" --spec-comment-id 777
+  fi
+}
+
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/comment.json"
+assert_eq "dispatch: good inputs pass" "pass/0" "$out/$rc"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" -
+assert_eq "dispatch: good inputs pass with no spec comment" "pass/0" "$out/$rc"
+
+jq -c 'map(select(.type!="update"))' "$tmp/rules.json" >"$tmp/r-noupd.json"
+disp "$tmp/r-noupd.json" "$tmp/rulesets.json" "$tmp/issue.json" -
+assert_has "dispatch: no update rule is refused" "$out" "refused update-rule"
+printf '[]' >"$tmp/r-none.json"
+disp "$tmp/r-none.json" "$tmp/rulesets.json" "$tmp/issue.json" -
+assert_has "dispatch: no rules at all is refused" "$out" "refused update-rule"
+jq -c 'map(select(.type!="update"))|.[0].type="update_x"' "$tmp/rules.json" >"$tmp/r-near.json"
+disp "$tmp/r-near.json" "$tmp/rulesets.json" "$tmp/issue.json" -
+assert_has "dispatch: a lookalike rule type is refused" "$out" "refused update-rule"
+jq -c '.[0]|=del(.ruleset_id)' "$tmp/rules.json" >"$tmp/r-noid.json"
+disp "$tmp/r-noid.json" "$tmp/rulesets.json" "$tmp/issue.json" -
+assert_has "dispatch: a rule with no ruleset_id is unreadable" "$out" "unreadable update-rule"
+
+jq -c '.[1].bypass_actors+=[{"actor_id":424242,"actor_type":"Integration","bypass_mode":"always"}]' "$tmp/rulesets.json" >"$tmp/rs-app.json"
+disp "$tmp/rules.json" "$tmp/rs-app.json" "$tmp/issue.json" -
+assert_has "dispatch: the App as a bypass actor is refused" "$out" "refused bypass"
+jq -c '.[1].bypass_actors+=[{"actor_id":999,"actor_type":"Integration","bypass_mode":"always"}]' "$tmp/rulesets.json" >"$tmp/rs-other.json"
+disp "$tmp/rules.json" "$tmp/rs-other.json" "$tmp/issue.json" -
+assert_eq "dispatch: another App as a bypass actor is not this check's business" "pass/0" "$out/$rc"
+jq -c '.[1].bypass_actors+=[{"actor_id":424242,"actor_type":"RepositoryRole"}]' "$tmp/rulesets.json" >"$tmp/rs-role.json"
+disp "$tmp/rules.json" "$tmp/rs-role.json" "$tmp/issue.json" -
+assert_eq "dispatch: a role with the App's number is not the App" "pass/0" "$out/$rc"
+jq -c '.[0].bypass_actors=null' "$tmp/rulesets.json" >"$tmp/rs-null.json"
+disp "$tmp/rules.json" "$tmp/rs-null.json" "$tmp/issue.json" -
+assert_has "dispatch: hidden bypass_actors is unreadable" "$out" "unreadable bypass"
+jq -c 'del(.[1])' "$tmp/rulesets.json" >"$tmp/rs-missing.json"
+disp "$tmp/rules.json" "$tmp/rs-missing.json" "$tmp/issue.json" -
+assert_has "dispatch: a missing ruleset document is unreadable" "$out" "unreadable bypass"
+jq -c '. + [{"id":99,"bypass_actors":[{"actor_id":424242,"actor_type":"Integration"}]}]' "$tmp/rulesets.json" >"$tmp/rs-extra.json"
+disp "$tmp/rules.json" "$tmp/rs-extra.json" "$tmp/issue.json" -
+assert_eq "dispatch: a ruleset that does not apply to pr_base is ignored" "pass/0" "$out/$rc"
+
+for assoc in OWNER MEMBER COLLABORATOR; do
+  jq -c ".author_association=\"$assoc\"" "$tmp/issue.json" >"$tmp/i-ok.json"
+  disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-ok.json" -
+  assert_eq "dispatch: issue author $assoc is trusted" "pass/0" "$out/$rc"
+done
+for assoc in NONE CONTRIBUTOR FIRST_TIME_CONTRIBUTOR FIRST_TIMER MANNEQUIN ""; do
+  jq -c ".author_association=\"$assoc\"" "$tmp/issue.json" >"$tmp/i-bad.json"
+  disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-bad.json" -
+  assert_has "dispatch: issue author [$assoc] is refused" "$out" "refused author"
+done
+jq -c 'del(.author_association)' "$tmp/issue.json" >"$tmp/i-unset.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-unset.json" -
+assert_has "dispatch: no author_association is unreadable" "$out" "unreadable author"
+jq -c '.number=321' "$tmp/issue.json" >"$tmp/i-num.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-num.json" -
+assert_has "dispatch: the wrong issue number is unreadable" "$out" "unreadable author"
+jq -c '.author_association="NONE"' "$tmp/comment.json" >"$tmp/c-bad.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-bad.json"
+assert_has "dispatch: an untrusted spec comment is refused" "$out" "refused author"
+jq -c '.id=1' "$tmp/comment.json" >"$tmp/c-id.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-id.json"
+assert_has "dispatch: a spec comment with another id is unreadable" "$out" "unreadable author"
+jq -c 'del(.author_association)' "$tmp/comment.json" >"$tmp/c-unset.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-unset.json"
+assert_has "dispatch: a spec comment with no author_association is unreadable" "$out" "unreadable author"
+
+: >"$tmp/empty.json"
+disp "$tmp/empty.json" "$tmp/rulesets.json" "$tmp/issue.json" -
+assert_has "dispatch: an empty rules file is unreadable" "$out" "unreadable input"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/empty.json" -
+assert_has "dispatch: an empty issue file is unreadable" "$out" "unreadable input"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/empty.json"
+assert_has "dispatch: an empty comment file is unreadable" "$out" "unreadable input"
+
+# --- github-push fixtures ----------------------------------------------------------------------
+REPO=glunk-works/claude-workbench
+cat >"$tmp/inst.json" <<EOF
+{"total_count":1,"repositories":[{"full_name":"glunk-works/claude-workbench"}]}
+EOF
+cat >"$tmp/rs-push.json" <<EOF
+[{"id":1,"current_user_can_bypass":"never"},{"id":2,"current_user_can_bypass":"never"}]
+EOF
+cat >"$tmp/app.json" <<EOF
+{"slug":"glunk-loop"}
+EOF
+
+push() { # installation rulesets app loopid [rules]
+  run github-push --installation "$1" --repo "$REPO" --rules "${5:-$tmp/rules.json}" --rulesets "$2" --app "$3" --loop-identity "$4"
+}
+
+push "$tmp/inst.json" "$tmp/rs-push.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_eq "push: good inputs pass" "pass/0" "$out/$rc"
+push "$tmp/inst.json" "$tmp/rs-push.json" "$tmp/app.json" 'Glunk-Loop[BOT]'
+assert_eq "push: the identity compares case-insensitively" "pass/0" "$out/$rc"
+run github-push --installation "$tmp/inst.json" --repo GLUNK-WORKS/Claude-Workbench --rules "$tmp/rules.json" --rulesets "$tmp/rs-push.json" --app "$tmp/app.json" --loop-identity 'glunk-loop[bot]'
+assert_eq "push: the repo compares case-insensitively" "pass/0" "$out/$rc"
+
+jq -c '.total_count=2|.repositories+=[{"full_name":"glunk-works/other"}]' "$tmp/inst.json" >"$tmp/inst-two.json"
+push "$tmp/inst-two.json" "$tmp/rs-push.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_has "push: a second repository is refused" "$out" "refused installation"
+jq -c '.repositories[0].full_name="glunk-works/other"' "$tmp/inst.json" >"$tmp/inst-other.json"
+push "$tmp/inst-other.json" "$tmp/rs-push.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_has "push: another single repository is refused" "$out" "refused installation"
+jq -c '.total_count=0|.repositories=[]' "$tmp/inst.json" >"$tmp/inst-zero.json"
+push "$tmp/inst-zero.json" "$tmp/rs-push.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_has "push: no repository is refused" "$out" "refused installation"
+jq -c '.total_count=2' "$tmp/inst.json" >"$tmp/inst-trunc.json"
+push "$tmp/inst-trunc.json" "$tmp/rs-push.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_has "push: a truncated list is unreadable" "$out" "unreadable installation"
+printf '{"message":"Bad credentials"}' >"$tmp/inst-err.json"
+push "$tmp/inst-err.json" "$tmp/rs-push.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_has "push: an API error body is unreadable" "$out" "unreadable installation"
+
+for v in always pull_requests_only exempt; do
+  jq -c ".[1].current_user_can_bypass=\"$v\"" "$tmp/rs-push.json" >"$tmp/rs-v.json"
+  push "$tmp/inst.json" "$tmp/rs-v.json" "$tmp/app.json" 'glunk-loop[bot]'
+  assert_has "push: current_user_can_bypass $v is refused" "$out" "refused can-bypass"
+done
+jq -c 'del(.[0].current_user_can_bypass)' "$tmp/rs-push.json" >"$tmp/rs-v.json"
+push "$tmp/inst.json" "$tmp/rs-v.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_has "push: no current_user_can_bypass is unreadable" "$out" "unreadable can-bypass"
+jq -c 'del(.[1])' "$tmp/rs-push.json" >"$tmp/rs-v.json"
+push "$tmp/inst.json" "$tmp/rs-v.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_has "push: an applicable ruleset with no document is unreadable" "$out" "unreadable can-bypass"
+push "$tmp/inst.json" "$tmp/rs-push.json" "$tmp/app.json" 'glunk-loop[bot]' "$tmp/r-none.json"
+assert_has "push: no applicable ruleset is refused" "$out" "refused can-bypass"
+
+push "$tmp/inst.json" "$tmp/rs-push.json" "$tmp/app.json" 'someone-else[bot]'
+assert_has "push: a different bot login is refused" "$out" "refused identity"
+push "$tmp/inst.json" "$tmp/rs-push.json" "$tmp/app.json" 'glunk-loop'
+assert_has "push: a login without [bot] is refused" "$out" "refused identity"
+push "$tmp/inst.json" "$tmp/rs-push.json" "$tmp/app.json" '-'
+assert_has "push: a null loop_identity is refused" "$out" "refused identity"
+printf '{"message":"A JSON web token could not be decoded"}' >"$tmp/app-err.json"
+push "$tmp/inst.json" "$tmp/rs-push.json" "$tmp/app-err.json" 'glunk-loop[bot]'
+assert_has "push: an /app error body is unreadable" "$out" "unreadable identity"
+
+# --- round-1 additions: shapes that must still pass, duplicates, size ----------------------------
+for okcase in \
+  'group-ok|.[0].Config.User="loop:loop"' \
+  'cap-add-empty|.[0].HostConfig.CapAdd=[]' \
+  'cap-add-absent|del(.[0].HostConfig.CapAdd)' \
+  'tmpfs|.[0].Mounts+=[{"Type":"tmpfs","Destination":"/tmp"}]' \
+  'binds-empty|.[0].HostConfig.Binds=[]'
+do
+  name=${okcase%%|*}; filt=${okcase#*|}
+  mut "ok-$name.json" "$tmp/session.json" "$filt"
+  cont "$tmp/ok-$name.json" "$tmp/network.json"
+  assert_eq "container: $name still passes" "pass/0" "$out/$rc"
+done
+
+mut p-nonet.json "$tmp/proxy.json" 'del(.[0].NetworkSettings)'
+cont "$tmp/session.json" "$tmp/network.json" "$tmp/p-nonet.json"
+assert_has "container: a proxy with no Networks is unreadable" "$out" "unreadable proxy-network"
+
+# argv size: many proxies and a big session must not hit the command-line limit
+jq -c '.[0].Config.Labels={"k":("x"*40000)}' "$tmp/proxy.json" >"$tmp/p-big.json"
+cont "$tmp/session.json" "$tmp/network.json" "$tmp/p-big.json" "$tmp/p-big.json"
+assert_eq "container: 80 KB of proxy inspect still evaluates" "pass/0" "$out/$rc"
+
+jq -c '. + [{"id":2,"bypass_actors":[{"actor_id":424242,"actor_type":"Integration"}]}]' "$tmp/rulesets.json" >"$tmp/rs-dup.json"
+disp "$tmp/rules.json" "$tmp/rs-dup.json" "$tmp/issue.json" -
+assert_has "dispatch: a ruleset supplied twice is unreadable" "$out" "unreadable bypass"
+jq -c '.[1].bypass_actors=[{"actor_id":"424242","actor_type":"Integration"}]' "$tmp/rulesets.json" >"$tmp/rs-strid.json"
+disp "$tmp/rules.json" "$tmp/rs-strid.json" "$tmp/issue.json" -
+assert_has "dispatch: a string actor_id on an Integration actor is unreadable" "$out" "unreadable bypass"
+jq -c '.[1].bypass_actors=["x"]' "$tmp/rulesets.json" >"$tmp/rs-str.json"
+disp "$tmp/rules.json" "$tmp/rs-str.json" "$tmp/issue.json" -
+assert_has "dispatch: a non-object bypass actor is unreadable" "$out" "unreadable"
+jq -c '.pull_request={"url":"x"}' "$tmp/issue.json" >"$tmp/i-pr.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-pr.json" -
+assert_has "dispatch: a pull request is not a task issue" "$out" "unreadable author"
+jq -c '.issue_url="https://api.github.com/repos/glunk-works/claude-workbench/issues/321"' "$tmp/comment.json" >"$tmp/c-other.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-other.json"
+assert_has "dispatch: a spec comment on another issue is unreadable" "$out" "unreadable author"
+jq -c '.issue_url="https://api.github.com/repos/glunk-works/claude-workbench/issues/3200"' "$tmp/comment.json" >"$tmp/c-prefix.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-prefix.json"
+assert_has "dispatch: issue 3200 is not issue 320" "$out" "unreadable author"
+jq -c 'del(.issue_url)' "$tmp/comment.json" >"$tmp/c-nourl.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-nourl.json"
+assert_has "dispatch: a spec comment with no issue_url is unreadable" "$out" "unreadable author"
+jq -c '.body=("x"*60000)' "$tmp/comment.json" >"$tmp/c-big.json"
+disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-big.json"
+assert_eq "dispatch: a 60 KB spec comment still evaluates" "pass/0" "$out/$rc"
+
+jq -c '. + [{"id":2,"current_user_can_bypass":"always"}]' "$tmp/rs-push.json" >"$tmp/rs-pdup.json"
+push "$tmp/inst.json" "$tmp/rs-pdup.json" "$tmp/app.json" 'glunk-loop[bot]'
+assert_has "push: a ruleset supplied twice is unreadable" "$out" "unreadable can-bypass"
+
+printf '{}' >"$tmp/with space.json"
+run github-push --installation "$tmp/nope
+x.json" --repo "$REPO" --rules "$tmp/rules.json" --rulesets "$tmp/rs-push.json" --app "$tmp/app.json" --loop-identity x
+assert_has "a missing file is named without a stray character" "$out" "unreadable input: nope?x.json is missing"
+
+# --- usage faults ------------------------------------------------------------------------------
+run
+assert_eq "no mode is a usage fault" 2 "$rc"
+run bogus
+assert_eq "an unknown mode is a usage fault" 2 "$rc"
+run container --session "$tmp/session.json" --network "$tmp/network.json" --expect-network "$NET"
+assert_eq "container with no proxy is a usage fault" 2 "$rc"
+run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id $APP --issue "$tmp/issue.json" --issue-number 320
+assert_eq "dispatch with neither a spec comment nor --no-spec-comment is a usage fault" 2 "$rc"
+run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id 'x;y' --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
+assert_eq "a non-numeric app id is a usage fault" 2 "$rc"
+run github-push --installation "$tmp/inst.json" --repo noslash --rules "$tmp/rules.json" --rulesets "$tmp/rs-push.json" --app "$tmp/app.json" --loop-identity x
+assert_eq "a repo with no slash is a usage fault" 2 "$rc"
+
+if [ "$fail" -ne 0 ]; then exit 1; fi
+echo "all preflight fixtures passed"
