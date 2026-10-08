@@ -158,3 +158,40 @@ network. Not checked: that the `update` rule belongs to the ruleset `orchestrati
 names; a named volume backed by a host path (needs `docker volume inspect`); how many containers sit on
 the network and the credential-not-in-inspect grep (`launch.sh` still does both). A paginated `gh api`
 capture must be one complete document (the header says how). The live run against the real App is M2b. Tests: `sh tests/loop-preflight.test.sh`.
+
+## critic.sh: critic staging, launch and load check (`#321`)
+
+```
+bash scripts/loop/critic.sh bundle --clone DIR --base BRANCH --out DIR --gate-output F --fixture-output F   --ci-jobs F --ruleset F [--ref-states F] [--load-bearing-doc PATH]... [--log-count N]
+bash scripts/loop/critic.sh run --clone DIR --plugin-dir DIR --critic NAME --bundle DIR --stream-out F   --max-turns N --max-budget-usd X --settings-json JSON --schema-file F --task TEXT [--init-timeout S] [--run-timeout S]
+bash scripts/loop/critic.sh check-init --stream F --plugin-dir DIR --critic NAME
+```
+
+Plan v9 § 7.3 ("Launch, each critic") and § 8.13b. Critics get no Bash, so `bundle` stages, from the
+driver's committed clone, what they would have run git or gh for: the diff against `origin/{base}`, a
+bounded log, the base-branch copy of every touched path, CI job conclusions and the ruleset JSON (both
+captured by the driver), the state of every issue or PR id the diff's added lines and the touched
+`--load-bearing-doc` files cite, and the session's gate and fixture output under `untrusted/`. An id the
+`--ref-states` file does not carry reads `NOT CARRIED -- could not look`, never dangling; the launch's
+staged-mode addendum says the same. Nothing here calls `gh`: the driver reads GitHub and hands the
+results in.
+
+`run` starts one critic from inside the clone with `--restricted --agent PLUGIN:CRITIC --plugin-dir
+<pinned copy> --tools "Read,Grep,Glob" --model <frontmatter model> --add-dir <bundle>
+--output-format stream-json --verbose`; the model and plugin name come from the pinned copy, not the
+caller; every path is made absolute before claude starts in the clone, and `--plugin-dir` and
+`--bundle` must lie outside it. It reads the stream's `system/init` event the moment it arrives and
+**stops the session on a mismatch** (the pinned plugin missing or from another path or version, the
+agent absent, any tool but exactly the frontmatter's `Read`/`Grep`/`Glob`, a model that is not the
+frontmatter's, `plugin_errors`): TERM then KILL on its process group where `setsid` exists, within a
+poll interval. That is defence in depth; the control that keeps Bash out is `--tools`. The check shows
+the plugin, the agent and the flags took effect, not which agent is the running one. `--run-timeout`
+bounds the session after a good init. Inline settings naming hooks, a `*Helper`, `statusLine`,
+`permissions`, `enabledPlugins` or `extraKnownMarketplaces` (the exact list is in the script header), and a plugin dir or bundle inside the clone, are usage faults (exit 2). Open points for the first real run on the loop host: the plan's
+`--strict-mcp-config` is refused by `claude` beside a managed MCP config (the coder line dropped it),
+and `--json-schema` may add a structured-output tool to the init `tools`, which the exact-set check
+would refuse; both fail closed and `refused ... (<stderr head>)` names the cause. `check-init` is that
+check over a captured stream.
+`findings-schema.json` is a starting `--json-schema` for the critics' answer. Not yet done: one real
+critic run against a staged bundle on the loop host, recorded (the issue's last acceptance item). Tests:
+`sh tests/loop-critic.test.sh`.

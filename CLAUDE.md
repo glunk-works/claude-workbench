@@ -58,6 +58,7 @@ sh tests/loop-inject.test.sh    # scripts/loop/inject.py path and header fixture
 sh tests/loop-git-tools.test.sh # scripts/loop/git_tools.py fixed-tool fixtures, over MCP (not yet required)
 sh tests/driver-core.test.sh   # scripts/loop/driver-core.sh tree copy, checks and commit, stub docker/gh (not yet required)
 sh tests/loop-preflight.test.sh # scripts/loop/preflight.sh container and GitHub evaluator fixtures (not yet required)
+sh tests/loop-critic.test.sh   # scripts/loop/critic.sh bundle, launch line and system/init check, stub claude (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `scripts/invariants-check.sh` needs
