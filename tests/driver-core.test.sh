@@ -6,6 +6,8 @@
 # logs where it ran then runs the real one. Nothing here talks to a Docker daemon or GitHub.
 #
 # Cases: happy path, deletion mirrored, rename out of / into a human-only path (and case),
+# protected predicates and fixtures (edit, delete, rename out, move over, mixed-case list entry,
+# any .gitattributes and its NTFS aliases, a broken or empty list),
 # nested .git, escaping and interior-.. symlinks (skipped where symlinks cannot be made),
 # planted token prefix in content, path and message, liveness, fixture rule, message grammar
 # with closing keywords and trailers, empty diff, special file, and that no git ever ran in
@@ -74,13 +76,17 @@ chmod +x "$stubs/docker" "$stubs/gh" "$stubs/git"
 # Seed the origin with real git, outside the shim and the driver's pinned config.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 seed="$tmp/seed"
-mkdir -p "$seed/.ai" "$seed/docs" "$seed/scripts" "$seed/tests"
+mkdir -p "$seed/.ai" "$seed/docs" "$seed/scripts" "$seed/tests" "$seed/plugins/way-of-working/bin"
 echo readme >"$seed/README.md"
 echo state >"$seed/.ai/state.md"
 echo doc >"$seed/docs/a.md"
 echo tool >"$seed/scripts/tool.sh"
 echo t >"$seed/tests/t.test.sh"
+echo p >"$seed/plugins/way-of-working/bin/plan-anchor.sh"
+echo p >"$seed/plugins/way-of-working/bin/other.sh"
+echo p >"$seed/tests/plan-anchor.test.sh"
 echo '*.log' >"$seed/.gitignore"
+echo '*.txt working-tree-encoding=UTF-16LE' >"$seed/.gitattributes"   # on the base, so unchanged by the encoding fixture
 (
   cd "$seed"
   git init -q -b main
@@ -128,6 +134,7 @@ cat >"$hostile" <<EOF
 	hooksPath = $tmp/hostile-hooks
 EOF
 
+prot="$root_dir/scripts/loop/protected-paths.txt"
 good_msg="$(printf 'feat(loop): add the thing\n\nWhy this exists.\n')"
 
 out= rc=0 wd=
@@ -142,7 +149,7 @@ drive() { # session stopfile [extra args...] -> sets out, rc, wd
     --session-tree "$sess" --session-id sess1 --origin "$origin" --base main \
     --workdir "$wd" --branch task/x --stop-json "$stop" \
     --author-name 'glunk-loop[bot]' --author-email 'loop@example.invalid' \
-    --human-only-path .ai/ --human-only-path CLAUDE.md \
+    --human-only-path .ai/ --human-only-path CLAUDE.md --protected-paths-file "${prot_file:-$prot}" \
     "$@" 2>"$tmp/err") || rc=$?
 }
 
@@ -209,6 +216,130 @@ fi
 s=$(new_session); echo x >"$s/CLAUDE.md.bak"
 drive "$s" "$(stop_json "$good_msg")"
 assert_eq "exact-file entry does not match a longer name" 0 "$rc"
+
+# --- protected paths: the trust predicates and their fixtures (#296) -------------------------
+s=$(new_session); echo "# edit" >>"$s/plugins/way-of-working/bin/plan-anchor.sh"; echo "# t" >>"$s/tests/t.test.sh"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "edit to a protected predicate: exit 3" 3 "$rc"
+assert_has "edit to a protected predicate: names the rule" "$out" "refused protected"
+
+s=$(new_session); echo "# edit" >>"$s/tests/plan-anchor.test.sh"; echo "# s" >>"$s/scripts/tool.sh"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "edit to a protected fixture: exit 3" 3 "$rc"
+assert_has "edit to a protected fixture: names the rule" "$out" "refused protected"
+
+# The fixture the issue asks for: a rename out of a protected path lists the old path as a
+# deletion (rename detection off), so it is caught even though a --name-only diff with
+# rename detection would show only the destination.
+s=$(new_session); mkdir "$s/notes"; mv "$s/plugins/way-of-working/bin/plan-anchor.sh" "$s/notes/plan-anchor.sh"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "rename out of a protected path: exit 3" 3 "$rc"
+assert_has "rename out of a protected path: names the rule" "$out" "refused protected"
+assert_has "rename out of a protected path: names the old path" "$out" "bin/plan-anchor.sh"
+
+s=$(new_session); rm "$s/tests/plan-anchor.test.sh"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "deleting a protected fixture: exit 3" 3 "$rc"
+assert_has "deleting a protected fixture: names the rule" "$out" "refused protected"
+
+s=$(new_session); mv "$s/docs/a.md" "$s/plugins/way-of-working/bin/plan-anchor.sh"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "moving a file over a protected path: exit 3" 3 "$rc"
+assert_has "moving a file over a protected path: names the rule" "$out" "refused protected"
+
+s=$(new_session)
+if mkdir -p "$s/Plugins/Way-Of-Working/Bin" 2>/dev/null && [ ! -f "$s/Plugins/Way-Of-Working/Bin/plan-anchor.sh" ]; then
+  echo x >"$s/Plugins/Way-Of-Working/Bin/PLAN-ANCHOR.sh"; echo "# t" >>"$s/tests/t.test.sh"   # a tests/ change, so the fixture rule cannot be what fires
+  drive "$s" "$(stop_json "$good_msg")"
+  assert_eq "protected match is case-folded: exit 3" 3 "$rc"
+  assert_has "protected match is case-folded: names the rule" "$out" "refused protected"
+else
+  echo "SKIP - case-insensitive filesystem; session-side protected case-fold fixture not run" >&2
+fi
+
+# A mixed-case list entry still matches the lowercase path (runs on case-insensitive filesystems too).
+echo 'Plugins/Way-Of-Working/BIN/Plan-Anchor.sh' >"$tmp/mixed-list"
+s=$(new_session); echo "# edit" >>"$s/plugins/way-of-working/bin/plan-anchor.sh"
+prot_file="$tmp/mixed-list"; drive "$s" "$(stop_json "$good_msg")"; prot_file=
+assert_eq "a mixed-case list entry is case-folded: exit 3" 3 "$rc"
+assert_has "a mixed-case list entry is case-folded: names the rule" "$out" "refused protected"
+
+# A .gitattributes at any depth can rewrite a protected file's bytes at checkout without its
+# own path appearing in the diff, so touching one is refused as `protected`.
+s=$(new_session); echo 'other.sh -text' >"$s/plugins/way-of-working/bin/.gitattributes"; echo "# t" >>"$s/tests/t.test.sh"   # unlisted file, and a tests/ change: only the rule can fire
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "a new nested .gitattributes: exit 3" 3 "$rc"
+assert_has "a new nested .gitattributes: names the rule" "$out" "can rewrite protected files"
+s=$(new_session); echo 'x' >"$s/docs/.gitattributes."
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "a .gitattributes with a trailing dot: exit 3" 3 "$rc"
+case "$out" in
+  "refused copy"*) echo "SKIP - host git refuses to stage a trailing-dot name; the protected rule is not reached" >&2 ;;
+  *) assert_has "a .gitattributes with a trailing dot: names the rule" "$out" "can rewrite protected files" ;;
+esac
+for alias in GITATT~1 GI7D29~1 gitatt~12; do
+  s=$(new_session); mkdir "$s/sub"; echo '* -text' >"$s/sub/$alias"
+  drive "$s" "$(stop_json "$good_msg")"
+  assert_eq "NTFS alias [$alias] of .gitattributes: exit 3" 3 "$rc"
+  assert_has "NTFS alias [$alias] of .gitattributes: names the rule" "$out" "refused protected"
+done
+s=$(new_session); echo x >"$s/docs/.gitattributes.bak"; echo x >"$s/docs/gitattributes.md"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "names that merely contain gitattributes are not refused: exit 0" 0 "$rc"
+s=$(new_session); echo '*.sh text eol=crlf' >>"$s/.gitattributes"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "an edited root .gitattributes: exit 3" 3 "$rc"
+assert_has "an edited root .gitattributes: names the rule" "$out" "refused protected"
+s=$(new_session); rm "$s/.gitattributes"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "a deleted root .gitattributes: exit 3" 3 "$rc"
+assert_has "a deleted root .gitattributes: names the rule" "$out" "can rewrite protected files"
+
+# The rest of bin/ and tests/ stays open: only the named files are frozen.
+s=$(new_session); echo "# edit" >>"$s/plugins/way-of-working/bin/other.sh"; echo "# t" >>"$s/tests/t.test.sh"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "an unlisted bin script and fixture are not frozen: exit 0" 0 "$rc"
+
+s=$(new_session); echo x >"$s/tests/plan-anchor.test.sh.bak"
+drive "$s" "$(stop_json "$good_msg")"
+assert_eq "a protected entry does not match a longer name: exit 0" 0 "$rc"
+
+# The shipped list parses and names files that exist: a renamed predicate must not leave a
+# stale entry that silently protects nothing.
+n_entries=0
+while IFS= read -r p; do
+  case "$p" in ''|'#'*) continue ;; esac
+  n_entries=$((n_entries + 1))
+  [ -f "$root_dir/$p" ] && r=exists || r=missing
+  assert_eq "protected-paths.txt entry exists: $p" exists "$r"
+done <"$prot"
+assert_eq "protected-paths.txt names the eight predicates and their nine fixtures" 17 "$n_entries"
+
+# A hostile or broken list is a usage fault, never an empty (or partial) protection.
+printf '# only a comment\n\n' >"$tmp/empty-list"
+s=$(new_session); echo x >"$s/docs/d.md"
+prot_file="$tmp/empty-list"; drive "$s" "$(stop_json "$good_msg")"; prot_file=
+assert_eq "an empty protected list: exit 2" 2 "$rc"
+assert_has "an empty protected list: stderr is a driver-core fault" "$(cat "$tmp/err")" "driver-core.sh:"
+printf 'docs/*\n' >"$tmp/glob-list"
+prot_file="$tmp/glob-list"; drive "$s" "$(stop_json "$good_msg")"; prot_file=
+assert_eq "a glob in the protected list: exit 2" 2 "$rc"
+assert_has "a glob in the protected list: stderr is a driver-core fault" "$(cat "$tmp/err")" "driver-core.sh:"
+printf '../x\n' >"$tmp/dots-list"
+prot_file="$tmp/dots-list"; drive "$s" "$(stop_json "$good_msg")"; prot_file=
+assert_eq "a .. in the protected list: exit 2" 2 "$rc"
+assert_has "a .. in the protected list: stderr is a driver-core fault" "$(cat "$tmp/err")" "driver-core.sh:"
+mkdir -p "$tmp/dir-list"
+prot_file="$tmp/dir-list"; drive "$s" "$(stop_json "$good_msg")"; prot_file=
+assert_eq "a directory as the protected list: exit 2 (and no hang)" 2 "$rc"
+assert_has "a directory as the protected list: stderr is a driver-core fault" "$(cat "$tmp/err")" "driver-core.sh:"
+prot_file="$tmp/no-such-list"; drive "$s" "$(stop_json "$good_msg")"; prot_file=
+assert_eq "an unreadable protected list: exit 2" 2 "$rc"
+assert_has "an unreadable protected list: stderr is a driver-core fault" "$(cat "$tmp/err")" "driver-core.sh:"
+printf 'docs\r\n' >"$tmp/crlf-list"
+prot_file="$tmp/crlf-list"; drive "$s" "$(stop_json "$good_msg")"; prot_file=
+assert_eq "a CRLF protected list still protects: exit 3" 3 "$rc"
+assert_has "a CRLF protected list still protects: names the rule" "$out" "refused protected"
 
 # --- nested .git, and no git in the session tree -------------------------------------------
 : >"$tmp/git.log"
@@ -403,11 +534,11 @@ if [ "$can_link" -eq 1 ]; then
 fi
 
 s=$(new_session)
-printf '*.txt working-tree-encoding=UTF-16LE\n' >"$s/.gitattributes"
 printf 'key=%s\n' "$tok" | iconv -f UTF-8 -t UTF-16LE >"$s/docs/enc.txt" 2>/dev/null || true
 if [ -s "$s/docs/enc.txt" ]; then
   drive "$s" "$(stop_json "$good_msg")"
   assert_eq "token hidden by working-tree-encoding: exit 3" 3 "$rc"
+  assert_has "token hidden by working-tree-encoding: names the token rule" "$out" "refused token"
 else
   echo "SKIP - no iconv; encoding fixture not run" >&2
 fi
@@ -515,17 +646,23 @@ PATH="$stubs:$PATH" bash "$script" run --session-tree "$s" --session-id sess1 --
   --author-name a --author-email a@example.invalid >/dev/null 2>&1 || rc=$?
 assert_eq "no --human-only-path: exit 2" 2 "$rc"
 
+rc=0
+PATH="$stubs:$PATH" bash "$script" run --session-tree "$s" --session-id sess1 --origin "$origin" \
+  --base main --workdir "$tmp/wd-noprot" --branch task/x --stop-json "$(stop_json "$good_msg")" \
+  --author-name a --author-email a@example.invalid --human-only-path .ai/ >/dev/null 2>&1 || rc=$?
+assert_eq "no --protected-paths-file: exit 2" 2 "$rc"
+
 mkdir -p "$tmp/wd-full"; echo x >"$tmp/wd-full/f"
 rc=0
 PATH="$stubs:$PATH" bash "$script" run --session-tree "$s" --session-id sess1 --origin "$origin" \
   --base main --workdir "$tmp/wd-full" --branch task/x --stop-json "$(stop_json "$good_msg")" \
-  --author-name a --author-email a@example.invalid --human-only-path .ai/ >/dev/null 2>&1 || rc=$?
+  --author-name a --author-email a@example.invalid --human-only-path .ai/ --protected-paths-file "$prot" >/dev/null 2>&1 || rc=$?
 assert_eq "non-empty workdir: exit 2" 2 "$rc"
 
 rc=0
 PATH="$stubs:$PATH" bash "$script" run --session-tree "$s" --session-id sess1 --origin "$origin" \
   --base main --workdir "$tmp/wd-br" --branch feat/x --stop-json "$(stop_json "$good_msg")" \
-  --author-name a --author-email a@example.invalid --human-only-path .ai/ >/dev/null 2>&1 || rc=$?
+  --author-name a --author-email a@example.invalid --human-only-path .ai/ --protected-paths-file "$prot" >/dev/null 2>&1 || rc=$?
 assert_eq "branch outside task/*: exit 2" 2 "$rc"
 
 # --- gh never ran --------------------------------------------------------------------------

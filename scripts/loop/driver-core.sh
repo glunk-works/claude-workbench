@@ -10,7 +10,7 @@
 #   driver-core.sh run --session-tree DIR --session-id ID --origin URL --base BRANCH \
 #       --workdir DIR --branch task/NAME --stop-json FILE \
 #       --author-name NAME --author-email EMAIL \
-#       --human-only-path PATH... [--token-prefix STR]
+#       --human-only-path PATH... --protected-paths-file FILE [--token-prefix STR]
 #
 #   --session-tree   the session's working tree. Read as plain files; no git command ever
 #                    runs in it, and its .git (top level or nested) is never read or copied.
@@ -25,8 +25,13 @@
 #                    commit message is its commit_message field.
 #   --human-only-path  repeatable, at least one (a missing list is a refusal, never an empty
 #                    one): a path prefix, matched as `entry` or `entry/...`, case-folded.
-#                    Nested names (a `sub/CLAUDE.md`) and `.gitattributes` are the caller's list
-#                    to name; this script matches only what it is given.
+#                    Nested names (a `sub/CLAUDE.md`) are the caller's list to name (a
+#                    `.gitattributes` at any depth is refused by the `protected` rule, below); this script matches only what it is given.
+#   --protected-paths-file  required (#296): the trust predicates and their own fixtures, one literal
+#                    path per line (# comments and blank lines skipped), normalised and matched
+#                    exactly like --human-only-path but refused as rule `protected`. The driver
+#                    passes scripts/loop/protected-paths.txt from its own checkout, never a file
+#                    from the session tree. A missing, unreadable or empty list is a usage fault.
 #   --token-prefix   default sk-ant-oat, the OAuth token family. Any added line (symlink targets
 #                    and converted encodings included), changed path or the message holding it
 #                    refuses the commit. A tripwire for accidents, not a control against a
@@ -52,7 +57,13 @@
 #                 non-dereferencing tar that excludes .git at any depth. Gitignored files are
 #                 not added (no `git add --force`).
 #   4. human-only the staged diff, rename detection off so both sides of a move are listed as
-#                 their own paths, touches no human-only path. A path with a newline refuses.
+#                 their own paths, touches no human-only path and no protected path (both lists
+#                 are tested against every changed path, so a rename out of a protected path
+#                 is caught by its deleted side). Any path whose basename is `.gitattributes`
+#                 (also `.gitattributes.`, `.gitattributes `, and the NTFS short names GITATT~N
+#                 and GI7D29~N), at any depth, refuses as `protected` too: it can rewrite a
+#                 protected file's bytes at checkout without that file's path in the diff.
+#                 A path with a newline refuses.
 #   5. fixture    a diff that adds or changes anything under plugins/*/bin/ or scripts/ (any
 #                 case) must add or change a file under tests/ (plan principle 12).
 #   6. message    validated against the commit grammar; closing keywords are stripped from the
@@ -71,7 +82,7 @@ set -euo pipefail
 
 die() { echo "driver-core.sh: $*" >&2; exit 2; }
 
-tree= sid= origin= base= workdir= branch= stopjson= aname= aemail= prefix=sk-ant-oat
+tree= sid= origin= base= workdir= branch= stopjson= aname= aemail= prefix=sk-ant-oat protfile=
 
 refuse() {
   # One line, no control characters, and the token redacted from its prefix to the end of
@@ -100,6 +111,7 @@ while [ $# -gt 0 ]; do
     --author-name)     aname=$2 ;;
     --author-email)    aemail=$2 ;;
     --human-only-path) hop+=("$2") ;;
+    --protected-paths-file) protfile=$2 ;;
     --token-prefix)    prefix=$2 ;;
     *)                 die "unknown option: $1" ;;
   esac
@@ -111,19 +123,34 @@ for v in tree sid origin base workdir branch stopjson aname aemail prefix; do
 done
 [ ${#hop[@]} -gt 0 ] || die "at least one --human-only-path is required"
 [[ "$prefix" =~ ^[A-Za-z0-9_.-]+$ ]] || die "--token-prefix must be 1+ of [A-Za-z0-9_.-]"
+[ -n "$protfile" ] || die "--protected-paths-file is required"
+[ -f "$protfile" ] && [ -r "$protfile" ] || die "--protected-paths-file is not a readable regular file: $protfile"
 # Normalise caller entries now: a typo that would silently protect nothing is a usage fault.
-hopn=()
-for entry in "${hop[@]}"; do
-  e=$entry
-  case "$e" in ''|*[[:space:]]|[[:space:]]*) die "--human-only-path is empty or has whitespace at an end: [$entry]" ;; esac
-  case "$e" in *[\\*?[]*|*[[:cntrl:]]*) die "--human-only-path has a glob, backslash or control character (entries are literal path prefixes): [$entry]" ;; esac
+norm_entry() { # <what> <entry> -> sets normd to the case-folded literal prefix
+  local e=$2
+  case "$e" in ''|*[[:space:]]|[[:space:]]*) die "$1 is empty or has whitespace at an end: [$2]" ;; esac
+  case "$e" in *[\\*?[]*|*[[:cntrl:]]*) die "$1 has a glob, backslash or control character (entries are literal path prefixes): [$2]" ;; esac
   while [[ "$e" == */ ]]; do e=${e%/}; done
   while [[ "$e" == ./* ]]; do e=${e#./}; done
   case "$e" in
-    ''|.|/*|*//*|..|../*|*/..|*/../*|*/.|./*|*/./*) die "--human-only-path is not a plain relative path: $entry" ;;
+    ''|.|/*|*//*|..|../*|*/..|*/../*|*/.|./*|*/./*) die "$1 is not a plain relative path: $2" ;;
   esac
-  hopn+=("$(printf '%s' "$e" | tr 'A-Z' 'a-z')")
+  normd=$(printf '%s' "$e" | tr 'A-Z' 'a-z')
+}
+hopn=()
+for entry in "${hop[@]}"; do
+  norm_entry --human-only-path "$entry"
+  hopn+=("$normd")
 done
+protn=()
+entry=   # not the last --human-only-path: a failed read must not leave a stale entry for the loop to keep taking
+while IFS= read -r entry || [ -n "$entry" ]; do
+  entry=${entry%$'\r'}
+  case "$entry" in ''|'#'*) continue ;; esac
+  norm_entry "--protected-paths-file entry" "$entry"
+  protn+=("$normd")
+done <"$protfile"
+[ ${#protn[@]} -gt 0 ] || die "--protected-paths-file holds no entries (a missing list is a refusal, never an empty one)"
 case "$sid" in *[!A-Za-z0-9._-]*) die "--session-id has characters outside [A-Za-z0-9._-]" ;; esac
 case "$base" in ''|-*|*[!A-Za-z0-9._/-]*) die "--base is not a plain branch name" ;; esac
 case "$branch" in
@@ -249,6 +276,17 @@ while IFS= read -r path; do
   for lentry in "${hopn[@]}"; do
     if [ "$lpath" = "$lentry" ]; then refuse human-only "changes $path"; fi
     case "$lpath" in "$lentry"/*) refuse human-only "changes $path (under $lentry/)" ;; esac
+  done
+  # A .gitattributes at any depth can rewrite a protected file's bytes at checkout (encoding,
+  # eol) without the file's own path appearing in the diff, and a literal list cannot name
+  # the nested ones ahead of time.
+  # The NTFS short names (GITATT~1 and git's hashed GI7D29~1) fold onto it on a Windows checkout.
+  if [[ "${lpath##*/}" =~ ^(\.gitattributes|gitatt~[0-9]+|gi7d29~[0-9]+)[.\ ]*$ ]]; then
+    refuse protected "changes $path (a .gitattributes or its NTFS alias can rewrite protected files)"
+  fi
+  for lentry in "${protn[@]}"; do
+    if [ "$lpath" = "$lentry" ]; then refuse protected "changes the trust predicate or fixture $path"; fi
+    case "$lpath" in "$lentry"/*) refuse protected "changes $path (under $lentry/)" ;; esac
   done
 done <"$tmp/changed"
 
