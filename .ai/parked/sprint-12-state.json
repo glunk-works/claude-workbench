@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "current_phase": "sprint-12",
+  "current_sprint_id": "sprint-12",
+  "sprint_status": "implementing",
+  "assigned_model": "sonnet",
+  "assigned_persona": "coder",
+  "last_commit": "534e85e",
+  "next_action": "task #321 — build the in-container critic run exactly as the approved, anchored spec comment says (https://github.com/glunk-works/claude-workbench/issues/321#issuecomment-6060514332): part 1 is critic.sh pin, stage-work and bundle --stage-log with their fixtures; part 2 is run --docker, the launch.sh LOOP_CRITIC step, the three-stage Dockerfile and the preflight.sh extensions with their fixtures; then the one-off in-image fixture run and the recorded architect run on #366's diff. Ship each part as its own PR (Refs #321) through /way-of-working:ship, after the green gate and /way-of-working:critic-gate. Stop and ask the human at any point the spec routes to them (a first-run refusal, a budget stop, a read-only /work refusal).",
+  "hitl_gate": "NONE OPEN — milestone 13's anchor re-verified (match) and now carries the approved #321 spec comment. Next gate: the human's merge of each #321 PR, and the human's decision on any first-run refusal the spec names in §4.",
+  "pointers": {
+    "roadmap": "docs/decisions.md",
+    "sprint_plan": "https://github.com/glunk-works/claude-workbench/milestone/13",
+    "plan_anchor": {
+      "milestone": 13,
+      "description_sha256": "ada92ac23e7fbff5b1543d5ad2272f37e257e8a416cb658fc0bb486f0cf2a159",
+      "task_issue": 321,
+      "task_issue_updated_at": "2026-10-08T13:05:15Z",
+      "spec_comment": {
+        "id": 6060514332,
+        "updated_at": "2026-10-08T13:05:14Z"
+      }
+    },
+    "review_pr": null
+  },
+  "parked_at": "2026-10-08",
+  "parked_reason": "Set aside for the identity rollout (WB-D24, #370): the loop preflight and token minting change under M2a, so it resumes against the new model (unpark is task #404).",
+  "parked_from_commit": "3812784"
+}
