@@ -132,3 +132,29 @@ Not covered, by design of this task: the clone should live on a volume and the d
 something the script can enforce. The symlink and case-fold fixtures skip themselves where the
 filesystem cannot make the case (Git Bash without developer mode); run the suite under WSL or Linux
 to exercise them. Tests: `sh tests/driver-core.test.sh`.
+
+## preflight.sh: container and GitHub evaluators (`#320`)
+
+```
+bash scripts/loop/preflight.sh container --session F --network F --expect-network NAME --proxy F...
+bash scripts/loop/preflight.sh github-dispatch --rules F --rulesets F --app-id N --issue F --issue-number N \
+  (--spec-comment F --spec-comment-id N | --no-spec-comment)
+bash scripts/loop/preflight.sh github-push --installation F --repo OWNER/NAME --rules F --rulesets F \
+  --app F --loop-identity LOGIN
+```
+
+Plan v9 § 7.3's preflight and decision 9, as pure functions over captured JSON: the driver runs
+`docker inspect`, `docker network inspect` and the `gh api` reads, writes each to a file, and this
+script only judges them (the header lists the endpoint behind each file). `container` checks the
+session, its network and the proxies; `github-dispatch` runs at dispatch with the maintainer's view
+(the `update` rule is on `pr_base`, the App is no applicable ruleset's bypass actor, the task issue and
+spec comment authors are trusted); `github-push` runs once the token exists (it reaches exactly the
+dispatched repo, every ruleset on `pr_base` reads `current_user_can_bypass: never`, the App's bot login
+is `orchestration.loop_identity`). stdout is `pass` (exit 0) or one `refused <rule>: <detail>` /
+`unreadable <rule>: <detail>` line per finding (exit 3); a missing field, a file that does not parse or a
+truncated list is `unreadable`, never a pass. No gateway address is ever derived from a subnet. The
+session may hold only named volumes and tmpfs (any bind is refused), no added capabilities, and one
+network. Not checked: that the `update` rule belongs to the ruleset `orchestration.restrict_updates`
+names; a named volume backed by a host path (needs `docker volume inspect`); how many containers sit on
+the network and the credential-not-in-inspect grep (`launch.sh` still does both). A paginated `gh api`
+capture must be one complete document (the header says how). The live run against the real App is M2b. Tests: `sh tests/loop-preflight.test.sh`.
