@@ -4,29 +4,36 @@
 proven*. Status: **implementing**.
 
 **Just done (2026-10-08):**
-- Task #321 partly shipped as PR #366 (`63e8f0c`): `scripts/loop/critic.sh` stages the critic bundle,
-  launches one critic with the plan v9 § 7.3 line, and checks the `system/init` event, stopping the
-  session on a mismatch; fixtures in `tests/loop-critic.test.sh`. Merged as `Refs #321`, so **#321
-  stays open**: its last acceptance item, one real critic run in the loop container, is not done.
-- Critic pass: `security-critic` and `architect` on their default models, 3 rounds, converged on
-  defects; a final doc and wording pass after round 3 had no critic look. No second-opinion round.
-  This repo has no review CI gate, so that was the only critic look before the merge.
-- A real critic run on the Windows host (not the container) matched the init event on tools, model,
-  agent and plugin version and was refused only on a `C:\` vs `/c/` path; it proved nothing about the
-  container. Open points only the container settles: the plan's `--strict-mcp-config` against the
-  managed MCP config (`claude` refuses it there), and whether `--json-schema` adds a tool to init
-  `tools`. (None appeared on the host.)
-- The credential is at `~/.loop/credential.txt`; Docker and WSL2 are up on this host.
+- Task #321: the spec for the in-container critic run was written, reviewed and approved by the
+  human. It is posted as [the spec comment on #321](https://github.com/glunk-works/claude-workbench/issues/321#issuecomment-6060514332)
+  and anchored in the cursor. No code changed.
+- It decides three things:
+  - The plugin, the bundle and the work tree reach the container as named volumes, filled by
+    tar over stdin and mounted read-only.
+  - `critic.sh run --docker` creates, preflights and starts the container, then judges the
+    init event and kills the container from the host.
+  - A separate critic image with no managed MCP config keeps `--strict-mcp-config`.
+- It also fixes an existing bug: `critic.sh` bundle drops dot-path base copies under Git Bash.
+- Critic pass, on the spec rather than a code diff: `security-critic` and `architect`, 5 rounds,
+  converged after the human approved going past the cap. Then +1 on `fable` (second_opinion),
+  confirmed for both agents, with two delta re-runs. The final rev 9 edits were not
+  re-reviewed. This repo has no review CI gate.
+- Follow-up issues the spec proposes, not yet filed:
+  - the attack pass against the critic image;
+  - a Linux CI job for the loop fixture suites;
+  - `.mcp.json` in `human_only_paths`.
 
-**Next:** task #321 — write a one-page spec for the in-container critic run and put it in front of the
-human; build nothing until they approve it. On **opus** (architect). Questions the spec answers: how the
-pinned plugin and the bundle reach the session container when the preflight refuses bind mounts,
-whether `critic.sh run` launches through `docker run` or a harness wraps it, and what to do about
-`--strict-mcp-config`. Then a **sonnet** coder session builds the harness from the approved spec and
-does the run (one `architect` at a $2 cap through the injecting proxy), recorded on #321.
+**Next:** task #321 — build the in-container critic run from the anchored spec comment, on
+**sonnet** (coder).
+- Part 1: `pin`, `stage-work` and `bundle --stage-log` with their fixtures.
+- Part 2: `run --docker`, the `launch.sh` critic step, the `Dockerfile`, `preflight.sh`, the in-image
+  fixture run and the recorded architect run on #366's diff.
+- Each part ships as its own PR, `Refs #321`. #321 closes only on a `completed` run.
 
-**HITL Gate: NONE OPEN** — milestone 13's anchor re-verified against the prior baseline. Next gate: the
-human's approval of the spec. No review CI gate in this repo.
+**HITL Gate: NONE OPEN.** Milestone 13's anchor re-verified (`match`) and now carries the spec
+comment. Next gates:
+- the human's merge of each #321 PR;
+- the human's call on any first-run refusal the spec names in §4.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 13](https://github.com/glunk-works/claude-workbench/milestone/13) ·
