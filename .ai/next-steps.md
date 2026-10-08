@@ -4,28 +4,29 @@
 proven*. Status: **implementing**.
 
 **Just done (2026-10-08):**
-- Task #296 shipped as PR #364 (`541578a`): `driver-core.sh` takes a required
-  `--protected-paths-file` (`scripts/loop/protected-paths.txt`) and refuses changes to the eight
-  trust predicates and their fixtures as rule `protected`, both sides of a rename seen. It also
-  refuses any `.gitattributes` and its NTFS short names, at any depth.
-- Critic pass: `security-critic` and `architect` on their default models, 3 rounds, converged
-  (round 3 only tightenings). No second-opinion round (declined). This repo has no review CI gate,
-  so that was the only critic look before the merge.
-- Real findings fixed on the way: a `.gitattributes` bypass and its `GITATT~1` alias, a driver
-  hang on a directory passed as the list, and fixtures that passed for the wrong reason.
-- Filed #363: whether to protect the `SKILL.md` call sites of the predicates (maintainer's call;
-  decision 6 scoped #296 to the predicates and fixtures).
-- Left as tightenings, not filed: ASCII-only case-folding, exotic short-name forms Git for Windows
-  refuses to check out. Several driver-core fixtures skip on this host; run
-  `sh tests/driver-core.test.sh` under WSL or Linux to exercise them.
+- Task #321 partly shipped as PR #366 (`63e8f0c`): `scripts/loop/critic.sh` stages the critic bundle,
+  launches one critic with the plan v9 § 7.3 line, and checks the `system/init` event, stopping the
+  session on a mismatch; fixtures in `tests/loop-critic.test.sh`. Merged as `Refs #321`, so **#321
+  stays open**: its last acceptance item, one real critic run in the loop container, is not done.
+- Critic pass: `security-critic` and `architect` on their default models, 3 rounds, converged on
+  defects; a final doc and wording pass after round 3 had no critic look. No second-opinion round.
+  This repo has no review CI gate, so that was the only critic look before the merge.
+- A real critic run on the Windows host (not the container) matched the init event on tools, model,
+  agent and plugin version and was refused only on a `C:\` vs `/c/` path; it proved nothing about the
+  container. Open points only the container settles: the plan's `--strict-mcp-config` against the
+  managed MCP config (`claude` refuses it there), and whether `--json-schema` adds a tool to init
+  `tools`. (None appeared on the host.)
+- The credential is at `~/.loop/credential.txt`; Docker and WSL2 are up on this host.
 
-**Next:** task #321 — driver critic staging bundle, critic launch and the system/init load check,
-per the issue body; ship it as one PR. On **sonnet** (coder). Next in the build order whose
-dependency (#319) is done; #322 and #323 follow. The driver caller must pass
-`scripts/loop/protected-paths.txt` from its own checkout, never from the session tree.
+**Next:** task #321 — write a one-page spec for the in-container critic run and put it in front of the
+human; build nothing until they approve it. On **opus** (architect). Questions the spec answers: how the
+pinned plugin and the bundle reach the session container when the preflight refuses bind mounts,
+whether `critic.sh run` launches through `docker run` or a harness wraps it, and what to do about
+`--strict-mcp-config`. Then a **sonnet** coder session builds the harness from the approved spec and
+does the run (one `architect` at a $2 cap through the injecting proxy), recorded on #321.
 
-**HITL Gate: NONE OPEN** — milestone 13's anchor re-verified against the prior baseline. Next gate:
-the human's merge of the #321 PR. No review CI gate in this repo.
+**HITL Gate: NONE OPEN** — milestone 13's anchor re-verified against the prior baseline. Next gate: the
+human's approval of the spec. No review CI gate in this repo.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) ·
 [milestone 13](https://github.com/glunk-works/claude-workbench/milestone/13) ·
