@@ -1773,3 +1773,14 @@ Hermetically verified, live smoke done: resume's `--admin` cursor-sync offer and
 identity-naming READY (admin merge) verdict, run on 2026-10-06 against PRs #308 and #309 (#273),
 and the loop host runs Claude Code 2.1.289, above the 2.1.259 floor (#236). Sprint 11 closed at
 `edc21d0` (PR #306), the pin bump after the `v0.17.0` tag.
+
+Sprint 13 (milestone 16, *Identity M1: Apps, token minting and scratch proof*, all its issues
+closed) adds no `.ai/project.yml` key and is unreleased. It creates the dev, reviewer and admin
+GitHub Apps (#372), `scripts/identity/mint.sh` for scoped installation tokens (#373, PR #423) and
+the `wow-admin` and `wow-review-mint` host commands (#374, PR #426), recreates the scratch repo with the
+target ruleset shape (#375, PR #428), and removes the unused GitHub MCP server entry (#371). The scratch
+proofs of the App model are recorded in `docs/proposals/IDENTITY-SCRATCH-RESULTS.md`: sessions 1
+and 2 (#376, PR #434), session 3 (#435, PR #438), session 4, immutable releases and the approval
+edge cases (#439, PR #441), and session 5, the 603 org-ruleset proof (#377, PR #445). Host App
+entries are keyed by role, not org (PR #444). Sprint 13 closed at `40fd3f8` (PR #445), not at a
+release tag.
