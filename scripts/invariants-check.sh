@@ -271,6 +271,9 @@ else
       found && infence { print }
     ' "$2"
   }
+  # NOTE: this walk descends into maps, so neither example may show a populated {login, id}
+  # pair for identities.*_app (it would surface as doc-only identities.dev_app.login keys);
+  # the populated form lives in the un-walked § `identities` fence.
   walk_leaf_paths() { # walk_leaf_paths <yaml-file> -- dotted leaf paths, stopping at sequences
     yq eval '.. | select(tag != "!!map") | (path | join("."))' "$1" 2>/dev/null \
       | grep -vE '(^|\.)[0-9]+(\.|$)' || true
@@ -287,12 +290,12 @@ else
       "  Worked example fence: $([ -s "$worked_tmp" ] && echo found || echo empty)" \
       "Expected a \`\`\`yaml fence directly under each heading in $SCHEMA_DOC."
   else
-    # 7a. Set equality, both ways -- the script's keys (if-map suffix stripped)
+    # 7a. Set equality, both ways -- the script's keys (any if-* suffix stripped)
     # against the union of both examples' own leaf paths. The Full schema alone
     # cannot supply the four `review.ci_gate.*` sub-keys (it keeps `ci_gate: null`
     # there deliberately, so a plain walk finds none of them); the Worked example
     # carries `ci_gate` as a live map precisely so the union supplies all four.
-    script_keys=$("$SCHEMA_COMPLETE_SCRIPT" keys | sed 's/ if-map$//' | sort -u)
+    script_keys=$("$SCHEMA_COMPLETE_SCRIPT" keys | sed 's/ if-[a-z-]*$//' | sort -u)
     doc_keys=$( { walk_leaf_paths "$full_tmp"; walk_leaf_paths "$worked_tmp"; } | sort -u)
     doc_only=$(comm -23 <(printf '%s\n' "$doc_keys") <(printf '%s\n' "$script_keys"))
     script_only=$(comm -13 <(printf '%s\n' "$doc_keys") <(printf '%s\n' "$script_keys"))

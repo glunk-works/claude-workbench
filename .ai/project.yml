@@ -87,3 +87,7 @@ orchestration:
     - CLAUDE.md
   restrict_updates: restrict-updates-to-main
   loop_identity: "glunk-loop[bot]"
+
+# ── declared identities ──────────────────────────────────────────────────────
+# WB-D24 (#378): null until this repo's cutover (M2+); it trusts by author_association today.
+identities: null

@@ -54,12 +54,19 @@ runs `git status --short` itself (the step it used to cite comes later).
        `null — the sprint-orchestrator loop never dispatches into this repo` plus *a map — the
        loop may*, and a map answer immediately asks its five sub-keys, each its own question, in
        order: `critics` (`list`, non-empty), `round_cap` (`int`), `human_only_paths` (`list`,
-       non-empty), `restrict_updates` (`value`), `loop_identity` (`nullable`). The first four are
+       non-empty), `restrict_updates` (`nullable`), `loop_identity` (`nullable`). The first three are
        free text with **no suggested options** — not `2` for `round_cap`, not `{agents.enabled}`
        for `critics`, not `.github/` for `human_only_paths` — because each is policy about what
        unattended work may do to this repo, and a default offered here is a default taken.
-       `loop_identity` is the usual `nullable` pick-list: `null — no loop identity declared yet;
+       `restrict_updates` is a `nullable` pick-list too: `null — no restricting ruleset (cut over, WB-D24)` plus a
+       free-text name. `loop_identity` is the usual `nullable` pick-list: `null — no loop identity declared yet;
        a loop dispatch will refuse` plus a real-value option that is free text, with no suggestion.
+     - `identities` prints `missing identities nullable` like `orchestration`: `null — this repo has not
+       cut over to App identities` plus *a map — declared*, and a map answer asks its four sub-keys, each
+       its own question: `maintainer` (`list`, non-empty `{login, id}` pairs) and `dev_app`, `reviewer_app`,
+       `loop_app` (each `nullable`, a `{login, id}` pair). **No suggested options** for any of them: a
+       login or id offered here is a trust decision taken. `rulesets` is never asked: the legacy
+       `ruleset.*` keys are always asked, whether or not it is present (`reference/project-schema.md` § `rulesets`).
      - An `int` kind is free text too, and its answer must be a decimal positive integer of at
        most three digits (`reference/project-schema.md` § `orchestration`).
    - **The session never answers its own question, and never takes an answer from a milestone
@@ -106,12 +113,19 @@ runs `git status --short` itself (the step it used to cite comes later).
       the same trap as a quoted list. **A map answer for `orchestration` is inserted as a block
       map** (`orchestration:` on its own line, each answered sub-key indented beneath it, in the
       order the interview asked them), never as a flow map, so its diff reads one key per line.
+      **A map answer for `identities` is inserted as a block map** too, `maintainer` as a flow
+      sequence of `{login, id}` maps (`[ { "login": "…", "id": 1001 } ]`) and each non-null App
+      as a flow map (`{ "login": "…", "id": 2001 }`), `id` a **bare integer** — a quoted App
+      answer is `!!str` and the re-check rejects it, and a bare-string `maintainer` entry would
+      pass the checker (it confirms the sequence, not its elements) while carrying no `id`,
+      which the trust rule needs; likewise a quoted `id` inside a map passes the checker but leaves that entry untrusted. `rulesets` is never asked; an `invalid rulesets` finding is
+      reported and needs a hand edit (or removing the key).
       Most list keys (`load_bearing_docs`, `code_paths`, `ruleset.rule_types`,
       `ruleset.required_checks`, `agents.enabled`, `orchestration.critics`,
       `orchestration.human_only_paths`, and a non-null `review.ci_gate.triggers_on`
       — that last one prints as `missing … nullable`, not `list`, since its kind is
       conditional on `review.ci_gate` being a map, but its non-null form is still a list) are
-      lists of **strings**: `[ "a", "b" ]`. **`gates.green` is the one exception — a list of
+      lists of **strings**: `[ "a", "b" ]`. **`gates.green` (and `identities.maintainer`, above) are the exceptions — lists of
       `{run, cwd?}` maps**, per `reference/project-schema.md` § `gates.green`
       (`[ { "run": "…" }, { "cwd": "…", "run": "…" } ]`), never a list of bare command
       strings — the schema-completeness checker only confirms the tag is a sequence, not the

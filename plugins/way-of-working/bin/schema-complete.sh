@@ -50,7 +50,10 @@
 #     The four `review.ci_gate.*` sub-keys and the five `orchestration.*` sub-keys
 #     are suffixed ` if-map` -- each group is required only when its parent
 #     (`review.ci_gate`, `orchestration`) itself resolves to a map, never when it
-#     is `null`. Always exits 0.
+#     is `null`. `identities` itself is unsuffixed and its four sub-keys carry ` if-map`,
+#     as `orchestration` does. `rulesets` is suffixed ` if-present` -- the one OPTIONAL
+#     path: never reported when absent, validated when there (WB-D24 dual mode, below).
+#     Always exits 0.
 #
 # The key set is NOT derived from `.ai/project.yml` or from walking any YAML
 # at all -- it is the union of the dotted paths BOTH documented examples in
@@ -149,7 +152,9 @@ set -eu
 # <dotted.path> <kind> <shape>
 #   kind:  value | nullable | list | nelist | int | enum:<a>|<b>|...
 #          | cigate (review.ci_gate only) | orchmap (orchestration only)
-#   shape: - | ownername | branch | ghlogin | rulename   (consulted for value/nullable)
+#          | identmap (identities only) | optnelist (rulesets only: optional, non-empty if present)
+#   shape: - | ownername | branch | ghlogin | rulename | pair   (consulted for value/nullable;
+#          `pair` is a {login, id} map, `identities.*_app` only)
 MAIN_KEYS='
 repo value ownername
 pr_base value branch
@@ -167,15 +172,44 @@ backlog.item_prefix nullable -
 load_bearing_docs list -
 code_paths list -
 gates.green list -
-ruleset.name value -
-ruleset.rule_types list -
-ruleset.required_checks list -
 review.ci_gate cigate -
 agents.enabled list -
 models.architect enum:sonnet|opus|haiku|fable -
 models.coder enum:sonnet|opus|haiku|fable -
 models.second_opinion nullable enum:sonnet|opus|haiku|fable
 orchestration orchmap -
+identities identmap -
+'
+
+# WB-D24 (#378) dual-mode ruleset keys. `rulesets` is the new shape, a list of
+# {name, source, rule_types} entries; the old `ruleset:` map is its alias for one
+# release. NO reader understands `rulesets` yet (every skill and bin/ script reads
+# `ruleset.*`), so the legacy keys stay REQUIRED whether or not `rulesets` is present:
+# a file with only the list would read `complete` and be unusable. `rulesets` is an
+# optional extra -- silent when absent (`optnelist`), a non-empty sequence when present --
+# and the checker does not compare it with `ruleset` (like every cross-key check). When a
+# later release teaches the readers the list, the legacy keys become conditional here.
+RULESETS_KEYS='
+rulesets optnelist -
+'
+RULESET_KEYS='
+ruleset.name value -
+ruleset.rule_types list -
+ruleset.required_checks list -
+'
+
+# `identities` is a nullable map exactly like `orchestration`: `null` is the explicit
+# answer "this repo has not cut over to App identities" (the pre-WB-D24 model), a map is
+# the declared set, and then these sub-keys are required -- present, so absent prompts.
+# `maintainer` is a non-empty list of {login, id} pairs (trust is by declared identity,
+# not author_association); each App is a {login, id} pair or `null` (not created yet).
+# The checker confirms the sequence and the map, not their elements, as it does for
+# `gates.green` -- a reader binds each login and id as a value, never splices one.
+IDENT_KEYS='
+identities.maintainer nelist -
+identities.dev_app nullable pair
+identities.reviewer_app nullable pair
+identities.loop_app nullable pair
 '
 
 # The four sub-keys, required only when review.ci_gate resolves to a map.
@@ -198,7 +232,7 @@ ORCH_KEYS='
 orchestration.critics nelist -
 orchestration.round_cap int -
 orchestration.human_only_paths nelist -
-orchestration.restrict_updates value rulename
+orchestration.restrict_updates nullable rulename
 orchestration.loop_identity nullable ghlogin
 '
 
@@ -209,8 +243,14 @@ case "$mode" in
       [ -n "$path" ] || continue
       [ "$path" = "review.ci_gate" ] && continue   # printed via CIGATE_KEYS below
       [ "$path" = "orchestration" ] && continue    # printed via ORCH_KEYS below
+      [ "$path" = "identities" ] && continue       # printed via IDENT_KEYS below
       printf '%s\n' "$path"
     done
+    printf '%s\n' "$RULESET_KEYS" | while IFS=' ' read -r path kind shape; do
+      [ -n "$path" ] || continue
+      printf '%s\n' "$path"
+    done
+    printf '%s\n' "rulesets if-present"
     printf '%s\n' "review.ci_gate"
     printf '%s\n' "$CIGATE_KEYS" | while IFS=' ' read -r path kind shape; do
       [ -n "$path" ] || continue
@@ -218,6 +258,11 @@ case "$mode" in
     done
     printf '%s\n' "orchestration"
     printf '%s\n' "$ORCH_KEYS" | while IFS=' ' read -r path kind shape; do
+      [ -n "$path" ] || continue
+      printf '%s if-map\n' "$path"
+    done
+    printf '%s\n' "identities"
+    printf '%s\n' "$IDENT_KEYS" | while IFS=' ' read -r path kind shape; do
       [ -n "$path" ] || continue
       printf '%s if-map\n' "$path"
     done
@@ -447,6 +492,10 @@ check_value_shape() { # check_value_shape <shape> <tag> <safe> <json> -- exit 0 
       set_str="${shape#enum:}"
       [ "$tag" = '!!str' ] && [ "$safe" = true ] && enum_match "$(unquote "$json")" "$set_str"
       ;;
+    pair)
+      # A nullable {login, id} pair (`identities.*_app`): a map, never a scalar or list.
+      [ "$tag" = '!!map' ]
+      ;;
     list)
       # A nullable key whose non-null form is a LIST, never a scalar --
       # `review.ci_gate.triggers_on` is the one such key (a path-glob list, per
@@ -472,7 +521,8 @@ check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
   path="$1"; kind="$2"; shape="$3"; present="$4"; tag="$5"; safe="$6"; json="$7"
 
   if [ "$present" != true ]; then
-    case "$kind" in cigate | orchmap) kind=nullable ;; nelist) kind=list ;; esac   # printed as the interview asks it
+    if [ "$kind" = optnelist ]; then return; fi   # an absent optional list is not a finding
+    case "$kind" in cigate | orchmap | identmap) kind=nullable ;; nelist) kind=list ;; esac   # printed as the interview asks it
     add_finding "missing $path $kind"
     return
   fi
@@ -515,6 +565,16 @@ check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
         '!!map') orch_is_map=1 ;;
         *) invalid_finding "$path" "$json" ;;
       esac
+      ;;
+    identmap)
+      case "$tag" in
+        '!!null') : ;;
+        '!!map') ident_is_map=1 ;;
+        *) invalid_finding "$path" "$json" ;;
+      esac
+      ;;
+    optnelist)
+      { [ "$tag" = '!!seq' ] && [ "$json" != '[]' ]; } || invalid_finding "$path" "$json"
       ;;
     int)
       # A quoted "2" is !!str and invalid on purpose: the key is a number, not text.
@@ -560,9 +620,13 @@ EOF_ROWS
 
 cigate_is_map=0
 orch_is_map=0
+ident_is_map=0
 run_table "$MAIN_KEYS"
+run_table "$RULESETS_KEYS"
+run_table "$RULESET_KEYS"
 [ "$cigate_is_map" = 1 ] && run_table "$CIGATE_KEYS"
 [ "$orch_is_map" = 1 ] && run_table "$ORCH_KEYS"
+[ "$ident_is_map" = 1 ] && run_table "$IDENT_KEYS"
 
 if [ -z "$findings" ]; then
   echo complete
