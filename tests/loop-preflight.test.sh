@@ -196,11 +196,9 @@ assert_eq "container: a newline in a mount source stays on one line" 1 "$(printf
 APP=424242
 printf null >"$tmp/ident-null.json"
 cat >"$tmp/rules.json" <<EOF
-[{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":1},{"type":"update","ruleset_id":2}]
-EOF
-cat >"$tmp/rulesets.json" <<EOF
-[{"id":1,"bypass_actors":[]},
- {"id":2,"bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"pull_request"}]}]
+[{"type":"deletion","ruleset_id":1},
+ {"type":"pull_request","ruleset_id":1,"parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":true,"require_last_push_approval":true}},
+ {"type":"non_fast_forward","ruleset_id":2}]
 EOF
 cat >"$tmp/issue.json" <<EOF
 {"number":320,"author_association":"MEMBER"}
@@ -209,84 +207,107 @@ cat >"$tmp/comment.json" <<EOF
 {"id":777,"author_association":"OWNER","issue_url":"https://api.github.com/repos/glunk-works/claude-workbench/issues/320"}
 EOF
 
-disp() { # rules rulesets issue [comment|-]
-  c=$4
+disp() { # rules issue [comment|-]
+  c=$3
   if [ "$c" = - ]; then
-    run github-dispatch --rules "$1" --rulesets "$2" --app-id $APP --identities "${IDENT:-$tmp/ident-null.json}" --issue "$3" --issue-number 320 --no-spec-comment
+    run github-dispatch --rules "$1" --identities "${IDENT:-$tmp/ident-null.json}" --issue "$2" --issue-number 320 --no-spec-comment
   else
-    run github-dispatch --rules "$1" --rulesets "$2" --app-id $APP --identities "${IDENT:-$tmp/ident-null.json}" --issue "$3" --issue-number 320 --spec-comment "$c" --spec-comment-id 777
+    run github-dispatch --rules "$1" --identities "${IDENT:-$tmp/ident-null.json}" --issue "$2" --issue-number 320 --spec-comment "$c" --spec-comment-id 777
   fi
 }
 
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/comment.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/comment.json"
 assert_eq "dispatch: good inputs pass" "pass/0" "$out/$rc"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" -
+disp "$tmp/rules.json" "$tmp/issue.json" -
 assert_eq "dispatch: good inputs pass with no spec comment" "pass/0" "$out/$rc"
 
-jq -c 'map(select(.type!="update"))' "$tmp/rules.json" >"$tmp/r-noupd.json"
-disp "$tmp/r-noupd.json" "$tmp/rulesets.json" "$tmp/issue.json" -
-assert_has "dispatch: no update rule is refused" "$out" "refused update-rule"
+# --- the approval rule (WB-D24, #388): count >= 1, code owner, last push, summed across rules ---
+jq -c 'map(select(.type!="pull_request"))' "$tmp/rules.json" >"$tmp/r-nopr.json"
+disp "$tmp/r-nopr.json" "$tmp/issue.json" -
+assert_has "dispatch: no pull_request rule is refused" "$out" "refused approval-rule"
 printf '[]' >"$tmp/r-none.json"
-disp "$tmp/r-none.json" "$tmp/rulesets.json" "$tmp/issue.json" -
-assert_has "dispatch: no rules at all is refused" "$out" "refused update-rule"
-jq -c 'map(select(.type!="update"))|.[0].type="update_x"' "$tmp/rules.json" >"$tmp/r-near.json"
-disp "$tmp/r-near.json" "$tmp/rulesets.json" "$tmp/issue.json" -
-assert_has "dispatch: a lookalike rule type is refused" "$out" "refused update-rule"
-jq -c '.[0]|=del(.ruleset_id)' "$tmp/rules.json" >"$tmp/r-noid.json"
-disp "$tmp/r-noid.json" "$tmp/rulesets.json" "$tmp/issue.json" -
-assert_has "dispatch: a rule with no ruleset_id is unreadable" "$out" "unreadable update-rule"
-
-jq -c '.[1].bypass_actors+=[{"actor_id":424242,"actor_type":"Integration","bypass_mode":"always"}]' "$tmp/rulesets.json" >"$tmp/rs-app.json"
-disp "$tmp/rules.json" "$tmp/rs-app.json" "$tmp/issue.json" -
-assert_has "dispatch: the App as a bypass actor is refused" "$out" "refused bypass"
-jq -c '.[1].bypass_actors+=[{"actor_id":999,"actor_type":"Integration","bypass_mode":"always"}]' "$tmp/rulesets.json" >"$tmp/rs-other.json"
-disp "$tmp/rules.json" "$tmp/rs-other.json" "$tmp/issue.json" -
-assert_eq "dispatch: another App as a bypass actor is not this check's business" "pass/0" "$out/$rc"
-jq -c '.[1].bypass_actors+=[{"actor_id":424242,"actor_type":"RepositoryRole"}]' "$tmp/rulesets.json" >"$tmp/rs-role.json"
-disp "$tmp/rules.json" "$tmp/rs-role.json" "$tmp/issue.json" -
-assert_eq "dispatch: a role with the App's number is not the App" "pass/0" "$out/$rc"
-jq -c '.[0].bypass_actors=null' "$tmp/rulesets.json" >"$tmp/rs-null.json"
-disp "$tmp/rules.json" "$tmp/rs-null.json" "$tmp/issue.json" -
-assert_has "dispatch: hidden bypass_actors is unreadable" "$out" "unreadable bypass"
-jq -c 'del(.[1])' "$tmp/rulesets.json" >"$tmp/rs-missing.json"
-disp "$tmp/rules.json" "$tmp/rs-missing.json" "$tmp/issue.json" -
-assert_has "dispatch: a missing ruleset document is unreadable" "$out" "unreadable bypass"
-jq -c '. + [{"id":99,"bypass_actors":[{"actor_id":424242,"actor_type":"Integration"}]}]' "$tmp/rulesets.json" >"$tmp/rs-extra.json"
-disp "$tmp/rules.json" "$tmp/rs-extra.json" "$tmp/issue.json" -
-assert_eq "dispatch: a ruleset that does not apply to pr_base is ignored" "pass/0" "$out/$rc"
+disp "$tmp/r-none.json" "$tmp/issue.json" -
+assert_has "dispatch: no rules at all is refused" "$out" "refused approval-rule"
+jq -c 'map(select(.type!="pull_request"))+[{"type":"update","ruleset_id":2}]' "$tmp/rules.json" >"$tmp/r-upd.json"
+disp "$tmp/r-upd.json" "$tmp/issue.json" -
+assert_has "dispatch: an update rule is no longer the gate" "$out" "refused approval-rule"
+jq -c '(.[]|select(.type=="pull_request")).type="pull_request_x"' "$tmp/rules.json" >"$tmp/r-near.json"
+disp "$tmp/r-near.json" "$tmp/issue.json" -
+assert_has "dispatch: a lookalike rule type is refused" "$out" "refused approval-rule"
+jq -c '(.[]|select(.type=="pull_request")).parameters.required_approving_review_count=0' "$tmp/rules.json" >"$tmp/r-c0.json"
+disp "$tmp/r-c0.json" "$tmp/issue.json" -
+assert_has "dispatch: zero required approvals is refused" "$out" "refused approval-rule: required_approving_review_count"
+jq -c '(.[]|select(.type=="pull_request")).parameters.required_approving_review_count=2' "$tmp/rules.json" >"$tmp/r-c2.json"
+disp "$tmp/r-c2.json" "$tmp/issue.json" -
+assert_eq "dispatch: two required approvals pass" "pass/0" "$out/$rc"
+jq -c '(.[]|select(.type=="pull_request")).parameters.require_code_owner_review=false' "$tmp/rules.json" >"$tmp/r-co.json"
+disp "$tmp/r-co.json" "$tmp/issue.json" -
+assert_has "dispatch: no code-owner review is refused" "$out" "refused approval-rule: require_code_owner_review"
+jq -c '(.[]|select(.type=="pull_request")).parameters.require_last_push_approval=false' "$tmp/rules.json" >"$tmp/r-lp.json"
+disp "$tmp/r-lp.json" "$tmp/issue.json" -
+assert_has "dispatch: no last-push approval is refused" "$out" "refused approval-rule: require_last_push_approval"
+jq -c '(.[]|select(.type=="pull_request")).parameters|=(.required_approving_review_count=0|.require_code_owner_review=false|.require_last_push_approval=false)' "$tmp/rules.json" >"$tmp/r-all.json"
+disp "$tmp/r-all.json" "$tmp/issue.json" -
+assert_eq "dispatch: all three missing is three findings" 3 "$(printf '%s\n' "$out" | grep -c '^refused approval-rule')"
+# overlapping rulesets: GitHub applies the strictest of each, so the three need not share a rule
+jq -c '. + [{"type":"pull_request","ruleset_id":3,"parameters":{"required_approving_review_count":0,"require_code_owner_review":false,"require_last_push_approval":false}}]' "$tmp/rules.json" >"$tmp/r-weak-extra.json"
+disp "$tmp/r-weak-extra.json" "$tmp/issue.json" -
+assert_eq "dispatch: a weaker pull_request rule beside the approval one still passes" "pass/0" "$out/$rc"
+jq -c '(.[]|select(.type=="pull_request")).parameters|=(.require_code_owner_review=false|.require_last_push_approval=false)
+       | . + [{"type":"pull_request","ruleset_id":3,"parameters":{"required_approving_review_count":0,"require_code_owner_review":true,"require_last_push_approval":true}}]' "$tmp/rules.json" >"$tmp/r-split.json"
+disp "$tmp/r-split.json" "$tmp/issue.json" -
+assert_eq "dispatch: the three properties may come from different rulesets" "pass/0" "$out/$rc"
+jq -c '(.[]|select(.type=="pull_request")).parameters|=del(.require_last_push_approval)' "$tmp/rules.json" >"$tmp/r-nolp.json"
+disp "$tmp/r-nolp.json" "$tmp/issue.json" -
+assert_has "dispatch: a missing approval field is unreadable" "$out" "unreadable approval-rule"
+jq -c '(.[]|select(.type=="pull_request")).parameters.require_code_owner_review="true"' "$tmp/rules.json" >"$tmp/r-str.json"
+disp "$tmp/r-str.json" "$tmp/issue.json" -
+assert_has "dispatch: a string where a boolean belongs is unreadable" "$out" "unreadable approval-rule"
+jq -c '(.[]|select(.type=="pull_request"))|=del(.parameters)' "$tmp/rules.json" >"$tmp/r-nop.json"
+disp "$tmp/r-nop.json" "$tmp/issue.json" -
+assert_has "dispatch: a pull_request rule with no parameters is unreadable" "$out" "unreadable approval-rule"
+jq -c '. + [{"type":"pull_request","ruleset_id":3,"parameters":{"required_approving_review_count":1}}]' "$tmp/rules.json" >"$tmp/r-bad-extra.json"
+disp "$tmp/r-bad-extra.json" "$tmp/issue.json" -
+assert_has "dispatch: one malformed pull_request rule is unreadable even beside a good one" "$out" "unreadable approval-rule"
+printf '{"message":"Not Found"}' >"$tmp/r-err.json"
+disp "$tmp/r-err.json" "$tmp/issue.json" -
+assert_has "dispatch: an API error body is unreadable" "$out" "unreadable approval-rule"
+jq -c '. + ["x"]' "$tmp/rules.json" >"$tmp/r-nonobj.json"
+disp "$tmp/r-nonobj.json" "$tmp/issue.json" -
+assert_has "dispatch: a rule that is not an object is unreadable" "$out" "unreadable approval-rule"
 
 for assoc in OWNER MEMBER COLLABORATOR; do
   jq -c ".author_association=\"$assoc\"" "$tmp/issue.json" >"$tmp/i-ok.json"
-  disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-ok.json" -
+  disp "$tmp/rules.json" "$tmp/i-ok.json" -
   assert_eq "dispatch: issue author $assoc is trusted" "pass/0" "$out/$rc"
 done
 for assoc in NONE CONTRIBUTOR FIRST_TIME_CONTRIBUTOR FIRST_TIMER MANNEQUIN ""; do
   jq -c ".author_association=\"$assoc\"" "$tmp/issue.json" >"$tmp/i-bad.json"
-  disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-bad.json" -
+  disp "$tmp/rules.json" "$tmp/i-bad.json" -
   assert_has "dispatch: issue author [$assoc] is refused" "$out" "refused author"
 done
 jq -c 'del(.author_association)' "$tmp/issue.json" >"$tmp/i-unset.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-unset.json" -
+disp "$tmp/rules.json" "$tmp/i-unset.json" -
 assert_has "dispatch: no author_association is unreadable" "$out" "unreadable author"
 jq -c '.number=321' "$tmp/issue.json" >"$tmp/i-num.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-num.json" -
+disp "$tmp/rules.json" "$tmp/i-num.json" -
 assert_has "dispatch: the wrong issue number is unreadable" "$out" "unreadable author"
 jq -c '.author_association="NONE"' "$tmp/comment.json" >"$tmp/c-bad.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-bad.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/c-bad.json"
 assert_has "dispatch: an untrusted spec comment is refused" "$out" "refused author"
 jq -c '.id=1' "$tmp/comment.json" >"$tmp/c-id.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-id.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/c-id.json"
 assert_has "dispatch: a spec comment with another id is unreadable" "$out" "unreadable author"
 jq -c 'del(.author_association)' "$tmp/comment.json" >"$tmp/c-unset.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-unset.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/c-unset.json"
 assert_has "dispatch: a spec comment with no author_association is unreadable" "$out" "unreadable author"
 
 : >"$tmp/empty.json"
-disp "$tmp/empty.json" "$tmp/rulesets.json" "$tmp/issue.json" -
+disp "$tmp/empty.json" "$tmp/issue.json" -
 assert_has "dispatch: an empty rules file is unreadable" "$out" "unreadable input"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/empty.json" -
+disp "$tmp/rules.json" "$tmp/empty.json" -
 assert_has "dispatch: an empty issue file is unreadable" "$out" "unreadable input"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/empty.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/empty.json"
 assert_has "dispatch: an empty comment file is unreadable" "$out" "unreadable input"
 
 # --- trust by declared identity (#382): --identities a map, so {login, id} decides and ------
@@ -303,7 +324,7 @@ cat >"$tmp/ident-dup.json" <<EOF
 {"maintainer":[{"login":"alice-dev","id":1001}],"dev_app":{"login":"alice-dev","id":1001},"reviewer_app":null,"loop_app":null}
 EOF
 idisp() { # identities-file issue [comment|-]
-  IDENT=$1 disp "$tmp/rules.json" "$tmp/rulesets.json" "$2" "$3"
+  IDENT=$1 disp "$tmp/rules.json" "$2" "$3"
 }
 mkissue() { # file assoc login id
   printf '{"number":320,"author_association":"%s","user":{"login":"%s","id":%s}}' "$2" "$3" "$4" >"$1"
@@ -350,7 +371,7 @@ assert_has "dispatch (identities): an undeclared spec comment author is refused"
 : >"$tmp/ident-absent.json"
 idisp "$tmp/ident-absent.json" "$tmp/i-stranger.json" -
 assert_has "dispatch (identities): an absent key (empty file) is unreadable, not the association fallback" "$out" "unreadable input"
-run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id $APP --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
+run github-dispatch --rules "$tmp/rules.json" --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
 assert_eq "dispatch: --identities is required" "2" "$rc"
 
 # --- github-push fixtures ----------------------------------------------------------------------
@@ -439,29 +460,20 @@ jq -c '.[0].Config.Labels={"k":("x"*40000)}' "$tmp/proxy.json" >"$tmp/p-big.json
 cont "$tmp/session.json" "$tmp/network.json" "$tmp/p-big.json" "$tmp/p-big.json"
 assert_eq "container: 80 KB of proxy inspect still evaluates" "pass/0" "$out/$rc"
 
-jq -c '. + [{"id":2,"bypass_actors":[{"actor_id":424242,"actor_type":"Integration"}]}]' "$tmp/rulesets.json" >"$tmp/rs-dup.json"
-disp "$tmp/rules.json" "$tmp/rs-dup.json" "$tmp/issue.json" -
-assert_has "dispatch: a ruleset supplied twice is unreadable" "$out" "unreadable bypass"
-jq -c '.[1].bypass_actors=[{"actor_id":"424242","actor_type":"Integration"}]' "$tmp/rulesets.json" >"$tmp/rs-strid.json"
-disp "$tmp/rules.json" "$tmp/rs-strid.json" "$tmp/issue.json" -
-assert_has "dispatch: a string actor_id on an Integration actor is unreadable" "$out" "unreadable bypass"
-jq -c '.[1].bypass_actors=["x"]' "$tmp/rulesets.json" >"$tmp/rs-str.json"
-disp "$tmp/rules.json" "$tmp/rs-str.json" "$tmp/issue.json" -
-assert_has "dispatch: a non-object bypass actor is unreadable" "$out" "unreadable"
 jq -c '.pull_request={"url":"x"}' "$tmp/issue.json" >"$tmp/i-pr.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/i-pr.json" -
+disp "$tmp/rules.json" "$tmp/i-pr.json" -
 assert_has "dispatch: a pull request is not a task issue" "$out" "unreadable author"
 jq -c '.issue_url="https://api.github.com/repos/glunk-works/claude-workbench/issues/321"' "$tmp/comment.json" >"$tmp/c-other.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-other.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/c-other.json"
 assert_has "dispatch: a spec comment on another issue is unreadable" "$out" "unreadable author"
 jq -c '.issue_url="https://api.github.com/repos/glunk-works/claude-workbench/issues/3200"' "$tmp/comment.json" >"$tmp/c-prefix.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-prefix.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/c-prefix.json"
 assert_has "dispatch: issue 3200 is not issue 320" "$out" "unreadable author"
 jq -c 'del(.issue_url)' "$tmp/comment.json" >"$tmp/c-nourl.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-nourl.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/c-nourl.json"
 assert_has "dispatch: a spec comment with no issue_url is unreadable" "$out" "unreadable author"
 jq -c '.body=("x"*60000)' "$tmp/comment.json" >"$tmp/c-big.json"
-disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/c-big.json"
+disp "$tmp/rules.json" "$tmp/issue.json" "$tmp/c-big.json"
 assert_eq "dispatch: a 60 KB spec comment still evaluates" "pass/0" "$out/$rc"
 
 jq -c '. + [{"id":2,"current_user_can_bypass":"always"}]' "$tmp/rs-push.json" >"$tmp/rs-pdup.json"
@@ -480,10 +492,12 @@ run bogus
 assert_eq "an unknown mode is a usage fault" 2 "$rc"
 run container --session "$tmp/session.json" --network "$tmp/network.json" --expect-network "$NET"
 assert_eq "container with no proxy is a usage fault" 2 "$rc"
-run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id $APP --identities "$tmp/ident-null.json" --issue "$tmp/issue.json" --issue-number 320
+run github-dispatch --rules "$tmp/rules.json" --identities "$tmp/ident-null.json" --issue "$tmp/issue.json" --issue-number 320
 assert_eq "dispatch with neither a spec comment nor --no-spec-comment is a usage fault" 2 "$rc"
-run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id 'x;y' --identities "$tmp/ident-null.json" --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
-assert_eq "a non-numeric app id is a usage fault" 2 "$rc"
+run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rs-push.json" --identities "$tmp/ident-null.json" --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
+assert_eq "dispatch with --rulesets is a usage fault (the bypass read is github-push's)" 2 "$rc"
+run github-dispatch --rules "$tmp/rules.json" --app-id $APP --identities "$tmp/ident-null.json" --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
+assert_eq "dispatch with --app-id is a usage fault" 2 "$rc"
 run github-push --installation "$tmp/inst.json" --repo noslash --rules "$tmp/rules.json" --rulesets "$tmp/rs-push.json" --app "$tmp/app.json" --loop-identity x
 assert_eq "a repo with no slash is a usage fault" 2 "$rc"
 
