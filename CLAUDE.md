@@ -48,6 +48,7 @@ sh tests/invariants-gh-pipe.test.sh  # invariants-check.sh check 11 (no gh outpu
 sh tests/cursor-sync-pr.test.sh # resume's cursor-sync PR merge-offer predicate fixtures (not yet required)
 sh tests/driver-lock.test.sh    # resume's driver-lock predicate fixtures (not yet required)
 sh tests/gh-identity.test.sh    # gh-identity.sh user/App/unknown classification fixtures (not yet required)
+sh tests/token-check.test.sh    # token-check.sh empty/expired/user/wrong-App/right-App token fixtures (not yet required)
 sh tests/blocked-state.test.sh  # pr-checks' BLOCKED lag-vs-update-rule predicate fixtures (not yet required)
 sh tests/blocked-state-block.test.sh  # pr-checks' blocked-state shell block vs a stub gh (not yet required)
 sh tests/prune-verdict.test.sh    # resume/archive-sprint prune: merged-tip-or-ancestor verdict fixtures (not yet required)

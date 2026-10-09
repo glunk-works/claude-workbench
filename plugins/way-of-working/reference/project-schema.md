@@ -817,9 +817,13 @@ account including the dev App — an agent never trusts its own text — and `le
 agent's, which points at it), `bin/review-sandbox.sh trust`, `plan-sprint` (judging the login and
 id `bin/plan-gather.sh` prints) and `scripts/loop/preflight.sh github-dispatch`
 (`--identities`, the one reader that is its own implementation of the rule rather than a call
-to `gh-identity.sh`). `reviewer_app` and `loop_app` are read only to refuse them (as authors,
-and by `classify` as the acting identity) and to catch a duplicate id; nothing yet acts as either, which is the same stated, temporary
-state as `orchestration`'s.
+to `gh-identity.sh`). Outside `token-check.sh` (below), `reviewer_app` and `loop_app` are read only to
+refuse them (as authors, and by `classify` as the acting identity) and to catch a duplicate id.
+`bin/token-check.sh verify` (`#436`) is the exception: a consumer of a minted token runs it before
+acting, and for a `dev_app`, `reviewer_app` or `loop_app` role it requires the token's actor and
+matches it against that declared entry through `gh-identity.sh role`; the actor must come from a GitHub
+response obtained with the token, a source not yet measured. Nothing yet acts as `reviewer_app` or
+`loop_app`, which is the same stated, temporary state as `orchestration`'s.
 
 ---
 
