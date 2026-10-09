@@ -174,10 +174,7 @@ below).
 | 19 | #443/#444: the host config is keyed by role (`dev`, `review`, `admin`) | **Pass.** Under `~/.config/603id-identity` the reviewer and dev tokens minted and listed only the scratch repo; the admin App minted with the passphrase (`contents=read`, then `administration=write`), listed only the scratch repo, and a revoked token got 401 "Bad credentials" (before and after output pasted by the maintainer, not in the raw log). The same checks passed earlier today on the glunk-works host config after its two keys were renamed. |
 
 Follow-ups:
-- WB-D24 says a second code owner approves the maintainer's own PRs. For 603 it needs an
-  amendment: one owner, break glass by suspending the org ruleset in the browser, human-wanted
-  changes routed through the dev App.
-- Add the item 15 timings to #432: a second approval was followed by the merge in 18 s.
+- WB-D24's second-owner text now carries a 603-Identity amendment (one code owner, break glass  in the browser, human-wanted changes routed through the dev App), made in this PR.- The item 15 timings are on #432: a second approval was followed by the merge in 18 s.
 
 ## Configuration changes made during session 5
 
