@@ -2,7 +2,7 @@
 
 Proof cases a-k from #376, run against `glunk-works/wb-ruleset-scratch` with the three
 WB-D24 Apps (`glunk-dev`, `glunk-review`, `glunk-admin`) and the rulesets saved in
-[docs/identity/scratch-rulesets/](../identity/scratch-rulesets/). Four sessions. Raw API output
+[docs/identity/scratch-rulesets/](../identity/scratch-rulesets/). Five sessions. Raw API output
 follows the summary, in the order it was run. Each entry names the identity it ran as.
 
 ## Summary
@@ -144,6 +144,59 @@ These steps did not go through it:
   it to the installation.
 - The two minting scripts that ran `mint.sh` (dev App) and `wow-review-mint` (both repos).
 - Reading `wb-ruleset-scratch` rulesets and PR state as Seuss27 while designing the case.
+
+## Session 5 (#377): the same cases under a 603-Identity org ruleset
+
+Run on 2026-10-09 against a private scratch repo in 603-Identity, with that org's own three Apps
+(`603id-dev`, `603id-review`, `603id-admin`), one org ruleset and two repo rulesets. The ruleset
+bodies are the saved ones in [docs/identity/scratch-rulesets/](../identity/scratch-rulesets/); the
+org copy adds a `repository_name` include list naming only the scratch repo.
+
+The maintainer registered and installed the Apps, and approved the PRs in the browser. I created
+the repo and rulesets, minted the dev and reviewer tokens, and ran the probes through a recording
+helper that refuses a token which cannot list its installation repositories (App tokens) or whose
+login cannot be read (user tokens).
+
+**No second code owner.** CODEOWNERS names one account, JaredGroves-603. The maintainer chose not
+to buy a seat for a second owner that only an emergency would use, so case e (the second owner's
+approval merges) was **not run**. Item 16 replaces it, and item 18 checks that the org rule can't
+be weakened from inside a container. WB-D24's second-owner text needs a 603 amendment (follow-up
+below).
+
+| Item | Question | Result |
+|---|---|---|
+| 13 | (a) The dev App can't self-approve or self-merge under the org rule | **Pass.** PR 1: approve 422 "Can not approve your own pull request"; merge 405 "Waiting on code owner review from JaredGroves-603". |
+| 14 | (b) A push dismisses the approval | **Pass.** PR 3: after the dev App pushed, GraphQL reads the review `DISMISSED` and `reviewDecision` `REVIEW_REQUIRED`. The REST review list still read `APPROVED` for the first seconds, so the dismissal is asynchronous. |
+| 15 | (c) Auto-merge fires after the approval | **Pass, late both times.** Armed by the dev App, pinned to the head. PR 1: approved 14:11:22Z, merged 14:13:23Z (2 min 1 s), `clean` and unfired for the first minute. PR 4: approved 14:16:54Z and nothing fired; the maintainer deliberately re-approved at 14:17:19Z and it merged 14:17:37Z (18 s after the second approval, 43 s after the first). `merged_by` is the dev App both times, the approval appears only in the review list. A re-approval is something that happened before the merge, not a proven cause. With the stall in #432 that is three of four first approvals that didn't fire promptly. |
+| 16 | (e, replaced) A maintainer-authored PR can't be approved or merged by its author | **Pass.** PR 2: self-approve 422 "Can not approve your own pull request"; merge 405 "New changes require approval from someone other than the last pusher" and the missing `scratch/status`. Without a second owner, a human-authored change in a 603 repo needs the maintainer to route it through the dev App, or to suspend the org ruleset in the browser. |
+| 17 | Do App tokens read the org-sourced rules? | **Yes.** Dev and reviewer App tokens: `rules/branches/main` lists the `pull_request`, `deletion` and `non_fast_forward` rules with source "Organization" beside the repo's `required_status_checks`, and `repos/R/rulesets` lists the org ruleset with `source_type: Organization`. The org-path read of the ruleset (`orgs/603-Identity/rulesets/<id>`) is 403 for the dev App. |
+| 18 | Can a repo-scoped admin token weaken the org approval rule? | **No.** With `administration=write` scoped to the scratch repo: org path read 403 and edit 403 "Resource not accessible by integration"; the repo path reads it (`source_type` Organization, `active`) but an edit returns 404. It still read `active` afterwards. Contrast: the same token renamed the repo's own `wb-checks` and the name was restored; all three rulesets read back unchanged. So admin mode in a container can weaken repo rulesets but not the org approval rule. |
+| 19 | #443/#444: the host config is keyed by role (`dev`, `review`, `admin`) | **Pass.** Under `~/.config/603id-identity` the reviewer and dev tokens minted and listed only the scratch repo; the admin App minted with the passphrase (`contents=read`, then `administration=write`), listed only the scratch repo, and a revoked token got 401 "Bad credentials" (before and after output pasted by the maintainer, not in the raw log). The same checks passed earlier today on the glunk-works host config after its two keys were renamed. |
+
+Follow-ups:
+- WB-D24 says a second code owner approves the maintainer's own PRs. For 603 it needs an
+  amendment: one owner, break glass by suspending the org ruleset in the browser, human-wanted
+  changes routed through the dev App.
+- Add the item 15 timings to #432: a second approval was followed by the merge in 18 s.
+
+## Configuration changes made during session 5
+
+- **Repo** `603-Identity/identity-ruleset-scratch`: private, auto-merge on, delete branch on merge on.
+  `main` holds `.github/CODEOWNERS` (`* @JaredGroves-603`) and the `scratch-status` workflow. PRs 1
+  and 4 merged (`main` is at `50abe9a`); PRs 2 and 3 were closed unmerged. All probe branches are
+  deleted. The repo stays until the maintainer deletes it.
+- **Rulesets**: org `wb-approval` (include list: this repo only, no bypass), repo `wb-checks` and
+  `wb-tags`. `wb-checks` was renamed and restored in item 18.
+- **Tokens**: reviewer, dev and two admin tokens minted. Both admin tokens were revoked and each
+  got 401 afterwards; the dev and reviewer tokens expire within the hour.
+
+## Calls made outside the recording helper (session 5)
+
+- Creating the repo, its two files and the three rulesets, as JaredGroves-603 through a
+  per-process token.
+- The Apps' registration and installation, the host config, the passphrase mints and revokes, and
+  all review approvals (PR 1, PR 3, PR 4 twice), which were the maintainer's.
+- Reading the org's installation list to fill in the host config.
 
 ## Raw output, session 1 (2026-10-08 evening, UTC 2026-10-09 00:17-01:41)
 
@@ -3165,4 +3218,529 @@ $ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/14 -f title=item6 -
 {"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/pulls/pulls#update-a-pull-request","status":"403"}gh: Resource not accessible by integration (HTTP 403)
 ```
 exit: 1
+
+
+## Raw output, session 5 (2026-10-09, UTC 14:05-14:25)
+
+#### a1: dev App creates a branch
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/git/refs -f ref=refs/heads/s5-a -f sha=5bc45e5d01d08722391d17a9fc8c16f6f568a20f --jq [.ref,.object.sha[0:7]]
+
+```
+["refs/heads/s5-a","5bc45e5"]
+```
+exit: 0
+
+#### a2: dev App commits a file to the branch
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/contents/s5/a.txt -f message=s5: case a file -f branch=s5-a -f content=Y2FzZSBhCg== --jq [.commit.sha[0:7],.commit.author.name]
+
+```
+["ed71faa","603id-dev[bot]"]
+```
+exit: 0
+
+#### a3: dev App opens a PR
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/pulls -f title=s5 case a -f head=s5-a -f base=main -f body=case a: dev App PR --jq [.number,.user.login,.mergeable_state]
+
+```
+[1,"603id-dev[bot]","unknown"]
+```
+exit: 0
+
+#### a4: dev App tries to approve its own PR
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/pulls/1/reviews -f event=APPROVE -f body=self
+
+```
+{"message":"Unprocessable Entity","errors":["Review Can not approve your own pull request"],"documentation_url":"https://docs.github.com/rest/pulls/reviews#create-a-review-for-a-pull-request","status":"422"}gh: Unprocessable Entity (HTTP 422)
+```
+exit: 1
+
+#### a5: dev App tries to merge PR 1
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/pulls/1/merge -f merge_method=squash
+
+```
+{"message":"Repository rule violations found\n\nWaiting on code owner review from JaredGroves-603.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+Waiting on code owner review from JaredGroves-603.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### r1: dev App reads rules/branches/main
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/rules/branches/main --jq map([.ruleset_source_type,.ruleset_source,.ruleset_id,.type])
+
+```
+[["Organization","603-Identity",24792211,"pull_request"],["Organization","603-Identity",24792211,"deletion"],["Organization","603-Identity",24792211,"non_fast_forward"],["Repository","603-Identity/identity-ruleset-scratch",24792209,"required_status_checks"]]
+```
+exit: 0
+
+#### r2: dev App reads repo rulesets
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/rulesets --jq map([.id,.name,.source_type])
+
+```
+[[24792211,"wb-approval","Organization"],[24792209,"wb-checks","Repository"],[24792210,"wb-tags","Repository"]]
+```
+exit: 0
+
+#### r3: reviewer App reads rules/branches/main
+
+as: reviewer App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/rules/branches/main --jq map([.ruleset_source_type,.ruleset_id,.type])
+
+```
+[["Organization",24792211,"pull_request"],["Organization",24792211,"deletion"],["Organization",24792211,"non_fast_forward"],["Repository",24792209,"required_status_checks"]]
+```
+exit: 0
+
+#### r4: reviewer App reads repo rulesets
+
+as: reviewer App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/rulesets --jq map([.id,.name])
+
+```
+[[24792211,"wb-approval"],[24792209,"wb-checks"],[24792210,"wb-tags"]]
+```
+exit: 0
+
+#### r5: dev App reads the org ruleset
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api orgs/603-Identity/rulesets/24792211 --jq [.id,.name]
+
+```
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/orgs/rules#get-an-organization-repository-ruleset","status":"403"}gh: Resource not accessible by integration (HTTP 403)
+```
+exit: 1
+
+#### h1: maintainer creates a branch
+
+as: JaredGroves-603 user token (user.login JaredGroves-603)
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/git/refs -f ref=refs/heads/s5-human -f sha=5bc45e5d01d08722391d17a9fc8c16f6f568a20f --jq [.ref]
+
+```
+["refs/heads/s5-human"]
+```
+exit: 0
+
+#### h2: maintainer commits a file
+
+as: JaredGroves-603 user token (user.login JaredGroves-603)
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/contents/s5/human.txt -f message=s5: maintainer-authored change -f branch=s5-human -f content=aHVtYW4K --jq [.commit.sha[0:7],.commit.author.name]
+
+```
+["abf9786","JaredGroves-603"]
+```
+exit: 0
+
+#### h3: maintainer opens a PR
+
+as: JaredGroves-603 user token (user.login JaredGroves-603)
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/pulls -f title=s5 maintainer-authored -f head=s5-human -f base=main -f body=human-authored PR --jq [.number,.user.login]
+
+```
+[2,"JaredGroves-603"]
+```
+exit: 0
+
+#### h4: maintainer tries to approve their own PR
+
+as: JaredGroves-603 user token (user.login JaredGroves-603)
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/pulls/2/reviews -f event=APPROVE -f body=self
+
+```
+{"message":"Unprocessable Entity","errors":["Review Can not approve your own pull request"],"documentation_url":"https://docs.github.com/rest/pulls/reviews#create-a-review-for-a-pull-request","status":"422"}gh: Unprocessable Entity (HTTP 422)
+```
+exit: 1
+
+#### h5: maintainer tries to merge their own PR
+
+as: JaredGroves-603 user token (user.login JaredGroves-603)
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/pulls/2/merge -f merge_method=squash
+
+```
+{"message":"Repository rule violations found\n\nNew changes require approval from someone other than the last pusher.\n\nRequired status check \"scratch/status\" is expected.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+New changes require approval from someone other than the last pusher.
+
+Required status check "scratch/status" is expected.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### c1: PR 1 head status
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/commits/ed71faa/status --jq [.state,[.statuses[]|[.context,.state,.creator.login]]]
+
+```
+["success",[["scratch/status","success",null]]]
+```
+exit: 0
+
+#### c2: dev App arms auto-merge on PR 1 (pinned to the head)
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api graphql -f query=mutation($id:ID!,$oid:GitObjectID!){enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:SQUASH,expectedHeadOid:$oid}){pullRequest{number autoMergeRequest{enabledBy{login} mergeMethod}}}} -f id=PR_kwDOVCgNa88AAAABHjI3HQ -f oid=ed71faa8c5bcd007677943bb4634ac2e8cd3d8f5
+
+```
+{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"number":1,"autoMergeRequest":{"enabledBy":{"login":"603id-dev"},"mergeMethod":"SQUASH"}}}}}
+```
+exit: 0
+
+#### b1: dev App branch for the dismissal case
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/git/refs -f ref=refs/heads/s5-b -f sha=5bc45e5d01d08722391d17a9fc8c16f6f568a20f --jq [.ref]
+
+```
+["refs/heads/s5-b"]
+```
+exit: 0
+
+#### b2: dev App commits to s5-b
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/contents/s5/b.txt -f message=s5: case b file -f branch=s5-b -f content=Y2FzZSBiCg== --jq [.commit.sha[0:7]]
+
+```
+["e356d9d"]
+```
+exit: 0
+
+#### b3: dev App opens PR 3
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/pulls -f title=s5 case b -f head=s5-b -f base=main -f body=case b: approve, then push --jq [.number,.user.login]
+
+```
+[3,"603id-dev[bot]"]
+```
+exit: 0
+
+#### c3: PR 1 after the approval
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/pulls/1 --jq [.merged,.merged_by.login,.merged_at,.merge_commit_sha[0:7]]
+
+```
+[false,null,null,"3b2cdc2"]
+```
+exit: 0
+
+#### c4: PR 1 reviews
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/pulls/1/reviews --jq map([.user.login,.state,.submitted_at])
+
+```
+[["JaredGroves-603","APPROVED","2026-10-09T14:11:22Z"]]
+```
+exit: 0
+
+#### b4: PR 3 reviews before the push
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/pulls/3/reviews --jq map([.user.login,.state,.commit_id[0:7]])
+
+```
+[["JaredGroves-603","APPROVED","e356d9d"]]
+```
+exit: 0
+
+#### b5: dev App pushes a second commit to s5-b
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/contents/s5/b2.txt -f message=s5: case b second push -f branch=s5-b -f content=YWdhaW4K --jq [.commit.sha[0:7]]
+
+```
+["8f63d20"]
+```
+exit: 0
+
+#### b6: PR 3 reviews and decision after the push
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/pulls/3/reviews --jq map([.user.login,.state,.commit_id[0:7]])
+
+```
+[["JaredGroves-603","APPROVED","e356d9d"]]
+```
+exit: 0
+
+#### b7: PR 3 merge attempt after the push
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/pulls/3/merge -f merge_method=squash
+
+```
+{"message":"Repository rule violations found\n\nWaiting on code owner review from JaredGroves-603.\n\nRequired status check \"scratch/status\" is expected.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+Waiting on code owner review from JaredGroves-603.
+
+Required status check "scratch/status" is expected.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### c5: PR 1 merged state and time
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/pulls/1 --jq [.merged,.merged_by.login,.merged_at,.merge_commit_sha[0:7]]
+
+```
+[true,"603id-dev[bot]","2026-10-09T14:13:23Z","f0fe9a2"]
+```
+exit: 0
+
+#### b8: PR 3 reviewDecision and reviews after the push
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"603-Identity",name:"identity-ruleset-scratch"){pullRequest(number:3){reviewDecision mergeStateStatus headRefOid reviews(first:5){nodes{author{login} state commit{oid}}}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"UNKNOWN","headRefOid":"8f63d20555fdf7f0423bb76c288c7c5e350d371a","reviews":{"nodes":[{"author":{"login":"JaredGroves-603"},"state":"DISMISSED","commit":{"oid":"e356d9d04b66e255e7f0df1ecd875a8c7ff53efb"}}]}}}}}
+```
+exit: 0
+
+#### b9: PR 3 merge attempt, full message
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/pulls/3/merge -f merge_method=squash
+
+```
+{"message":"Repository rule violations found\n\nWaiting on code owner review from JaredGroves-603.\n\nRequired status check \"scratch/status\" is expected.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+Waiting on code owner review from JaredGroves-603.
+
+Required status check "scratch/status" is expected.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### c6: dev App branch for the second auto-merge run
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/git/refs -f ref=refs/heads/s5-c2 -f sha=f0fe9a280646132333ff71ece9bc0527058d77f1 --jq [.ref]
+
+```
+["refs/heads/s5-c2"]
+```
+exit: 0
+
+#### c7: dev App commits to s5-c2
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/contents/s5/c2.txt -f message=s5: second auto-merge run -f branch=s5-c2 -f content=YzIK --jq [.commit.sha[0:7]]
+
+```
+["4295829"]
+```
+exit: 0
+
+#### c8: dev App opens PR 4
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X POST repos/603-Identity/identity-ruleset-scratch/pulls -f title=s5 second auto-merge run -f head=s5-c2 -f base=main -f body=case c, second run --jq [.number,.user.login]
+
+```
+[4,"603id-dev[bot]"]
+```
+exit: 0
+
+#### c9: dev App arms auto-merge on PR 4
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api graphql -f query=mutation($id:ID!,$oid:GitObjectID!){enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:SQUASH,expectedHeadOid:$oid}){pullRequest{number autoMergeRequest{enabledBy{login}}}}} -f id=PR_kwDOVCgNa88AAAABHjNXLQ -f oid=42958290dabc125a37889178542a4ebcccac840b
+
+```
+{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"number":4,"autoMergeRequest":{"enabledBy":{"login":"603id-dev"}}}}}}
+```
+exit: 0
+
+#### c10: PR 4 reviews
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/pulls/4/reviews --jq map([.user.login,.state,.submitted_at])
+
+```
+[["JaredGroves-603","APPROVED","2026-10-09T14:16:54Z"],["JaredGroves-603","APPROVED","2026-10-09T14:17:19Z"]]
+```
+exit: 0
+
+#### c11: PR 4 merged state and time
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/pulls/4 --jq [.merged,.merged_by.login,.merged_at]
+
+```
+[true,"603id-dev[bot]","2026-10-09T14:17:37Z"]
+```
+exit: 0
+
+#### o1: admin token reads the org ruleset through the org path
+
+as: admin App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api orgs/603-Identity/rulesets/24792211 --jq [.id,.name,.enforcement]
+
+```
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/orgs/rules#get-an-organization-repository-ruleset","status":"403"}gh: Resource not accessible by integration (HTTP 403)
+```
+exit: 1
+
+#### o2: admin token reads the org ruleset through the repo path
+
+as: admin App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/rulesets/24792211 --jq [.id,.name,.source_type,.enforcement]
+
+```
+[24792211,"wb-approval","Organization","active"]
+```
+exit: 0
+
+#### o3: admin token tries to disable the org ruleset (org path)
+
+as: admin App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT orgs/603-Identity/rulesets/24792211 -f enforcement=disabled
+
+```
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/orgs/rules#update-an-organization-repository-ruleset","status":"403"}gh: Resource not accessible by integration (HTTP 403)
+```
+exit: 1
+
+#### o4: admin token tries to disable the org ruleset (repo path)
+
+as: admin App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/rulesets/24792211 -f enforcement=disabled
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/rules#update-a-repository-ruleset","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### o5: org ruleset enforcement afterwards (read back)
+
+as: admin App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/rulesets/24792211 --jq [.enforcement]
+
+```
+["active"]
+```
+exit: 0
+
+#### o6: admin token renames the repo ruleset wb-checks (contrast)
+
+as: admin App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/rulesets/24792209 -f name=wb-checks-s5 --jq [.id,.name,.enforcement,.source_type]
+
+```
+[24792209,"wb-checks-s5","active","Repository"]
+```
+exit: 0
+
+#### o7: admin token restores the name
+
+as: admin App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PUT repos/603-Identity/identity-ruleset-scratch/rulesets/24792209 -f name=wb-checks --jq [.id,.name,.enforcement]
+
+```
+[24792209,"wb-checks","active"]
+```
+exit: 0
+
+#### o8: admin token reads rulesets after the restore
+
+as: admin App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/rulesets --jq map([.id,.name,.enforcement,.source_type])
+
+```
+[[24792211,"wb-approval","active","Organization"],[24792209,"wb-checks","active","Repository"],[24792210,"wb-tags","active","Repository"]]
+```
+exit: 0
+
+#### z2: dev App closes PR 2
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PATCH repos/603-Identity/identity-ruleset-scratch/pulls/2 -f state=closed --jq [.number,.state]
+
+```
+[2,"closed"]
+```
+exit: 0
+
+#### z3: dev App closes PR 3
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X PATCH repos/603-Identity/identity-ruleset-scratch/pulls/3 -f state=closed --jq [.number,.state]
+
+```
+[3,"closed"]
+```
+exit: 0
+
+#### z-s5-human: delete branch
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X DELETE repos/603-Identity/identity-ruleset-scratch/git/refs/heads/s5-human
+
+```
+
+```
+exit: 0
+
+#### z-s5-b: delete branch
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X DELETE repos/603-Identity/identity-ruleset-scratch/git/refs/heads/s5-b
+
+```
+
+```
+exit: 0
+
+#### z-s5-a: delete branch
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X DELETE repos/603-Identity/identity-ruleset-scratch/git/refs/heads/s5-a
+
+```
+{"message":"Reference does not exist","documentation_url":"https://docs.github.com/rest/git/refs#delete-a-reference","status":"422"}gh: Reference does not exist (HTTP 422)
+```
+exit: 1
+
+#### z-s5-c2: delete branch
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api -X DELETE repos/603-Identity/identity-ruleset-scratch/git/refs/heads/s5-c2
+
+```
+{"message":"Reference does not exist","documentation_url":"https://docs.github.com/rest/git/refs#delete-a-reference","status":"422"}gh: Reference does not exist (HTTP 422)
+```
+exit: 1
+
+#### z9: final state of the repo
+
+as: dev App token (installation repos [1,["603-Identity/identity-ruleset-scratch"]])
+$ gh api repos/603-Identity/identity-ruleset-scratch/branches --jq map(.name)
+
+```
+["main"]
+```
+exit: 0
 
