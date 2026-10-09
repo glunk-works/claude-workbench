@@ -1,13 +1,13 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 14** (cursor id `sprint-14`) on [milestone 17, *Identity M2: dual-mode plugin v0.18.0*](https://github.com/glunk-works/claude-workbench/milestone/17), anchored at `131f155`. Status: **implementing**.
+**Now:** **Sprint 14** (cursor id `sprint-14`) on [milestone 17, *Identity M2: dual-mode plugin v0.18.0*](https://github.com/glunk-works/claude-workbench/milestone/17), anchored at `e6ccc3e`. Status: **implementing**.
 
 **Just done (2026-10-09):**
-- Task #379 merged (PR #455, `131f155`): `bin/gh-identity.sh` with `classify` (user / app / exit 2) and the `reach` App-mode probe, matching on the numeric id; 120 fixtures, a CI step.
-- Critic pass on #379: security-critic and architect, 3 rounds, converged; both on their own default models, no second-opinion round. The last fixes (a fixture and a header sentence) were not re-run.
-- Known gaps, none filed yet: `GET /user` is refused to installation tokens, so where an App actor's `{login, id}` comes from is unmeasured and needs a real dev-App token before #380, #381 and #390; duplicate YAML keys pass `schema-complete.sh` and the last one wins; the architect suggested listing `gh-identity.sh` and its test in `scripts/loop/protected-paths.txt`, left to the human.
+- Task #382 merged (PR #457, `e6ccc3e`): `gh-identity.sh author` (trusted / untrusted / legacy), and `review-sandbox.sh trust`, `preflight.sh github-dispatch` (new required `--identities FILE`), `plan-gather.sh` (login and id columns), `resume`, `coder`, `plan-sprint` and `architect-review` now trust by declared `{login, id}`. Only a maintainer's authorship is trusted; the dev App's own text is not.
+- Critic pass on #382: security-critic, architect and docs-consistency, 2 rounds, converged; all on their own default models, no second-opinion round. The last fixes (a deleted garbled sentence, a removed float-id check and its fixture, two prose edits) were not re-run through a critic.
+- `tests/invariants-gh-pipe.test.sh` did not finish locally (over nine minutes); CI's `tests` check on #457 passed. `CLAUDE.md`'s one-line description of the gh-identity test is stale (it now also covers `author`), left to the human.
 
-**Next:** task #382 — make review-sandbox.sh, architect-review, agents/coder.md, plan-gather.sh and scripts/loop/preflight.sh trust by declared identity (`{login, id}` from `identities`) instead of `author_association` (milestone 17 build-order step 3), run the local green gate, then `/way-of-working:critic-gate` and `/way-of-working:ship`. On **sonnet** (coder).
+**Next:** task #436 — make every token consumer fail closed on an empty or non-App token (milestone 17 build-order step 4), run the local green gate, then `/way-of-working:critic-gate` and `/way-of-working:ship`. On **sonnet** (coder).
 
 **HITL Gate: NONE OPEN — the human's merge of each task PR is the next gate.**
 
