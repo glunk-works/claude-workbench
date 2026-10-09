@@ -1561,6 +1561,12 @@ take effect. Full reasoning and the task breakdown that implements them:
     2. **The merge gate is one approval from a human code owner, with no bypass actors.**
        - `CODEOWNERS` names both of the maintainer's accounts. Either one approves the
          other's PRs, and the maintainer's own pushes.
+         **603-Identity amendment (2026-10-09, #377):** its repos run with one code owner,
+         JaredGroves-603, and no second seat. A PR the maintainer authors, or a commit they
+         push onto an agent's PR, cannot be approved by them, so human-wanted changes go
+         through the dev App. Break glass is the org owner suspending the org ruleset in the
+         browser, then re-enabling it; no bypass actor, and never an agent action. A
+         repo-scoped admin token cannot edit the org ruleset (session 5, item 18).
        - Stale approvals are dismissed, and the last push must be approved by someone other
          than its pusher.
        - Required checks are pinned to their source app (`integration_id`). The pins were
@@ -1631,8 +1637,8 @@ take effect. Full reasoning and the task breakdown that implements them:
     - Approve replaces Merge, and Dependabot PRs need an approval, with a `GITHUB_TOKEN`
       workflow arming their auto-merge.
     - Workflow-file changes need admin mode or a human push.
-    - Possibly one more GitHub Team seat, so the second code owner reaches the private
-      603-Identity repos.
+    - No extra GitHub Team seat: 603-Identity runs with a single code owner
+      (amendment above).
     - New schema keys (`identities`, a `rulesets` list) and a dual-mode plugin release
       before any repo cuts over.
 
