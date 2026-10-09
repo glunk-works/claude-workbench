@@ -66,7 +66,7 @@ assert_absent() { # desc haystack needle
   case "$2" in *"$3"*) bad "$1" "'$3' leaked into: $2" ;; *) ok ;; esac
 }
 
-TOKEN=ghs_faketoken0123456789
+TOKEN=ghs_faketoken0123456789abcdefghijklmnopqrstuv
 EXPIRES=2026-10-09T01:00:00Z
 GOOD_BODY="{\"token\":\"$TOKEN\",\"expires_at\":\"$EXPIRES\"}"
 
@@ -180,8 +180,25 @@ run 201 '{"token":"x\nrm -rf ~","expires_at":"2026-10-09T01:00:00Z"}' $(good_arg
 assert_eq "non-token-shaped token exits 1" 1 "$rc"
 [ ! -e "$tmp/token" ] && ok || bad "non-token-shaped token leaves no out file" "$tmp/token exists"
 
+# GitHub's stateless ghs_APPID_JWT format: long, with dots and dashes (changelog 2026-04-24).
+JWT_TOKEN=ghs_12345_eyJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NjAwMDAwMDB9-abc_DEF.c2lnbmF0dXJlLXNpZ25hdHVyZS1zaWduYXR1cmU
+rm -f "$tmp/token"
 # shellcheck disable=SC2046
-run 201 '{"token":"ghs_ok","expires_at":"soon; reboot"}' $(good_args)
+run 201 "{\"token\":\"$JWT_TOKEN\",\"expires_at\":\"$EXPIRES\"}" $(good_args)
+assert_eq "JWT-format token exits 0" 0 "$rc"
+assert_eq "JWT-format token written" "$JWT_TOKEN" "$(sed -n 1p "$tmp/token")"
+
+# Short, unprefixed and over-wide-charset tokens are still refused.
+for bad_tok in ghs_short ghp_faketoken0123456789abcdefghijklmnopqrstuv faketoken0123456789abcdefghijklmnopqrstuvwxyz ghs_faketoken0123456789abcdefghijklmnopqrstuv+/= ; do
+  rm -f "$tmp/token"
+  # shellcheck disable=SC2046
+  run 201 "{\"token\":\"$bad_tok\",\"expires_at\":\"$EXPIRES\"}" $(good_args)
+  assert_eq "token '$bad_tok' exits 1" 1 "$rc"
+  [ ! -e "$tmp/token" ] && ok || bad "token '$bad_tok' leaves no out file" "$tmp/token exists"
+done
+
+# shellcheck disable=SC2046
+run 201 '{"token":"'"$TOKEN"'","expires_at":"soon; reboot"}' $(good_args)
 assert_eq "non-timestamp expires_at exits 1" 1 "$rc"
 [ ! -e "$tmp/token" ] && ok || bad "non-timestamp expires_at leaves no out file" "$tmp/token exists"
 

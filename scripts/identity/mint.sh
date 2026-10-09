@@ -130,7 +130,11 @@ token=$(printf '%s' "$resp" | jq -r '.token // empty') || die "response is not J
 expires=$(printf '%s' "$resp" | jq -r '.expires_at // empty') || die "response is not JSON"
 [ -n "$token" ] && [ -n "$expires" ] || die "response lacks a token or expires_at"
 # The file is a credential file other tools read: only token- and timestamp-shaped content.
-case "$token" in *[!A-Za-z0-9_]*) die "response token is not token-shaped" ;; esac
+# GitHub's installation tokens are ghs_ + 36 or more of [A-Za-z0-9._-]: the stateless ghs_APPID_JWT
+# format (2026-04-27 rollout) is ~520 characters of variable length with dots and dashes.
+case "$token" in ghs_*) tok_body=${token#ghs_} ;; *) tok_body= ;; esac
+case "$tok_body" in *[!A-Za-z0-9._-]*) tok_body= ;; esac
+[ "${#tok_body}" -ge 36 ] || die "response token is not token-shaped"
 case "$expires" in *[!0-9TZ:-]*) die "response expires_at is not a timestamp" ;; esac
 
 staged=$(umask 077 && mktemp -- "$outdir/.mint.XXXXXX") || die "cannot stage the token beside $out"
