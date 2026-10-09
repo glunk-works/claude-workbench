@@ -90,6 +90,12 @@ if [ -n "${FAKE_EXPECT2:-}" ]; then
     *) echo "fake gh: expected '$FAKE_EXPECT2' in path, got: $path" >&2; exit 1 ;;
   esac
 fi
+if [ -n "${FAKE_EXPECT_JQ:-}" ]; then
+  case "$*" in
+    *"$FAKE_EXPECT_JQ"*) ;;
+    *) echo "fake gh: expected jq fragment '$FAKE_EXPECT_JQ' in args: $*" >&2; exit 1 ;;
+  esac
+fi
 [ "${FAKE_FAIL:-0}" = 1 ] && { echo "fake gh: simulated failure" >&2; exit 1; }
 printf '%s' "${FAKE_ROWS-}"
 FAKE_GH
@@ -120,17 +126,17 @@ echo "# unmilestoned -- ascending issue-number sort"
 
 # Pre-shuffled rows, as if --jq had already projected them (unsorted) --
 # out of numeric order on purpose.
-shuffled="42${tab}2026-09-01T00:00:00Z${tab}MEMBER${tab}z issue
-7${tab}2026-09-02T00:00:00Z${tab}OWNER${tab}a issue
-150${tab}2026-09-03T00:00:00Z${tab}COLLABORATOR${tab}m issue"
-expected="7${tab}2026-09-02T00:00:00Z${tab}OWNER${tab}a issue
-42${tab}2026-09-01T00:00:00Z${tab}MEMBER${tab}z issue
-150${tab}2026-09-03T00:00:00Z${tab}COLLABORATOR${tab}m issue"
+shuffled="42${tab}2026-09-01T00:00:00Z${tab}MEMBER${tab}zed${tab}1003${tab}z issue
+7${tab}2026-09-02T00:00:00Z${tab}OWNER${tab}ann${tab}1001${tab}a issue
+150${tab}2026-09-03T00:00:00Z${tab}COLLABORATOR${tab}max${tab}1002${tab}m issue"
+expected="7${tab}2026-09-02T00:00:00Z${tab}OWNER${tab}ann${tab}1001${tab}a issue
+42${tab}2026-09-01T00:00:00Z${tab}MEMBER${tab}zed${tab}1003${tab}z issue
+150${tab}2026-09-03T00:00:00Z${tab}COLLABORATOR${tab}max${tab}1002${tab}m issue"
 # FAKE_EXPECT makes the stub itself abort (loudly, non-zero) if the script
 # doesn't actually send `milestone=none` -- a silent behavior change here would
 # otherwise pass every assertion below unchanged, since the stub ignores the
 # query string except for this check.
-out="$(FAKE_EXPECT="milestone=none" FAKE_EXPECT2="state=open" FAKE_ROWS="$shuffled" run unmilestoned "$REPO")"
+out="$(FAKE_EXPECT="milestone=none" FAKE_EXPECT2="state=open" FAKE_EXPECT_JQ=".user.login, .user.id, .title" FAKE_ROWS="$shuffled" run unmilestoned "$REPO")"
 assert_eq "unmilestoned: rows sort ascending by issue number, not input order" "$expected" "$out"
 
 echo "# unmilestoned -- gh failure vs. legitimately empty"

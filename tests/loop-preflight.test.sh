@@ -194,6 +194,7 @@ assert_eq "container: a newline in a mount source stays on one line" 1 "$(printf
 
 # --- github-dispatch fixtures ------------------------------------------------------------------
 APP=424242
+printf null >"$tmp/ident-null.json"
 cat >"$tmp/rules.json" <<EOF
 [{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":1},{"type":"update","ruleset_id":2}]
 EOF
@@ -211,9 +212,9 @@ EOF
 disp() { # rules rulesets issue [comment|-]
   c=$4
   if [ "$c" = - ]; then
-    run github-dispatch --rules "$1" --rulesets "$2" --app-id $APP --issue "$3" --issue-number 320 --no-spec-comment
+    run github-dispatch --rules "$1" --rulesets "$2" --app-id $APP --identities "${IDENT:-$tmp/ident-null.json}" --issue "$3" --issue-number 320 --no-spec-comment
   else
-    run github-dispatch --rules "$1" --rulesets "$2" --app-id $APP --issue "$3" --issue-number 320 --spec-comment "$c" --spec-comment-id 777
+    run github-dispatch --rules "$1" --rulesets "$2" --app-id $APP --identities "${IDENT:-$tmp/ident-null.json}" --issue "$3" --issue-number 320 --spec-comment "$c" --spec-comment-id 777
   fi
 }
 
@@ -287,6 +288,70 @@ disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/empty.json" -
 assert_has "dispatch: an empty issue file is unreadable" "$out" "unreadable input"
 disp "$tmp/rules.json" "$tmp/rulesets.json" "$tmp/issue.json" "$tmp/empty.json"
 assert_has "dispatch: an empty comment file is unreadable" "$out" "unreadable input"
+
+# --- trust by declared identity (#382): --identities a map, so {login, id} decides and ------
+# --- author_association does not. An App token reads the maintainer as CONTRIBUTOR. --------
+cat >"$tmp/ident-map.json" <<EOF
+{"maintainer":[{"login":"Alice-Dev","id":1001},{"login":"bob","id":1002}],
+ "dev_app":{"login":"acme-dev[bot]","id":2001},"reviewer_app":null,"loop_app":{"login":"acme-loop[bot]","id":2003}}
+EOF
+cat >"$tmp/ident-bad.json" <<EOF
+{"maintainer":["alice-dev",{"login":"alice-dev","id":"1001"},{"login":"alice-dev","id":0},{"id":1001}],
+ "dev_app":"acme-dev[bot]","reviewer_app":null,"loop_app":null}
+EOF
+cat >"$tmp/ident-dup.json" <<EOF
+{"maintainer":[{"login":"alice-dev","id":1001}],"dev_app":{"login":"alice-dev","id":1001},"reviewer_app":null,"loop_app":null}
+EOF
+idisp() { # identities-file issue [comment|-]
+  IDENT=$1 disp "$tmp/rules.json" "$tmp/rulesets.json" "$2" "$3"
+}
+mkissue() { # file assoc login id
+  printf '{"number":320,"author_association":"%s","user":{"login":"%s","id":%s}}' "$2" "$3" "$4" >"$1"
+}
+mkissue "$tmp/i-app-view.json" CONTRIBUTOR alice-dev 1001
+idisp "$tmp/ident-map.json" "$tmp/i-app-view.json" -
+assert_eq "dispatch (identities): the maintainer passes though an App token reads CONTRIBUTOR" "pass/0" "$out/$rc"
+mkissue "$tmp/i-case.json" NONE ALICE-DEV 1001
+idisp "$tmp/ident-map.json" "$tmp/i-case.json" -
+assert_eq "dispatch (identities): login compared case-folded" "pass/0" "$out/$rc"
+mkissue "$tmp/i-stranger.json" OWNER stranger 9999
+idisp "$tmp/ident-map.json" "$tmp/i-stranger.json" -
+assert_has "dispatch (identities): an OWNER association no longer trusts an undeclared author" "$out" "refused author"
+mkissue "$tmp/i-dev.json" MEMBER 'acme-dev[bot]' 2001
+idisp "$tmp/ident-map.json" "$tmp/i-dev.json" -
+assert_has "dispatch (identities): the dev App's own issue is refused" "$out" "refused author"
+mkissue "$tmp/i-loop.json" MEMBER 'acme-loop[bot]' 2003
+idisp "$tmp/ident-map.json" "$tmp/i-loop.json" -
+assert_has "dispatch (identities): the loop App's issue is refused" "$out" "refused author"
+mkissue "$tmp/i-other-id.json" MEMBER alice-dev 9999
+idisp "$tmp/ident-map.json" "$tmp/i-other-id.json" -
+assert_has "dispatch (identities): a maintainer's login on another id is refused" "$out" "refused author"
+mkissue "$tmp/i-renamed.json" MEMBER alice-renamed 1001
+idisp "$tmp/ident-map.json" "$tmp/i-renamed.json" -
+assert_has "dispatch (identities): a declared id under another login is unreadable, not guessed" "$out" "unreadable author"
+idisp "$tmp/ident-dup.json" "$tmp/i-app-view.json" -
+assert_has "dispatch (identities): an id declared twice is unreadable" "$out" "unreadable author"
+idisp "$tmp/ident-bad.json" "$tmp/i-app-view.json" -
+assert_has "dispatch (identities): only malformed entries match nothing, so the author is refused" "$out" "refused author"
+printf '{"number":320,"author_association":"OWNER"}' >"$tmp/i-nouser.json"
+idisp "$tmp/ident-map.json" "$tmp/i-nouser.json" -
+assert_has "dispatch (identities): an issue with no author login and id is unreadable" "$out" "unreadable author"
+printf '"yes"' >"$tmp/ident-str.json"
+idisp "$tmp/ident-str.json" "$tmp/i-app-view.json" -
+assert_has "dispatch (identities): identities neither null nor a map is unreadable" "$out" "unreadable author"
+printf '{"id":777,"author_association":"CONTRIBUTOR","user":{"login":"bob","id":1002},"issue_url":"https://api.github.com/repos/glunk-works/claude-workbench/issues/320"}' >"$tmp/c-ok.json"
+idisp "$tmp/ident-map.json" "$tmp/i-app-view.json" "$tmp/c-ok.json"
+assert_eq "dispatch (identities): a second maintainer's spec comment passes" "pass/0" "$out/$rc"
+printf '{"id":777,"author_association":"OWNER","user":{"login":"stranger","id":9999},"issue_url":"https://api.github.com/repos/glunk-works/claude-workbench/issues/320"}' >"$tmp/c-bad2.json"
+idisp "$tmp/ident-map.json" "$tmp/i-app-view.json" "$tmp/c-bad2.json"
+assert_has "dispatch (identities): an undeclared spec comment author is refused" "$out" "refused author"
+# An ABSENT identities key reaches the driver as an empty file (the documented yq form prints
+# nothing for it): unreadable, never read as "not cut over" and the association fallback.
+: >"$tmp/ident-absent.json"
+idisp "$tmp/ident-absent.json" "$tmp/i-stranger.json" -
+assert_has "dispatch (identities): an absent key (empty file) is unreadable, not the association fallback" "$out" "unreadable input"
+run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id $APP --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
+assert_eq "dispatch: --identities is required" "2" "$rc"
 
 # --- github-push fixtures ----------------------------------------------------------------------
 REPO=glunk-works/claude-workbench
@@ -415,9 +480,9 @@ run bogus
 assert_eq "an unknown mode is a usage fault" 2 "$rc"
 run container --session "$tmp/session.json" --network "$tmp/network.json" --expect-network "$NET"
 assert_eq "container with no proxy is a usage fault" 2 "$rc"
-run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id $APP --issue "$tmp/issue.json" --issue-number 320
+run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id $APP --identities "$tmp/ident-null.json" --issue "$tmp/issue.json" --issue-number 320
 assert_eq "dispatch with neither a spec comment nor --no-spec-comment is a usage fault" 2 "$rc"
-run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id 'x;y' --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
+run github-dispatch --rules "$tmp/rules.json" --rulesets "$tmp/rulesets.json" --app-id 'x;y' --identities "$tmp/ident-null.json" --issue "$tmp/issue.json" --issue-number 320 --no-spec-comment
 assert_eq "a non-numeric app id is a usage fault" 2 "$rc"
 run github-push --installation "$tmp/inst.json" --repo noslash --rules "$tmp/rules.json" --rulesets "$tmp/rs-push.json" --app "$tmp/app.json" --loop-identity x
 assert_eq "a repo with no slash is a usage fault" 2 "$rc"

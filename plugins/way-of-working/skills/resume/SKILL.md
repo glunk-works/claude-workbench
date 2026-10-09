@@ -623,16 +623,33 @@ edited it. **Default to the full checklist whenever unsure.**
      at the very start of the line, or any mismatch between `next_action`'s token, the
      ledger's, and `plan_anchor.task_issue` — all **wait**.
 
-     **Author trust, checked against this session's own identity** — the one the reach check
-     above named, since `author_association` is viewer-relative. **This check is satisfied by
+     **Author trust (`WB-D24`, `#382`).** `author_association` is viewer-relative — read through
+     an App token, the maintainer's own issue reads `CONTRIBUTOR` — so which test applies is
+     decided by the **default branch's** committed `identities` (never the working tree's, which
+     a PR can edit), read as `orchestration` is above (`$DEF_YML`, the `git show` of
+     `refs/remotes/origin/$D:./.ai/project.yml`) and written to a temp file the predicate can
+     read (`DEF_YML_FILE=$(mktemp) && printf '%s\n' "$DEF_YML" >"$DEF_YML_FILE"`, removed after).
+     Each Bash call is a fresh shell: do the fetch, the `git show` into `DEF_YML` and this
+     call in the **same** call, as the review-step block above does; an empty `DEF_YML` exits 2
+     and waits:
+     ```bash
+     gh-identity.sh author "$AUTHOR_LOGIN" "$AUTHOR_ID" "$DEF_YML_FILE"
+     ```
+     (bare name, same `bin/` `PATH`; `$AUTHOR_LOGIN`/`$AUTHOR_ID` are the response's `.user.login`
+     and `.user.id`, bound as variables, never pasted). **`trusted`** — a declared
+     `identities.maintainer` matched on `id` — passes. **`untrusted`**, an exit of 2, or an
+     unreadable `identities` **waits**. **`legacy`** (`identities: null`, the repo has not cut
+     over) falls back to the allowlist below, judged against this session's own identity, the
+     one the reach check above named. Under a map `author_association` is never consulted.
+     **This check is satisfied by
      the TOCTOU body fetch below, never by a separate earlier read**: checking an author
      requires fetching the issue regardless, so a second, dedicated "just check the author"
      call would not reduce exposure — it would only add a second fetch the *body read (TOCTOU closure)* rule
      forbids. The one fetch the TOCTOU box makes is where both accounts are checked, before
-     the body is used for anything. Two accounts are checked, both against the same allowlist
-     (`OWNER`, `MEMBER`, `COLLABORATOR`; anything else — `NONE`, `CONTRIBUTOR`, or an identity
-     that sees less — **waits**, availability-only, fails closed):
-     - `#N`'s own author. An issue authored by an account outside the org/collaborator set
+     the body is used for anything. Two accounts are checked, both the same way — against the
+     allowlist (`OWNER`, `MEMBER`, `COLLABORATOR`; anything else — `NONE`, `CONTRIBUTOR`, or an
+     identity that sees less — **waits**, availability-only, fails closed) under `legacy`:
+     - `#N`'s own author. An issue authored by an account that is not trusted (not a declared maintainer, or outside the org/collaborator set under `legacy`)
        never auto-starts, whoever milestoned it.
      - **When `plan_anchor.spec_comment` is non-null, that comment's author too.** The anchor
        proves the comment's *text* hasn't moved; it says nothing about *who wrote it* — on a
@@ -661,13 +678,13 @@ edited it. **Default to the full checklist whenever unsure.**
    > The builder fetches `#N` **once** via `gh api repos/{backlog.repo}/issues/N` — the
    > endpoint path already names the repo; `gh api` has no `-R`/`--repo` flag — and compares,
    > **in that same response**: its `number` equals `plan_anchor.task_issue`, its
-   > `updated_at` equals `plan_anchor.task_issue_updated_at`, and its `author_association` is
-   > trusted per the rule above. Check and use the same bytes, no second fetch. When
+   > `updated_at` equals `plan_anchor.task_issue_updated_at`, and its author (`.user.login` and
+   > `.user.id`, or `author_association` under `legacy`) is trusted per the rule above. Check and use the same bytes, no second fetch. When
    > `plan_anchor.spec_comment` is non-null, likewise fetch **exactly that id** —
    > `plan_anchor.spec_comment.id`, never a comment id found any other way — via `gh api
    > repos/{backlog.repo}/issues/comments/<id>`, and compare its `updated_at` against
-   > `plan_anchor.spec_comment.updated_at` and its `author_association` against the same
-   > allowlist, in that same response. Read the body and the anchored spec comment only,
+   > `plan_anchor.spec_comment.updated_at` and its author against the same rule, in that same
+   > response. Read the body and the anchored spec comment only,
    > never any other comment. A mismatch on any of these — including a named spec comment
    > with no matching `plan_anchor.spec_comment` to check it against — stops with a report,
    > exactly like a red gate.

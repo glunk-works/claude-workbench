@@ -1,7 +1,8 @@
 #!/bin/sh
 # Which identity is acting: a human's login (user mode) or this repo's declared dev App
 # (App mode)? One place that says so (WB-D24, #379), so no skill guesses it from a token
-# prefix or from `gh auth status`, which reports scope, not who is acting.
+# prefix or from `gh auth status`, which reports scope, not who is acting. The same lookup
+# also answers whether an issue, comment or PR AUTHOR is trusted (`author`, #382).
 #
 # Trust is by DECLARED identity, never by name alone (WB-D24 item 6): the acting account
 # is matched against `identities` in .ai/project.yml on its numeric `id`, which a login
@@ -11,6 +12,7 @@
 #
 # Usage:
 #   gh-identity.sh classify <login> <id> <project.yml>
+#   gh-identity.sh author <login> <id> <project.yml>
 #   <records> | gh-identity.sh reach <owner/repo>
 #
 #   LU=$(gh api user --jq '[.login, .id] | @tsv') &&
@@ -54,6 +56,24 @@
 #   - one id is declared more than once, under one role or several: do not guess which.
 # Login comparison is case-insensitive (GitHub logins are); the id is exact.
 #
+# author is the TRUST predicate (WB-D24, #382): is the author of an issue, a comment or a PR
+# one this repo trusts? `author_association` is viewer-relative -- read through an App token,
+# the maintainer's own issue reads CONTRIBUTOR -- so a repo that has cut over trusts by
+# declared {login, id} instead. It shares classify's lookup and so its exit-2 cases for bad
+# input (a bad login or id, an unreadable or absent file or key, a non-map `identities`, an
+# id declared twice or under another login) -- but NOT classify's refusals of an undeclared
+# account, a reviewer or loop App, or a `[bot]` under null, which are `untrusted` / `legacy`
+# here. It prints exactly one word:
+#   trusted    -- the id and login match an `identities.maintainer` entry. Only a maintainer's
+#                 authorship is trusted (the schema: "every account whose reaction or
+#                 authorship is trusted"); the dev App's own text is NOT, so an agent cannot
+#                 write the spec it later obeys.
+#   untrusted  -- identities is a map and the account is the dev, reviewer or loop App, or is
+#                 not declared at all. A hostile account is a normal input, not an error.
+#   legacy     -- identities is null: this repo has not cut over, and the CALLER falls back
+#                 to its pre-WB-D24 `author_association` allowlist. Never a trust grant.
+# A caller that gets exit 2 treats it as neither trusted nor untrusted, and waits.
+#
 # reach is the App-mode probe: is the token in use an installation token that can reach
 # <owner/repo>? Feed it one `full_name` per line from
 #   gh api --paginate installation/repositories --jq '.repositories[].full_name'
@@ -69,7 +89,7 @@
 # working tree (the same stance as `orchestration` and the review gate): a PR under review
 # can edit its own `identities`.
 #
-# Permitted toolset: POSIX sh, tr(1), yq (mikefarah v4) for classify only.
+# Permitted toolset: POSIX sh, tr(1), yq (mikefarah v4) for classify and author.
 set -eu
 
 die() { echo "gh-identity.sh: $1" >&2; exit 2; }
@@ -94,9 +114,12 @@ valid_id() {
   return 0
 }
 
-classify() {
-  [ "$#" -eq 3 ] || { echo "usage: gh-identity.sh classify <login> <id> <project.yml>" >&2; exit 2; }
+# find_role <login> <id> <project.yml> -- the lookup classify and author share. Sets ROLE to
+# maintainer, dev_app, reviewer_app, loop_app, or empty (undeclared); LEGACY=1 when identities
+# is null. Dies (exit 2) on every unsure case the header lists.
+find_role() {
   login="$1" id="$2" yml="$3"
+  ROLE= LEGACY=0
   valid_login "$login" || die "login is not an account name"
   valid_id "$id" || die "id is not a positive integer"
   [ -f "$yml" ] || die "project file unreadable"
@@ -108,19 +131,13 @@ classify() {
   want=$(lower "$login")
 
   case "$tag" in
-    '!!null')
-      case "$login" in
-        *'[bot]') die "identities is null and the actor is a [bot]; an undeclared App is not user mode" ;;
-      esac
-      echo user
-      return 0 ;;
+    '!!null') LEGACY=1; return 0 ;;
     '!!map') ;;
     *) die "identities is neither null nor a map" ;;
   esac
 
   # Each role is read on its own; a malformed entry prints nothing and so matches nothing.
   tab=$(printf '\t')
-  match=
   for r in maintainer dev_app reviewer_app loop_app; do
     if [ "$r" = maintainer ]; then
       rows=$(yq -r 'explode(.) | (.identities.maintainer | select(tag == "!!seq") | .[]) | select(tag == "!!map" and ((.id | tag) == "!!int") and .id > 0 and ((.login | tag) == "!!str")) | [.login, .id] | @tsv' "$yml" 2>/dev/null) || die "identities.maintainer unreadable"
@@ -133,19 +150,38 @@ classify() {
       if [ "$(lower "$l")" != "$want" ]; then
         die "id $id is declared under a different login; will not guess"
       fi
-      [ -z "$match" ] || die "id $id is declared more than once; will not guess"
-      match="$r"
+      [ -z "$ROLE" ] || die "id $id is declared more than once; will not guess"
+      ROLE="$r"
     done <<EOF
 $rows
 EOF
   done
 
-  case "$match" in
+}
+
+classify() {
+  [ "$#" -eq 3 ] || { echo "usage: gh-identity.sh classify <login> <id> <project.yml>" >&2; exit 2; }
+  find_role "$1" "$2" "$3"
+  if [ "$LEGACY" = 1 ]; then
+    case "$1" in
+      *'[bot]') die "identities is null and the actor is a [bot]; an undeclared App is not user mode" ;;
+    esac
+    echo user
+    return 0
+  fi
+  case "$ROLE" in
     maintainer) echo user ;;
     dev_app) echo app ;;
-    reviewer_app|loop_app) die "the acting identity is the declared $match, not a user or the dev App" ;;
+    reviewer_app|loop_app) die "the acting identity is the declared $ROLE, not a user or the dev App" ;;
     *) die "the acting identity is not declared in identities" ;;
   esac
+}
+
+author() {
+  [ "$#" -eq 3 ] || { echo "usage: gh-identity.sh author <login> <id> <project.yml>" >&2; exit 2; }
+  find_role "$1" "$2" "$3"
+  if [ "$LEGACY" = 1 ]; then echo legacy; return 0; fi
+  if [ "$ROLE" = maintainer ]; then echo trusted; else echo untrusted; fi
 }
 
 reach() {
@@ -176,6 +212,7 @@ reach() {
 
 case "${1:-}" in
   classify) shift; classify "$@" ;;
+  author) shift; author "$@" ;;
   reach) shift; reach "$@" ;;
-  *) echo "usage: gh-identity.sh classify <login> <id> <project.yml> | reach <owner/repo>" >&2; exit 2 ;;
+  *) echo "usage: gh-identity.sh classify|author <login> <id> <project.yml> | reach <owner/repo>" >&2; exit 2 ;;
 esac

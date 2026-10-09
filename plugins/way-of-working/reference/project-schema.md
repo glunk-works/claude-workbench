@@ -398,7 +398,8 @@ accepted, stated trade, not a silent one:
    its recommendation table cites that text as the basis for each placement — and writes
    based only on what the human confirms (the accepted table, or the dialogue). A body's own
    claim ("urgent", "do this first", "prerequisite for #M", "overlaps #K") is cited as the
-   author's claim, beside their `author_association`, never
+   author's claim, beside their login and trust verdict (`author_association` before the repo
+   declares `identities`), never
    adopted as the skill's finding.
 2. **The plan anchor (below) binds everything an auto-starting session consumes**: the plan
    prose, the task issue `#N`, and `#N`'s spec comment. It deliberately does **not** bind the
@@ -805,8 +806,19 @@ The checker confirms the shapes (a non-empty sequence, a map or `null`), not the
 as it does for `gates.green`: a reader binds each `login` and `id` as a value (`jq --arg`),
 never splices one into a shell command. It also does not compare `loop_app` with
 `orchestration.loop_identity`. Like `orchestration`, a reader that **enforces** this block reads
-the **default branch's** committed copy, never the working tree's. No skill reads it yet; the
-readers are later `WB-D24` tasks, which is the same stated, temporary "documented but unread"
+the **default branch's** committed copy, never the working tree's.
+
+**Who reads it.** `bin/gh-identity.sh classify` answers the acting identity's mode (`#379`).
+`gh-identity.sh author` answers whether the author of an issue, a comment or a PR is trusted
+(`#382`): `trusted` for a declared `maintainer` (matched on `id`), `untrusted` for any other
+account including the dev App — an agent never trusts its own text — and `legacy` when
+`identities` is `null`, where the reader keeps its `author_association` allowlist (`OWNER`,
+`MEMBER`, `COLLABORATOR`). The readers are `resume`'s author-trust check (and the `coder`
+agent's, which points at it), `bin/review-sandbox.sh trust`, `plan-sprint` (judging the login and
+id `bin/plan-gather.sh` prints) and `scripts/loop/preflight.sh github-dispatch`
+(`--identities`, the one reader that is its own implementation of the rule rather than a call
+to `gh-identity.sh`). `reviewer_app` and `loop_app` are read only to refuse them (as authors,
+and by `classify` as the acting identity) and to catch a duplicate id; nothing yet acts as either, which is the same stated, temporary
 state as `orchestration`'s.
 
 ---

@@ -181,9 +181,12 @@
 #     own `origin` (same derivation review-base-anchor.sh uses), never a script
 #     argument. Prints `sha=<40hex> head_repo=<owner/name> base=<branch>
 #     assoc=<association> loop=0|1 trusted=0|1` to stdout and exits 0 whatever the
-#     verdict -- trusted=1 only when loop=0, assoc is OWNER, MEMBER or COLLABORATOR AND
-#     head_repo equals the resolved repo (a fork head is untrusted whoever opened the
-#     PR). loop=1 means the PR's author login equals `orchestration.loop_identity`,
+#     verdict -- trusted=1 only when loop=0, the author is trusted AND head_repo equals the
+#     resolved repo (a fork head is untrusted whoever opened the PR). The author is judged
+#     by `gh-identity.sh author` over the default branch's `identities` (WB-D24, #382): a
+#     declared maintainer, matched on the PR author's numeric id, is trusted and `assoc`
+#     is only echoed; while `identities` is null (not cut over), assoc OWNER, MEMBER or
+#     COLLABORATOR is the test. loop=1 means the PR's author login equals `orchestration.loop_identity`,
 #     compared case-insensitively, a trailing `[bot]` ignored on both sides, and BEFORE
 #     any association check (#235: the loop's
 #     name is untrusted whatever its association says); that value is read from the
@@ -191,7 +194,9 @@
 #     remote-tracking ref refs/remotes/origin/<default> in the checkout), never from
 #     this checkout's own copy or the PR's. A failed API read, an unresolvable default
 #     branch, or an unreadable copy of that file (or a missing `yq`) is a STOP (exit 1)
-#     -- never a silent "no loop identity". A non-numeric <N> is a malformed invocation
+#     -- never a silent "no loop identity". So is an author `gh-identity.sh author` cannot
+#     judge (an absent `identities` key, an id declared twice, a PR answering no author
+#     id): never the association fallback. A non-numeric <N> is a malformed invocation
 #     (exit 2).
 #
 #   review-sandbox.sh make <N> <sha>
@@ -245,7 +250,8 @@
 # (ships in Git for Windows' usr/bin, same as the rest of this toolset), `sha256sum`
 # or `shasum -a 256` for the marker hash (same permitted pair plan-anchor.sh uses),
 # and `yq` for `trust`'s one read of `orchestration.loop_identity` (the permission
-# review-base-anchor.sh already holds for `migration_base`). No jq, no python.
+# review-base-anchor.sh already holds for `migration_base`), plus `gh-identity.sh author`
+# (which also reads `identities` with `yq`) for who is trusted. No jq, no python.
 #
 # Windows note: the leftover-process kill after `run` does NOT reach a detached child
 # under Git Bash -- confirmed live, not a theoretical gap: `(cmd &)` inside a `run`
@@ -313,7 +319,7 @@ hash_str() {
 }
 
 # read_trust <N> -- the one gh api read `trust` reports and `make` re-verifies before
-# building anything. Sets SHA, HEAD_REPO, BASE, ASSOC, AUTHOR, LOOP, TRUSTED (0/1) as script-global
+# building anything. Sets SHA, HEAD_REPO, BASE, ASSOC, AUTHOR, AUTHOR_ID, LOOP, TRUSTED (0/1) as script-global
 # vars; the caller checks its own exit status, never a stale value from a prior call.
 # {repo} is resolved from THIS checkout's own origin, never a caller-supplied value.
 read_trust() {
@@ -322,15 +328,16 @@ read_trust() {
   R=$("$REVIEW_SANDBOX_GH" repo view "$U" --json nameWithOwner --jq .nameWithOwner) \
     || { echo "cannot resolve repo from origin url" >&2; return 1; }
   OUT=$("$REVIEW_SANDBOX_GH" api "repos/$R/pulls/$n" \
-    --jq '[.head.sha, .head.repo.full_name, .base.ref, .author_association, .user.login] | @tsv') \
+    --jq '[.head.sha, .head.repo.full_name, .base.ref, .author_association, .user.login, .user.id] | @tsv') \
     || { echo "cannot read PR #$n in $R" >&2; return 1; }
   SHA=$(printf '%s' "$OUT" | cut -f1)
   HEAD_REPO=$(printf '%s' "$OUT" | cut -f2)
   BASE=$(printf '%s' "$OUT" | cut -f3)
   ASSOC=$(printf '%s' "$OUT" | cut -f4)
   AUTHOR=$(printf '%s' "$OUT" | cut -f5)
-  [ -n "$SHA" ] && [ -n "$ASSOC" ] && [ -n "$AUTHOR" ] \
-    || { echo "PR #$n in $R answered no head/assoc/author" >&2; return 1; }
+  AUTHOR_ID=$(printf '%s' "$OUT" | cut -f6)
+  [ -n "$SHA" ] && [ -n "$ASSOC" ] && [ -n "$AUTHOR" ] && [ -n "$AUTHOR_ID" ] \
+    || { echo "PR #$n in $R answered no head/assoc/author/author id" >&2; return 1; }
   # The name rule (plan 8.1, 8.13d; #235): the loop's own login is untrusted BY NAME,
   # ahead of any association check -- a machine user's MEMBER or COLLABORATOR
   # association would pass one, and so would a `loop_identity` left stale after the
@@ -356,10 +363,35 @@ read_trust() {
   fi
   TRUSTED=0
   [ "$LOOP" = 1 ] && return 0
-  case "$ASSOC" in
-    OWNER|MEMBER|COLLABORATOR)
-      [ "$HEAD_REPO" = "$R" ] && TRUSTED=1
-      ;;
+  # Trust by DECLARED identity once the repo has cut over (WB-D24, #382): the author's
+  # {login, id} against the default branch's `identities`, because `author_association`
+  # is viewer-relative and reads CONTRIBUTOR for the maintainer through an App token.
+  # `identities: null` (not cut over) keeps the association allowlist. Any failure to
+  # judge is a STOP, never "untrusted" and never the association fallback.
+  # The sibling copy, and only the sibling: it ships with this script, so its semantics are
+  # the ones this trust decision was written against. A `gh-identity.sh` found on PATH (an
+  # older plugin pin has no `author`) or in the current directory (what `dirname` of a
+  # slash-less `$0`, as in `sh review-sandbox.sh`, would resolve to) never decides trust.
+  case "$0" in
+    */*) GI="$(dirname "$0")/gh-identity.sh" ;;
+    *) echo "run review-sandbox.sh by path or through PATH, not as 'sh <name>': cannot locate the sibling gh-identity.sh" >&2; return 1 ;;
+  esac
+  [ -f "$GI" ] || { echo "cannot find gh-identity.sh beside $0" >&2; return 1; }
+  YF=$(mktemp) || { echo "cannot make a temp file" >&2; return 1; }
+  printf '%s\n' "$DEF_YML" >"$YF"
+  KIND=$(sh "$GI" author "$AUTHOR" "$AUTHOR_ID" "$YF") \
+    || { rm -f "$YF"; echo "cannot judge PR #$n's author against identities" >&2; return 1; }
+  rm -f "$YF"
+  case "$KIND" in
+    trusted) [ "$HEAD_REPO" = "$R" ] && TRUSTED=1 ;;
+    untrusted) ;;
+    legacy)
+      case "$ASSOC" in
+        OWNER|MEMBER|COLLABORATOR)
+          [ "$HEAD_REPO" = "$R" ] && TRUSTED=1
+          ;;
+      esac ;;
+    *) echo "gh-identity.sh author answered [$KIND]" >&2; return 1 ;;
   esac
   return 0
 }
