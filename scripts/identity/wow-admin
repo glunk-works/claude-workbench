@@ -1,0 +1,139 @@
+#!/bin/sh
+# Host command: a one-hour admin token for one repo's container, or its revocation (WB-D24, #374).
+#
+#   wow-admin <repo> [--perms perm=level[,perm=level...]]
+#   wow-admin <repo> --revoke
+#
+# Run it by its path, not through a symlink: it finds wow-common.sh and mint.sh beside itself.
+#
+# Mint: asks for the admin key's passphrase on the terminal (echo off, read from /dev/tty, never
+# an argument or an environment variable), unlocks the glunk-admin key into a private .unlock.*
+# directory under $WOW_HOME for the length of one mint.sh call, and writes the token and its
+# expires_at to $WOW_HOME/tokens/<repo>/admin-token -- the directory that repo's container mounts
+# read-only. The token is scoped to <repo> and to --perms (default: administration, contents and
+# pull_requests, all write). It refuses a key file that is not passphrase-encrypted (the
+# passphrase would guard nothing), refuses to run beside another wow-admin for the same repo, and
+# refuses while a live (or unreadable) token is on file: an overwritten token could no longer be
+# revoked, so --revoke it first (or delete a malformed file by hand). An expired token is simply
+# replaced.
+#
+# --revoke: under the same per-repo lock, DELETE /installation/token with the token on file, then
+# remove the file. HTTP 401 means the token was already expired or revoked; the file goes and the
+# exit is 0. A lock left by a killed run blocks mint and revoke alike: rmdir it by hand.
+#
+# $WOW_TTY names the terminal to read (default /dev/tty); the fixtures point it at a file, and
+# only then is a terminal that cannot hide echo accepted. It can only supply a passphrase the
+# caller already holds. Layout and toolset: wow-common.sh. Exit 0 on success, 1 on failure, 2 on
+# bad usage.
+set -eu
+set -f
+prog=wow-admin
+here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+. "$here/wow-common.sh"
+
+default_perms=administration=write,contents=write,pull_requests=write
+usage() { die "usage: wow-admin <repo> [--perms p=l,...] | wow-admin <repo> --revoke" 2; }
+
+repo= perms=$default_perms perms_given= revoke=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --revoke) revoke=1 ;;
+    --perms) [ $# -ge 2 ] || usage; perms=$2; perms_given=1; shift ;;
+    -*) usage ;;
+    *) [ -z "$repo" ] || usage; repo=$1 ;;
+  esac
+  shift
+done
+[ -n "$repo" ] || usage
+check_repo "$repo"
+[ -z "$revoke" ] || [ -z "$perms_given" ] || usage
+
+tokdir=$wow_home/tokens/$repo
+tokfile=$tokdir/admin-token
+lock=$tokdir/.lock
+tty=${WOW_TTY:-/dev/tty}
+tmpd=
+restore=
+locked=
+cleanup() {
+  [ -z "$restore" ] || stty echo <"$tty" 2>/dev/null || true
+  [ -z "$tmpd" ] || rm -rf -- "$tmpd" || true
+  [ -z "$locked" ] || rmdir -- "$lock" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM HUP
+# One lock per repo, taken by mint and revoke alike, so a revoke cannot delete the file a
+# concurrent mint has just replaced. A SIGKILL leaves it behind: the message says to remove it.
+take_lock() {
+  mkdir -- "$lock" 2>/dev/null || die "another wow-admin is running for $repo (or left $lock behind; remove it)"
+  locked=1
+}
+
+if [ -n "$revoke" ]; then
+  command -v curl >/dev/null 2>&1 || die "curl not on PATH"
+  [ -r "$tokfile" ] || die "no readable admin token on file for $repo"
+  take_lock
+  token=$(sed -n 1p "$tokfile") || die "cannot read $tokfile"
+  case "$token" in ''|*[!A-Za-z0-9_]*) die "$tokfile does not hold a token; delete it by hand" ;; esac
+  reply=$(
+    {
+      printf 'url = "https://api.github.com/installation/token"\n'
+      printf 'request = "DELETE"\n'
+      printf 'header = "Authorization: Bearer %s"\n' "$token"
+      printf 'header = "Accept: application/vnd.github+json"\n'
+      printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
+    } | curl -q -sS --max-time 30 -K - -w '\n%{http_code}'
+  ) || die "curl failed"
+  code=${reply##*
+}
+  case "$code" in
+    204) rm -f -- "$tokfile"; echo "revoked the admin token for $repo" ;;
+    401) rm -f -- "$tokfile"; echo "the admin token for $repo was already expired or revoked" ;;
+    *) die "GitHub answered HTTP $code; the token file is kept" ;;
+  esac
+  exit 0
+fi
+
+for tool in jq openssl curl; do
+  command -v "$tool" >/dev/null 2>&1 || die "$tool not on PATH"
+done
+client_id=$(app_get glunk-admin client_id) inst_id=$(app_get glunk-admin installation_id) adminkey=$(app_key glunk-admin)
+[ -n "$client_id" ] && [ -n "$inst_id" ] || die "glunk-admin client_id / installation_id / key missing or unusable in $wow_home/apps.json"
+[ -n "$adminkey" ] && [ -r "$adminkey" ] || die "glunk-admin key file not readable"
+# openssl ignores -passin for a plaintext key, so any typed passphrase would "unlock" it.
+head -n 3 "$adminkey" | grep -q 'ENCRYPTED' || die "the glunk-admin key is not passphrase-encrypted; refusing"
+
+[ -r "$tty" ] || die "no terminal to ask for the passphrase on"
+
+token_dir tokens "$repo" >/dev/null
+take_lock
+
+[ ! -e "$tokfile" ] || {
+  exp=$(sed -n 2p "$tokfile" 2>/dev/null || true)
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  case "$exp" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) [ "$exp" \< "$now" ] || die "a live admin token for $repo is on file (expires $exp); run: wow-admin $repo --revoke" ;;
+    *) die "unreadable expiry in $tokfile; run: wow-admin $repo --revoke, or delete the file by hand" ;;
+  esac
+}
+
+printf 'Admin key passphrase: ' >&2
+if stty -echo <"$tty" 2>/dev/null; then
+  restore=1
+elif [ -z "${WOW_TTY:-}" ]; then
+  echo >&2
+  die "cannot turn terminal echo off; refusing to show the passphrase"
+fi
+IFS= read -r pass <"$tty" || { echo >&2; die "no passphrase read"; }
+[ -z "$restore" ] || { stty echo <"$tty" 2>/dev/null || true; restore=; }
+echo >&2
+[ -n "$pass" ] || die "empty passphrase"
+
+tmpd=$(umask 077 && mktemp -d -- "$wow_home/.unlock.XXXXXX") || die "cannot make a private directory under $wow_home"
+printf '%s\n' "$pass" | openssl pkey -in "$adminkey" -passin stdin -out "$tmpd/key.pem" 2>/dev/null \
+  || die "could not unlock the admin key (wrong passphrase?)"
+pass=
+
+sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_id" --key "$tmpd/key.pem" \
+  --repos "$repo" --perms "$perms" --out "$tokfile"
+echo "admin token for $repo written to $tokfile (read-only mount target); revoke with: wow-admin $repo --revoke"
