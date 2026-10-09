@@ -105,6 +105,8 @@ jobs:
         run: sh tests/plan-depends.test.sh
       - name: driver-lock.sh fixtures
         run: sh tests/driver-lock.test.sh
+      - name: gh-identity.sh fixtures
+        run: sh tests/gh-identity.test.sh
 
   # WB-D15 (#45): workflow security scanner, modeled on bounty-infra's own `zizmor` job
   # (`ci.yml`). Unchained like `coupling`/`invariants` above -- a future required check
