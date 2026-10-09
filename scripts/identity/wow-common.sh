@@ -2,7 +2,7 @@
 #
 # Host layout, under $WOW_HOME (default ~/.config/glunk-identity):
 #   apps.json              {"admin": {app_id, client_id, installation_id, bot_user_id, key},
-#                           "review": {...}, ...}; entries are keyed by role, the suffix after the
+#                           "review": {...}, ...}; entries are keyed by role, the suffix after the last
 #                           dash of the App's name (<org>-admin, <org>-review, <org>-dev), so any
 #                           org's config reads the same; "key" is a PEM filename in this directory
 #   admin.enc.pem          the admin App's private key, passphrase-encrypted (name by convention)

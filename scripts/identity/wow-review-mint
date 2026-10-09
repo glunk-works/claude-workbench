@@ -32,7 +32,7 @@ check_repo "$repo"
 
 command -v jq >/dev/null 2>&1 || die "jq not on PATH"
 client_id=$(app_get review client_id) inst_id=$(app_get review installation_id) revkey=$(app_key review)
-[ -n "$client_id" ] && [ -n "$inst_id" ] || die "review client_id / installation_id / key missing or unusable in $wow_home/apps.json"
+[ -n "$client_id" ] && [ -n "$inst_id" ] || die "review client_id / installation_id / key missing or unusable in $wow_home/apps.json (entries are keyed by role: admin, review)"
 [ -n "$revkey" ] && [ -r "$revkey" ] || die "review key file not readable"
 
 [ -n "$out" ] || out=$(token_dir review-tokens "$repo")/reviewer-token

@@ -100,7 +100,7 @@ for tool in jq openssl curl; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool not on PATH"
 done
 client_id=$(app_get admin client_id) inst_id=$(app_get admin installation_id) adminkey=$(app_key admin)
-[ -n "$client_id" ] && [ -n "$inst_id" ] || die "admin client_id / installation_id / key missing or unusable in $wow_home/apps.json"
+[ -n "$client_id" ] && [ -n "$inst_id" ] || die "admin client_id / installation_id / key missing or unusable in $wow_home/apps.json (entries are keyed by role: admin, review)"
 [ -n "$adminkey" ] && [ -r "$adminkey" ] || die "admin key file not readable"
 # openssl ignores -passin for a plaintext key, so any typed passphrase would "unlock" it.
 head -n 3 "$adminkey" | grep -q 'ENCRYPTED' || die "the admin key is not passphrase-encrypted; refusing"

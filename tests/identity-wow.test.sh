@@ -238,5 +238,21 @@ WOW_HOME="$empty" run sh "$review" repo1
 assert_eq "review missing config rc" 1 "$rc"
 assert_eq "missing config curl uncalled" 0 "$(calls)"
 
+# an apps.json still keyed by org name (the pre-#443 layout) is a missing config, not a fallback
+oldkeys="$tmp/oldkeys"
+mkdir "$oldkeys"
+printf '{"glunk-admin": {"client_id": "x", "installation_id": 1, "key": "k.pem"}, "glunk-review": {"client_id": "y", "installation_id": 2, "key": "r.pem"}}\n' >"$oldkeys/apps.json"
+# real key files, so a fallback to the org-keyed entries would get past the key checks and reach curl
+cp "$home/admin.enc.pem" "$oldkeys/k.pem"
+cp "$home/review.pem" "$oldkeys/r.pem"
+WOW_HOME="$oldkeys" WOW_TTY="$tmp/tty-good" run sh "$admin" repo1
+assert_eq "admin old-keys config rc" 1 "$rc"
+assert_eq "admin old-keys config curl uncalled" 0 "$(calls)"
+assert_eq "admin old-keys config names the role keys" 1 "$(printf '%s' "$out" | grep -c 'keyed by role' || true)"
+WOW_HOME="$oldkeys" run sh "$review" repo1
+assert_eq "review old-keys config rc" 1 "$rc"
+assert_eq "review old-keys config curl uncalled" 0 "$(calls)"
+assert_eq "review old-keys config names the role keys" 1 "$(printf '%s' "$out" | grep -c 'keyed by role' || true)"
+
 if [ "$fail" -ne 0 ]; then exit 1; fi
 echo "identity-wow: $pass_count assertions passed"
