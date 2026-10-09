@@ -2,7 +2,7 @@
 
 Proof cases a-k from #376, run against `glunk-works/wb-ruleset-scratch` with the three
 WB-D24 Apps (`glunk-dev`, `glunk-review`, `glunk-admin`) and the rulesets saved in
-[docs/identity/scratch-rulesets/](../identity/scratch-rulesets/). Two sessions. Raw API output
+[docs/identity/scratch-rulesets/](../identity/scratch-rulesets/). Three sessions. Raw API output
 follows the summary, in the order it was run. Each entry names the identity it ran as.
 
 ## Summary
@@ -11,18 +11,71 @@ follows the summary, in the order it was run. Each entry names the identity it r
 |---|---|---|
 | a | dev App can't self-approve or self-merge | **Pass.** Approve: 422 "Can not approve your own pull request". Merge: 405 "Waiting on code owner review". |
 | b | a push dismisses an approval | **Pass.** After a dev-App push the approval reads `DISMISSED`, `reviewDecision: REVIEW_REQUIRED` (PR 1, PR 8). |
-| c | auto-merge fires after the approval | **Pass with one stall, filed as #432.** Fired 16s (PR 4), 10s (PR 7) and 4s (PR 8) after the approval. PR 1 read `CLEAN`/`APPROVED` with auto-merge armed for 3+ minutes and never fired; a direct dev-App merge pinned to the head then succeeded. PR 8 repeated PR 1's exact sequence and fired. Not a clean run: PR 4's head moved after arming (JaredGroves-603's update-branch merge, 962e566), and auto-merge still fired. So `expectedHeadOid` is apparently checked only when auto-merge is enabled, and the approval dismissal is the guard after that. That account then approved its own push and the PR merged under `require_last_push_approval`, so a base-merge apparently isn't a "reviewable push". Both are filed in #435. |
-| d | a fake status is ignored, a real one counts | **Pass, for a user-posted fake.** With no status: "Required status check is expected". With a `success` posted by a user: "was not set by the expected GitHub app". The Actions-posted status satisfied the rule on every merged PR. Caveat: the combined-status API reads `success` after the fake, so only the ruleset, not that read, tells the sources apart. Not tested: a fake from another App (#435). The pin is to GitHub Actions itself, so any workflow run counts. The dev App can edit scripts CI runs (not workflow files), so a required check is no integrity barrier against it; the code-owner review is. |
-| e | the second code owner's approval merges | **Pass.** JaredGroves-603's approval made PR 5 `CLEAN` and it merged. Precondition: the owner needs write access. Before the invite, the merge message named only Seuss27; after it, "JaredGroves-603 and/or Seuss27". So each repo needs that second login with write, which makes it a full approve, merge and push credential (session 1's void case f is that credential being used by an agent). Not tested: an owner approving their own content push (#435). |
-| f | the reviewer App's COMMENT satisfies a reviewer-ID gate; its approval doesn't count; it can't merge or push | **Partial (re-run).** COMMENT recorded as `glunk-review[bot]`, id 339841158, type Bot. Its APPROVE is accepted but changes nothing (`REVIEW_REQUIRED`, merge still "Waiting on code owner review"). Merge: 403. Push: 403. The scratch repo has no reviewer-ID CI gate, so what is proven is the stable attribution a gate would key on, not the gate itself. "Doesn't count" was measured with CODEOWNERS covering `*`; an uncovered path, and the App's other `pull_requests: write` powers, are in #435. The session-1 attempt is void (see its note). |
-| g | revoking a token kills it | **Consistent, not conclusive.** After `wow-admin --revoke` the same token gets 401 "Bad credentials". No success with that same token just before the revoke is recorded; whether the earlier admin-token calls in case e used the same token is not recorded, and an expired token also gets 401. The end-to-end run is in #435. |
-| h | no workflow or release-tag writes | **Pass after a scratch-config fix, filed as #433 for the other repos.** Workflow file: 403. Moving or deleting a `v*` tag: refused by the ruleset. Creating a `v*` tag or a release succeeded until a `creation` rule was added to `wb-tags` (as claude-workbench's `release-tag-creation` already has), after which both were refused: the tag with 422 "Reference update failed", the release with "Cannot create ref due to creations being restricted". Editing, deleting or adding assets to an existing release was not tested (#435). |
-| i | the App token reaches only its installation | **Pass.** `installation/repositories` lists only the scratch repo. `.permissions` on the repo reads all `false` for an App token, so it is not a reach signal. The installation covers only this repo, so this doesn't separate `mint.sh`'s `repositories` narrowing from installation scope (#435). |
+| c | auto-merge fires after the approval | **Pass with one stall, filed as #432.** Fired 16s (PR 4), 10s (PR 7) and 4s (PR 8) after the approval. PR 1 read `CLEAN`/`APPROVED` with auto-merge armed for 3+ minutes and never fired; a direct dev-App merge pinned to the head then succeeded. PR 8 repeated PR 1's exact sequence and fired. Not a clean run: PR 4's head moved after arming (JaredGroves-603's update-branch merge, 962e566), and auto-merge still fired. So `expectedHeadOid` is apparently checked only when auto-merge is enabled, and the approval dismissal is the guard after that. That account then approved its own push and the PR merged under `require_last_push_approval`, so a base-merge apparently isn't a "reviewable push". Both are resolved in session 3 (items 1 and 2). |
+| d | a fake status is ignored, a real one counts | **Pass, for a user-posted fake.** With no status: "Required status check is expected". With a `success` posted by a user: "was not set by the expected GitHub app". The Actions-posted status satisfied the rule on every merged PR. Caveat: the combined-status API reads `success` after the fake, so only the ruleset, not that read, tells the sources apart. A fake from another App is refused too (session 3, item 6). The pin is to GitHub Actions itself, so any workflow run counts. The dev App can edit scripts CI runs (not workflow files), so a required check is no integrity barrier against it; the code-owner review is. |
+| e | the second code owner's approval merges | **Pass.** JaredGroves-603's approval made PR 5 `CLEAN` and it merged. Precondition: the owner needs write access. Before the invite, the merge message named only Seuss27; after it, "JaredGroves-603 and/or Seuss27". So each repo needs that second login with write, which makes it a full approve, merge and push credential (session 1's void case f is that credential being used by an agent). An owner approving their own content push is blocked (session 3, item 1). |
+| f | the reviewer App's COMMENT satisfies a reviewer-ID gate; its approval doesn't count; it can't merge or push | **Partial (re-run).** COMMENT recorded as `glunk-review[bot]`, id 339841158, type Bot. Its APPROVE is accepted but changes nothing (`REVIEW_REQUIRED`, merge still "Waiting on code owner review"). Merge: 403. Push: 403. The scratch repo has no reviewer-ID CI gate, so what is proven is the stable attribution a gate would key on, not the gate itself. "Doesn't count" was measured with CODEOWNERS covering `*`; an uncovered path and the App's other `pull_requests: write` powers were tested in session 3 (items 3 and 4). The session-1 attempt is void (see its note). |
+| g | revoking a token kills it | **Consistent, not conclusive.** After `wow-admin --revoke` the same token gets 401 "Bad credentials". No success with that same token just before the revoke is recorded; whether the earlier admin-token calls in case e used the same token is not recorded, and an expired token also gets 401. The end-to-end run is in session 3 (item 5). |
+| h | no workflow or release-tag writes | **Pass after a scratch-config fix, filed as #433 for the other repos.** Workflow file: 403. Moving or deleting a `v*` tag: refused by the ruleset. Creating a `v*` tag or a release succeeded until a `creation` rule was added to `wb-tags` (as claude-workbench's `release-tag-creation` already has), after which both were refused: the tag with 422 "Reference update failed", the release with "Cannot create ref due to creations being restricted". Editing, deleting or adding assets to an existing release is not blocked (session 3, item 7). |
+| i | the App token reaches only its installation | **Pass.** `installation/repositories` lists only the scratch repo. `.permissions` on the repo reads all `false` for an App token, so it is not a reach signal. The installation covers only this repo, so this didn't separate `mint.sh`'s `repositories` narrowing from installation scope; session 3 (item 8) did. |
 | j | update-branch works for the dev App | **Pass.** Works with `allow_update_branch: false` (that setting only hides the UI button). 422 "no new commits" when main hasn't moved. |
 | k | auto-merge on an already-mergeable PR | **Refused by GitHub, handled by `gh`.** The raw mutation fails with "Pull request is in clean status", as documented. `gh pr merge --auto` merges immediately in that state (`isImmediatelyMergeable`), so `ship` never sees the refusal. Noted on #386, whose "not armed" path won't occur. |
 
 Also observed: the dev App gets 403 on the rule-suites API, so it cannot read why a rule
 blocked; the merge error text is the only explanation it sees.
+
+## Session 3 (#435): the questions #376 left open
+
+Eight items, run on 2026-10-09 against the same repo and Apps. The maintainer acted as the
+code-owner approver (Seuss27) and minted the admin tokens; JaredGroves-603 was not needed.
+None of items 1-3 weakens the merge gate, so no blocking issue was filed.
+
+| Item | Question | Result |
+|---|---|---|
+| 1 | Does last-push approval apply to a code owner's own push, and to a base merge? | **Owner's content push: blocked.** PR 11: Seuss27 pushed a content commit and approved it; the dev App's merge was refused with "New changes require approval from someone other than Seuss27 because they were the last pusher." **Dev App's merge push with an extra change: approval dismissed.** PR 12: a merge commit with parents (PR head, `main`) and one extra file moved the approval to `DISMISSED` and `reviewDecision` to `REVIEW_REQUIRED`; the merge was refused ("Waiting on code owner review"). **Approver's own pure base merge: not a reviewable push.** On PR 12 Seuss27 used Update branch, then approved the result, and the PR read `CLEAN`, as on PR 4 with the other owner. Not tested: an approver pushing a merge commit that carries extra changes. |
+| 2 | After auto-merge is armed, is anything but the approval a guard? | **No.** PR 13: auto-merge armed pinned to commit A (68fb676), then the dev App (a writer) pushed commit B (7748a12). The PR stayed armed and `BLOCKED` on `REVIEW_REQUIRED`; after Seuss27 approved B it merged at B, not A. The pin is checked only when auto-merge is enabled. |
+| 3 | Is the reviewer App's approval ignored on a path no CODEOWNERS entry covers? | **Yes.** CODEOWNERS was narrowed to `/owned/` (PR 9). On PR 10 (path `free/`), the reviewer App's APPROVE was recorded as `APPROVED` but `reviewDecision` stayed `REVIEW_REQUIRED` and the merge was refused. After Seuss27's approval the same PR read `CLEAN`, consistent with the count rule wanting a reviewer with write access, which the bot is not. |
+| 4 | What else can the reviewer App do with `pull_requests: write`? | **It can:** dismiss a human approval (PR 12 went from `CLEAN` to `BLOCKED`), edit a PR's title, body and base, and close and reopen a PR. **It cannot:** disable auto-merge ("Resource not accessible by integration"). None is a merge path. Dismissal can stall a merge and the edits can mislead a human reader, so they are accepted residuals in WB-D24. |
+| 5 | Revoke, end to end | **Pass.** An admin token read the rulesets, `wow-admin --revoke` reported success, and the same token then got 401 "Bad credentials" on two calls, all inside its hour. The first attempt did not keep a copy of the token and could not show the 401; the run listed here is the second. |
+| 6 | A fake status from another App | **Refused.** With `glunk-dev` temporarily granted `statuses: write`, it posted `scratch/status=success` on PR 14's head (creator `glunk-dev[bot]`, type Bot). The merge was refused with `Required status check "scratch/status" was not set by the expected GitHub app.` The combined-status API reads `success` regardless. |
+| 7 | Release writes besides tag creation | **Not blocked.** As the dev App: creating a draft release for a new `v*` tag, editing an existing `v*` release, uploading an asset to it, deleting the asset and deleting the release all succeeded (the tag stayed). Publishing the draft was refused by the creation rule (422, "Cannot create ref due to creations being restricted"). So the dev App can rewrite or remove release notes and assets of a published release. |
+| 8 | Does `repositories` narrowing hold with two repos installed? | **Yes for `glunk-dev` and `glunk-admin`.** With `wb-ruleset-scratch-2` added to the installations, a token minted for one repo lists only that repo in `installation/repositories`, writes to the other get 404 or 403, and a request for a repo outside the installation is refused with 422 at mint. The reviewer App's narrowing was not tested separately. Also found: the admin token created `wb-ruleset-scratch-2` through `POST /orgs/glunk-works/repos`, although it is scoped to one repo and could not read the repo it made. |
+
+Follow-ups this surfaced, none a merge-gate weakening:
+
+- WB-D24's accepted residuals gain the reviewer App's powers (item 4) and an admin token's
+  ability to create org repositories (item 8).
+- The dev App's release writes (item 7) are an integrity gap for published release assets
+  and notes. Filed separately for a restrict-or-accept decision.
+
+## Configuration changes made during session 3
+
+- **CODEOWNERS** on the scratch repo was narrowed from `*` to `/owned/ @Seuss27
+  @JaredGroves-603` (PR 9), so that item 3 had a path no entry covers.
+- **`wb-ruleset-scratch-2`** was created (private) by an admin token, and added to the
+  installations of `glunk-dev`, `glunk-admin` and `glunk-review`.
+- **`glunk-dev`** was granted `statuses: write` for item 6 only, then reverted by the
+  maintainer.
+
+## Calls made outside the recording helper
+
+The session-3 helper (`rec.sh`) records the identity and the raw output, and refuses an empty
+token or one that cannot list its installation repositories. These steps ran without it:
+
+- `mint.sh` for the dev App with `statuses=write`, before the grant: HTTP 422, "The level of
+  access for permissions requested are not granted to this installation."
+- Item 8 mints (`mint.sh`, dev App, installation 169399440): `--repos wb-ruleset-scratch`
+  and `--repos wb-ruleset-scratch-2` minted; `--repos claude-workbench` failed with HTTP 422,
+  "There is at least one repository that does not exist or is not accessible to the parent
+  installation."
+- The reviewer App's first title edit was refused by the helper because its reach probe got a
+  502; the retry is recorded below.
+- Item 1's Update branch click on PR 12 was the maintainer's, in the browser; its effect is
+  read back below (commit a5cd01f, author "Jared Groves", parents `ee6cb40` and `57407c8`).
+- The two post-revoke calls in item 5 bypass the helper's reach guard on purpose, because the
+  token is expected to fail it; they are labelled in the output.
+- Reading "repo 1 is public" explains why a token narrowed to repo 2 could read repo 1's
+  README; the write to repo 1 from that token returned 403.
 
 ## Configuration changes made during the proof
 
@@ -1528,3 +1581,1002 @@ $ gh api repos/glunk-works/wb-ruleset-scratch/rulesets/24758201/history --jq map
 [[52554106,339842227,"Bot","2026-10-09T06:29:25.915-04:00"],[52503249,22668449,"User","2026-10-08T20:17:25.439-04:00"]]
 ```
 exit: 0
+
+## Raw output, session 3 (2026-10-09, UTC 11:40-12:30)
+
+#### setup: main head
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/commits/main --jq .sha
+
+```
+6a7a2b3fd9fd5be2b1314b40a7875ab4e54a7a6b
+```
+exit: 0
+
+#### setup: CODEOWNERS
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/contents/.github/CODEOWNERS --jq .content
+
+```
+KiBAU2V1c3MyNyBASmFyZWRHcm92ZXMtNjAzCg==
+```
+exit: 0
+
+#### setup: tree of main
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/trees/main?recursive=1 --jq [.tree[].path]
+
+```
+[".github",".github/CODEOWNERS",".github/workflows",".github/workflows/status.yml","README.md","case-a-2.txt","case-a.txt","case-c2-2.txt","case-c2.txt","case-e2.txt","case-e3.txt","case-f.txt","case-f2.txt"]
+```
+exit: 0
+
+#### setup: rulesets (maintainer)
+
+as: Seuss27 user token
+$ gh api repos/glunk-works/wb-ruleset-scratch/rulesets --jq [.[]|[.id,.name,.enforcement]]
+
+```
+[[24758199,"wb-approval","active"],[24758197,"wb-checks","active"],[24758201,"wb-tags","active"]]
+```
+exit: 0
+
+#### 3 setup: branch narrow-codeowners
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/narrow-codeowners -f sha=6a7a2b3fd9fd5be2b1314b40a7875ab4e54a7a6b --jq .ref
+
+```
+refs/heads/narrow-codeowners
+```
+exit: 0
+
+#### 3 setup: narrow CODEOWNERS to /owned/ on branch
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/.github/CODEOWNERS -f message=narrow CODEOWNERS to /owned/ (#435 item 3) -f branch=narrow-codeowners -f sha=8c32525c20e6af1032e2d1ecf5d9e472e12ffa85 -f content=L293bmVkLyBAU2V1c3MyNyBASmFyZWRHcm92ZXMtNjAzCg== --jq .commit.sha
+
+```
+3242c0493a13bcde3f9a7313487b2bd6d5d7e06a
+```
+exit: 0
+
+#### 3 setup: open PR narrowing CODEOWNERS
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls -f title=narrow CODEOWNERS to /owned/ (#435 item 3) -f head=narrow-codeowners -f base=main --jq [.number,.head.sha,.user.login]
+
+```
+[9,"3242c0493a13bcde3f9a7313487b2bd6d5d7e06a","glunk-dev[bot]"]
+```
+exit: 0
+
+#### 3 setup: PR 9 reviews (human approval)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/9/reviews --jq [.[]|[.user.login,.state,.commit_id]]
+
+```
+[["Seuss27","APPROVED","3242c0493a13bcde3f9a7313487b2bd6d5d7e06a"]]
+```
+exit: 0
+
+#### 3 setup: dev App merges PR 9
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/9/merge -f merge_method=squash -f sha=3242c0493a13bcde3f9a7313487b2bd6d5d7e06a --jq [.merged,.sha]
+
+```
+[true,"28e1d4f9c12599a1d109c98a7b7abd305bd55fc5"]
+```
+exit: 0
+
+#### 3: main head after CODEOWNERS narrowing
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/contents/.github/CODEOWNERS?ref=main --jq .content|@base64d
+
+```
+/owned/ @Seuss27 @JaredGroves-603
+```
+exit: 0
+
+#### 3: branch item3
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/item3 -f sha=28e1d4f9c12599a1d109c98a7b7abd305bd55fc5 --jq .ref
+
+```
+refs/heads/item3
+```
+exit: 0
+
+#### 3: commit uncovered path free/i3.txt
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/free/i3.txt -f message=item 3: uncovered path -f branch=item3 -f content=aXRlbTMK --jq .commit.sha
+
+```
+884a9cee3fe21638fbe302590efdebfe98aa50d3
+```
+exit: 0
+
+#### 3: open PR
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls -f title=item 3 uncovered path -f head=item3 -f base=main --jq [.number,.head.sha,.user.login]
+
+```
+[10,"884a9cee3fe21638fbe302590efdebfe98aa50d3","glunk-dev[bot]"]
+```
+exit: 0
+
+#### 3: PR 10 state before any review
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:10){mergeStateStatus reviewDecision mergeable reviews(first:5){nodes{author{login} state}}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","mergeable":"MERGEABLE","reviews":{"nodes":[]}}}}}
+```
+exit: 0
+
+#### 3: reviewer App APPROVE on PR 10 (path with no CODEOWNERS entry)
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/10/reviews -f event=APPROVE --jq [.id,.user.login,.user.type,.state]
+
+```
+[5469538588,"glunk-review[bot]","Bot","APPROVED"]
+```
+exit: 0
+
+#### 3: PR 10 state after reviewer APPROVE
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:10){mergeStateStatus reviewDecision mergeable reviews(first:5){nodes{author{login} state}}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","mergeable":"MERGEABLE","reviews":{"nodes":[{"author":{"login":"glunk-review"},"state":"APPROVED"}]}}}}}
+```
+exit: 0
+
+#### 3: dev App tries merge PR 10
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/10/merge -f merge_method=squash -f sha=884a9cee3fe21638fbe302590efdebfe98aa50d3
+
+```
+{"message":"Repository rule violations found\n\nNew changes require approval from someone other than the last pusher.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+New changes require approval from someone other than the last pusher.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### 4: dev App creates alt-base branch
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/alt-base -f sha=28e1d4f9c12599a1d109c98a7b7abd305bd55fc5 --jq .ref
+
+```
+refs/heads/alt-base
+```
+exit: 0
+
+#### 4: reviewer App edits PR body
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/10 -f body=BODY EDITED BY REVIEWER APP --jq .body
+
+```
+BODY EDITED BY REVIEWER APP
+```
+exit: 0
+
+#### 4: reviewer App changes PR base to alt-base
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/10 -f base=alt-base --jq [.base.ref]
+
+```
+["alt-base"]
+```
+exit: 0
+
+#### 4: reviewer App changes PR base back to main
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/10 -f base=main --jq [.base.ref]
+
+```
+["main"]
+```
+exit: 0
+
+#### 4: dev App arms auto-merge on PR 10
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query=mutation{enablePullRequestAutoMerge(input:{pullRequestId:"PR_kwDOVBmbD88AAAABHhjXwg",mergeMethod:SQUASH,expectedHeadOid:"884a9cee3fe21638fbe302590efdebfe98aa50d3"}){pullRequest{autoMergeRequest{enabledBy{login}}}}}
+
+```
+{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"autoMergeRequest":{"enabledBy":{"login":"glunk-dev"}}}}}}
+```
+exit: 0
+
+#### 4: reviewer App disables auto-merge
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query=mutation{disablePullRequestAutoMerge(input:{pullRequestId:"PR_kwDOVBmbD88AAAABHhjXwg"}){pullRequest{autoMergeRequest{enabledAt}}}}
+
+```
+{"data":{"disablePullRequestAutoMerge":null},"errors":[{"type":"FORBIDDEN","path":["disablePullRequestAutoMerge"],"extensions":{"saml_failure":false,"ip_allow_list_failure":false},"locations":[{"line":1,"column":10}],"message":"Resource not accessible by integration"}]}gh: Resource not accessible by integration
+```
+exit: 1
+
+#### 4: reviewer App closes PR 10
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/10 -f state=closed --jq [.state,.merged]
+
+```
+["closed",false]
+```
+exit: 0
+
+#### 4: reviewer App reopens PR 10
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/10 -f state=open --jq [.state]
+
+```
+["open"]
+```
+exit: 0
+
+#### 4: reviewer App edits PR title (retry after a 502 on the reach probe)
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/10 -f title=TITLE EDITED BY REVIEWER APP --jq [.title,.user.login]
+
+```
+["TITLE EDITED BY REVIEWER APP","glunk-dev[bot]"]
+```
+exit: 0
+
+#### 4: auto-merge still armed on PR 10 after the forbidden disable?
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:10){state autoMergeRequest{enabledBy{login}}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"state":"OPEN","autoMergeRequest":null}}}}
+```
+exit: 0
+
+#### 7: existing releases
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases --jq [.[]|[.id,.tag_name,.draft]]
+
+```
+[[407387359,"v-case-g-rel",false]]
+```
+exit: 0
+
+#### 7: existing tags
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/matching-refs/tags --jq [.[].ref]
+
+```
+["refs/tags/scratch-h2","refs/tags/v-case-g","refs/tags/v-case-g-rel"]
+```
+exit: 0
+
+#### 7: dev App creates a draft release (no tag push)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases -f tag_name=v-draft-i7 -f name=draft i7 -F draft=true -f target_commitish=main --jq [.id,.draft,.tag_name]
+
+```
+[407858499,true,"v-draft-i7"]
+```
+exit: 0
+
+#### 7: dev App edits existing v* release body
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/releases/407387359 -f body=edited by dev App --jq [.id,.body]
+
+```
+[407387359,"edited by dev App"]
+```
+exit: 0
+
+#### 7: dev App uploads an asset to existing v* release
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X POST https://uploads.github.com/repos/glunk-works/wb-ruleset-scratch/releases/407387359/assets?name=i7.txt -H Content-Type: text/plain --input C:/Users/SR116/AppData/Local/Temp/claude/c--Users-SR116-projects-glunk-works-claude-workbench/66b52847-35bd-49e9-ad6f-c1c88379890d/scratchpad/asset.txt --jq [.id,.name,.uploader.login]
+
+```
+[624809139,"i7.txt","glunk-dev[bot]"]
+```
+exit: 0
+
+#### 7: existing tags after draft attempt
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/matching-refs/tags --jq [.[].ref]
+
+```
+["refs/tags/scratch-h2","refs/tags/v-case-g","refs/tags/v-case-g-rel"]
+```
+exit: 0
+
+#### 7: dev App publishes the draft (would create tag v-draft-i7)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/releases/407858499 -F draft=false --jq [.id,.draft,.tag_name]
+
+```
+{"message":"Validation Failed","errors":[{"resource":"Release","code":"custom","field":"pre_receive","message":"pre_receive Repository rule violations found\n\nCannot create ref due to creations being restricted.\n\n"},{"resource":"Release","code":"custom","message":"Published releases must have a valid tag"}],"documentation_url":"https://docs.github.com/rest/releases/releases#update-a-release","status":"422"}gh: Validation Failed (HTTP 422)
+```
+exit: 1
+
+#### 7: tags after publish attempt
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/matching-refs/tags --jq [.[].ref]
+
+```
+["refs/tags/scratch-h2","refs/tags/v-case-g","refs/tags/v-case-g-rel"]
+```
+exit: 0
+
+#### 7: dev App deletes asset from existing v* release
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/releases/assets/624809139
+
+```
+
+```
+exit: 0
+
+#### 7: dev App deletes the draft release
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/releases/407858499
+
+```
+
+```
+exit: 0
+
+#### 7: dev App deletes existing v* release
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/releases/407387359
+
+```
+
+```
+exit: 0
+
+#### 7: releases and tags afterwards
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases --jq [.[]|[.id,.tag_name,.draft]]
+
+```
+[]
+```
+exit: 0
+
+#### 1: branch item1-11
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/item1-11 -f sha=28e1d4f9c12599a1d109c98a7b7abd305bd55fc5 --jq .ref
+
+```
+refs/heads/item1-11
+```
+exit: 0
+
+#### 1: dev App commit owned/i1-11.txt
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/owned/i1-11.txt -f message=item 1: dev App content 11 -f branch=item1-11 -f content=aTEK --jq .commit.sha
+
+```
+f12247431c656bcfc5e00441ed9c361597562c41
+```
+exit: 0
+
+#### 1: open PR item1-11
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls -f title=item 1 case 11 -f head=item1-11 -f base=main --jq [.number,.head.sha,.user.login]
+
+```
+[11,"f12247431c656bcfc5e00441ed9c361597562c41","glunk-dev[bot]"]
+```
+exit: 0
+
+#### 1: branch item1-12
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/item1-12 -f sha=28e1d4f9c12599a1d109c98a7b7abd305bd55fc5 --jq .ref
+
+```
+refs/heads/item1-12
+```
+exit: 0
+
+#### 1: dev App commit owned/i1-12.txt
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/owned/i1-12.txt -f message=item 1: dev App content 12 -f branch=item1-12 -f content=aTEK --jq .commit.sha
+
+```
+4633f82c9490882f7cd7881f6dfbab766f2bcf59
+```
+exit: 0
+
+#### 1: open PR item1-12
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls -f title=item 1 case 12 -f head=item1-12 -f base=main --jq [.number,.head.sha,.user.login]
+
+```
+[12,"4633f82c9490882f7cd7881f6dfbab766f2bcf59","glunk-dev[bot]"]
+```
+exit: 0
+
+#### 1a: Seuss27 (code owner) pushes a content commit to PR 11's branch
+
+as: Seuss27 user token
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/owned/i1-11-owner.txt -f message=item 1a: code owner content push -f branch=item1-11 -f content=b3duZXIK --jq [.commit.sha,.commit.author.name]
+
+```
+["0fe0a04adae5286a510532d29443a2e96fa9794d","Jared Groves"]
+```
+exit: 0
+
+#### 1a: PR 11 head after the owner push
+
+as: Seuss27 user token
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/11 --jq [.head.sha,.user.login]
+
+```
+["f12247431c656bcfc5e00441ed9c361597562c41","glunk-dev[bot]"]
+```
+exit: 0
+
+#### 1: state of PR 10 after maintainer approvals
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:10){headRefOid mergeStateStatus reviewDecision reviews(first:5){nodes{author{login} state commit{oid}}}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"headRefOid":"884a9cee3fe21638fbe302590efdebfe98aa50d3","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","reviews":{"nodes":[{"author":{"login":"glunk-review"},"state":"APPROVED","commit":{"oid":"884a9cee3fe21638fbe302590efdebfe98aa50d3"}},{"author":{"login":"Seuss27"},"state":"APPROVED","commit":{"oid":"884a9cee3fe21638fbe302590efdebfe98aa50d3"}}]}}}}}
+```
+exit: 0
+
+#### 1: state of PR 11 after maintainer approvals
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:11){headRefOid mergeStateStatus reviewDecision reviews(first:5){nodes{author{login} state commit{oid}}}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"headRefOid":"0fe0a04adae5286a510532d29443a2e96fa9794d","mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[{"author":{"login":"Seuss27"},"state":"APPROVED","commit":{"oid":"0fe0a04adae5286a510532d29443a2e96fa9794d"}}]}}}}}
+```
+exit: 0
+
+#### 1: state of PR 12 after maintainer approvals
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:12){headRefOid mergeStateStatus reviewDecision reviews(first:5){nodes{author{login} state commit{oid}}}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"headRefOid":"4633f82c9490882f7cd7881f6dfbab766f2bcf59","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","reviews":{"nodes":[{"author":{"login":"Seuss27"},"state":"APPROVED","commit":{"oid":"4633f82c9490882f7cd7881f6dfbab766f2bcf59"}}]}}}}}
+```
+exit: 0
+
+#### 1a: dev App tries merge PR 11 at owner-pushed head
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/11/merge -f merge_method=squash -f sha=0fe0a04adae5286a510532d29443a2e96fa9794d
+
+```
+{"message":"Repository rule violations found\n\nNew changes require approval from someone other than Seuss27 because they were the last pusher.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+New changes require approval from someone other than Seuss27 because they were the last pusher.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### 1b setup: dev App merges PR 10 so main moves
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/10/merge -f merge_method=squash -f sha=884a9cee3fe21638fbe302590efdebfe98aa50d3 --jq [.merged,.sha]
+
+```
+[true,"e19fea7f290f3bb74d69eeebb2364ea911b9deef"]
+```
+exit: 0
+
+#### 1b: PR 12 mergeability before the push (approved, head 4633f82)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/12 --jq [.head.sha,.mergeable_state]
+
+```
+["4633f82c9490882f7cd7881f6dfbab766f2bcf59","unknown"]
+```
+exit: 0
+
+#### 1b: create tree = PR12 head tree + main's free/i3.txt + extra file owned/extra-1b.txt
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/trees -f base_tree=4633f82c9490882f7cd7881f6dfbab766f2bcf59 -f tree[][path]=free/i3.txt -f tree[][mode]=100644 -f tree[][type]=blob -f tree[][sha]=669b399912fc61e1657a70c4e4a836f156c780f6 --jq .sha
+
+```
+80ed125c2f5ac474e6371b4fe89ad35dc4123615
+```
+exit: 0
+
+#### 1b: add the extra change on top (owned/extra-1b.txt)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/trees -f base_tree=80ed125c2f5ac474e6371b4fe89ad35dc4123615 -f tree[][path]=owned/extra-1b.txt -f tree[][mode]=100644 -f tree[][type]=blob -f tree[][content]=extra change smuggled into a merge from main --jq .sha
+
+```
+1f00c7bd4c78028a75be57e9ee08f8f1702d969f
+```
+exit: 0
+
+#### 1b: merge commit [PR12 head, main] with an extra change
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/commits/ee6cb4002fa365305d8974c3d1d831b2b89df209 --jq [.sha,(.parents|map(.sha))]
+
+```
+["ee6cb4002fa365305d8974c3d1d831b2b89df209",["4633f82c9490882f7cd7881f6dfbab766f2bcf59","e19fea7f290f3bb74d69eeebb2364ea911b9deef"]]
+```
+exit: 0
+
+#### 1b: dev App moves item1-12 to the merge commit
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/git/refs/heads/item1-12 -f sha=ee6cb4002fa365305d8974c3d1d831b2b89df209 --jq .object.sha
+
+```
+ee6cb4002fa365305d8974c3d1d831b2b89df209
+```
+exit: 0
+
+#### 1b: PR 12 after the dev App's merge push
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:12){headRefOid mergeStateStatus reviewDecision reviews(first:5){nodes{author{login} state commit{oid}}}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"headRefOid":"ee6cb4002fa365305d8974c3d1d831b2b89df209","mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[{"author":{"login":"Seuss27"},"state":"DISMISSED","commit":{"oid":"4633f82c9490882f7cd7881f6dfbab766f2bcf59"}}]}}}}}
+```
+exit: 0
+
+#### 1b: dev App tries merge PR 12 at the new head
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/12/merge -f merge_method=squash -f sha=ee6cb4002fa365305d8974c3d1d831b2b89df209
+
+```
+{"message":"Repository rule violations found\n\nWaiting on code owner review from JaredGroves-603 and/or Seuss27.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+Waiting on code owner review from JaredGroves-603 and/or Seuss27.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### 2: branch item2
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/item2 -f sha=e19fea7f290f3bb74d69eeebb2364ea911b9deef --jq .ref
+
+```
+refs/heads/item2
+```
+exit: 0
+
+#### 2: open PR
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls -f title=item 2 auto-merge pin -f head=item2 -f base=main --jq [.number,.head.sha]
+
+```
+[13,"68fb676203cf61014480b3566594fc1e461c3b9b"]
+```
+exit: 0
+
+#### 2: dev App arms auto-merge pinned to A=68fb676203cf61014480b3566594fc1e461c3b9b
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query=mutation{enablePullRequestAutoMerge(input:{pullRequestId:"PR_kwDOVBmbD88AAAABHhqhqg",mergeMethod:SQUASH,expectedHeadOid:"68fb676203cf61014480b3566594fc1e461c3b9b"}){pullRequest{autoMergeRequest{enabledBy{login}}}}}
+
+```
+{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"autoMergeRequest":{"enabledBy":{"login":"glunk-dev"}}}}}}
+```
+exit: 0
+
+#### 2: dev App (a writer) pushes commit B after arming
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/owned/i2b.txt -f message=item 2: commit B (after arming) -f branch=item2 -f content=Qgo= --jq .commit.sha
+
+```
+7748a12883097941511a5a12f8b2752b82ebd87b
+```
+exit: 0
+
+#### 2: PR state after the push
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:13){headRefOid mergeStateStatus reviewDecision autoMergeRequest{enabledBy{login} commitHeadline}}}}
+
+```
+{"data":{"repository":{"pullRequest":{"headRefOid":"7748a12883097941511a5a12f8b2752b82ebd87b","mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","autoMergeRequest":{"enabledBy":{"login":"glunk-dev"},"commitHeadline":null}}}}}
+```
+exit: 0
+
+#### 2: PR 13 after maintainer approval of head B
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/13 --jq [.state,.merged,.merged_by.login,.merge_commit_sha,.head.sha]
+
+```
+["closed",true,"glunk-dev[bot]","57407c86ca2af525f0ba19e9209e8b12eff6f6f5","7748a12883097941511a5a12f8b2752b82ebd87b"]
+```
+exit: 0
+
+#### 2: commits on main (squash of A+B?)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/commits?per_page=2 --jq [.[]|[.sha,.commit.message]]
+
+```
+[["57407c86ca2af525f0ba19e9209e8b12eff6f6f5","item 2 auto-merge pin (#13)\n\n* item 2: commit A\n\n* item 2: commit B (after arming)\n\n---------\n\nCo-authored-by: glunk-dev[bot] \u003c339840170+glunk-dev[bot]@users.noreply.github.com\u003e"],["e19fea7f290f3bb74d69eeebb2364ea911b9deef","item 3: uncovered path (#10)\n\nCo-authored-by: glunk-dev[bot] \u003c339840170+glunk-dev[bot]@users.noreply.github.com\u003e"]]
+```
+exit: 0
+
+#### 1b: PR 12 reviews now
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/12/reviews --jq [.[]|[.id,.user.login,.state,.commit_id]]
+
+```
+[[5469611821,"Seuss27","DISMISSED","4633f82c9490882f7cd7881f6dfbab766f2bcf59"],[5469671494,"Seuss27","APPROVED","a5cd01fafce08f39e526f2c1ba7bc0cc1c2c8f52"]]
+```
+exit: 0
+
+#### 1b: PR 12 mergeability
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/12 --jq [.mergeable_state,.head.sha]
+
+```
+["clean","a5cd01fafce08f39e526f2c1ba7bc0cc1c2c8f52"]
+```
+exit: 0
+
+#### 1: PR 12 state: approver (Seuss27) pushed a pure base merge a5cd01f then approved it
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:12){headRefOid mergeStateStatus reviewDecision}}}
+
+```
+{"data":{"repository":{"pullRequest":{"headRefOid":"a5cd01fafce08f39e526f2c1ba7bc0cc1c2c8f52","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED"}}}}
+```
+exit: 0
+
+#### 4: reviewer App dismisses Seuss27's live approval 5469671494 on PR 12
+
+as: review App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/12/reviews/5469671494/dismissals -f message=reviewer App dismissal test -f event=DISMISS --jq [.id,.state]
+
+```
+[5469671494,"DISMISSED"]
+```
+exit: 0
+
+#### 4: PR 12 state after the dismissal attempt
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:12){headRefOid mergeStateStatus reviewDecision}}}
+
+```
+{"data":{"repository":{"pullRequest":{"headRefOid":"a5cd01fafce08f39e526f2c1ba7bc0cc1c2c8f52","mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED"}}}}
+```
+exit: 0
+
+#### 5: admin token works before revocation (read ruleset names)
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/rulesets --jq [.[]|.name]
+
+```
+["wb-approval","wb-checks","wb-tags"]
+```
+exit: 0
+
+#### 8 setup: admin App creates second scratch repo
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X POST orgs/glunk-works/repos -f name=wb-ruleset-scratch-2 -F private=true --jq [.full_name,.private]
+
+```
+["glunk-works/wb-ruleset-scratch-2",true]
+```
+exit: 0
+
+#### 8: admin token's installation repositories after creating repo 2
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api installation/repositories --jq [.total_count,(.repositories|map(.full_name))]
+
+```
+[1,["glunk-works/wb-ruleset-scratch"]]
+```
+exit: 0
+
+#### 8: admin token reads repo 2 permissions
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-2 --jq [.full_name,.permissions]
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/repos#get-a-repository","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### 8: admin token reads repo 2 contents
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-2/rulesets --jq length
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### 6 setup: branch item6
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/item6 -f sha=57407c86ca2af525f0ba19e9209e8b12eff6f6f5 --jq .ref
+
+```
+refs/heads/item6
+```
+exit: 0
+
+#### 6 setup: open PR (skip ci so no Actions status)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls -f title=item 6 fake status from another App -f head=item6 -f base=main --jq [.number,.head.sha]
+
+```
+[14,"841538ed1223709df42aa62c05d7e0859879548c"]
+```
+exit: 0
+
+#### 6: statuses on head before any fake
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/commits/841538ed1223709df42aa62c05d7e0859879548c/status --jq [.state,.total_count]
+
+```
+["pending",0]
+```
+exit: 0
+
+#### 6: dev App (installation now has statuses:write) posts scratch/status=success
+
+as: dev App token (statuses=write) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/statuses/841538ed1223709df42aa62c05d7e0859879548c -f state=success -f context=scratch/status -f description=fake from another App --jq [.context,.state,.creator.login,.creator.type]
+
+```
+["scratch/status","success","glunk-dev[bot]","Bot"]
+```
+exit: 0
+
+#### 6: statuses after the fake
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/commits/841538ed1223709df42aa62c05d7e0859879548c/status --jq [.state,[.statuses[]|[.context,.state,.creator.login]]]
+
+```
+["success",[["scratch/status","success",null]]]
+```
+exit: 0
+
+#### 6: dev App tries merge PR 14 (no approval yet, fake status in place)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/14/merge -f merge_method=squash -f sha=841538ed1223709df42aa62c05d7e0859879548c
+
+```
+{"message":"Repository rule violations found\n\nNew changes require approval from someone other than the last pusher.\n\nRequired status check \"scratch/status\" was not set by the expected GitHub app.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+New changes require approval from someone other than the last pusher.
+
+Required status check "scratch/status" was not set by the expected GitHub app.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### 6: PR 14 required-check state
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api graphql -f query={repository(owner:"glunk-works",name:"wb-ruleset-scratch"){pullRequest(number:14){mergeStateStatus reviewDecision}}}
+
+```
+{"data":{"repository":{"pullRequest":{"mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED"}}}}
+```
+exit: 0
+
+#### 8: admin token (minted before repo 2 joined the installation) reads repo 2
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-2 --jq .full_name
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/repos#get-a-repository","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### 8: admin token's installation repositories now
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api installation/repositories --jq [.total_count,(.repositories|map(.full_name))]
+
+```
+[1,["glunk-works/wb-ruleset-scratch"]]
+```
+exit: 0
+
+#### 8: dev token minted with --repos wb-ruleset-scratch, installation covers 2 repos: installation/repositories
+
+as: dev App token (narrowed to repo 1) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api installation/repositories --jq [.total_count,(.repositories|map(.full_name))]
+
+```
+[1,["glunk-works/wb-ruleset-scratch"]]
+```
+exit: 0
+
+#### 8: same token reads repo 2 contents
+
+as: dev App token (narrowed to repo 1) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-2/contents/ --jq length
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/contents#get-repository-content","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### 8: same token writes to repo 2
+
+as: dev App token (narrowed to repo 1) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch-2/contents/x.txt -f message=x -f content=eAo=
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/contents#create-or-update-file-contents","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### 8: token minted with --repos wb-ruleset-scratch-2: installation/repositories
+
+as: dev App token (narrowed to repo 2) (installation repos [1,["glunk-works/wb-ruleset-scratch-2"]])
+$ gh api installation/repositories --jq [.total_count,(.repositories|map(.full_name))]
+
+```
+[1,["glunk-works/wb-ruleset-scratch-2"]]
+```
+exit: 0
+
+#### 8: same token reads repo 1
+
+as: dev App token (narrowed to repo 2) (installation repos [1,["glunk-works/wb-ruleset-scratch-2"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/contents/README.md --jq .name
+
+```
+README.md
+```
+exit: 0
+
+#### 8: repo 1 visibility (explains the cross-read above)
+
+as: Seuss27 user token
+$ gh api repos/glunk-works/wb-ruleset-scratch --jq [.private,.visibility]
+
+```
+[false,"public"]
+```
+exit: 0
+
+#### 8: token narrowed to repo 2 tries a WRITE to repo 1
+
+as: dev App token (narrowed to repo 2) (installation repos [1,["glunk-works/wb-ruleset-scratch-2"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/x8.txt -f message=x -f branch=item6 -f content=eAo=
+
+```
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/repos/contents#create-or-update-file-contents","status":"403"}gh: Resource not accessible by integration (HTTP 403)
+```
+exit: 1
+
+#### 8: admin token (minted --repos wb-ruleset-scratch, installation covers 2 repos): installation/repositories
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api installation/repositories --jq [.total_count,(.repositories|map(.full_name))]
+
+```
+[1,["glunk-works/wb-ruleset-scratch"]]
+```
+exit: 0
+
+#### 8: admin token reads repo 2
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-2/rulesets
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### 5: admin token works just before revoke
+
+as: admin App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/rulesets --jq [.[]|.name]
+
+```
+["wb-approval","wb-checks","wb-tags"]
+```
+exit: 0
+
+#### 5: the SAME admin token after wow-admin --revoke (12:25:16Z)
+
+as: admin App token (revoked at 12:25:10Z; the helper reach guard is bypassed on purpose because the token is expected to fail it)
+$ gh api repos/glunk-works/wb-ruleset-scratch/rulesets --jq [.[]|.name]
+
+```
+{
+  "message": "Bad credentials",
+  "documentation_url": "https://docs.github.com/rest",
+  "status": "401"
+}gh: Bad credentials (HTTP 401)
+```
+exit: 1
+
+#### 5: the SAME admin token after wow-admin --revoke (12:25:17Z)
+
+as: admin App token (revoked at 12:25:10Z; the helper reach guard is bypassed on purpose because the token is expected to fail it)
+$ gh api installation/repositories --jq .total_count
+
+```
+{
+  "message": "Bad credentials",
+  "documentation_url": "https://docs.github.com/rest",
+  "status": "401"
+}gh: Bad credentials (HTTP 401)
+```
+exit: 1
+
