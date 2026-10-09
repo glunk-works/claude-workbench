@@ -1547,7 +1547,10 @@ take effect. Full reasoning and the task breakdown that implements them:
        - a *dev* App: Contents, Pull requests and Issues write; Checks, Actions and Commit
          statuses read; no Administration, Workflows, statuses write, Environments or
          Secrets
-       - a *reviewer* App, which only posts the fresh-session COMMENT review
+       - a *reviewer* App, which only posts the fresh-session COMMENT review: Pull requests
+         write; Contents, Checks and Commit statuses read, so it can read the PR and its
+         checks (measured in #376: its APPROVE does not count toward the code-owner rule,
+         and merge and push are refused)
        - an *admin* App, used only in admin mode (item 5)
 
        They are kept separate from the loop Apps (`orchestration.loop_identity`). Tokens are

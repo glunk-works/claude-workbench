@@ -12,6 +12,9 @@
   },
   "rules": [
     {
+      "type": "creation"
+    },
+    {
       "type": "deletion"
     },
     {
