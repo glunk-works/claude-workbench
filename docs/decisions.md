@@ -1549,8 +1549,10 @@ take effect. Full reasoning and the task breakdown that implements them:
          Secrets
        - a *reviewer* App, which only posts the fresh-session COMMENT review: Pull requests
          write; Contents, Checks and Commit statuses read, so it can read the PR and its
-         checks (measured in #376: its APPROVE does not count toward the code-owner rule,
-         and merge and push are refused)
+         checks. Measured in #376 with CODEOWNERS covering `*`: its APPROVE does not
+         satisfy the code-owner rule, and merge and push are refused. "Only posts" is
+         intent, not capability: Pull requests write also reaches other review and PR
+         metadata actions, which #435 tests
        - an *admin* App, used only in admin mode (item 5)
 
        They are kept separate from the loop Apps (`orchestration.loop_identity`). Tokens are

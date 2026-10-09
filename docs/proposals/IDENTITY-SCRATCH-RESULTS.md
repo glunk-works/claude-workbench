@@ -11,13 +11,13 @@ follows the summary, in the order it was run. Each entry names the identity it r
 |---|---|---|
 | a | dev App can't self-approve or self-merge | **Pass.** Approve: 422 "Can not approve your own pull request". Merge: 405 "Waiting on code owner review". |
 | b | a push dismisses an approval | **Pass.** After a dev-App push the approval reads `DISMISSED`, `reviewDecision: REVIEW_REQUIRED` (PR 1, PR 8). |
-| c | auto-merge fires after the approval | **Pass with one stall, filed as #432.** Fired 16s (PR 4), 10s (PR 7) and 4s (PR 8) after the approval. PR 1 read `CLEAN`/`APPROVED` with auto-merge armed for 3+ minutes and never fired; a direct dev-App merge pinned to the head then succeeded. PR 8 repeated PR 1's exact sequence and fired. |
-| d | a fake status is ignored, a real one counts | **Pass.** With no status: "Required status check is expected". With a `success` posted by a user: "was not set by the expected GitHub app". The Actions-posted status satisfied the rule on every merged PR. Caveat: the combined-status API reads `success` after the fake, so only the ruleset, not that read, tells the sources apart. |
-| e | the second code owner's approval merges | **Pass.** JaredGroves-603's approval made PR 5 `CLEAN` and it merged. Precondition: the owner needs write access. Before the invite, the merge message named only Seuss27; after it, "JaredGroves-603 and/or Seuss27". |
-| f | the reviewer App's COMMENT is attributable to its stable ID; it can't approve, merge or push | **Pass (re-run).** COMMENT recorded as `glunk-review[bot]`, id 339841158, type Bot. Its APPROVE is accepted but changes nothing (`REVIEW_REQUIRED`, merge still "Waiting on code owner review"). Merge: 403. Push: 403. The scratch repo has no reviewer-ID CI gate, so what is proven is the stable attribution a gate keys on. The session-1 attempt is void (see its note). |
-| g | revoking a token kills it | **Pass.** After `wow-admin --revoke` the same token gets 401 "Bad credentials". |
-| h | no workflow or release-tag writes | **Pass after a scratch-config fix, filed as #433 for the other repos.** Workflow file: 403. Moving or deleting a `v*` tag: refused by the ruleset. Creating a `v*` tag or a release succeeded until a `creation` rule was added to `wb-tags` (as claude-workbench's `release-tag-creation` already has), after which both were refused ("creations being restricted"). |
-| i | the App token reaches only its installation | **Pass.** `installation/repositories` lists only the scratch repo. `.permissions` on the repo reads all `false` for an App token, so it is not a reach signal. |
+| c | auto-merge fires after the approval | **Pass with one stall, filed as #432.** Fired 16s (PR 4), 10s (PR 7) and 4s (PR 8) after the approval. PR 1 read `CLEAN`/`APPROVED` with auto-merge armed for 3+ minutes and never fired; a direct dev-App merge pinned to the head then succeeded. PR 8 repeated PR 1's exact sequence and fired. Not a clean run: PR 4's head moved after arming (JaredGroves-603's update-branch merge, 962e566), and auto-merge still fired. So `expectedHeadOid` is apparently checked only when auto-merge is enabled, and the approval dismissal is the guard after that. That account then approved its own push and the PR merged under `require_last_push_approval`, so a base-merge apparently isn't a "reviewable push". Both are filed in #435. |
+| d | a fake status is ignored, a real one counts | **Pass, for a user-posted fake.** With no status: "Required status check is expected". With a `success` posted by a user: "was not set by the expected GitHub app". The Actions-posted status satisfied the rule on every merged PR. Caveat: the combined-status API reads `success` after the fake, so only the ruleset, not that read, tells the sources apart. Not tested: a fake from another App (#435). The pin is to GitHub Actions itself, so any workflow run counts. The dev App can edit scripts CI runs (not workflow files), so a required check is no integrity barrier against it; the code-owner review is. |
+| e | the second code owner's approval merges | **Pass.** JaredGroves-603's approval made PR 5 `CLEAN` and it merged. Precondition: the owner needs write access. Before the invite, the merge message named only Seuss27; after it, "JaredGroves-603 and/or Seuss27". So each repo needs that second login with write, which makes it a full approve, merge and push credential (session 1's void case f is that credential being used by an agent). Not tested: an owner approving their own content push (#435). |
+| f | the reviewer App's COMMENT satisfies a reviewer-ID gate; its approval doesn't count; it can't merge or push | **Partial (re-run).** COMMENT recorded as `glunk-review[bot]`, id 339841158, type Bot. Its APPROVE is accepted but changes nothing (`REVIEW_REQUIRED`, merge still "Waiting on code owner review"). Merge: 403. Push: 403. The scratch repo has no reviewer-ID CI gate, so what is proven is the stable attribution a gate would key on, not the gate itself. "Doesn't count" was measured with CODEOWNERS covering `*`; an uncovered path, and the App's other `pull_requests: write` powers, are in #435. The session-1 attempt is void (see its note). |
+| g | revoking a token kills it | **Consistent, not conclusive.** After `wow-admin --revoke` the same token gets 401 "Bad credentials". No success with that same token just before the revoke is recorded; whether the earlier admin-token calls in case e used the same token is not recorded, and an expired token also gets 401. The end-to-end run is in #435. |
+| h | no workflow or release-tag writes | **Pass after a scratch-config fix, filed as #433 for the other repos.** Workflow file: 403. Moving or deleting a `v*` tag: refused by the ruleset. Creating a `v*` tag or a release succeeded until a `creation` rule was added to `wb-tags` (as claude-workbench's `release-tag-creation` already has), after which both were refused: the tag with 422 "Reference update failed", the release with "Cannot create ref due to creations being restricted". Editing, deleting or adding assets to an existing release was not tested (#435). |
+| i | the App token reaches only its installation | **Pass.** `installation/repositories` lists only the scratch repo. `.permissions` on the repo reads all `false` for an App token, so it is not a reach signal. The installation covers only this repo, so this doesn't separate `mint.sh`'s `repositories` narrowing from installation scope (#435). |
 | j | update-branch works for the dev App | **Pass.** Works with `allow_update_branch: false` (that setting only hides the UI button). 422 "no new commits" when main hasn't moved. |
 | k | auto-merge on an already-mergeable PR | **Refused by GitHub, handled by `gh`.** The raw mutation fails with "Pull request is in clean status", as documented. `gh pr merge --auto` merges immediately in that state (`isImmediatelyMergeable`), so `ship` never sees the refusal. Noted on #386, whose "not armed" path won't occur. |
 
@@ -32,16 +32,23 @@ blocked; the merge error text is the only explanation it sees.
   match.
 - **glunk-admin** gained `contents: write` and `pull_requests: write` beside the specified
   administration, workflows, environments and actions, because `wow-admin`'s default mint
-  requests them. `--perms` narrows any one mint.
+  requests them. `--perms` replaces that default set for one mint, either way.
 - **JaredGroves-603** was invited to the scratch repo with write access (case e).
-- **wb-tags** gained a `creation` rule (case h).
+- **wb-tags** gained a `creation` rule (case h), made through an admin-mode token. The ruleset's
+  history records the actor as Bot 339842227, `glunk-admin[bot]`.
 
 ## Side effects of the void session-1 case f
 
 Four calls labelled "review App token" ran as JaredGroves-603, a human code owner, not the
-reviewer App. They approved and merged PR 6 and pushed `f-reviewer.txt` to `case-f`. Only the
-scratch repo was touched. The session-2 helper refuses any token that cannot list its
-installation's repositories, which a user token cannot.
+reviewer App. They approved and merged PR 6 (`merged_by` JaredGroves-603) and pushed
+`f-reviewer.txt` to `case-f` (commit bad72e8, authored by JaredGroves-603). Only the scratch
+repo was touched.
+
+How the token got there is not established. The likeliest path: the session-1 helper got its
+"refuse an empty token" guard in an edit last saved about 15 seconds after the last case-f call, so the reviewer token
+probably came out empty. `gh` treats an empty `GH_TOKEN` as unset and falls back to the
+host's stored login. That fail-open is filed as #436. The session-2 helper also refuses any
+token that cannot list its installation's repositories, which a user token cannot.
 
 ## Raw output, session 1 (2026-10-08 evening, UTC 2026-10-09 00:17-01:41)
 
@@ -313,7 +320,7 @@ Required status check "scratch/status" is expected.
 ```
 exit: 1
 
-#### d: post a FAKE scratch/status=success on PR 2's head from a non-Actions source (the maintainer's user account, via the default gh login)
+#### d: post a FAKE scratch/status=success on PR 2's head from a non-Actions source (identity not recorded)
 
 as: none (identity not recorded; superseded by the maintainer-token entry below)
 $ gh api repos/glunk-works/wb-ruleset-scratch/statuses/7caa2052adf05715188a5ebda737e5a390dce562 -f state=success -f context=scratch/status -f description=fake, not from Actions --jq [.context,.state,.creator.login]
@@ -531,7 +538,7 @@ reviewed
 ```
 exit: 0
 
-#### c: PR 1 ~5 minutes after the approval
+#### c: PR 1 ~3 minutes after the approval
 
 as: dev App token
 $ gh api repos/glunk-works/wb-ruleset-scratch/pulls/1 --jq [.state,.merged,.mergeable_state,.auto_merge.enabled_by.login,.updated_at]
@@ -1489,5 +1496,35 @@ $ gh api repos/glunk-works/wb-ruleset-scratch/git/matching-refs/tags/v-case-h2 -
 
 ```
 []
+```
+exit: 0
+
+#### c (critic follow-up): PR 4 commits and who pushed them
+
+as: maintainer (Seuss27 user token, not an App)
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/4/commits --jq map([.sha[0:7],.commit.message,.author.login])
+
+```
+[["4d3284e","case e second owner","glunk-dev[bot]"],["962e566","Merge branch 'main' into case-e2","JaredGroves-603"]]
+```
+exit: 0
+
+#### c (critic follow-up): PR 4 reviews with commit and time
+
+as: maintainer (Seuss27 user token, not an App)
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/4/reviews --jq map([.user.login,.state,.submitted_at,.commit_id[0:7]])
+
+```
+[["JaredGroves-603","APPROVED","2026-10-09T01:13:58Z","962e566"]]
+```
+exit: 0
+
+#### h (critic follow-up): wb-tags ruleset history, actor of the creation-rule edit
+
+as: maintainer (Seuss27 user token, not an App)
+$ gh api repos/glunk-works/wb-ruleset-scratch/rulesets/24758201/history --jq map([.version_id,.actor.id,.actor.type,.updated_at])
+
+```
+[[52554106,339842227,"Bot","2026-10-09T06:29:25.915-04:00"],[52503249,22668449,"User","2026-10-08T20:17:25.439-04:00"]]
 ```
 exit: 0
