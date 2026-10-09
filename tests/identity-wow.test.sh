@@ -71,7 +71,7 @@ ok() { pass_count=$((pass_count + 1)); }
 bad() { echo "FAIL: $1 -- $2" >&2; fail=1; }
 assert_eq() { if [ "$2" = "$3" ]; then ok; else bad "$1" "expected '$2', got '$3'"; fi; }
 
-TOKEN=ghs_AbCdEf0123456789
+TOKEN=ghs_AbCdEf0123456789AbCdEf0123456789AbCdEf
 EXPIRES=2099-01-01T00:00:00Z
 export STUB_DIR="$tmp/stub" WOW_HOME="$home"
 STUB_BODY="{\"token\":\"$TOKEN\",\"expires_at\":\"$EXPIRES\"}" STUB_STATUS=201
@@ -167,6 +167,16 @@ mkdir "$tmp/outdir"
 run sh "$review" repo1 --out "$tmp/outdir/t"
 assert_eq "reviewer --out rc" 0 "$rc"
 assert_eq "reviewer --out token" "$TOKEN" "$(sed -n 1p "$tmp/outdir/t")"
+
+# --- revoke accepts the stateless ghs_APPID_JWT format (dots and dashes)
+JWT_TOKEN=ghs_12345_eyJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NjAwMDAwMDB9-abc_DEF.c2lnbmF0dXJlLXNpZ25hdHVyZS1zaWduYXR1cmU
+printf '%s
+%s
+' "$JWT_TOKEN" "$EXPIRES" >"$tokfile"
+STUB_BODY= STUB_STATUS=204 run sh "$admin" repo1 --revoke
+assert_eq "revoke JWT-format token rc" 0 "$rc"
+assert_eq "revoke JWT-format bearer" 1 "$(grep -c "^header = \"Authorization: Bearer $JWT_TOKEN\"" "$tmp/stub/stdin")"
+[ ! -e "$tokfile" ] && ok || bad "revoke JWT-format token" "token file kept"
 
 # --- guards: malformed token file, concurrent run, a key that is not encrypted
 printf 'bad token!\n' >"$tokfile"

@@ -74,7 +74,9 @@ if [ -n "$revoke" ]; then
   [ -r "$tokfile" ] || die "no readable admin token on file for $repo"
   take_lock
   token=$(sed -n 1p "$tokfile") || die "cannot read $tokfile"
-  case "$token" in ''|*[!A-Za-z0-9_]*) die "$tokfile does not hold a token; delete it by hand" ;; esac
+  case "$token" in ghs_*) tok_body=${token#ghs_} ;; *) tok_body= ;; esac
+  case "$tok_body" in *[!A-Za-z0-9._-]*) tok_body= ;; esac
+  [ "${#tok_body}" -ge 36 ] || die "$tokfile does not hold a token; delete it by hand"
   reply=$(
     {
       printf 'url = "https://api.github.com/installation/token"\n'
