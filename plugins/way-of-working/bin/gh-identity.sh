@@ -13,6 +13,7 @@
 # Usage:
 #   gh-identity.sh classify <login> <id> <project.yml>
 #   gh-identity.sh author <login> <id> <project.yml>
+#   gh-identity.sh role <login> <id> <project.yml>
 #   <records> | gh-identity.sh reach <owner/repo>
 #
 #   LU=$(gh api user --jq '[.login, .id] | @tsv') &&
@@ -74,6 +75,13 @@
 #                 to its pre-WB-D24 `author_association` allowlist. Never a trust grant.
 # A caller that gets exit 2 treats it as neither trusted nor untrusted, and waits.
 #
+# role is the lookup itself, for a caller that needs WHICH declared account is acting
+# (token-check.sh, #436). It prints maintainer, dev_app, reviewer_app or loop_app; undeclared
+# when identities is a map and the account is not in it; legacy when identities is null.
+# Exit 2 only on bad input (the cases author shares: a bad login or id, an unreadable or absent
+# file or key, a non-map identities, an id declared twice or under another login). Unlike
+# classify it does NOT refuse an undeclared account, a reviewer or loop App, or a [bot] under null.
+#
 # reach is the App-mode probe: is the token in use an installation token that can reach
 # <owner/repo>? Feed it one `full_name` per line from
 #   gh api --paginate installation/repositories --jq '.repositories[].full_name'
@@ -83,13 +91,13 @@
 #   unreached  -- records arrived, none is <owner/repo>
 # Exits 2, nothing on stdout, for empty input (a call that returned nothing is not "an
 # installation with no access"), a malformed <owner/repo> or record. A reached probe says
-# the token is an installation token with access; WHICH App it is stays `classify`'s answer.
+# the token is an installation token with access; WHICH App it is stays the answer of `role` (token-check.sh) or `classify`.
 #
 # The caller reads `.ai/project.yml` from the DEFAULT branch's committed copy, never the
 # working tree (the same stance as `orchestration` and the review gate): a PR under review
 # can edit its own `identities`.
 #
-# Permitted toolset: POSIX sh, tr(1), yq (mikefarah v4) for classify and author.
+# Permitted toolset: POSIX sh, tr(1), yq (mikefarah v4) for classify, author and role.
 set -eu
 
 die() { echo "gh-identity.sh: $1" >&2; exit 2; }
@@ -114,9 +122,10 @@ valid_id() {
   return 0
 }
 
-# find_role <login> <id> <project.yml> -- the lookup classify and author share. Sets ROLE to
+# find_role <login> <id> <project.yml> -- the lookup classify, author and role share. Sets ROLE to
 # maintainer, dev_app, reviewer_app, loop_app, or empty (undeclared); LEGACY=1 when identities
-# is null. Dies (exit 2) on every unsure case the header lists.
+# is null. Dies (exit 2) only on bad input (login or id shape, file or key, a
+# non-map identities, an id declared twice or under another login); classify does the refusing.
 find_role() {
   login="$1" id="$2" yml="$3"
   ROLE= LEGACY=0
@@ -184,6 +193,13 @@ author() {
   if [ "$ROLE" = maintainer ]; then echo trusted; else echo untrusted; fi
 }
 
+role() {
+  [ "$#" -eq 3 ] || { echo "usage: gh-identity.sh role <login> <id> <project.yml>" >&2; exit 2; }
+  find_role "$1" "$2" "$3"
+  if [ "$LEGACY" = 1 ]; then echo legacy; return 0; fi
+  if [ -n "$ROLE" ]; then echo "$ROLE"; else echo undeclared; fi
+}
+
 reach() {
   [ "$#" -eq 1 ] || { echo "usage: <records> | gh-identity.sh reach <owner/repo>" >&2; exit 2; }
   repo="$1"
@@ -213,6 +229,7 @@ reach() {
 case "${1:-}" in
   classify) shift; classify "$@" ;;
   author) shift; author "$@" ;;
+  role) shift; role "$@" ;;
   reach) shift; reach "$@" ;;
-  *) echo "usage: gh-identity.sh classify|author <login> <id> <project.yml> | reach <owner/repo>" >&2; exit 2 ;;
+  *) echo "usage: gh-identity.sh classify|author|role <login> <id> <project.yml> | reach <owner/repo>" >&2; exit 2 ;;
 esac

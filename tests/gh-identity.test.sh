@@ -114,6 +114,26 @@ else
   loop_app: null'
   mk badyaml 'identities: [unclosed'
 
+  # role: which declared account is acting
+  run role alice-dev 1001 "$tmp/full.yml"
+  expect "role: maintainer" maintainer 0
+  run role 'acme-dev[bot]' 2001 "$tmp/full.yml"
+  expect "role: dev App" dev_app 0
+  run role 'acme-review[bot]' 2002 "$tmp/full.yml"
+  expect "role: reviewer App" reviewer_app 0
+  run role 'acme-loop[bot]' 2003 "$tmp/full.yml"
+  expect "role: loop App" loop_app 0
+  run role stranger 9999 "$tmp/full.yml"
+  expect "role: undeclared account" undeclared 0
+  run role anyone 5 "$tmp/null.yml"
+  expect "role: identities null" legacy 0
+  run role 'acme-dev[bot]' 2002 "$tmp/full.yml"
+  expect "role: an id declared under another login" "" 2
+  run role alice-dev 1001 "$tmp/absent.yml"
+  expect "role: identities absent" "" 2
+  run role alice-dev abc "$tmp/full.yml"
+  expect "role: bad id" "" 2
+
   # user mode
   run classify alice-dev 1001 "$tmp/full.yml"
   expect "maintainer, exact login" user 0
