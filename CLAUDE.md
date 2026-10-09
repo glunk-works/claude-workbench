@@ -60,6 +60,7 @@ sh tests/driver-core.test.sh   # scripts/loop/driver-core.sh tree copy, checks a
 sh tests/loop-preflight.test.sh # scripts/loop/preflight.sh container and GitHub evaluator fixtures (not yet required)
 sh tests/loop-critic.test.sh   # scripts/loop/critic.sh bundle, launch line and system/init check, stub claude (not yet required)
 sh tests/identity-mint.test.sh  # scripts/identity/mint.sh JWT, request and failure fixtures, stub curl (not yet required)
+sh tests/identity-wow.test.sh   # scripts/identity/wow-admin and wow-review-mint fixtures, stub curl (not yet required)
 ```
 
 `scripts/lint.sh` needs the `claude` CLI and `jq` on PATH. `scripts/invariants-check.sh` needs
