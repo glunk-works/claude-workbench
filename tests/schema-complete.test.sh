@@ -91,6 +91,8 @@ models:
   second_opinion: null
 
 orchestration: null
+
+identities: null
 EOF
 
 echo "# keys"
@@ -111,13 +113,14 @@ backlog.item_prefix
 load_bearing_docs
 code_paths
 gates.green
-ruleset.name
-ruleset.rule_types
-ruleset.required_checks
 agents.enabled
 models.architect
 models.coder
 models.second_opinion
+ruleset.name
+ruleset.rule_types
+ruleset.required_checks
+rulesets if-present
 review.ci_gate
 review.ci_gate.check if-map
 review.ci_gate.header if-map
@@ -128,8 +131,13 @@ orchestration.critics if-map
 orchestration.round_cap if-map
 orchestration.human_only_paths if-map
 orchestration.restrict_updates if-map
-orchestration.loop_identity if-map"
-assert_eq "keys: the exact required path set, conditionals suffixed if-map" \
+orchestration.loop_identity if-map
+identities
+identities.maintainer if-map
+identities.dev_app if-map
+identities.reviewer_app if-map
+identities.loop_app if-map"
+assert_eq "keys: the exact required path set, conditionals suffixed if-map, optional rulesets if-present" \
   "$expected_keys" "$("$script" keys)"
 
 echo "# check -- the complete fixture"
@@ -274,12 +282,12 @@ assert_eq "orchestration: {} reports all five sub-keys missing (absent prompts, 
 missing orchestration.critics list
 missing orchestration.round_cap int
 missing orchestration.human_only_paths list
-missing orchestration.restrict_updates value
+missing orchestration.restrict_updates nullable
 missing orchestration.loop_identity nullable' "$(run_check "$f")"
 
 for k in critics round_cap human_only_paths restrict_updates loop_identity; do
   f="$tmp/orch_no_$k.yml"; orch_fixture "$f" "$orch_ok"; grep -v "^  $k:" "$f" >"$f.2"
-  case "$k" in critics|human_only_paths) kind=list ;; round_cap) kind=int ;; loop_identity) kind=nullable ;; *) kind=value ;; esac
+  case "$k" in critics|human_only_paths) kind=list ;; round_cap) kind=int ;; loop_identity|restrict_updates) kind=nullable ;; *) kind=value ;; esac
   assert_eq "orchestration.$k removed is missing, kind $kind" \
     "incomplete
 missing orchestration.$k $kind" "$(run_check "$f.2")"
@@ -344,10 +352,11 @@ assert_eq "orchestration.human_only_paths as a scalar is invalid (a list)" \
   'incomplete
 invalid orchestration.human_only_paths ".github/"' "$(run_check "$f.2")"
 
+echo "# check -- orchestration.restrict_updates: null (WB-D24: nothing to name after a cutover)"
+
 f="$tmp/orch_restrict_null.yml"; orch_fixture "$f" "$orch_ok"; sed 's/^  restrict_updates:.*/  restrict_updates: null/' "$f" >"$f.2"
-assert_eq "orchestration.restrict_updates: null is invalid -- opt out with orchestration: null instead" \
-  'incomplete
-invalid orchestration.restrict_updates null' "$(run_check "$f.2")"
+assert_eq "orchestration.restrict_updates: null is complete (cut over, no restricting ruleset)" \
+  "complete" "$(run_check "$f.2")"
 
 # loop_identity's shape: a login, or an App's `<slug>[bot]`. It will be compared with PR
 # authors and handed to commands by a later driver, so a flag-shaped, spaced or
@@ -584,6 +593,113 @@ assert_eq "two independent findings both appear, migration_base before planning.
   "incomplete
 missing migration_base nullable
 invalid planning.kind \"bogus\"" "$(run_check "$f")"
+
+echo "# check -- identities (WB-D24, #378): a nullable map like orchestration"
+
+# ident_fixture <out> <body-line>... -- the base fixture with `identities: null`
+# replaced by `identities:` and the given lines (already indented by the caller).
+ident_fixture() {
+  out="$1"; shift
+  { grep -v '^identities:' "$base"; echo "identities:"; printf '%s\n' "$@"; } >"$out"
+}
+ident_ok='  maintainer:
+    - { login: some-maintainer, id: 1001 }
+  dev_app: { login: "dev-app[bot]", id: 2001 }
+  reviewer_app: null
+  loop_app: null'
+
+f="$tmp/ident_absent.yml"; grep -v '^identities:' "$base" >"$f"
+assert_eq "identities absent entirely is missing, printed as nullable" \
+  'incomplete
+missing identities nullable' "$(run_check "$f")"
+
+assert_eq "identities: null (not cut over) is complete -- the base fixture" \
+  "complete" "$(run_check "$base")"
+
+f="$tmp/ident_str.yml"; sed 's/^identities: null/identities: yes-please/' "$base" >"$f"
+assert_eq "identities: a bare string (neither null nor a map) is invalid" \
+  'incomplete
+invalid identities "yes-please"' "$(run_check "$f")"
+
+f="$tmp/ident_full.yml"; ident_fixture "$f" "$ident_ok"
+assert_eq "identities: a full map (one App a pair, the rest null) is complete" "complete" "$(run_check "$f")"
+
+f="$tmp/ident_empty_map.yml"; { grep -v '^identities:' "$base"; echo "identities: {}"; } >"$f"
+assert_eq "identities: {} reports all four sub-keys missing" \
+  'incomplete
+missing identities.maintainer list
+missing identities.dev_app nullable
+missing identities.reviewer_app nullable
+missing identities.loop_app nullable' "$(run_check "$f")"
+
+f="$tmp/ident_no_maintainer.yml"; ident_fixture "$f" "$ident_ok"; grep -v 'maintainer:\|some-maintainer' "$f" >"$f.2"
+assert_eq "identities.maintainer removed is missing, kind list" \
+  'incomplete
+missing identities.maintainer list' "$(run_check "$f.2")"
+
+f="$tmp/ident_maintainer_empty.yml"; ident_fixture "$f" "$ident_ok"
+awk '/^  maintainer:/ { print "  maintainer: []"; skip=1; next } skip && /^    - / { next } { skip=0; print }' "$f" >"$f.2"
+assert_eq "identities.maintainer: [] is invalid (trusts no one is not a declaration)" \
+  'incomplete
+invalid identities.maintainer []' "$(run_check "$f.2")"
+
+f="$tmp/ident_app_scalar.yml"; ident_fixture "$f" "$ident_ok"; sed 's/^  reviewer_app:.*/  reviewer_app: a-slug/' "$f" >"$f.2"
+assert_eq "identities.reviewer_app: a bare string is invalid (a { login, id } pair or null)" \
+  'incomplete
+invalid identities.reviewer_app "a-slug"' "$(run_check "$f.2")"
+
+f="$tmp/ident_app_seq.yml"; ident_fixture "$f" "$ident_ok"; sed 's/^  loop_app:.*/  loop_app: [a, b]/' "$f" >"$f.2"
+assert_eq "identities.loop_app: a list is invalid" \
+  'incomplete
+invalid identities.loop_app ["a","b"]' "$(run_check "$f.2")"
+
+echo "# check -- rulesets (WB-D24, #378): an optional extra beside the REQUIRED legacy ruleset"
+
+rulesets_block='rulesets:
+  - name: protected
+    source: repo
+    rule_types: [deletion]
+    required_checks: [lint]
+  - name: approval
+    source: org
+    rule_types: [pull_request]'
+
+# the base fixture without its legacy `ruleset:` map
+no_legacy() { awk '/^ruleset:/ { skip=1; next } skip && /^  / { next } { skip=0; print }' "$base"; }
+
+assert_eq "no rulesets at all (the old shape) is complete -- the base fixture" \
+  "complete" "$(run_check "$base")"
+
+f="$tmp/rs_both.yml"; { cat "$base"; printf '%s\n' "$rulesets_block"; } >"$f"
+assert_eq "rulesets beside the legacy ruleset is complete (the new shape for this release)" \
+  "complete" "$(run_check "$f")"
+
+f="$tmp/rs_new_only.yml"; { no_legacy; printf '%s\n' "$rulesets_block"; } >"$f"
+assert_eq "rulesets WITHOUT the legacy ruleset is incomplete -- no reader understands the list yet" \
+  'incomplete
+missing ruleset.name value
+missing ruleset.rule_types list
+missing ruleset.required_checks list' "$(run_check "$f")"
+
+f="$tmp/rs_legacy_partial.yml"; { grep -v '^  required_checks: \[lint\]$' "$base"; printf '%s\n' "$rulesets_block"; } >"$f"
+assert_eq "a valid rulesets does not excuse a legacy sub-key that is missing" \
+  'incomplete
+missing ruleset.required_checks list' "$(run_check "$f")"
+
+f="$tmp/rs_empty.yml"; { cat "$base"; echo 'rulesets: []'; } >"$f"
+assert_eq "rulesets: [] is invalid (a repo with no ruleset is not a declaration)" \
+  'incomplete
+invalid rulesets []' "$(run_check "$f")"
+
+f="$tmp/rs_scalar.yml"; { cat "$base"; echo 'rulesets: protected'; } >"$f"
+assert_eq "rulesets: a scalar is invalid (a list)" \
+  'incomplete
+invalid rulesets "protected"' "$(run_check "$f")"
+
+f="$tmp/rs_null.yml"; { cat "$base"; echo 'rulesets: null'; } >"$f"
+assert_eq "rulesets: null is invalid (absent is the old shape; null is not an answer)" \
+  'incomplete
+invalid rulesets null' "$(run_check "$f")"
 
 echo "# check -- unreadable: no file, unparseable YAML, yq missing"
 

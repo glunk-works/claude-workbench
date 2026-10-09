@@ -36,6 +36,8 @@ failure the skill exists to prevent.
 Same rule for an individual key: a key that is absent is not a key that is `null`. `null` is
 a decision ("this repo has no review CI gate"); **absent is an unanswered question, always —
 no key has a default any more** (`WB-D17`, `#142`, reversing `#127`'s Optional-key clause).
+(`rulesets`, the one optional list, is the stated exception: an absent one is simply not declared and is never asked, and
+its section says so.)
 `/way-of-working:resume` is the one place a missing key is asked for, once per session, at
 its own *Ensure the schema is complete* step (`bin/schema-complete.sh`) — every other skill
 and every agent still reports an absent key unreadable and does only the part of its job
@@ -116,8 +118,14 @@ gates:
     - { cwd: infra, run: "tofu init -backend=false && tofu validate" }
 
 # ── branch protection ────────────────────────────────────────────────────────
-ruleset:
-  name: protected-integration-branches
+rulesets:                          # every ruleset that applies to `pr_base`, repo- or org-level.
+  - name: protected-integration-branches
+    source: repo                   # repo | org
+    rule_types: [deletion, non_fast_forward, pull_request, required_status_checks]
+    required_checks: [lint, test, tofu-validate, tofu-plan,
+                      dependency-audit, sbom, secrets-scan, zizmor]
+ruleset:                           # legacy alias of a one-entry `rulesets`, for one release. Still
+  name: protected-integration-branches   # REQUIRED and still what every skill reads; `rulesets` is optional.
   rule_types: [deletion, non_fast_forward, pull_request, required_status_checks]
   required_checks: [lint, test, tofu-validate, tofu-plan,
                     dependency-audit, sbom, secrets-scan, zizmor]
@@ -138,6 +146,10 @@ models:
 # ── the sprint-orchestrator loop ─────────────────────────────────────────────
 orchestration: null              # null means the loop never dispatches into this repo; absent
                                  # prompts. A map is "it may" — see below.
+
+# ── declared identities ──────────────────────────────────────────────────────
+identities: null                 # null means this repo has not cut over to App identities (the
+                                 # pre-WB-D24 model); absent prompts. A map declares them — see below.
 ```
 
 ---
@@ -464,7 +476,39 @@ This is a **local pre-check, not the gate of record** — CI on the PR is. It ex
 coder finds the cheap failures before spending a CI run, and so `/way-of-working:critic-gate` never spends
 critics on a diff that does not build.
 
-### `ruleset`
+### `rulesets` (and its legacy alias `ruleset`)
+
+`rulesets` (`WB-D24`, `#378`) is a **non-empty list** of every ruleset that applies to
+`{pr_base}`; after a cutover that is more than one (the checks ruleset and the code-owner
+approval ruleset, one of them possibly an organization's). Each entry is:
+
+- **`name`** — the ruleset's name. A reader binds it as a value (`jq --arg`), never splices it.
+- **`source`** — exactly `repo` (a repository ruleset) or `org` (an organization ruleset). It
+  decides which API a reader asks: `repos/{repo}/rulesets` or `orgs/<owner>/rulesets`, with
+  `<owner>` the owner of `{repo}`. A reader matches the two values **exactly** and treats
+  anything else as inconclusive, never as `repo` and never spliced into a path.
+- **`rule_types`** — the rule types it must carry.
+- **`required_checks`** — optional, and only for an entry whose `rule_types` include
+  `required_status_checks`: every check that ruleset requires. Everything said below about
+  `required_checks` applies to it once readers use the list; today only `ruleset.required_checks` is read.
+
+The checker confirms the sequence, not its elements, as it does for `gates.green`. Like the
+rest of this file, read it from the **default branch's** copy before enforcing anything from it.
+
+**One release of dual mode, and `ruleset` stays authoritative.** `ruleset:` (a map of the
+same `name`, `rule_types` and `required_checks`) is the pre-`WB-D24` form. **No skill or
+script reads `rulesets` yet** — every reader uses `ruleset.*` — so the checker keeps
+`ruleset.name`, `ruleset.rule_types` and `ruleset.required_checks` **required whether or not
+`rulesets` is present**: a file with only the list would read `complete` and be unusable.
+`rulesets` is an optional extra, silent when absent and a non-empty list when present (`[]`,
+`null` and a scalar are `invalid`; the interview never asks for it, so an `invalid rulesets`
+finding is fixed by hand, or by removing the key). A repo that carries both keeps them in step
+by hand; the checker does not compare them, so a review of an `.ai/project.yml` diff reads
+`ruleset` as the one that counts. The release that teaches the readers the list is the one
+that makes the legacy keys conditional.
+
+The rest of this section describes `required_checks` as it works today, on `ruleset` (and, once
+readers use the list, on a `rulesets` entry).
 
 `name` is the branch-protection ruleset's name, `rule_types` the rule types it must carry,
 `required_checks` every check it requires. `/way-of-working:resume` verifies the live ruleset against all
@@ -503,8 +547,8 @@ review:
                                # ci_gate is a map — absent then prompts.
 ```
 
-`check` must also appear in `ruleset.required_checks` — a review gate that does not gate is
-prose.
+`check` must also appear in `ruleset.required_checks` (or, in a `rulesets` entry's
+`required_checks`, once readers use the list) — a review gate that does not gate is prose.
 
 > ### ⚠️ `header` and `attestation` are frozen wire strings — paste, never paraphrase.
 >
@@ -642,14 +686,20 @@ when it is a map, so a `null` repo is asked nothing more.
   path**: a task that can edit this block, `ruleset`, or the gate that checks it can widen its
   own authority, and nothing in the checker sees that. Its elements are paths, so they are
   *data*: a reader binds each as a value, never splices one into a shell command.
-- **`restrict_updates`** — the name of the **separate** ruleset that restricts updates of
+- **`restrict_updates`** — **`null`** once the repo has cut over (`WB-D24` removes
+  `restrict-updates-to-main` at each repo's cutover, so there is nothing to name); until then,
+  the name of the **separate** ruleset that restricts updates of
   `{pr_base}` to its bypass actor (plan § 8.5 option (a): the repository admin role only, never
   the loop's identity), which is what makes "the loop cannot merge" a property of the
-  repository and not a promise. The driver's preflight reads that ruleset and refuses to
-  dispatch if it is missing or changed. A required, non-empty string, never starting with `-`
-  and carrying no quote or backslash (spaces are fine; no `null`): option (a) is the only
-  mechanism the plan decided, so a repo that cannot have one answers `orchestration: null`
-  instead of naming a ruleset that does not restrict anything. A reader binds it as a value
+  repository and not a promise. The driver's preflight checks that the base has an `update` rule and refuses to
+  dispatch if it is missing or the App can bypass it. When non-null, a non-empty string, never starting with `-`
+  and carrying no quote or backslash (spaces are fine). `null` is a complete answer and records
+  only that no such ruleset is named. It is **not** "the loop needs no restriction": the driver's
+  preflight (`scripts/loop/preflight.sh`) does not read this name today, it requires an `update`
+  rule on the base, so `null` changes nothing there until a later `WB-D24` task replaces that
+  check with the approval-ruleset one. A repo that has
+  no restricting ruleset and no cutover still answers `orchestration: null` rather than naming
+  a ruleset that does not restrict anything. A reader binds it as a value
   (`jq --arg`, as `ruleset.name` is), never splices it. The ruleset itself is the maintainer's
   to create; this key only names it. It is deliberately not `ruleset.name`: that one is the
   ruleset **with** the required checks and no bypass actors, and the two together are the
@@ -717,6 +767,48 @@ read it, as above; `#295`: `/way-of-working:resume`'s review-step derivation doe
 but unread" (§ *Adding a key*) is therefore a stated, temporary state for this block, not an
 oversight.
 
+### `identities`
+
+Who this repo trusts and who its agents act as (`WB-D24`, `#378`). Trust is by **declared
+identity**, not `author_association`, which GitHub reports relative to the viewer: read
+through an App token, the maintainer's own issues read as `CONTRIBUTOR`. A nullable map,
+like `orchestration`:
+
+```yaml
+identities:
+  maintainer:                       # non-empty: every account whose reaction or authorship is trusted
+    - { login: example-maintainer, id: 1001 }
+    - { login: example-maintainer-2, id: 1002 }
+  dev_app: { login: "example-dev[bot]", id: 2001 }       # or null until the App exists
+  reviewer_app: { login: "example-review[bot]", id: 2002 }
+  loop_app: null                    # the loop's App, kept apart from the interactive ones
+```
+
+**`null` means this repo has not cut over** — it keeps the pre-`WB-D24` model and trusts by
+`author_association` — and absent is the unanswered question, as everywhere. A map requires
+all four sub-keys:
+
+- **`maintainer`** — a **non-empty** list of `{login, id}` pairs. The numeric `id` is what a
+  reader compares; a login can be renamed and reused, an id cannot.
+- **`dev_app`, `reviewer_app`, `loop_app`** — each a `{login, id}` pair, or `null` for an App
+  that does not exist yet. An App's `login` is the `<slug>[bot]` form the REST API reports as
+  `user.login`, as in `orchestration.loop_identity`; `loop_app` is the same identity from
+  the identity side.
+
+**Elements are the reader's to validate, and a malformed one is untrusted.** The `id` is the
+trust anchor: an entry that is not a map with a positive-integer `id` and a string `login` (for
+example a bare login, or an `id` written as a string) is **never matched by `login` alone** —
+it matches nothing. A reader that cannot validate an entry treats the identity as undeclared,
+never as the nearest name it can find.
+
+The checker confirms the shapes (a non-empty sequence, a map or `null`), not their elements,
+as it does for `gates.green`: a reader binds each `login` and `id` as a value (`jq --arg`),
+never splices one into a shell command. It also does not compare `loop_app` with
+`orchestration.loop_identity`. Like `orchestration`, a reader that **enforces** this block reads
+the **default branch's** committed copy, never the working tree's. No skill reads it yet; the
+readers are later `WB-D24` tasks, which is the same stated, temporary "documented but unread"
+state as `orchestration`'s.
+
 ---
 
 ## Worked example — a second repo, to show the seams move
@@ -763,7 +855,16 @@ gates:
     - { run: hatch run format }
     - { run: hatch run test }
 
-ruleset:
+rulesets:
+  - name: protected-integration-branches
+    source: repo
+    rule_types: [deletion, non_fast_forward, pull_request, required_status_checks]
+    required_checks: [lint, format-check, test, secrets-scan,
+                      dependency-audit, sbom, pr-title, architect-review]
+  - name: code-owner-approval
+    source: org
+    rule_types: [pull_request]
+ruleset:                          # the alias skills read today; keep it in step with the list
   name: protected-integration-branches
   rule_types: [deletion, non_fast_forward, pull_request, required_status_checks]
   required_checks: [lint, format-check, test, secrets-scan,
@@ -787,12 +888,20 @@ orchestration:
   critics: [architect, security-critic, docs-consistency]
   round_cap: 2
   human_only_paths: [.github/, .ai/, CLAUDE.md]
-  restrict_updates: restrict-updates-to-main
+  restrict_updates: null          # cut over; preflight still wants an update rule until a later WB-D24 task
   loop_identity: "loop-orchestrator-loop[bot]"
+
+identities:
+  maintainer:
+    - { login: example-maintainer, id: 1001 }
+  dev_app: null                   # a { login, id } pair once the App exists
+  reviewer_app: null
+  loop_app: null
 ```
 
-The two configurations differ in every value and in three *shapes* (`backlog.kind`,
-and `review.ci_gate` and `orchestration` each present vs `null`). That shape difference is the schema's real test: both
+The two configurations differ in every value and in the *shapes* (`backlog.kind`, and
+`review.ci_gate`, `orchestration` and `identities` each present vs `null`; `rulesets` present beside the
+legacy `ruleset` vs absent). That shape difference is the schema's real test: both
 must be a clean path through every skill, or the seam is in the wrong place.
 
 ## Adding a key
@@ -808,5 +917,5 @@ legal for it — absent always prompts, never a default — and update every ski
 in the same change. **Add it to `bin/schema-complete.sh`'s key set in the same change** —
 `scripts/invariants-check.sh` fails until the script's `keys` output and this doc's two
 examples agree. A key documented but unread is worse than no key — it reads as configured
-behavior that silently does nothing. (`orchestration` is the one stated exception: its reader, the
-driver, is a later issue, and its section says so.)
+behavior that silently does nothing. (`orchestration`, `identities` and `rulesets` are the
+stated exceptions: their readers are later issues, and their sections say so.)
