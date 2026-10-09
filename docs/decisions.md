@@ -1566,6 +1566,10 @@ take effect. Full reasoning and the task breakdown that implements them:
        - Required checks are pinned to their source app (`integration_id`). The pins were
          added to each repo's existing checks ruleset on 2026-10-08. At cutover, the checks
          move to a ruleset of their own with no bypass, apart from the approval rules.
+       - GitHub's immutable-releases setting is turned on at each repo's cutover, for every
+         repo that publishes releases (#439). It applies only to releases published after it
+         is on, and it locks a published release's assets and tag. `release.yml` publishes in
+         one call with no assets, so it keeps working.
        - `restrict-updates-to-main` is removed at each repo's cutover. 603-Identity, on the
          Team plan, carries the approval rules as an org ruleset with an explicit include
          list.
@@ -1615,8 +1619,10 @@ take effect. Full reasoning and the task breakdown that implements them:
       human reader. It cannot disable auto-merge. `dismissal_restriction` stays off.
     - An admin token scoped to one repo can still create new repositories in the org (#435,
       item 8); it cannot then read them.
-    - The dev App can edit, delete and attach assets to a published release and create a draft
-      release (#435, item 7); tag creation and publishing stay refused by the ruleset.
+    - With immutable releases on, the dev App can still edit a published release's notes and
+      title, delete the release and create a draft release (#439, item 9). The tag, the code and
+      any assets stay, the tag name cannot be reused, and tag creation and publishing stay
+      refused by the ruleset. Nothing narrower exists: release writes ride on Contents write.
     - Auto-merge's `expectedHeadOid` is checked only when auto-merge is armed (#435, item 2);
       after a writer's push the approval requirement is the only guard.
     - Until each repo's cutover, its sessions run under the old login, so admin-class work

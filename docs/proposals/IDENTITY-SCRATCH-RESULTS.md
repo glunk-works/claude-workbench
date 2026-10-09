@@ -2,7 +2,7 @@
 
 Proof cases a-k from #376, run against `glunk-works/wb-ruleset-scratch` with the three
 WB-D24 Apps (`glunk-dev`, `glunk-review`, `glunk-admin`) and the rulesets saved in
-[docs/identity/scratch-rulesets/](../identity/scratch-rulesets/). Three sessions. Raw API output
+[docs/identity/scratch-rulesets/](../identity/scratch-rulesets/). Four sessions. Raw API output
 follows the summary, in the order it was run. Each entry names the identity it ran as.
 
 ## Summary
@@ -16,7 +16,7 @@ follows the summary, in the order it was run. Each entry names the identity it r
 | e | the second code owner's approval merges | **Pass.** JaredGroves-603's approval made PR 5 `CLEAN` and it merged. Precondition: the owner needs write access. Before the invite, the merge message named only Seuss27; after it, "JaredGroves-603 and/or Seuss27". So each repo needs that second login with write, which makes it a full approve, merge and push credential (session 1's void case f is that credential being used by an agent). An owner approving their own content push is blocked (session 3, item 1). |
 | f | the reviewer App's COMMENT satisfies a reviewer-ID gate; its approval doesn't count; it can't merge or push | **Partial (re-run).** COMMENT recorded as `glunk-review[bot]`, id 339841158, type Bot. Its APPROVE is accepted but changes nothing (`REVIEW_REQUIRED`, merge still "Waiting on code owner review"). Merge: 403. Push: 403. The scratch repo has no reviewer-ID CI gate, so what is proven is the stable attribution a gate would key on, not the gate itself. "Doesn't count" was measured with CODEOWNERS covering `*`; an uncovered path and the App's other `pull_requests: write` powers were tested in session 3 (items 3 and 4). The session-1 attempt is void (see its note). |
 | g | revoking a token kills it | **Consistent, not conclusive.** After `wow-admin --revoke` the same token gets 401 "Bad credentials". No success with that same token just before the revoke is recorded; whether the earlier admin-token calls in case e used the same token is not recorded, and an expired token also gets 401. The end-to-end run is in session 3 (item 5). |
-| h | no workflow or release-tag writes | **Pass after a scratch-config fix, filed as #433 for the other repos.** Workflow file: 403. Moving or deleting a `v*` tag: refused by the ruleset. Creating a `v*` tag or a release succeeded until a `creation` rule was added to `wb-tags` (as claude-workbench's `release-tag-creation` already has), after which both were refused: the tag with 422 "Reference update failed", the release with "Cannot create ref due to creations being restricted". Editing, deleting or adding assets to an existing release is not blocked (session 3, item 7). |
+| h | no workflow or release-tag writes | **Pass after a scratch-config fix, filed as #433 for the other repos.** Workflow file: 403. Moving or deleting a `v*` tag: refused by the ruleset. Creating a `v*` tag or a release succeeded until a `creation` rule was added to `wb-tags` (as claude-workbench's `release-tag-creation` already has), after which both were refused: the tag with 422 "Reference update failed", the release with "Cannot create ref due to creations being restricted". Editing, deleting or adding assets to an existing release is not blocked (session 3, item 7); with GitHub's immutable-releases setting on, asset changes are refused and notes edits and release deletion remain (session 4, item 9). |
 | i | the App token reaches only its installation | **Pass.** `installation/repositories` lists only the scratch repo. `.permissions` on the repo reads all `false` for an App token, so it is not a reach signal. The installation covers only this repo, so this didn't separate `mint.sh`'s `repositories` narrowing from installation scope; session 3 (item 8) did. |
 | j | update-branch works for the dev App | **Pass.** Works with `allow_update_branch: false` (that setting only hides the UI button). 422 "no new commits" when main hasn't moved. |
 | k | auto-merge on an already-mergeable PR | **Refused by GitHub, handled by `gh`.** The raw mutation fails with "Pull request is in clean status", as documented. `gh pr merge --auto` merges immediately in that state (`isImmediatelyMergeable`), so `ship` never sees the refusal. Noted on #386, whose "not armed" path won't occur. |
@@ -39,7 +39,7 @@ None of items 1-3 weakens the merge gate, so no blocking issue was filed.
 | 5 | Revoke, end to end | **Pass.** An admin token read the rulesets, `wow-admin --revoke` reported success, and the same token then got 401 "Bad credentials" on two calls, all inside its hour. The first attempt did not keep a copy of the token and could not show the 401; the run listed here is the second. |
 | 6 | A fake status from another App | **Refused.** With `glunk-dev` temporarily granted `statuses: write`, it posted `scratch/status=success` on PR 14's head (creator `glunk-dev[bot]`, type Bot). The merge was refused with `Required status check "scratch/status" was not set by the expected GitHub app.` The combined-status API reads `success` regardless. |
 | 7 | Release writes besides tag creation | **Not blocked.** As the dev App: creating a draft release for a new `v*` tag, editing an existing `v*` release, uploading an asset to it, deleting the asset and deleting the release all succeeded (the tag stayed). Publishing the draft was refused by the creation rule (422, "Cannot create ref due to creations being restricted"). So the dev App can rewrite or remove release notes and assets of a published release. |
-| 8 | Does `repositories` narrowing hold with two repos installed? | **Yes for `glunk-dev` and `glunk-admin`.** With `wb-ruleset-scratch-2` added to the installations, a token minted for one repo lists only that repo in `installation/repositories`, writes to the other get 404 or 403, and a request for a repo outside the installation is refused with 422 at mint. The reviewer App's narrowing was not tested separately. Also found: the admin token created `wb-ruleset-scratch-2` through `POST /orgs/glunk-works/repos`, although it is scoped to one repo and could not read the repo it made. |
+| 8 | Does `repositories` narrowing hold with two repos installed? | **Yes for `glunk-dev` and `glunk-admin`.** With `wb-ruleset-scratch-2` added to the installations, a token minted for one repo lists only that repo in `installation/repositories`, writes to the other get 404 or 403, and a request for a repo outside the installation is refused with 422 at mint. The reviewer App's narrowing was not tested separately there; session 4 (item 12) did. Also found: the admin token created `wb-ruleset-scratch-2` through `POST /orgs/glunk-works/repos`, although it is scoped to one repo and could not read the repo it made. |
 
 Follow-ups this surfaced, none a merge-gate weakening:
 
@@ -102,6 +102,48 @@ How the token got there is not established. The likeliest path: the session-1 he
 probably came out empty. `gh` treats an empty `GH_TOKEN` as unset and falls back to the
 host's stored login. That fail-open is filed as #436. The session-2 helper also refuses any
 token that cannot list its installation's repositories, which a user token cannot.
+
+## Session 4 (#439): release writes, an approver's merge commit, the reviewer App's narrowing
+
+Run on 2026-10-09 against the same repo and Apps. The maintainer enabled the setting, added a
+temporary bypass, pushed as the approver and minted tokens; I probed as `glunk-dev` and
+`glunk-review`.
+
+| Item | Question | Result |
+|---|---|---|
+| 9 | Does GitHub's immutable-releases setting restrict the dev App's release writes? | **Partly.** With the setting on, a published release reads `immutable: true`. As the dev App, uploading an asset (422 "Cannot upload assets to an immutable release"), deleting an asset (422) and deleting the tag (422, the `wb-tags` ruleset) are refused. **Still allowed:** editing the release's notes and title, and deleting the release itself. Deleting it leaves the tag in place, and the tag name cannot be reused: publishing a draft for it is refused (422 "tag_name was used by an immutable release"). Creating a draft release is still allowed; publishing one for a new tag is refused by the creation rule. Not shown: whether a release edit can retarget the tag, because `main` had not moved and the edit was a no-op. The setting applies only to releases published after it is on. |
+| 10 | Does `release.yml`'s shape still publish? | **Yes.** `gh release create v0.0.2 --target <sha> --title --notes-file`, one call and no assets, published as immutable on the scratch repo. `release.yml` attaches no assets, so there is nothing to add after publishing. |
+| 11 | An approver pushes a merge commit that carries an extra change | **Blocked.** PR 15: the dev App opened it with one commit and Seuss27 approved. Seuss27 then pushed a merge commit (parents: the PR head and a side branch) that added `free/extra-in-merge.txt`, present in neither parent. The approval moved to `DISMISSED`, `reviewDecision` to `REVIEW_REQUIRED`, and the dev App's merge was refused ("New changes require approval from someone other than the last pusher"). Seuss27's second approval was recorded as `APPROVED` on the new head but did not count: the merge was refused again, now naming Seuss27 as the last pusher. After an approver's push the other code owner has to approve. |
+| 12 | Does the reviewer App's `repositories` narrowing hold with two repos installed? | **Yes.** `wb-ruleset-scratch-3` (private) was added to the `glunk-review` installation. A token minted for `wb-ruleset-scratch` lists only that repo, cannot read `-3` (404) and can edit a PR on its own repo. A token minted for `-3` lists only `-3`, reads it, and is refused (403) when it edits a PR on `wb-ruleset-scratch`. The scratch repo is public, so reading it needs no grant. The write probe on `-3` was not run: that repo is empty and has no PR. |
+
+Follow-ups: WB-D24's release residual narrows to notes, title and deletion of a release
+(the code, the tag and any assets stay), and immutable releases joins the per-repo cutover
+settings.
+
+## Configuration changes made during session 4
+
+- **Immutable releases** enabled on `wb-ruleset-scratch` by the maintainer. `v0.0.1` (one asset)
+  stays published as an immutable release; `v0.0.2` was deleted in item 9 and its tag remains.
+- **`wb-tags`** had a Repository admin bypass added by the maintainer, so Seuss27 could publish
+  the two releases, and removed again before any dev-App probe.
+- **`wb-ruleset-scratch-3`** created (private, empty) by the maintainer and added to the
+  `glunk-review` installation. It stays until the maintainer deletes it.
+- PR 14's title was edited by the reviewer token and restored to `item6`. PR 15 and its two
+  branches were closed and deleted. `main` is unchanged at `57407c8`.
+
+## Calls made outside the recording helper (session 4)
+
+The helper refuses an empty token or one that cannot list its installation repositories.
+These steps did not go through it:
+
+- Publishing `v0.0.1` (draft, asset, publish) and `v0.0.2` (one `gh release create`) as the
+  Seuss27 user token, with the maintainer's bypass in place. `v0.0.1` read `immutable: true`
+  from the publish response.
+- The maintainer's own steps: enabling the setting, the bypass, Seuss27's approvals and the
+  merge-commit push on PR 15 (its effect is read back in item 11), creating the repo and adding
+  it to the installation.
+- The two minting scripts that ran `mint.sh` (dev App) and `wow-review-mint` (both repos).
+- Reading `wb-ruleset-scratch` rulesets and PR state as Seuss27 while designing the case.
 
 ## Raw output, session 1 (2026-10-08 evening, UTC 2026-10-09 00:17-01:41)
 
@@ -2577,6 +2619,550 @@ $ gh api installation/repositories --jq .total_count
   "documentation_url": "https://docs.github.com/rest",
   "status": "401"
 }gh: Bad credentials (HTTP 401)
+```
+exit: 1
+
+## Raw output, session 4 (2026-10-09, UTC 12:40-13:20)
+
+#### 1: releases and immutable flag
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases --jq [.[]|[.id,.tag_name,.draft,.immutable]]
+
+```
+[[407908295,"v0.0.2",false,true],[407908196,"v0.0.1",false,true]]
+```
+exit: 0
+
+#### 2: edit release notes of immutable v0.0.1
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/releases/407908196 -f body=edited by dev App --jq [.id,.body]
+
+```
+[407908196,"edited by dev App"]
+```
+exit: 0
+
+#### 3: edit release title of immutable v0.0.1
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/releases/407908196 -f name=renamed by dev App --jq [.id,.name]
+
+```
+[407908196,"renamed by dev App"]
+```
+exit: 0
+
+#### 4: upload asset to immutable v0.0.1
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X POST https://uploads.github.com/repos/glunk-works/wb-ruleset-scratch/releases/407908196/assets?name=a2.txt -H Content-Type: text/plain --input /c/Users/SR116/AppData/Local/Temp/claude/c--Users-SR116-projects-glunk-works-claude-workbench/4f158e7d-5815-41f2-920d-fb934d93e452/scratchpad/a2.txt --jq .id
+
+```
+{"message":"Cannot upload assets to an immutable release.","request_id":"C1EF:22DE11:1AB4E:2BD62:6AC8E398","documentation_url":"https://docs.github.com/rest"}gh: Cannot upload assets to an immutable release. (HTTP 422)
+```
+exit: 1
+
+#### 5: delete asset of immutable v0.0.1
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/releases/assets/624955950
+
+```
+{"message":"Validation Failed","errors":[{"resource":"ReleaseAsset","code":"custom","message":"Cannot delete asset from an immutable release"}],"documentation_url":"https://docs.github.com/rest/releases/assets#delete-a-release-asset","status":"422"}gh: Validation Failed (HTTP 422)
+```
+exit: 1
+
+#### 6: delete tag ref v0.0.1
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/git/refs/tags/v0.0.1
+
+```
+{"message":"Repository rule violations found\n\nCannot delete this tag\n\n","documentation_url":"https://docs.github.com/rest/git/refs#delete-a-reference","status":"422"}gh: Repository rule violations found
+
+Cannot delete this tag
+
+ (HTTP 422)
+```
+exit: 1
+
+#### 7: retarget tag via release PATCH
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/releases/407908196 -f tag_name=v0.0.1 -f target_commitish=main --jq [.id,.tag_name]
+
+```
+[407908196,"v0.0.1"]
+```
+exit: 0
+
+#### 8: assets afterwards
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases/407908196 --jq [.name,.body,[.assets[].name],.immutable]
+
+```
+["renamed by dev App","edited by dev App",["a1.txt"],true]
+```
+exit: 0
+
+#### 9: tags before
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/matching-refs/tags --jq [.[]|[.ref,.object.sha]]
+
+```
+[["refs/tags/scratch-h2","6a7a2b3fd9fd5be2b1314b40a7875ab4e54a7a6b"],["refs/tags/v-case-g","fe67508bcb741339d974e22bf194a6f421c8ceed"],["refs/tags/v-case-g-rel","fe67508bcb741339d974e22bf194a6f421c8ceed"],["refs/tags/v0.0.1","57407c86ca2af525f0ba19e9209e8b12eff6f6f5"],["refs/tags/v0.0.2","57407c86ca2af525f0ba19e9209e8b12eff6f6f5"]]
+```
+exit: 0
+
+#### 10: delete immutable release v0.0.2
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/releases/407908295
+
+```
+
+```
+exit: 0
+
+#### 11: releases and tags after the delete
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases --jq [.[]|[.id,.tag_name,.draft,.immutable]]
+
+```
+[[407908196,"v0.0.1",false,true]]
+```
+exit: 0
+
+#### 11b: tags after the delete
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/matching-refs/tags --jq [.[]|[.ref,.object.sha]]
+
+```
+[["refs/tags/scratch-h2","6a7a2b3fd9fd5be2b1314b40a7875ab4e54a7a6b"],["refs/tags/v-case-g","fe67508bcb741339d974e22bf194a6f421c8ceed"],["refs/tags/v-case-g-rel","fe67508bcb741339d974e22bf194a6f421c8ceed"],["refs/tags/v0.0.1","57407c86ca2af525f0ba19e9209e8b12eff6f6f5"],["refs/tags/v0.0.2","57407c86ca2af525f0ba19e9209e8b12eff6f6f5"]]
+```
+exit: 0
+
+#### 12: dev App creates a draft release for the deleted tag name
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases -f tag_name=v0.0.2 -f name=redo -F draft=true -f target_commitish=main --jq [.id,.draft,.tag_name,.immutable]
+
+```
+[407912729,true,"v0.0.2",false]
+```
+exit: 0
+
+#### 13: dev App creates a draft release for a new tag
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases -f tag_name=v-draft-439 -f name=draft439 -F draft=true -f target_commitish=main --jq [.id,.draft,.tag_name]
+
+```
+[407912737,true,"v-draft-439"]
+```
+exit: 0
+
+#### 14: all releases
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases --jq [.[]|[.id,.tag_name,.draft,.immutable]]
+
+```
+[[407912729,"v0.0.2",true,false],[407908196,"v0.0.1",false,true]]
+```
+exit: 0
+
+#### 15: dev App publishes the draft that reuses the deleted release's tag v0.0.2
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/releases/407912729 -F draft=false --jq [.id,.draft,.tag_name]
+
+```
+{"message":"Validation Failed","errors":[{"resource":"Release","code":"custom","field":"tag_name","message":"tag_name was used by an immutable release"}],"documentation_url":"https://docs.github.com/rest/releases/releases#update-a-release","status":"422"}gh: Validation Failed (HTTP 422)
+```
+exit: 1
+
+#### 16: dev App publishes the draft for new tag v-draft-439
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/releases/407912737 -F draft=false --jq [.id,.draft,.tag_name]
+
+```
+{"message":"Validation Failed","errors":[{"resource":"Release","code":"custom","field":"pre_receive","message":"pre_receive Repository rule violations found\n\nCannot create ref due to creations being restricted.\n\n"},{"resource":"Release","code":"custom","message":"Published releases must have a valid tag"}],"documentation_url":"https://docs.github.com/rest/releases/releases#update-a-release","status":"422"}gh: Validation Failed (HTTP 422)
+```
+exit: 1
+
+#### 17: main head, for the v0.0.1 tag target check
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/commits/main --jq .sha
+
+```
+57407c86ca2af525f0ba19e9209e8b12eff6f6f5
+```
+exit: 0
+
+#### 18: tag v0.0.1 target
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/ref/tags/v0.0.1 --jq .object.sha
+
+```
+57407c86ca2af525f0ba19e9209e8b12eff6f6f5
+```
+exit: 0
+
+#### 19: cleanup, delete draft 407912729
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/releases/407912729
+
+```
+
+```
+exit: 0
+
+#### 20: cleanup, delete draft 407912737
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/releases/407912737
+
+```
+
+```
+exit: 0
+
+#### 21: releases at the end
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/releases --jq [.[]|[.id,.tag_name,.draft,.immutable]]
+
+```
+[[407908196,"v0.0.1",false,true]]
+```
+exit: 0
+
+#### A1: branch case9 (the PR branch)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/case9 -f sha=57407c86ca2af525f0ba19e9209e8b12eff6f6f5 --jq .ref
+
+```
+refs/heads/case9
+```
+exit: 0
+
+#### A2: commit on case9
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/free/case9.txt -f message=case 9: reviewed change -f branch=case9 -f content=Y2FzZTkK --jq .commit.sha
+
+```
+03ca21081bfbfc1b8039699cf11135af114ca514
+```
+exit: 0
+
+#### A3: branch case9-side (what the merge commit will merge in)
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/git/refs -f ref=refs/heads/case9-side -f sha=57407c86ca2af525f0ba19e9209e8b12eff6f6f5 --jq .ref
+
+```
+refs/heads/case9-side
+```
+exit: 0
+
+#### A4: commit on case9-side
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/contents/free/case9-side.txt -f message=case 9: side branch change -f branch=case9-side -f content=c2lkZQo= --jq .commit.sha
+
+```
+fd315f1868a8a0e630a290624c91ae63c459570f
+```
+exit: 0
+
+#### A5: open the PR
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls -f title=case 9: approver pushes a merge commit with extra changes -f head=case9 -f base=main --jq [.number,.head.sha,.user.login]
+
+```
+[15,"03ca21081bfbfc1b8039699cf11135af114ca514","glunk-dev[bot]"]
+```
+exit: 0
+
+#### B1: PR 15 head, mergeable state
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/15 --jq [.head.sha,.mergeable_state,.merged]
+
+```
+["0823d241bbcf325868fdb81f669245ad44912497","blocked",false]
+```
+exit: 0
+
+#### B2: PR 15 commits
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/15/commits --jq [.[]|[.sha[0:7],.commit.author.name,.commit.committer.name,(.parents|length),.commit.message]]
+
+```
+[["03ca210","glunk-dev[bot]","GitHub",1,"case 9: reviewed change"],["fd315f1","glunk-dev[bot]","GitHub",1,"case 9: side branch change"],["0823d24","Jared Groves","Jared Groves",2,"Merge case9-side into case9"]]
+```
+exit: 0
+
+#### B3: merge commit changed files vs first parent
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/commits/0823d241bbcf325868fdb81f669245ad44912497 --jq [.parents[].sha[0:7],[.files[]|[.filename,.status]]]
+
+```
+["03ca210","fd315f1",[["free/case9-side.txt","added"],["free/extra-in-merge.txt","added"]]]
+```
+exit: 0
+
+#### B4: PR 15 reviews
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/15/reviews --jq [.[]|[.user.login,.state,.commit_id[0:7]]]
+
+```
+[["Seuss27","DISMISSED","03ca210"]]
+```
+exit: 0
+
+#### B5: dev App merge attempt
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/15/merge -f merge_method=squash -f sha=0823d241bbcf325868fdb81f669245ad44912497 --jq [.merged,.sha]
+
+```
+{"message":"Repository rule violations found\n\nNew changes require approval from someone other than the last pusher.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+New changes require approval from someone other than the last pusher.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### C1: PR 15 reviews after the re-approve
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/15/reviews --jq [.[]|[.user.login,.state,.commit_id[0:7],.submitted_at]]
+
+```
+[["Seuss27","DISMISSED","03ca210","2026-10-09T12:57:55Z"],["Seuss27","APPROVED","0823d24","2026-10-09T13:00:00Z"]]
+```
+exit: 0
+
+#### C2: PR 15 state
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/15 --jq [.head.sha[0:7],.mergeable_state,.merged]
+
+```
+["0823d24","blocked",false]
+```
+exit: 0
+
+#### C3: dev App merge attempt after the re-approve
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PUT repos/glunk-works/wb-ruleset-scratch/pulls/15/merge -f merge_method=squash -f sha=0823d241bbcf325868fdb81f669245ad44912497 --jq [.merged,.sha]
+
+```
+{"message":"Repository rule violations found\n\nNew changes require approval from someone other than Seuss27 because they were the last pusher.\n\n","documentation_url":"https://docs.github.com/rest/pulls/pulls#merge-a-pull-request","status":"405"}gh: Repository rule violations found
+
+New changes require approval from someone other than Seuss27 because they were the last pusher.
+
+ (HTTP 405)
+```
+exit: 1
+
+#### D1: close PR 15
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/15 -f state=closed --jq [.number,.state,.merged]
+
+```
+[15,"closed",false]
+```
+exit: 0
+
+#### D2: delete branch case9
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/git/refs/heads/case9
+
+```
+
+```
+exit: 0
+
+#### D3: delete branch case9-side
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X DELETE repos/glunk-works/wb-ruleset-scratch/git/refs/heads/case9-side
+
+```
+
+```
+exit: 0
+
+#### D4: main head unchanged
+
+as: dev App token (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/commits/main --jq .sha
+
+```
+57407c86ca2af525f0ba19e9209e8b12eff6f6f5
+```
+exit: 0
+
+#### 2A(scratch): installation permissions
+
+as: glunk-review App token A(scratch) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api installation/repositories --jq [.repositories[]|[.full_name,.private]]
+
+```
+[["glunk-works/wb-ruleset-scratch",false]]
+```
+exit: 0
+
+#### 2A(scratch): read scratch repo
+
+as: glunk-review App token A(scratch) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch --jq [.full_name,.private]
+
+```
+["glunk-works/wb-ruleset-scratch",false]
+```
+exit: 0
+
+#### 2A(scratch): read scratch-3 repo (private)
+
+as: glunk-review App token A(scratch) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-3 --jq [.full_name,.private]
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/repos#get-a-repository","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### 2A(scratch): read scratch-3 README
+
+as: glunk-review App token A(scratch) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-3/contents/README.md --jq .path
+
+```
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/contents#get-repository-content","status":"404"}gh: Not Found (HTTP 404)
+```
+exit: 1
+
+#### 2A(scratch): read scratch PR 14
+
+as: glunk-review App token A(scratch) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/14 --jq [.number,.title]
+
+```
+[14,"item 6 fake status from another App"]
+```
+exit: 0
+
+#### 2A(scratch): write: retitle scratch PR 14
+
+as: glunk-review App token A(scratch) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/14 -f title=item6 (touched by reviewer token A(scratch)) --jq [.number,.title]
+
+```
+[14,"item6 (touched by reviewer token A(scratch))"]
+```
+exit: 0
+
+#### 2A(scratch): write: restore title of scratch PR 14, if it changed
+
+as: glunk-review App token A(scratch) (installation repos [1,["glunk-works/wb-ruleset-scratch"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/14 -f title=item6 --jq [.number,.title]
+
+```
+[14,"item6"]
+```
+exit: 0
+
+#### 2B(scratch-3): installation permissions
+
+as: glunk-review App token B(scratch-3) (installation repos [1,["glunk-works/wb-ruleset-scratch-3"]])
+$ gh api installation/repositories --jq [.repositories[]|[.full_name,.private]]
+
+```
+[["glunk-works/wb-ruleset-scratch-3",true]]
+```
+exit: 0
+
+#### 2B(scratch-3): read scratch repo
+
+as: glunk-review App token B(scratch-3) (installation repos [1,["glunk-works/wb-ruleset-scratch-3"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch --jq [.full_name,.private]
+
+```
+["glunk-works/wb-ruleset-scratch",false]
+```
+exit: 0
+
+#### 2B(scratch-3): read scratch-3 repo (private)
+
+as: glunk-review App token B(scratch-3) (installation repos [1,["glunk-works/wb-ruleset-scratch-3"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-3 --jq [.full_name,.private]
+
+```
+["glunk-works/wb-ruleset-scratch-3",true]
+```
+exit: 0
+
+#### 2B(scratch-3): read scratch-3 README
+
+as: glunk-review App token B(scratch-3) (installation repos [1,["glunk-works/wb-ruleset-scratch-3"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch-3/contents/README.md --jq .path
+
+```
+{"message":"This repository is empty.","documentation_url":"https://docs.github.com/v3/repos/contents/#get-contents","status":"404"}gh: This repository is empty. (HTTP 404)
+```
+exit: 1
+
+#### 2B(scratch-3): read scratch PR 14
+
+as: glunk-review App token B(scratch-3) (installation repos [1,["glunk-works/wb-ruleset-scratch-3"]])
+$ gh api repos/glunk-works/wb-ruleset-scratch/pulls/14 --jq [.number,.title]
+
+```
+[14,"item6"]
+```
+exit: 0
+
+#### 2B(scratch-3): write: retitle scratch PR 14
+
+as: glunk-review App token B(scratch-3) (installation repos [1,["glunk-works/wb-ruleset-scratch-3"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/14 -f title=item6 (touched by reviewer token B(scratch-3)) --jq [.number,.title]
+
+```
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/pulls/pulls#update-a-pull-request","status":"403"}gh: Resource not accessible by integration (HTTP 403)
+```
+exit: 1
+
+#### 2B(scratch-3): write: restore title of scratch PR 14, if it changed
+
+as: glunk-review App token B(scratch-3) (installation repos [1,["glunk-works/wb-ruleset-scratch-3"]])
+$ gh api -X PATCH repos/glunk-works/wb-ruleset-scratch/pulls/14 -f title=item6 --jq [.number,.title]
+
+```
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/pulls/pulls#update-a-pull-request","status":"403"}gh: Resource not accessible by integration (HTTP 403)
 ```
 exit: 1
 
