@@ -12,7 +12,9 @@
 # Usage:
 #   plan-gather.sh unmilestoned <repo>
 #     Prints TSV, one row per open TRUE issue (pull requests excluded) with no
-#     milestone: number\tupdated_at\tauthor_association\ttitle. Sorted ascending
+#     milestone: number\tupdated_at\tauthor_association\tauthor_login\tauthor_id\t
+#     title (the login and numeric id are what `gh-identity.sh author` judges, since
+#     `author_association` is viewer-relative -- WB-D24, #382). Sorted ascending
 #     by issue number. Empty stdout + exit 0 legitimately means none.
 #   plan-gather.sh milestones <repo>
 #     Prints TSV, one row per OPEN milestone: number\ttitle\tdue_on-or-none\t
@@ -118,7 +120,7 @@ esac
 if [ "$mode" = unmilestoned ]; then
   if ! gh api --paginate "repos/$repo/issues?state=open&milestone=none" --jq \
        '.[] | select(has("pull_request") | not) |
-        [.number, .updated_at, .author_association, .title] | @tsv' \
+        [.number, .updated_at, .author_association, .user.login, .user.id, .title] | @tsv' \
        >"$tmp/rows" 2>"$tmp/err"; then
     echo "plan-gather.sh: gh api failed fetching unmilestoned issues for $repo:" >&2
     cat "$tmp/err" >&2

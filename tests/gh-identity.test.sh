@@ -280,6 +280,63 @@ identities: *i'
   done
   run classify alice-dev 1001
   expect "classify: too few arguments" "" 2
+
+  # -- author (#382): trust by declared identity, the answer to a viewer-relative
+  # author_association. Only a maintainer's authorship is trusted.
+  mk dup 'identities:
+  maintainer:
+    - { login: alice-dev, id: 1001 }
+  dev_app: { login: "alice-dev", id: 1001 }
+  reviewer_app: null
+  loop_app: null'
+  run author alice-dev 1001 "$tmp/full.yml"
+  expect "author: a maintainer is trusted" trusted 0
+  run author ALICE-DEV 1001 "$tmp/full.yml"
+  expect "author: login case folded" trusted 0
+  run author bob 1002 "$tmp/full.yml"
+  expect "author: a second maintainer is trusted" trusted 0
+  run author 'acme-dev[bot]' 2001 "$tmp/full.yml"
+  expect "author: the dev App's own text is not trusted" untrusted 0
+  run author 'acme-review[bot]' 2002 "$tmp/full.yml"
+  expect "author: the reviewer App is not trusted" untrusted 0
+  run author 'acme-loop[bot]' 2003 "$tmp/full.yml"
+  expect "author: the loop App is not trusted" untrusted 0
+  run author stranger 9999 "$tmp/full.yml"
+  expect "author: an undeclared account is untrusted, not an error" untrusted 0
+  run author stranger 9999 "$tmp/noapps.yml"
+  expect "author: undeclared account, null Apps" untrusted 0
+  run author 'acme-dev[bot]' 2001 "$tmp/noapps.yml"
+  expect "author: an App that is not declared is untrusted" untrusted 0
+  run author stranger 9999 "$tmp/null.yml"
+  expect "author: identities null defers to the caller" legacy 0
+  run author 'acme-dev[bot]' 2001 "$tmp/null.yml"
+  expect "author: identities null, a [bot] still defers" legacy 0
+  run author alice-dev 9999 "$tmp/full.yml"
+  expect "author: a maintainer's login on another id is untrusted" untrusted 0
+  run author alice-renamed 1001 "$tmp/full.yml"
+  expect "author: a maintainer's id under another login is not guessed" "" 2
+  run author alice-dev 1001 "$tmp/dup.yml"
+  expect "author: one id declared twice is not guessed" "" 2
+  run author alice-dev 1001 "$tmp/bad.yml"
+  expect "author: only malformed entries match nothing" untrusted 0
+  run author alice-dev 1001 "$tmp/absent.yml"
+  expect "author: no identities key" "" 2
+  run author alice-dev 1001 "$tmp/scalar.yml"
+  expect "author: identities neither null nor a map" "" 2
+  run author alice-dev 1001 "$tmp/badyaml.yml"
+  expect "author: unparseable file" "" 2
+  run author alice-dev 1001 "$tmp/missing.yml"
+  expect "author: unreadable file" "" 2
+  for bad in '' 'a b' 'a;b' '-lead'; do
+    run author "$bad" 1001 "$tmp/full.yml"
+    expect "author: bad login [$bad]" "" 2
+  done
+  for bad in '' 0 -1 abc; do
+    run author alice-dev "$bad" "$tmp/full.yml"
+    expect "author: bad id [$bad]" "" 2
+  done
+  run author alice-dev 1001
+  expect "author: too few arguments" "" 2
 fi
 
 run

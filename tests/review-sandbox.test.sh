@@ -110,7 +110,7 @@ if [ "$1" = "api" ]; then
     repos/*/pulls/*)
       n="${path##*/pulls/}"
       case "$*" in
-        *'.head.sha'*'.head.repo.full_name'*'.base.ref'*'.author_association'*'.user.login'*'@tsv'*) : ;;
+        *'.head.sha'*'.head.repo.full_name'*'.base.ref'*'.author_association'*'.user.login'*'.user.id'*'@tsv'*) : ;;
         *) echo "fake-gh: unexpected pulls jq: $*" >&2; exit 1 ;;
       esac
       eval "sha=\${FAKE_GH_PULLS_${n}_SHA:-}"
@@ -118,10 +118,11 @@ if [ "$1" = "api" ]; then
       eval "base=\${FAKE_GH_PULLS_${n}_BASE:-main}"
       eval "assoc=\${FAKE_GH_PULLS_${n}_ASSOC:-}"
       eval "login=\${FAKE_GH_PULLS_${n}_LOGIN-someone}"
+      eval "uid=\${FAKE_GH_PULLS_${n}_UID-4242}"
       eval "shouldfail=\${FAKE_GH_PULLS_${n}_FAIL:-0}"
       [ "$shouldfail" = 0 ] || { echo "fake-gh: simulated failure for PR $n" >&2; exit 1; }
       [ -n "$sha" ] || { echo "fake-gh: no fixture data for PR $n" >&2; exit 1; }
-      printf '%s\t%s\t%s\t%s\t%s\n' "$sha" "$hr" "$base" "$assoc" "$login"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$sha" "$hr" "$base" "$assoc" "$login" "$uid"
       ;;
     *) echo "fake-gh: unexpected api path: $path" >&2; exit 1 ;;
   esac
@@ -151,6 +152,9 @@ new_workspace() {
     echo base > base.txt
     mkdir -p .ai
     printf '%s\n' "$project_yml" > .ai/project.yml
+    # `trust` judges the author against `identities` (#382); absent is the unanswered
+    # question and a STOP, so a fixture that does not declare one is a pre-cutover repo.
+    case "$project_yml" in *identities:*) ;; *) printf 'identities: null\n' >> .ai/project.yml ;; esac
     git add -A
     git commit -qm init
   )
@@ -353,6 +357,7 @@ ws_fresh="$(new_workspace loopid-fresh 'orchestration: null')"
 origin_fresh="$(git -C "$ws_fresh" remote get-url origin)"
 printf 'orchestration:
   loop_identity: loop-app[bot]
+identities: null
 ' > "$origin_fresh/.ai/project.yml"
 git -C "$origin_fresh" commit -qam "declare loop_identity"
 run_script "$ws_fresh" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_33_SHA=$sha_l FAKE_GH_PULLS_33_HEAD_REPO=acme/repo FAKE_GH_PULLS_33_BASE=main FAKE_GH_PULLS_33_ASSOC=MEMBER FAKE_GH_PULLS_33_LOGIN='loop-app[bot]' "$script" trust 33
@@ -362,6 +367,61 @@ assert_eq "trust: fetches the default branch, so a just-declared loop_identity c
 ws_bad="$(new_workspace loopid-bad 'orchestration: [unterminated')"
 run_script "$ws_bad" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_32_SHA=$sha_l FAKE_GH_PULLS_32_HEAD_REPO=acme/repo FAKE_GH_PULLS_32_BASE=main FAKE_GH_PULLS_32_ASSOC=MEMBER "$script" trust 32
 assert_eq "trust: an unparseable default-branch .ai/project.yml is a STOP" "1" "$st"
+
+# --- trust by declared identity (#382, WB-D24): `identities` a map on the default -------
+# --- branch, so the author's {login, id} decides and author_association does not ---------
+# Under an App token GitHub reports the maintainer's own PR as CONTRIBUTOR; the declared
+# maintainer is still trusted. A MEMBER association alone is no longer enough.
+id_yml="orchestration: null
+identities:
+  maintainer:
+    - { login: alice-dev, id: 1001 }
+  dev_app: { login: \"acme-dev[bot]\", id: 2001 }
+  reviewer_app: null
+  loop_app: null"
+ws_id="$(new_workspace identity "$id_yml")"
+idtrust() { # idtrust <N> <assoc> <login> <uid> <head_repo> -> trust output in $out/$st
+  n="$1"
+  eval "run_script \"\$ws_id\" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_${n}_SHA=\$sha_l \
+    FAKE_GH_PULLS_${n}_HEAD_REPO=$5 FAKE_GH_PULLS_${n}_BASE=main FAKE_GH_PULLS_${n}_ASSOC=$2 \
+    FAKE_GH_PULLS_${n}_LOGIN='$3' FAKE_GH_PULLS_${n}_UID=$4 \"\$script\" trust $n"
+}
+idtrust 40 CONTRIBUTOR alice-dev 1001 acme/repo
+assert_eq "trust (identities): the declared maintainer is trusted though an App token reads CONTRIBUTOR" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=CONTRIBUTOR loop=0 trusted=1/0" "$out/$st"
+idtrust 41 NONE ALICE-DEV 1001 acme/repo
+assert_eq "trust (identities): login compared case-insensitively" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=NONE loop=0 trusted=1/0" "$out/$st"
+idtrust 42 MEMBER stranger 9999 acme/repo
+assert_eq "trust (identities): a MEMBER association alone no longer trusts an undeclared author" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=0 trusted=0/0" "$out/$st"
+idtrust 43 OWNER 'acme-dev[bot]' 2001 acme/repo
+assert_eq "trust (identities): the dev App's own PR is not trusted, whatever its association" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=OWNER loop=0 trusted=0/0" "$out/$st"
+idtrust 44 MEMBER alice-dev 9999 acme/repo
+assert_eq "trust (identities): a declared login on another id is untrusted" \
+  "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=0 trusted=0/0" "$out/$st"
+idtrust 45 CONTRIBUTOR alice-dev 1001 someone/fork
+assert_eq "trust (identities): a maintainer's fork head is still untrusted" \
+  "sha=$sha_l head_repo=someone/fork base=main assoc=CONTRIBUTOR loop=0 trusted=0/0" "$out/$st"
+idtrust 46 MEMBER alice-renamed 1001 acme/repo
+assert_eq "trust (identities): a declared id under another login is a STOP, not a guess" "1" "$st"
+idtrust 47 MEMBER alice-dev '' acme/repo
+assert_eq "trust (identities): a PR answering no author id is a STOP" "1" "$st"
+# The sibling gh-identity.sh decides, not whatever is first on PATH: a stale or hostile copy
+# that trusts everyone must not turn an undeclared author into a trusted one.
+stale_bin="$tmp/stale-bin"; mkdir -p "$stale_bin"
+printf '#!/bin/sh
+echo trusted
+' >"$stale_bin/gh-identity.sh"; chmod +x "$stale_bin/gh-identity.sh"
+run_script "$ws_id" env PATH="$stale_bin:$PATH" FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_49_SHA=$sha_l FAKE_GH_PULLS_49_HEAD_REPO=acme/repo FAKE_GH_PULLS_49_BASE=main FAKE_GH_PULLS_49_ASSOC=MEMBER FAKE_GH_PULLS_49_LOGIN=stranger FAKE_GH_PULLS_49_UID=9999 "$script" trust 49
+assert_eq "trust (identities): a gh-identity.sh earlier on PATH does not decide trust"   "sha=$sha_l head_repo=acme/repo base=main assoc=MEMBER loop=0 trusted=0/0" "$out/$st"
+ws_noid="$(new_workspace identity-absent 'orchestration: null')"
+noid_origin="$(git -C "$ws_noid" remote get-url origin)"
+printf 'orchestration: null\n' > "$noid_origin/.ai/project.yml"
+git -C "$noid_origin" commit -qam "drop the identities key"
+run_script "$ws_noid" env FAKE_GH_REPO=acme/repo FAKE_GH_PULLS_48_SHA=$sha_l FAKE_GH_PULLS_48_HEAD_REPO=acme/repo FAKE_GH_PULLS_48_BASE=main FAKE_GH_PULLS_48_ASSOC=MEMBER "$script" trust 48
+assert_eq "trust (identities): an absent identities key is a STOP, never the association fallback" "1" "$st"
 
 # `make` re-verifies mechanically: a loop-authored PR never builds, whatever the caller says.
 sha_m="$(pr_ref "$ws_loop" 24)"

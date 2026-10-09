@@ -12,7 +12,7 @@
 #       FILE for --network   `docker network inspect <the internal network>`
 #       FILE for --proxy     `docker inspect <a proxy container>`; repeatable, at least one
 #
-#   preflight.sh github-dispatch --rules FILE --rulesets FILE --app-id N \
+#   preflight.sh github-dispatch --rules FILE --rulesets FILE --app-id N --identities FILE \
 #       --issue FILE --issue-number N (--spec-comment FILE --spec-comment-id N | --no-spec-comment)
 #       Run at dispatch, with the maintainer's read-only view.
 #       FILE for --rules     `GET /repos/R/rules/branches/{pr_base}` (the rules that apply, each
@@ -20,6 +20,14 @@
 #       FILE for --rulesets  a JSON array of `GET /repos/R/rulesets/{id}` for every ruleset id
 #                            in --rules (the list endpoint does not carry bypass_actors)
 #       --issue/--spec-comment  the task issue and the anchored spec comment, as fetched
+#       FILE for --identities  the `identities` value of .ai/project.yml on the DEFAULT branch,
+#                            as one JSON document: null before the repo cuts over, a map
+#                            after. Produce it with `yq -o=json 'select(has("identities")) |
+#                            .identities'`, NOT a bare `.identities`: an ABSENT key is the
+#                            unanswered question, and that form prints nothing for it (an
+#                            empty file, unreadable) where the bare form prints `null` and
+#                            would read as "not cut over". Required: a driver that does not
+#                            say which model it trusts by is not asked to guess one.
 #
 #   preflight.sh github-push --installation FILE --repo OWNER/NAME --rules FILE --rulesets FILE \
 #       --app FILE --loop-identity LOGIN
@@ -54,9 +62,19 @@
 #                   --app-id) in bypass_actors; a null bypass_actors (the view hides it) is
 #                   unreadable. Applicable means its id appears in --rules; a missing ruleset
 #                   document, or one supplied twice, is unreadable.
-#   author          the task issue is --issue-number (and not a pull request), and its
-#                   author_association, and the spec comment's (id --spec-comment-id, issue_url
-#                   ending /issues/<number>), is OWNER, MEMBER or COLLABORATOR.
+#   author          the task issue is --issue-number (and not a pull request), and its author,
+#                   and the spec comment's (id --spec-comment-id, issue_url ending
+#                   /issues/<number>), are trusted. With --identities null that is
+#                   author_association OWNER, MEMBER or COLLABORATOR; with a map it is the
+#                   author's user.login and user.id matching an identities.maintainer entry
+#                   (WB-D24, #382: association is viewer-relative and reads CONTRIBUTOR for the
+#                   maintainer through an App token). The id decides; a login is compared
+#                   case-folded and only alongside its id; an id declared twice, or under
+#                   another login, is unreadable, and a malformed entry matches nothing (here a
+#                   non-positive or non-numeric id; unlike gh-identity.sh, which wants a YAML
+#                   !!int, a declared `1001.0` reads as 1001 once yq has made it JSON, and a
+#                   fractional id can never equal GitHub's integer author id). The dev,
+#                   review and loop Apps are not maintainers: an agent never trusts its own text.
 #   installation    /installation/repositories lists exactly --repo (case-folded) and its
 #                   total_count equals the list it shows.
 #   can-bypass      at least one ruleset applies to pr_base and every one reads
@@ -108,7 +126,7 @@ one_doc() { # file -> 0 when it parses to exactly one value
 mode=$1; shift
 
 session= network= expect_net= rules= rulesets= app_id= issue= issue_no= comment= comment_id=
-no_comment= install= repo= appf= loopid=
+no_comment= install= repo= appf= loopid= identf=
 proxies=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -131,6 +149,7 @@ while [ $# -gt 0 ]; do
     --repo)            repo=$2 ;;
     --app)             appf=$2 ;;
     --loop-identity)   loopid=$2 ;;
+    --identities)      identf=$2 ;;
     *)                 die "unknown option: $1" ;;
   esac
   shift 2
@@ -226,7 +245,7 @@ case "$mode" in
     ;;
 
   github-dispatch)
-    need rules rulesets app_id issue issue_no
+    need rules rulesets app_id issue issue_no identf
     digits app-id "$app_id"; digits issue-number "$issue_no"
     if [ -n "$no_comment" ]; then
       [ -z "$comment" ] && [ -z "$comment_id" ] || die "--no-spec-comment excludes --spec-comment and --spec-comment-id"
@@ -234,18 +253,36 @@ case "$mode" in
       need comment comment_id
       digits spec-comment-id "$comment_id"
     fi
-    files=("$rules" "$rulesets" "$issue"); [ -z "$comment" ] || files+=("$comment")
+    files=("$rules" "$rulesets" "$issue" "$identf"); [ -z "$comment" ] || files+=("$comment")
     check_files "${files[@]}"
     [ -z "$unreadable_files" ] || report "${unreadable_files%$'\n'}"
     cf=${comment:-/dev/null}
-    out=$(jq -n -r --slurpfile r "$rules" --slurpfile rs "$rulesets" --slurpfile i "$issue" \
+    out=$(jq -n -r --slurpfile r "$rules" --slurpfile rs "$rulesets" --slurpfile i "$issue" --slurpfile ids "$identf" \
       --argjson app "$app_id" --argjson inum "$issue_no" --arg haveC "${comment:+1}" --argjson cid "${comment_id:-0}" \
       --slurpfile c "$cf" '
       def trusted: . == "OWNER" or . == "MEMBER" or . == "COLLABORATOR";
+      ($ids[0]) as $ID |
+      def lc: ascii_downcase;
+      # Every well-formed identities entry with its role; a malformed one matches nothing.
+      def declared: [ ( ($ID.maintainer // []) | if type == "array" then .[] else empty end | {role: "maintainer", e: .} ),
+                      ( ["dev_app", "reviewer_app", "loop_app"][] as $k | {role: $k, e: $ID[$k]} ) ]
+        | map(select((.e | type) == "object" and ((.e.id | type) == "number") and .e.id > 0 and ((.e.login | type) == "string")));
       def author(rule; o; what):
-        if (o.author_association // null) == null then "U \(rule): \(what) has no author_association"
-        elif (o.author_association | type) == "string" and (o.author_association | trusted) then empty
-        else "R \(rule): \(what) author_association is \(o.author_association) (not OWNER, MEMBER or COLLABORATOR)" end;
+        if $ID == null then
+          if (o.author_association // null) == null then "U \(rule): \(what) has no author_association"
+          elif (o.author_association | type) == "string" and (o.author_association | trusted) then empty
+          else "R \(rule): \(what) author_association is \(o.author_association) (not OWNER, MEMBER or COLLABORATOR)" end
+        elif ($ID | type) != "object" then "U \(rule): identities is neither null nor a map"
+        elif ((o.user | type) != "object") or ((o.user.login | type) != "string") or ((o.user.id | type) != "number")
+          then "U \(rule): \(what) has no author login and id"
+        else
+          ([declared[] | select(.e.id == o.user.id)]) as $hit |
+          if ($hit | length) > 1 then "U \(rule): author id \(o.user.id) is declared more than once"
+          elif ($hit | length) == 0 then "R \(rule): \(what) author \(o.user.login) is not a declared maintainer"
+          elif ($hit[0].e.login | lc) != (o.user.login | lc) then "U \(rule): \(what) author id \(o.user.id) is declared under a different login"
+          elif $hit[0].role != "maintainer" then "R \(rule): \(what) author \(o.user.login) is the declared \($hit[0].role), not a maintainer"
+          else empty end
+        end;
       ($r[0]) as $R | ($rs[0]) as $RS | ($i[0]) as $I | ($c[0]) as $c |
       if ($R | type) != "array" or ([$R[] | select(type != "object" or (.ruleset_id | type) != "number")] | length) > 0
         then "U update-rule: rules are not a list of rule objects carrying ruleset_id"

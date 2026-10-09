@@ -91,10 +91,12 @@ guess a gate (`reference/project-schema.md`).
    be the anchored `{pr_base}` — any other branch is a stop. Pin the head SHA from
    THIS line, never a second, separate read. **With `--pin`, stop here if that `sha` is not
    byte-for-byte the pin** — the head moved since resume derived the step, and a review of a
-   commit nobody pinned is not the review that was approved to start. `trusted=1` only when `loop=0`, `assoc` is on
-   `/way-of-working:resume`'s own author-trust allowlist (point at it, never restate it
-   a third time) and `head_repo` equals `{repo}` — a fork head is untrusted whoever
-   opened the PR. `loop=1` means the PR's author is the default branch's
+   commit nobody pinned is not the review that was approved to start. `trusted=1` only when `loop=0`,
+   the author is trusted under `/way-of-working:resume`'s own author-trust rule (point at it, never restate it a third
+   time; the script applies it — by the PR author's declared `{login, id}` in `identities`
+   once the default branch has cut over, by `assoc` before) and `head_repo` equals `{repo}` — a
+   fork head is untrusted whoever opened the PR. `assoc` is shown for the record; under
+   `identities` a map it does not decide, and an author the script cannot judge is a STOP. `loop=1` means the PR's author is the default branch's
    `orchestration.loop_identity` (`reference/project-schema.md` § `orchestration`):
    untrusted by name, whatever `assoc` says. Then `gh pr view <N> --json files` for `{code_paths}` (or
    `{review.ci_gate.triggers_on}`). An exempt PR (docs, sprint plan, `.ai/` cursor)
@@ -154,7 +156,8 @@ guess a gate (`reference/project-schema.md`).
 
    **Untrusted** (`trusted=0`): **no local execution.** Expect this for a dependency
    bot's PR too, even one on a same-repo branch: Dependabot reads `assoc=CONTRIBUTOR`
-   (or `NONE` before its first merged PR), outside the allowlist either way. The
+   (or `NONE` before its first merged PR), outside the allowlist; once `identities` is a
+   map it is an undeclared account, untrusted the same way. The
    verdict comes from a
    witness read, not the *Check the other required checks first* step's own read (that
    step answers a different question — is the gate currently green? — and carries

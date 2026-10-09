@@ -137,7 +137,7 @@ to exercise them. Tests: `sh tests/driver-core.test.sh`.
 
 ```
 bash scripts/loop/preflight.sh container --session F --network F --expect-network NAME --proxy F...
-bash scripts/loop/preflight.sh github-dispatch --rules F --rulesets F --app-id N --issue F --issue-number N \
+bash scripts/loop/preflight.sh github-dispatch --rules F --rulesets F --app-id N --identities F --issue F --issue-number N \
   (--spec-comment F --spec-comment-id N | --no-spec-comment)
 bash scripts/loop/preflight.sh github-push --installation F --repo OWNER/NAME --rules F --rulesets F \
   --app F --loop-identity LOGIN
@@ -148,7 +148,7 @@ Plan v9 § 7.3's preflight and decision 9, as pure functions over captured JSON:
 script only judges them (the header lists the endpoint behind each file). `container` checks the
 session, its network and the proxies; `github-dispatch` runs at dispatch with the maintainer's view
 (the `update` rule is on `pr_base`, the App is no applicable ruleset's bypass actor, the task issue and
-spec comment authors are trusted); `github-push` runs once the token exists (it reaches exactly the
+spec comment authors are trusted: by `identities` once the repo has cut over, by `author_association` before); `github-push` runs once the token exists (it reaches exactly the
 dispatched repo, every ruleset on `pr_base` reads `current_user_can_bypass: never`, the App's bot login
 is `orchestration.loop_identity`). stdout is `pass` (exit 0) or one `refused <rule>: <detail>` /
 `unreadable <rule>: <detail>` line per finding (exit 3); a missing field, a file that does not parse or a
