@@ -3,17 +3,17 @@
 **Now:** **Sprint 13** (cursor id `sprint-13`) on [milestone 16, *Identity M1: Apps, token minting and scratch proof*](https://github.com/glunk-works/claude-workbench/milestone/16) ([WB-D24](../docs/decisions.md)). Status: **implementing**.
 
 **Just done (2026-10-08):**
-- Task #373 merged (PR #423, `c5e1a36`): `scripts/identity/mint.sh` and its fixtures in `tests/identity-mint.test.sh`.
-- Critic pass on #373: architect and security-critic, 3 rounds, converged, on their default models. Two small edits after convergence (`mktemp --` and the `--out` race fixture) were not re-reviewed.
-- Hermetically verified; the live smoke ("mints a working token for the scratch repo") is deferred to #372 (the Apps) and #375 (the scratch repo).
-- Left for the maintainer: a policy ceiling on which installations and permissions a caller may mint, and whether `tests/identity-mint.test.sh` joins `scripts/loop/protected-paths.txt`.
+- Task #374 merged (PR #426, `75d151e`): `wow-admin` and `wow-review-mint` under `scripts/identity/`, with `tests/identity-wow.test.sh`.
+- Critic pass on #374: `security-critic`, `architect` and `docs-consistency`, 3 rounds, converged, all on their default models; no second-opinion round.
+- Hermetically verified; the live smoke (mint, expiry, 401 after revoke) is deferred to #376, which needs #375's scratch repo.
+- Human tasks #371 and #372 are complete: the Apps exist and `apps.json` is in `~/.config/glunk-identity`.
+- Left for the maintainer: `wow-review-mint --out` accepts any writable path (a future broker must not forward it), the reviewer token has no revoke, and a lock left by a killed run needs a manual `rmdir`.
 
-**Next:** task #374 — add `wow-admin` and `wow-review-mint` under `scripts/identity/` as the issue specifies, on **sonnet** (coder).
-- Build on `mint.sh`; test against a stub curl (no App credentials needed).
-- The issue leaves open where the keys live, how the passphrase is supplied and how a token reaches a container. If the body does not settle one, stop and ask.
-- Ship through `/way-of-working:ship` after the green gate and `/way-of-working:critic-gate` (Closes #374).
-- In parallel the human does #371 (remove the stale host MCP entry) and #372 (create the three glunk-works Apps).
+**Next:** task #375 — recreate `wb-ruleset-scratch` with the target ruleset shape and save the ruleset JSON, on **sonnet** (coder).
+- The issue's Who is the maintainer: the admin token comes from `wow-admin <repo>` run by the human (passphrase), and org-repo writes go per approval, never via a gh account switch.
+- The issue does not say which org owns the repo; ask.
+- The live smoke of the new commands is #376, not this task.
 
-**HITL Gate: OPEN.** First anchor for milestone 16 on this cursor (description sha `59b25d4…`, unchanged from the one confirmed earlier today). It re-opened only because the previous resume never ran `plan-anchor.sh verify`, so there was no valid baseline. The human confirms with a "go" at the next `/way-of-working:resume`; after that the gates are #371 and #372 (the human's) and the merge of each PR.
+**HITL Gate: OPEN.** #375 creates a repo and rulesets with admin writes and needs the human's passphrase. The human confirms the repo's owner and says "go" at the next `/way-of-working:resume`. The milestone-16 anchor re-verified as `match` (description sha `59b25d4…`).
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) · [milestone 16](https://github.com/glunk-works/claude-workbench/milestone/16) · [.ai/parked/](parked/)
