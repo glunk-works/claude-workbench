@@ -1552,7 +1552,7 @@ take effect. Full reasoning and the task breakdown that implements them:
          checks. Measured in #376 with CODEOWNERS covering `*`: its APPROVE does not
          satisfy the code-owner rule, and merge and push are refused. "Only posts" is
          intent, not capability: Pull requests write also reaches other review and PR
-         metadata actions, which #435 tests
+         metadata actions, which #435 measured (see the accepted residuals)
        - an *admin* App, used only in admin mode (item 5)
 
        They are kept separate from the loop Apps (`orchestration.loop_identity`). Tokens are
@@ -1609,6 +1609,16 @@ take effect. Full reasoning and the task breakdown that implements them:
     - Admin mode elevates the whole container.
     - The reviewer token exists for a few minutes after the review sandbox is destroyed.
     - Prefix deny rules stay a seatbelt.
+    - The reviewer App's `pull_requests: write` reaches more than a COMMENT review (#435, item 4):
+      it can dismiss a human approval, edit a PR's title, body and base, and close and reopen a
+      PR. None is a merge path, but a dismissal stalls a merge and the edits can mislead a
+      human reader. It cannot disable auto-merge. `dismissal_restriction` stays off.
+    - An admin token scoped to one repo can still create new repositories in the org (#435,
+      item 8); it cannot then read them.
+    - The dev App can edit, delete and attach assets to a published release and create a draft
+      release (#435, item 7); tag creation and publishing stay refused by the ruleset.
+    - Auto-merge's `expectedHeadOid` is checked only when auto-merge is armed (#435, item 2);
+      after a writer's push the approval requirement is the only guard.
     - Until each repo's cutover, its sessions run under the old login, so admin-class work
       happens in the browser.
   - **Cost.**
