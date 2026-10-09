@@ -1,10 +1,12 @@
 # Shared helpers for wow-admin and wow-review-mint (WB-D24, issue #374). Sourced, not run.
 #
 # Host layout, under $WOW_HOME (default ~/.config/glunk-identity):
-#   apps.json              {"glunk-admin": {app_id, client_id, installation_id, bot_user_id, key},
-#                           "glunk-review": {...}, ...}; "key" is a PEM filename in this directory
-#   glunk-admin.enc.pem    the admin App's private key, passphrase-encrypted
-#   glunk-review.pem       the reviewer App's private key, unencrypted (minted on request)
+#   apps.json              {"admin": {app_id, client_id, installation_id, bot_user_id, key},
+#                           "review": {...}, ...}; entries are keyed by role, the suffix after the
+#                           dash of the App's name (<org>-admin, <org>-review, <org>-dev), so any
+#                           org's config reads the same; "key" is a PEM filename in this directory
+#   admin.enc.pem          the admin App's private key, passphrase-encrypted (name by convention)
+#   review.pem             the reviewer App's private key, unencrypted (minted on request)
 #   tokens/<repo>/         the only directory a repo's container mounts, read-only: admin-token,
 #                          the token then its expires_at. Admin credentials only.
 #   review-tokens/<repo>/  reviewer-token, in the same format. Never mounted into a dev

@@ -5,7 +5,7 @@
 #
 # Mints from the reviewer App with fixed, least-privilege permissions (contents, checks and
 # statuses read; pull_requests write), scoped to <repo>. No passphrase: the reviewer key
-# (glunk-review.pem) is unencrypted so a review sandbox can ask for a token unattended.
+# (review.pem) is unencrypted so a review sandbox can ask for a token unattended.
 # The token and its expires_at go to --out, default $WOW_HOME/review-tokens/<repo>/reviewer-token, a tree no dev container mounts.
 # --out may name any path the caller can write; a broker forwarding sandbox input must not pass it.
 # The token is never printed. Run by path, not via a symlink. Layout and toolset: wow-common.sh.
@@ -31,9 +31,9 @@ done
 check_repo "$repo"
 
 command -v jq >/dev/null 2>&1 || die "jq not on PATH"
-client_id=$(app_get glunk-review client_id) inst_id=$(app_get glunk-review installation_id) revkey=$(app_key glunk-review)
-[ -n "$client_id" ] && [ -n "$inst_id" ] || die "glunk-review client_id / installation_id / key missing or unusable in $wow_home/apps.json"
-[ -n "$revkey" ] && [ -r "$revkey" ] || die "glunk-review key file not readable"
+client_id=$(app_get review client_id) inst_id=$(app_get review installation_id) revkey=$(app_key review)
+[ -n "$client_id" ] && [ -n "$inst_id" ] || die "review client_id / installation_id / key missing or unusable in $wow_home/apps.json"
+[ -n "$revkey" ] && [ -r "$revkey" ] || die "review key file not readable"
 
 [ -n "$out" ] || out=$(token_dir review-tokens "$repo")/reviewer-token
 
