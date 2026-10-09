@@ -7,7 +7,7 @@
 # Run it by its path, not through a symlink: it finds wow-common.sh and mint.sh beside itself.
 #
 # Mint: asks for the admin key's passphrase on the terminal (echo off, read from /dev/tty, never
-# an argument or an environment variable), unlocks the glunk-admin key into a private .unlock.*
+# an argument or an environment variable), unlocks the admin key into a private .unlock.*
 # directory under $WOW_HOME for the length of one mint.sh call, and writes the token and its
 # expires_at to $WOW_HOME/tokens/<repo>/admin-token -- the directory that repo's container mounts
 # read-only. The token is scoped to <repo> and to --perms (default: administration, contents and
@@ -99,11 +99,11 @@ fi
 for tool in jq openssl curl; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool not on PATH"
 done
-client_id=$(app_get glunk-admin client_id) inst_id=$(app_get glunk-admin installation_id) adminkey=$(app_key glunk-admin)
-[ -n "$client_id" ] && [ -n "$inst_id" ] || die "glunk-admin client_id / installation_id / key missing or unusable in $wow_home/apps.json"
-[ -n "$adminkey" ] && [ -r "$adminkey" ] || die "glunk-admin key file not readable"
+client_id=$(app_get admin client_id) inst_id=$(app_get admin installation_id) adminkey=$(app_key admin)
+[ -n "$client_id" ] && [ -n "$inst_id" ] || die "admin client_id / installation_id / key missing or unusable in $wow_home/apps.json (entries are keyed by role: admin, review)"
+[ -n "$adminkey" ] && [ -r "$adminkey" ] || die "admin key file not readable"
 # openssl ignores -passin for a plaintext key, so any typed passphrase would "unlock" it.
-head -n 3 "$adminkey" | grep -q 'ENCRYPTED' || die "the glunk-admin key is not passphrase-encrypted; refusing"
+head -n 3 "$adminkey" | grep -q 'ENCRYPTED' || die "the admin key is not passphrase-encrypted; refusing"
 
 [ -r "$tty" ] || die "no terminal to ask for the passphrase on"
 

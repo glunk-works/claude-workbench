@@ -55,11 +55,11 @@ chmod +x "$tmp/bin/openssl"
 home="$tmp/home"
 mkdir "$home"
 openssl genrsa -out "$tmp/key.pem" 2048 >/dev/null 2>&1
-openssl pkey -in "$tmp/key.pem" -aes256 -passout pass:correct-horse -out "$home/glunk-admin.enc.pem" 2>/dev/null
-cp "$tmp/key.pem" "$home/glunk-review.pem"
+openssl pkey -in "$tmp/key.pem" -aes256 -passout pass:correct-horse -out "$home/admin.enc.pem" 2>/dev/null
+cp "$tmp/key.pem" "$home/review.pem"
 cat >"$home/apps.json" <<'CONF'
-{"glunk-admin": {"app_id": 1, "client_id": "IvAdminClient", "installation_id": 111, "bot_user_id": 9, "key": "glunk-admin.enc.pem"},
- "glunk-review": {"app_id": 2, "client_id": "IvReviewClient", "installation_id": 222, "bot_user_id": 8, "key": "glunk-review.pem"}}
+{"admin": {"app_id": 1, "client_id": "IvAdminClient", "installation_id": 111, "bot_user_id": 9, "key": "admin.enc.pem"},
+ "review": {"app_id": 2, "client_id": "IvReviewClient", "installation_id": 222, "bot_user_id": 8, "key": "review.pem"}}
 CONF
 printf 'correct-horse\n' >"$tmp/tty-good"
 printf 'wrong-guess\n' >"$tmp/tty-bad"
@@ -205,12 +205,12 @@ rm -f "$tokfile"
 run sh "$admin" freshrepo --revoke
 assert_eq "revoke of an unknown repo rc" 1 "$rc"
 [ ! -e "$home/tokens/freshrepo" ] && ok || bad "revoke of an unknown repo" "created a tokens/ directory"
-mv "$home/glunk-admin.enc.pem" "$tmp/admin.enc.bak"
-cp "$tmp/key.pem" "$home/glunk-admin.enc.pem"
+mv "$home/admin.enc.pem" "$tmp/admin.enc.bak"
+cp "$tmp/key.pem" "$home/admin.enc.pem"
 WOW_TTY="$tmp/tty-bad" run sh "$admin" repo1
 assert_eq "plaintext admin key rc" 1 "$rc"
 assert_eq "plaintext admin key curl uncalled" 0 "$(calls)"
-mv "$tmp/admin.enc.bak" "$home/glunk-admin.enc.pem"
+mv "$tmp/admin.enc.bak" "$home/admin.enc.pem"
 assert_eq "no unlocked key left after any admin run" 0 "$(ls -A "$home" | grep -c '^\.unlock' || true)"
 [ ! -e "$home/tokens/repo1/.lock" ] && ok || bad "lock" "left behind after the runs"
 
@@ -237,6 +237,22 @@ assert_eq "admin missing config curl uncalled" 0 "$(calls)"
 WOW_HOME="$empty" run sh "$review" repo1
 assert_eq "review missing config rc" 1 "$rc"
 assert_eq "missing config curl uncalled" 0 "$(calls)"
+
+# an apps.json still keyed by org name (the pre-#443 layout) is a missing config, not a fallback
+oldkeys="$tmp/oldkeys"
+mkdir "$oldkeys"
+printf '{"glunk-admin": {"client_id": "x", "installation_id": 1, "key": "k.pem"}, "glunk-review": {"client_id": "y", "installation_id": 2, "key": "r.pem"}}\n' >"$oldkeys/apps.json"
+# real key files, so a fallback to the org-keyed entries would get past the key checks and reach curl
+cp "$home/admin.enc.pem" "$oldkeys/k.pem"
+cp "$home/review.pem" "$oldkeys/r.pem"
+WOW_HOME="$oldkeys" WOW_TTY="$tmp/tty-good" run sh "$admin" repo1
+assert_eq "admin old-keys config rc" 1 "$rc"
+assert_eq "admin old-keys config curl uncalled" 0 "$(calls)"
+assert_eq "admin old-keys config names the role keys" 1 "$(printf '%s' "$out" | grep -c 'keyed by role' || true)"
+WOW_HOME="$oldkeys" run sh "$review" repo1
+assert_eq "review old-keys config rc" 1 "$rc"
+assert_eq "review old-keys config curl uncalled" 0 "$(calls)"
+assert_eq "review old-keys config names the role keys" 1 "$(printf '%s' "$out" | grep -c 'keyed by role' || true)"
 
 if [ "$fail" -ne 0 ]; then exit 1; fi
 echo "identity-wow: $pass_count assertions passed"
