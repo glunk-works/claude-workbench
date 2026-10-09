@@ -1,0 +1,291 @@
+#!/bin/sh
+# Fixture tests for plugins/way-of-working/bin/gh-identity.sh.
+#
+# #379 (WB-D24): one predicate says whether the acting identity is a user or the declared
+# dev App, matched on the numeric id, and says nothing when unsure.
+#
+# Needs yq (mikefarah v4) for `classify`; skips those cases, loudly, when it is absent.
+# Permitted toolset: POSIX sh.
+set -eu
+
+root_dir="$(cd "$(dirname "$0")/.." && pwd)"
+script="$root_dir/plugins/way-of-working/bin/gh-identity.sh"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+fail=0
+assert_eq() {
+  if [ "$2" = "$3" ]; then
+    echo "ok - $1"
+  else
+    echo "FAIL - $1: expected [$2], got [$3]" >&2
+    fail=1
+  fi
+}
+
+# run <args...>: sets rc and out (stdout only); stderr is kept in $tmp/err.
+run() {
+  rc=0
+  out=$(sh "$script" "$@" 2>"$tmp/err") || rc=$?
+}
+# runin <records> <args...>
+runin() {
+  recs="$1"; shift
+  rc=0
+  out=$(printf '%s' "$recs" | sh "$script" "$@" 2>"$tmp/err") || rc=$?
+}
+expect() { # expect <desc> <out> <rc>
+  assert_eq "$1 (stdout)" "$2" "$out"
+  assert_eq "$1 (rc)" "$3" "$rc"
+}
+
+# -- reach ----------------------------------------------------------------------------
+runin 'acme/one
+acme/two
+' reach acme/two
+expect "reach: listed repo" reached 0
+runin 'Acme/Two
+' reach acme/two
+expect "reach: case-insensitive" reached 0
+runin "$(printf 'acme/one\r\nacme/two\r\n')" reach acme/two
+expect "reach: CRLF records" reached 0
+runin 'acme/one
+' reach acme/two
+expect "reach: records without the repo" unreached 0
+runin 'acme/two' reach acme/two
+expect "reach: last record without a newline" reached 0
+runin 'acme/two
+' reach acme/two-extra
+expect "reach: a prefix is not the repo" unreached 0
+runin '' reach acme/two
+expect "reach: empty input is not a result" "" 2
+runin '
+
+' reach acme/two
+expect "reach: only blank lines is not a result" "" 2
+runin 'acme/one
+not a repo
+' reach acme/two
+expect "reach: malformed record" "" 2
+runin 'acme/one/extra
+' reach acme/two
+expect "reach: three-part record" "" 2
+runin 'acme/two
+' reach 'acme/two;x'
+expect "reach: bad repo argument" "" 2
+runin 'acme/two
+' reach
+expect "reach: no repo argument" "" 2
+
+# -- classify -------------------------------------------------------------------------
+if ! command -v yq >/dev/null 2>&1; then
+  echo "skip - yq not on PATH; classify cases not run" >&2
+else
+  mk() { printf '%s\n' "$2" >"$tmp/$1.yml"; }
+
+  mk null 'identities: null'
+  mk full 'identities:
+  maintainer:
+    - { login: Alice-Dev, id: 1001 }
+    - { login: bob, id: 1002 }
+  dev_app: { login: "acme-dev[bot]", id: 2001 }
+  reviewer_app: { login: "acme-review[bot]", id: 2002 }
+  loop_app: { login: "acme-loop[bot]", id: 2003 }'
+  mk noapps 'identities:
+  maintainer:
+    - { login: alice-dev, id: 1001 }
+  dev_app: null
+  reviewer_app: null
+  loop_app: null'
+  mk absent 'repo: acme/x'
+  mk scalar 'identities: yes'
+  mk list 'identities: [a, b]'
+  mk bad 'identities:
+  maintainer:
+    - alice-dev
+    - { login: alice-dev, id: "1001" }
+    - { login: alice-dev, id: 0 }
+    - { login: alice-dev, id: -5 }
+    - { login: 7, id: 1001 }
+    - { id: 1001 }
+  dev_app: "acme-dev[bot]"
+  reviewer_app: { login: "acme-review[bot]", id: "2002" }
+  loop_app: null'
+  mk badyaml 'identities: [unclosed'
+
+  # user mode
+  run classify alice-dev 1001 "$tmp/full.yml"
+  expect "maintainer, exact login" user 0
+  run classify ALICE-DEV 1001 "$tmp/full.yml"
+  expect "maintainer, login case folded" user 0
+  run classify bob 1002 "$tmp/full.yml"
+  expect "second maintainer" user 0
+  run classify anyone 5 "$tmp/null.yml"
+  expect "identities null: a plain account is user mode" user 0
+
+  # app mode
+  run classify 'acme-dev[bot]' 2001 "$tmp/full.yml"
+  expect "dev App" app 0
+  run classify 'ACME-DEV[bot]' 2001 "$tmp/full.yml"
+  expect "dev App, login case folded" app 0
+
+  # unknown: never guessed
+  run classify 'acme-dev[bot]' 2001 "$tmp/null.yml"
+  expect "identities null: an undeclared [bot] is not user mode" "" 2
+  run classify stranger 9999 "$tmp/full.yml"
+  expect "undeclared account" "" 2
+  run classify alice-dev 9999 "$tmp/full.yml"
+  expect "a declared login on another id is not that account" "" 2
+  run classify alice-renamed 1001 "$tmp/full.yml"
+  expect "a declared id under another login: will not guess" "" 2
+  run classify 'acme-review[bot]' 2002 "$tmp/full.yml"
+  expect "reviewer App is neither mode" "" 2
+  run classify 'acme-loop[bot]' 2003 "$tmp/full.yml"
+  expect "loop App is neither mode" "" 2
+  run classify 'acme-dev[bot]' 2001 "$tmp/noapps.yml"
+  expect "dev_app null: a [bot] is undeclared" "" 2
+  run classify alice-dev 1001 "$tmp/absent.yml"
+  expect "no identities key" "" 2
+  run classify alice-dev 1001 "$tmp/scalar.yml"
+  expect "identities a scalar" "" 2
+  run classify alice-dev 1001 "$tmp/list.yml"
+  expect "identities a list" "" 2
+  run classify alice-dev 1001 "$tmp/missing.yml"
+  expect "project file missing" "" 2
+  run classify alice-dev 1001 "$tmp/badyaml.yml"
+  expect "project file unparseable" "" 2
+
+  # malformed entries match nothing, not even by login alone
+  run classify alice-dev 1001 "$tmp/bad.yml"
+  expect "malformed maintainer entries never match" "" 2
+  run classify 'acme-dev[bot]' 2001 "$tmp/bad.yml"
+  expect "dev_app as a bare string never matches" "" 2
+  run classify 'acme-review[bot]' 2002 "$tmp/bad.yml"
+  expect "string id never matches" "" 2
+
+  # single-entry files, where a wrongly accepted entry would print user/app
+  mk onlystrid 'identities:
+  maintainer:
+    - { login: alice-dev, id: "1001" }
+  dev_app: null
+  reviewer_app: null
+  loop_app: null'
+  run classify alice-dev 1001 "$tmp/onlystrid.yml"
+  expect "a string-id maintainer alone never matches" "" 2
+  mk appstrid 'identities:
+  maintainer:
+    - { login: bob, id: 1002 }
+  dev_app: { login: "acme-dev[bot]", id: "2001" }
+  reviewer_app: null
+  loop_app: null'
+  run classify 'acme-dev[bot]' 2001 "$tmp/appstrid.yml"
+  expect "a string-id dev_app never matches" "" 2
+  mk appnologin 'identities:
+  maintainer:
+    - { login: bob, id: 1002 }
+  dev_app: { id: 2001 }
+  reviewer_app: null
+  loop_app: null'
+  run classify 'acme-dev[bot]' 2001 "$tmp/appnologin.yml"
+  expect "a loginless dev_app never matches" "" 2
+  mk mapmaint 'identities:
+  maintainer:
+    x: { login: alice-dev, id: 1001 }
+  dev_app: null
+  reviewer_app: null
+  loop_app: null'
+  run classify alice-dev 1001 "$tmp/mapmaint.yml"
+  expect "maintainer written as a map never matches" "" 2
+  mk dupid 'identities:
+  maintainer:
+    - { login: acme-dev, id: 2001 }
+  dev_app: { login: "acme-dev", id: 2001 }
+  reviewer_app: null
+  loop_app: null'
+  run classify acme-dev 2001 "$tmp/dupid.yml"
+  expect "one id under two roles will not be guessed" "" 2
+  assert_eq "cross-role reason" 1 "$(grep -c 'declared more than once' "$tmp/err" || true)"
+
+  mk numlogin 'identities:
+  maintainer:
+    - { login: 1001, id: 1001 }
+  dev_app: null
+  reviewer_app: null
+  loop_app: null'
+  run classify 1001 1001 "$tmp/numlogin.yml"
+  expect "a non-string login never matches" "" 2
+  assert_eq "numeric-login reason" 1 "$(grep -c 'not declared' "$tmp/err" || true)"
+  run classify 'acme-dev[bot]' 2001 "$tmp/appnologin.yml"
+  assert_eq "loginless dev_app reason" 1 "$(grep -c 'not declared' "$tmp/err" || true)"
+  mk mixed 'identities:
+  maintainer:
+    - bare
+    - { login: alice-dev, id: "1001" }
+    - { login: 7, id: 1003 }
+    - { id: 1004 }
+    - { login: bob, id: 1002 }
+  dev_app: null
+  reviewer_app: null
+  loop_app: null'
+  run classify bob 1002 "$tmp/mixed.yml"
+  expect "malformed siblings do not block a valid maintainer" user 0
+  mk alias2 'identities:
+  maintainer: [ &m { login: x-dev, id: 5 } ]
+  dev_app: *m
+  reviewer_app: null
+  loop_app: null'
+  run classify x-dev 5 "$tmp/alias2.yml"
+  expect "an id repeated through an alias is still repeated" "" 2
+  mk alias3 'identities:
+  dev_app: &m { login: x-dev, id: 5 }
+  maintainer: [ *m ]
+  reviewer_app: null
+  loop_app: null'
+  run classify x-dev 5 "$tmp/alias3.yml"
+  expect "an alias inside maintainer counts as a declaration" "" 2
+  mk aliasid 'x: &i { login: x-dev, id: 5 }
+identities: *i'
+  run classify x-dev 5 "$tmp/aliasid.yml"
+  expect "identities itself written as an alias is refused" "" 2
+  dupsame='identities:
+  maintainer:
+    - { login: bob, id: 1002 }
+    - { login: bob, id: 1002 }
+  dev_app: null
+  reviewer_app: null
+  loop_app: null'
+  mk dupsame "$dupsame"
+  run classify bob 1002 "$tmp/dupsame.yml"
+  expect "the same id twice in one role will not be guessed" "" 2
+
+  # the reason, where the exit code alone cannot tell the paths apart
+  run classify alice-renamed 1001 "$tmp/full.yml"
+  assert_eq "rename reason" 1 "$(grep -c 'different login' "$tmp/err" || true)"
+  run classify 'acme-review[bot]' 2002 "$tmp/full.yml"
+  assert_eq "reviewer reason" 1 "$(grep -c 'declared reviewer_app' "$tmp/err" || true)"
+  run classify 'acme-loop[bot]' 2003 "$tmp/full.yml"
+  assert_eq "loop reason" 1 "$(grep -c 'declared loop_app' "$tmp/err" || true)"
+  run classify stranger 9999 "$tmp/full.yml"
+  assert_eq "undeclared reason" 1 "$(grep -c 'not declared' "$tmp/err" || true)"
+
+  # malformed inputs
+  for bad in '' '-' 'a b' 'a;b' 'a$(x)' '-lead' 'trail-' 'a--b' '[bot]' 'x[bot]y'; do
+    run classify "$bad" 1001 "$tmp/full.yml"
+    expect "bad login [$bad]" "" 2
+  done
+  for bad in '' 0 007 -1 1.5 abc '1 2'; do
+    run classify alice-dev "$bad" "$tmp/full.yml"
+    expect "bad id [$bad]" "" 2
+  done
+  run classify alice-dev 1001
+  expect "classify: too few arguments" "" 2
+fi
+
+run
+expect "no subcommand" "" 2
+run bogus
+expect "unknown subcommand" "" 2
+
+if [ "$fail" -ne 0 ]; then exit 1; fi
+echo "gh-identity: all assertions passed"
