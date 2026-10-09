@@ -8,7 +8,7 @@
 
 **Milestone close:** closed — milestone 16, *Identity M1: Apps, token minting and scratch proof* (0 open issues, read-back `closed`).
 
-**Next:** plan sprint 14 on milestone 17, on **opus** (architect). #432 (after #386) and #436 (after #378, before #389) are on the milestone but not yet in its description's build order; add them there before `/way-of-working:handoff` anchors the plan.
+**Next:** anchor sprint 14 on milestone 17 with `/way-of-working:handoff`, on **opus** (architect). Its description's build order now carries #436 (step 4) and #432 (step 12), and #389 waits on #436.
 
 **HITL Gate: NONE OPEN.**
 
