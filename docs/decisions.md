@@ -1616,7 +1616,8 @@ take effect. Full reasoning and the task breakdown that implements them:
     - An admin token scoped to one repo can still create new repositories in the org (#435,
       item 8); it cannot then read them.
     - The dev App can edit, delete and attach assets to a published release and create a draft
-      release (#435, item 7); tag creation and publishing stay refused by the ruleset.
+      release (#435, item 7); tag creation and publishing stay refused by the ruleset. To be
+      restricted (#439), not accepted.
     - Auto-merge's `expectedHeadOid` is checked only when auto-merge is armed (#435, item 2);
       after a writer's push the approval requirement is the only guard.
     - Until each repo's cutover, its sessions run under the old login, so admin-class work

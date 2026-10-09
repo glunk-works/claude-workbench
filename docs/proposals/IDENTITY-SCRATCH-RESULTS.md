@@ -46,7 +46,8 @@ Follow-ups this surfaced, none a merge-gate weakening:
 - WB-D24's accepted residuals gain the reviewer App's powers (item 4) and an admin token's
   ability to create org repositories (item 8).
 - The dev App's release writes (item 7) are an integrity gap for published release assets
-  and notes. Filed separately for a restrict-or-accept decision.
+  and notes. The maintainer chose to restrict it, since releases have their own workflow:
+  #439.
 
 ## Configuration changes made during session 3
 
