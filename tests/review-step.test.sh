@@ -259,7 +259,7 @@ assert_decide() {
   base_ti=task_issue=230; base_br=backlog_repo=-; base_repo="repo=$REPO"; base_head="head=$O3"
   base_branch=branch=main; base_base=base=main; base_bhead="base_head=$O3"; base_lc="last_commit=$O1"
   base_tree=tree=clean; base_model=model=opus; base_arch=architect=opus; base_fresh=fresh=yes
-  base_login="login=$ME"; base_loop=loop_identity=-
+  base_login="login=$ME"; base_loop=loop_identity=-; base_mode=mode=user
   for kv in "$@"; do
     case "$kv" in
       derived=*) base_derived="$kv" ;; gate=*) base_gate="$kv" ;; gate_state=*) base_gs="$kv" ;;
@@ -269,13 +269,13 @@ assert_decide() {
       branch=*) base_branch="$kv" ;; base=*) base_base="$kv" ;; base_head=*) base_bhead="$kv" ;;
       last_commit=*) base_lc="$kv" ;;
       model=*) base_model="$kv" ;; architect=*) base_arch="$kv" ;; fresh=*) base_fresh="$kv" ;;
-      login=*) base_login="$kv" ;; loop_identity=*) base_loop="$kv" ;;
+      login=*) base_login="$kv" ;; loop_identity=*) base_loop="$kv" ;; mode=*) base_mode="$kv" ;;
     esac
   done
   st=0
   out="$(sh "$script" decide "$base_derived" "$base_gate" "$base_gs" "$base_state" "$base_srn" \
     "$base_srh" "$base_na" "$base_ti" "$base_br" "$base_repo" "$base_head" "$base_branch" \
-    "$base_base" "$base_bhead" "$base_lc" "$base_tree" "$base_model" "$base_arch" "$base_fresh" "$base_login" "$base_loop" 2>/dev/null)" || st=$?
+    "$base_base" "$base_bhead" "$base_lc" "$base_tree" "$base_model" "$base_arch" "$base_fresh" "$base_login" "$base_loop" "$base_mode" 2>/dev/null)" || st=$?
   if [ "$out" = "$want_out" ] && [ "$st" = "$want_st" ]; then
     echo "ok - decide: $desc"
   else
@@ -456,13 +456,107 @@ st=0; out="$(sh "$script" bogus 2>/dev/null)" || st=$?
 if [ "$out" = "" ] && [ "$st" = 2 ]; then echo "ok - an unknown mode refuses"; else
   echo "FAIL - an unknown mode refuses: [$out]/exit $st" >&2; fail=1; fi
 
+# --- App mode (WB-D24, `#381`): the acting login is the declared dev_app ----------------
+
+DEV='glunk-dev[bot]'
+
+# L <desc> <expected-stdout> <expected-exit> <args...> -- the `login` mode, straight against the script
+L() {
+  desc="$1"; want_out="$2"; want_st="$3"; shift 3
+  st=0; out="$(sh "$script" login "$@" 2>/dev/null)" || st=$?
+  if [ "$out" = "$want_out" ] && [ "$st" = "$want_st" ]; then echo "ok - login: $desc"; else
+    echo "FAIL - login: $desc: expected [$want_out]/exit $want_st, got [$out]/exit $st" >&2; fail=1; fi
+}
+
+L "user mode prints the running login" "$ME" 0 user "$ME" -
+L "user mode ignores a declared dev_app" "$ME" 0 user "$ME" "$DEV"
+L "app mode prints the declared dev_app login" "$DEV" 0 app - "$DEV"
+L "app mode ignores a user login" "$DEV" 0 app "$ME" "$DEV"
+L "app mode with dev_app null derives nothing" "" 2 app - -
+L "app mode with dev_app null never falls back to the user login" "" 2 app "$ME" -
+L "app mode with an empty dev_app derives nothing" "" 2 app "$ME" ""
+L "user mode with no login derives nothing" "" 2 user - "$DEV"
+L "user mode with an empty login derives nothing" "" 2 user "" -
+L "a dev_app login without [bot] is refused (it would match a user)" "" 2 app - glunk-dev
+L "a user-mode login ending [bot] is refused" "" 2 user "$DEV" -
+L "a malformed dev_app login (space) is refused" "" 2 app - 'glunk dev[bot]'
+L "a malformed dev_app login (leading dash) is refused" "" 2 app - '-dev[bot]'
+L "a malformed dev_app login (quote) is refused" "" 2 app - "dev'x[bot]"
+L "a bare [bot] with no stem is refused" "" 2 app - '[bot]'
+L "an unknown mode is refused" "" 2 both "$ME" "$DEV"
+L "a missing argument is refused" "" 2 app "$DEV"
+
+# derive under the dev App: the REST `[bot]` author and gh's `app/<slug>` spelling both qualify,
+# a user of the same slug does not, and the maintainer no longer does
+D "App mode: the [bot] author qualifies" "one 12 $O1" 0 "$DEV" "$REPO" - 230 \
+  "$(rec 12 OPEN false "$DEV" $O1 't' 'Closes #230')
+"
+D "App mode: the app/<slug> author qualifies" "one 12 $O1" 0 "$DEV" "$REPO" - 230 \
+  "$(rec 12 OPEN false app/glunk-dev $O1 't' 'Closes #230')
+"
+D "App mode: the author folds case" "one 12 $O1" 0 "$DEV" "$REPO" - 230 \
+  "$(rec 12 OPEN false App/Glunk-Dev $O1 't' 'Closes #230')
+"
+D "App mode: a USER named like the slug does not qualify" none 0 "$DEV" "$REPO" - 230 \
+  "$(rec 12 OPEN false glunk-dev $O1 't' 'Closes #230')
+"
+D "App mode: the maintainer's PR does not qualify" none 0 "$DEV" "$REPO" - 230 \
+  "$(rec 12 OPEN false "$ME" $O1 't' 'Closes #230')
+"
+D "App mode: another App's PR does not qualify" none 0 "$DEV" "$REPO" - 230 \
+  "$(rec 12 OPEN false 'glunk-loop[bot]' $O1 't' 'Closes #230')
+"
+D "App mode: a fork PR by the dev App does not qualify" none 0 "$DEV" "$REPO" - 230 \
+  "$(rec 12 OPEN true "$DEV" $O1 't' 'Closes #230')
+"
+D "App mode: two dev App PRs naming the task: many" "many 12 14" 0 "$DEV" "$REPO" - 230 \
+  "$(rec 12 OPEN false "$DEV" $O1 't' 'Closes #230')
+$(rec 14 OPEN false app/glunk-dev $O2 't' 'Closes #230')
+"
+D "user mode: the app/<slug> form is not added for a plain login" none 0 "$ME" "$REPO" - 230 \
+  "$(rec 12 OPEN false "app/$ME" $O1 't' 'Closes #230')
+"
+
+# decide under the dev App: the guard compares the declared dev_app, and a dev_app equal to the
+# loop identity (a misdeclaration) derives nothing
+A "App mode: a would-be auto is shown, never started (the token's App is unproven)" "show 12 app-mode" 0 \
+  "login=$DEV" 'loop_identity=glunk-loop[bot]' mode=app
+A "App mode: other reasons are listed ahead of app-mode" "show 12 no-state,app-mode" 0 \
+  "login=$DEV" mode=app state=absent sr_number=- sr_head=- 'next_action=-'
+A "App mode: an already-reviewed head is a report" "reviewed 12" 0 \
+  "login=$DEV" mode=app gate_state=success
+A "App mode: gate null is the merge report" "merge 12" 0 \
+  "login=$DEV" mode=app gate=null gate_state=-
+A "App mode: derived none stays none" none 0 "login=$DEV" mode=app derived=none
+A "user mode: still auto-starts" "auto 12 $O1" 0 mode=user
+A "a bad mode exits 2" "" 2 mode=both
+A "an empty mode exits 2" "" 2 mode=
+A "loop_identity folds case and [bot] against a dev_app login" none 0 \
+  'login=Glunk-Loop' 'loop_identity=glunk-loop[bot]' mode=app
+A "App mode: a dev_app login equal to the loop identity derives nothing" "none" 0 \
+  "login=$DEV" "loop_identity=$DEV" mode=app
+
+# End to end, App mode: login -> derive -> decide
+al="$(sh "$script" login app - "$DEV")"
+d="$(printf '%s\n' "$(rec 12 OPEN false app/glunk-dev $O1 't' 'Closes #230')" \
+  | sh "$script" derive "$al" "$REPO" - 230 200)"
+a="$(sh "$script" decide "derived=$d" gate=set gate_state=absent state=present sr_number=12 \
+  "sr_head=$O1" "next_action=review PR #12 — task #230 — x" task_issue=230 backlog_repo=- \
+  "repo=$REPO" "head=$O3" branch=main base=main "base_head=$O3" "last_commit=$O1" tree=clean model=opus architect=opus fresh=yes "login=$al" loop_identity=- mode=app)"
+if [ "$a" = "show 12 app-mode" ]; then echo "ok - end to end, App mode: the dev App's PR derives, shown but never auto-started"; else
+  echo "FAIL - end to end, App mode: got [$a]" >&2; fail=1; fi
+
+st=0; out="$(sh "$script" login app - - 2>/dev/null)" || st=$?
+if [ "$out" = "" ] && [ "$st" = 2 ]; then echo "ok - end to end, App mode: dev_app null stops at the login link, nothing derived"; else
+  echo "FAIL - end to end, App mode with dev_app null: [$out]/exit $st" >&2; fail=1; fi
+
 # --- the two halves end to end: App-authored PR -> derive none -> decide none ----------
 
 d="$(printf '%s\n' "$(rec 12 OPEN false app/loop-driver $O1 't' 'Closes #230')" \
   | sh "$script" derive "$ME" "$REPO" - 230 200)"
 a="$(sh "$script" decide "derived=$d" gate=set gate_state=absent state=present sr_number=12 \
   "sr_head=$O1" "next_action=review PR #12 — task #230 — x" task_issue=230 backlog_repo=- \
-  "repo=$REPO" "head=$O3" branch=main base=main "base_head=$O3" "last_commit=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=-)"
+  "repo=$REPO" "head=$O3" branch=main base=main "base_head=$O3" "last_commit=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=- mode=user)"
 if [ "$a" = none ]; then echo "ok - end to end: an App-authored PR derives nothing and auto-starts nothing"; else
   echo "FAIL - end to end: App-authored PR: got [$a]" >&2; fail=1; fi
 
@@ -470,7 +564,7 @@ d="$(printf '%s\n' "$(rec 12 OPEN false "$ME" $O1 't' 'Closes #230')" \
   | sh "$script" derive "$ME" "$REPO" - 230 200)"
 a="$(sh "$script" decide "derived=$d" gate=set gate_state=absent state=present sr_number=12 \
   "sr_head=$O1" "next_action=review PR #12 — task #230 — x" task_issue=230 backlog_repo=- \
-  "repo=$REPO" "head=$O3" branch=main base=main "base_head=$O3" "last_commit=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=-)"
+  "repo=$REPO" "head=$O3" branch=main base=main "base_head=$O3" "last_commit=$O1" tree=clean model=opus architect=opus fresh=yes "login=$ME" loop_identity=- mode=user)"
 if [ "$a" = "auto 12 $O1" ]; then echo "ok - end to end: a maintainer PR derives and auto-starts"; else
   echo "FAIL - end to end: maintainer PR: got [$a]" >&2; fail=1; fi
 

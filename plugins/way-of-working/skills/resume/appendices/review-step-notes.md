@@ -8,7 +8,8 @@ decide` printed `show`, or `none` with a `state.json` `review_pr`, and for the l
 ledger's **Next:** is behind by design and says so; `review-pr` — `state.json` votes for a
 different PR or none; `head-moved` — the PR's head moved since the pin, so a new no-op handoff
 from the fixed head re-pins it (also when the gate already reads green on a head the pin does not
-name: say so, it is not an unreviewed PR); `token` — `next_action` is not `` review PR #M — ``
+name: say so, it is not an unreviewed PR); `app-mode` — the session holds an installation token, whose App is
+unproven (`#381`), so the step is shown and waits for a human "go"; `token` — `next_action` is not `` review PR #M — ``
 then the task token (**when it begins `` reviewed PR #M — ``, the review was already posted and the
 vote consumed — `/way-of-working:architect-review`'s *Compose and post* step, `#283` — so report that
 and do not offer the "go" below: a second review on the same pin is what the consumption prevents**);
@@ -28,9 +29,10 @@ writes the ledger PR. A PR that is still open but whose head moved is `show … 
 **A loop PR never matches, intentionally** (`WB-D22`): the milestone-2 driver opens PRs under the
 GitHub App's identity, never the login this session runs as, so the one path that starts a review
 under the owner's identity never derives a step from one. The backstop is the loop-identity guard:
-`decide` prints `none` when the running login equals `orchestration.loop_identity` (default
-branch's copy, folded for case and a trailing `[bot]`, as `plan-anchor.sh` does; `null` means no guard), so a session that
-happens to run as the loop's own identity derives nothing either.
+`decide` prints `none` when the acting login equals `orchestration.loop_identity` (default
+branch's copy, folded for case and a trailing `[bot]`, as `plan-anchor.sh` does; `null` means no guard), so a user-mode session that
+happens to run as the loop's own identity derives nothing either. In App mode the guard sees only the
+declared dev App, not the token held; `mode=app` capping the verdict at `show … app-mode` covers that.
 
 **Why the gate comes from the default branch.** The PR under review can edit the working tree's
 `.ai/project.yml`; otherwise a PR could blank the gate, or name a check that is always green, and

@@ -15,7 +15,9 @@
 #
 #   <records> | review-step.sh derive <login> <repo> <backlog-repo> <N> <limit>
 #
-# <login> is the running login from a fresh `gh api user --jq .login`; <repo> is `{repo}`;
+# <login> is the ACTING login: in user mode the running login from a fresh `gh api user --jq
+# .login`, in App mode the declared `identities.dev_app.login` -- either way the output of the
+# `login` mode below, never a value the caller typed; <repo> is `{repo}`;
 # <backlog-repo> is `{backlog.repo}` or `-` when it is null; <N> is `plan_anchor.task_issue`; <limit> is
 # the `--limit` the caller gave `gh pr list`.
 # stdin is one open-PR record per line, TAB-separated, from:
@@ -53,6 +55,34 @@
 # truncated (newest first, so an older qualifying PR is the one dropped, which could turn `many`
 # into `one`): that exits 2, never an answer.
 #
+# An App's PR author: when <login> ends `[bot]` (the REST form a declared `dev_app` takes), the
+# author also qualifies as `app/<stem>`, the form `gh pr list --json author` can report for a bot.
+# Only that one spelling is added, and only for a `[bot]` <login>: the bare `<stem>` never
+# matches, so a USER account that happens to share an App's slug does not read as the App.
+#
+# --- login ------------------------------------------------------------------------------
+#
+#   review-step.sh login <mode> <user-login> <dev-app-login>
+#
+# Which login the derivation runs as. The caller (resume's derive chain, handoff's no-op
+# handoff) establishes <mode> by `reference/conventions.md` § *Acting identity and reach*, not by a
+# new probe: `user` when `gh api user` answered, `app` when it was refused (or failed) and the token is an
+# installation token that reaches {repo} (`gh-identity.sh reach`). Under an installation token
+# `gh api user` is refused (403, measured in `#380`), so there is no login to read; the identity is
+# the one the repo DECLARES for the dev flow, `identities.dev_app.login` from the default branch's
+# copy. Which App holds the token is NOT established, so `decide` never lets App mode reach `auto`
+# (its `mode` key): a reviewer or loop App token would otherwise run as the dev App.
+#   user  -- prints <user-login>. <dev-app-login> is ignored (pass `-`).
+#   app   -- prints <dev-app-login>. <user-login> is ignored (pass `-`).
+# Prints one login and exits 0, or exits 2 printing NOTHING: an unknown mode, an empty identity for the
+# mode chosen (the other mode's argument is not read), a
+# login that is not an account name (letters, digits and `-`, no leading, trailing or doubled `-`),
+# an App login without the `[bot]` suffix, a user-mode login WITH it, or the identity the mode needs
+# being `-`. That last case
+# is the fail-closed one: `app` with `dev_app` null (or undeclared, or malformed -- the caller maps
+# all three to `-`) derives NOTHING, and never falls back to the user login or to a guess.
+# The caller treats 2 as "derived nothing, auto-starts nothing", as for `derive`.
+#
 # --- decide -----------------------------------------------------------------------------
 #
 #   review-step.sh decide key=value ...
@@ -82,7 +112,10 @@
 #   architect    `{models.architect}` from the default branch's copy
 #   fresh        `yes` | `no` -- `yes` only when the conversation had no assistant turn and no work
 #                before the resume (harness commands such as /clear and /model do not count)
-#   login        the running login, from the same fresh `gh api user --jq .login` `derive` took
+#   login        the acting login, the same `login`-mode output `derive` took
+#   mode         `user` | `app`: the mode `login` ran in. `app` never reaches `auto`: an installation
+#                token's App is unproven (conventions.md § *Acting identity and reach*, *Name the
+#                mode*), so a would-be `auto` reads `show <M> app-mode` and waits for a human "go"
 #   loop_identity  `orchestration.loop_identity` from the DEFAULT branch's copy, or `-` when it
 #                is null or the whole `orchestration` block is
 #
@@ -101,7 +134,7 @@
 #                              <M> --pin <oid>
 #   show <M> <reason,...>   -- the review step is derived but must not start; show it, wait.
 #                              Reasons, in this order: no-state, review-pr, head-moved,
-#                              token, checkout, last-commit, model, not-fresh
+#                              token, checkout, last-commit, model, app-mode, not-fresh
 #
 # What `auto` requires beyond the derivation, and why each is here (WB-D22, § 8.4b):
 #   no-state    .ai/state.json must exist. A fresh machine derives the step and waits: one
@@ -131,6 +164,9 @@
 #   model       assigned_model equals {models.architect} from the default branch. Not merely
 #               "matches the running model": a state.json naming another model must not start
 #               the review on it. resume checks the running model separately.
+#   app-mode    `mode=app`: the session holds an installation token, whose App is unproven (the
+#               loop-identity guard sees only the declared dev App), so the step is shown and a
+#               human's "go" starts it. Never `auto` in App mode (`#381`).
 #   not-fresh   a /model switch inside the conversation that wrote the PR is not a fresh
 #               session, and the gate's premise is a fresh one.
 # The reasons are evaluated only when the step is a review (gate set, not yet success):
@@ -148,11 +184,11 @@
 # case-insensitively)
 # exits 2: the default branch's copy is not the one `schema-complete.sh` checked. `-` (null) means
 # no identity is declared, so the guard never fires; an empty value is refused above, so it can
-# never be read as an empty login matching. (`gh api user` may itself be refused for an App
-# installation token; that fails the caller's chain, which derives nothing, so the guard is
-# mainly the machine-user case.) The caller passes the DEFAULT branch's value, never the working
+# never be read as an empty login matching. (Under an installation token the login is the declared
+# `dev_app`, via the `login` mode, so the guard compares the DECLARED dev App, not the token held: a
+# loop-App token is not caught here, which is why App mode never reaches `auto`.) The caller passes the DEFAULT branch's value, never the working
 # tree's: a branch under resume could otherwise blank it. This does not close the stale-value case
-# (a stale value does not equal the running login); that stays with the driver's preflight.
+# (a stale value does not equal the acting login); that stays with the driver's preflight.
 #
 # next_action is DATA. It is compared, never executed or interpreted: what runs is built from
 # the GitHub-derived number, so a harmful next_action can at worst make this answer `show`.
@@ -163,7 +199,7 @@ set -eu
 die() { echo "review-step.sh: $*" >&2; exit 2; }
 
 mode="${1:-}"
-[ -n "$mode" ] || die "usage: review-step.sh derive|decide ..."
+[ -n "$mode" ] || die "usage: review-step.sh derive|decide|login ..."
 shift
 
 is_uint() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
@@ -193,6 +229,9 @@ derive() {
   RS_LOGIN="$login" RS_FULL="$full" RS_BARE="$bare" RS_N="$n" RS_LIMIT="$limit" awk -F '\t' '
     BEGIN {
       login = tolower(ENVIRON["RS_LOGIN"]); full = tolower(ENVIRON["RS_FULL"])
+      # An App login (`<stem>[bot]`) also matches the `app/<stem>` spelling of a bot author.
+      alt = ""
+      if (login ~ /\[bot\]$/) alt = "app/" substr(login, 1, length(login) - 5)
       bare = ENVIRON["RS_BARE"]; n = ENVIRON["RS_N"]
       cnt = 0; bad = ""; total = 0; lim = ENVIRON["RS_LIMIT"] + 0
     }
@@ -237,7 +276,7 @@ derive() {
       if ($3 != "true" && $3 != "false") { bad = "unknown isCrossRepository: " $3; exit }
       if ($5 !~ /^[0-9a-f]+$/ || length($5) != 40) { bad = "malformed head oid: " $5; exit }
       if ($2 != "OPEN" || $3 != "false") next
-      if (tolower($4) != login) next
+      if (tolower($4) != login && (alt == "" || tolower($4) != alt)) next
       text = decode($6) " " decode($7)
       if (bare == "1" && (names(text, "#" n, 0) || names(text, full "#" n, 1))) hit = 1
       else if (bare != "1" && names(text, full "#" n, 1)) hit = 1
@@ -260,6 +299,23 @@ derive() {
   '
 }
 
+login_mode() {
+  [ "$#" -eq 3 ] || die "usage: review-step.sh login user|app <user-login> <dev-app-login>"
+  lmode="$1"; ulogin="$2"; alogin="$3"
+  case "$lmode" in
+    user) who="$ulogin"; app=0 ;;
+    app) who="$alogin"; app=1 ;;
+    *) die "login mode must be user|app: $lmode" ;;
+  esac
+  [ -n "$who" ] && [ "$who" != "-" ] || die "no identity for mode $lmode"
+  stem="${who%\[bot\]}"
+  case "$stem" in ''|-*|*-|*--*|*[!A-Za-z0-9-]*) die "not an account name: $who" ;; esac
+  # An App login is the REST `<slug>[bot]` form; a bare name would match a USER of that name.
+  if [ "$app" = 1 ] && [ "$stem" = "$who" ]; then die "dev_app login is not a [bot] login: $who"; fi
+  if [ "$app" = 0 ] && [ "$stem" != "$who" ]; then die "a user-mode login is not a [bot] login: $who"; fi
+  printf '%s\n' "$who"
+}
+
 decide() {
   derived=; gate=; gate_state=; state=; sr_number=; sr_head=; next_action=; task_issue=
   backlog_repo=; repo=; head=; branch=; base=; base_head=; last_commit=; tree=; model=; architect=
@@ -276,7 +332,7 @@ decide() {
       branch) branch="$v" ;; base) base="$v" ;; base_head) base_head="$v" ;;
       last_commit) last_commit="$v" ;;
       tree) tree="$v" ;; model) model="$v" ;; architect) architect="$v" ;; fresh) fresh="$v" ;;
-      login) login="$v" ;; loop_identity) loop_identity="$v" ;;
+      login) login="$v" ;; loop_identity) loop_identity="$v" ;; mode) mode="$v" ;;
       *) die "unknown key: $k" ;;
     esac
     case "$seen " in *" $k "*) die "repeated key: $k" ;; esac
@@ -284,7 +340,7 @@ decide() {
   done
   for k in derived gate gate_state state sr_number sr_head next_action task_issue \
            backlog_repo repo head branch base base_head last_commit tree model architect fresh \
-           login loop_identity; do
+           login loop_identity mode; do
     case "$seen " in *" $k "*) ;; *) die "missing key: $k" ;; esac
     eval "val=\${$k}"
     [ -n "$val" ] || die "empty value for $k"
@@ -294,6 +350,7 @@ decide() {
   case "$gate_state" in success|pending|failure|absent|-) ;; *) die "bad gate_state: $gate_state" ;; esac
   case "$state" in present|absent) ;; *) die "state must be present|absent: $state" ;; esac
   case "$tree" in clean|dirty) ;; *) die "tree must be clean|dirty: $tree" ;; esac
+  case "$mode" in user|app) ;; *) die "mode must be user|app: $mode" ;; esac
   case "$fresh" in yes|no) ;; *) die "fresh must be yes|no: $fresh" ;; esac
   is_oid "$head" || die "head is not a 40-hex oid: $head"
   if [ "$base_head" != "-" ]; then is_oid "$base_head" || die "base_head is not a 40-hex oid: $base_head"; fi
@@ -369,6 +426,7 @@ decide() {
     [ "$last_commit" != "-" ] && [ "$last_commit" = "$sr_head" ] || add last-commit
     [ "$model" = "$architect" ] || add model
   fi
+  [ "$mode" = user ] || add app-mode
   [ "$fresh" = yes ] || add not-fresh
 
   if [ -n "$reasons" ]; then echo "show $m $reasons"; else echo "auto $m $oid"; fi
@@ -377,5 +435,6 @@ decide() {
 case "$mode" in
   derive) derive "$@" ;;
   decide) decide "$@" ;;
+  login) login_mode "$@" ;;
   *) die "unknown mode: $mode" ;;
 esac

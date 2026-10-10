@@ -392,7 +392,7 @@ edited it. **Default to the full checklist whenever unsure.**
    check). It is the same read the ruleset step's `migration_base` block makes; run it again
    here rather than relying on that step having run:
    ```bash
-   LOGIN=$(gh api user --jq .login) &&
+   T=$(mktemp -d) &&
    TOPLEVEL=$(git rev-parse --show-toplevel) &&
    U=$(git -C "$TOPLEVEL" remote get-url origin) &&
    R=$(gh repo view "$U" --json nameWithOwner --jq .nameWithOwner) &&
@@ -400,6 +400,18 @@ edited it. **Default to the full checklist whenever unsure.**
    [ -n "$D" ] && [ "$R" = "{repo}" ] &&
    git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
    DEF_YML=$(git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml") &&
+   if LOGIN=$(gh api user --jq .login); then MODE=user DEVAPP=-
+   else MODE=app LOGIN=- &&
+     env -u GH_HOST -u GH_ENTERPRISE_TOKEN gh api --hostname github.com --paginate installation/repositories \
+       --jq '.repositories[].full_name' >"$T/repos.txt" &&
+     [ "$(gh-identity.sh reach "$R" <"$T/repos.txt")" = reached ] &&
+     printf '%s\n' "$DEF_YML" >"$T/def.yml" &&
+     SEL='explode(.) | .identities | select(tag == "!!map") | .dev_app | select(tag == "!!map" and ((.id | tag) == "!!int") and .id > 0 and ((.login | tag) == "!!str"))' &&
+     DEVAPP=$(yq -r "$SEL | .login" "$T/def.yml") && DEVID=$(yq -r "$SEL | .id" "$T/def.yml") &&
+     if [ -z "$DEVAPP" ]; then DEVAPP=-
+     else [ "$(gh-identity.sh role "$DEVAPP" "$DEVID" "$T/def.yml")" = dev_app ]; fi
+   fi &&
+   ACTOR=$(review-step.sh login "$MODE" "$LOGIN" "$DEVAPP") &&
    HAS=$(printf '%s' "$DEF_YML" | yq -r '.review | has("ci_gate")') &&
    TAG=$(printf '%s' "$DEF_YML" | yq -r '.review.ci_gate | tag') &&
    CHECK=$(printf '%s' "$DEF_YML" | yq -r '.review.ci_gate.check // ""') &&
@@ -425,17 +437,28 @@ edited it. **Default to the full checklist whenever unsure.**
    if [ "$BASE" != - ] && git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"; then
      BHEAD=$(git -C "$TOPLEVEL" rev-parse --verify -q "refs/remotes/origin/$BASE^{commit}") || BHEAD=-
    else BHEAD=-; fi &&
-   T=$(mktemp -d) &&
    gh pr list --repo "$R" --state open --limit 200 \
      --json number,state,isCrossRepository,author,headRefOid,title,body \
      --jq '.[] | [.number, .state, .isCrossRepository, .author.login, .headRefOid, .title, .body] | @tsv' \
      >"$T/prs.tsv" &&
-   DERIVED=$(review-step.sh derive "$LOGIN" "$R" "${BREPO:--}" "$N" 200 <"$T/prs.tsv")
+   DERIVED=$(review-step.sh derive "$ACTOR" "$R" "${BREPO:--}" "$N" 200 <"$T/prs.tsv")
    ```
-   `LOGIN=$(gh api user …)` is the chain's first link and is refused to an installation token
-   (`reference/conventions.md` § *Acting identity and reach*): when it fails the chain stops
-   there and nothing derives — report `failed link: GET /user failed`, plus that section's
-   actor line, which is the fail-closed answer, never a guessed `LOGIN`.
+   **The acting login, by mode (`WB-D24`, `#381`).** `$ACTOR` is what `derive` and `decide` run as.
+   In **user mode** `gh api user` answers and `$ACTOR` is that login. An installation token is
+   refused `GET /user` (`reference/conventions.md` § *Acting identity and reach*), so the `else`
+   branch applies that section's probe (run with `GH_HOST` and `GH_ENTERPRISE_TOKEN` unset, as
+   there; the block does it with `env -u`) and, only when the token `reached` `{repo}`, runs in **App mode**: `$ACTOR` is the declared
+   `identities.dev_app.login` from the **default branch's** copy (`$DEF_YML`, never the working
+   tree's), validated as a map with a positive integer `id` and a string `login`, then confirmed as
+   `dev_app` by `gh-identity.sh role` (a duplicate id or a login/id mismatch refuses) — anything else, a
+   `null` `dev_app` or `identities`, an absent key, or a malformed entry, is `-`, and
+   `review-step.sh login app` then exits 2: **nothing derives**, never a fall-back to a guessed
+   or user login. A token that is not `reached` stops the chain at the probe: report `failed link`
+   plus that section's `could not establish the actor` line. Which App holds the token is not
+   established (that section's *Name the mode* step), so `decide` is passed `mode=$MODE` and **App
+   mode never reaches `auto`**: a would-be `auto` reads `show <M> app-mode` and waits for the human's
+   "go". The loop-identity guard compares the *declared* dev App with `$LOOPID`, so in App mode it
+   does not see a loop-App token; the `auto` cap is what covers that.
    Any failed link, `derive` exiting 2, or `decide` exiting 2 (an empty `$ARCH` or `$NA`, a value
    outside its vocabulary), derives **nothing and auto-starts nothing**: report *which* link
    failed (an unreachable identity and a mismatched `origin` are different reports), never
@@ -449,8 +472,8 @@ edited it. **Default to the full checklist whenever unsure.**
    could name the work branch itself. Neither is a failed link: `-` for either simply makes
    `decide` say `checkout`.
    `$LOOPID` is `orchestration.loop_identity` from that same copy, `-` when it (or the whole
-   `orchestration` block) is `null`: `decide` derives nothing when `$LOGIN` equals it (the loop-identity
-   guard, `WB-D22`), so a session running as the loop's own identity never derives a review step. A failed
+   `orchestration` block) is `null`: `decide` derives nothing when `$ACTOR` equals it (the loop-identity
+   guard, `WB-D22`), so a user-mode session running as the loop's own identity never derives a review step. A failed
    read of that copy is a failed link like any other, never an empty `$LOOPID`: like the gate, an
    **absent** `orchestration` block or `loop_identity` key, a non-map block, or a value that is neither
    `null` nor a non-empty string (a literal `-`, the null sentinel, included) is a failed link (`[ -n "$LOOPID" ]`), never read as `null`. `decide`
@@ -487,7 +510,7 @@ edited it. **Default to the full checklist whenever unsure.**
      "sr_number=$SRN" "sr_head=$SRH" "next_action=$NA" "task_issue=$N" "backlog_repo=${BREPO:--}" \
      "repo=$R" "head=$(git rev-parse HEAD)" "branch=$(git branch --show-current | grep . || echo -)" "base=$BASE" "base_head=$BHEAD" \
      "last_commit=${LCO:--}" "tree=$TREE" "model=$MODEL" "architect=$ARCH" "fresh=$FRESH" \
-     "login=$LOGIN" "loop_identity=$LOOPID"
+     "login=$ACTOR" "loop_identity=$LOOPID" "mode=$MODE"
    ```
    `$STATE` is `present` when `.ai/state.json` parsed, else `absent` (then `-` for `$SRN`, `$SRH`,
    `$NA`, `$MODEL`, and `-` for `$LCO`). `$LCO` is `last_commit` resolved to a full oid, `-` when it
@@ -505,7 +528,7 @@ edited it. **Default to the full checklist whenever unsure.**
 
    **Policy, by its one-line verdict** (`appendices/review-step-notes.md` glosses `show`, a stale
    `review_pr`, and loop PRs):
-   - **`none`** — say nothing (this is also the verdict when `$LOGIN` is the loop identity), except check a `state.json` `review_pr` that names a PR
+   - **`none`** — say nothing (this is also the verdict when `$ACTOR` is the loop identity), except check a `state.json` `review_pr` that names a PR
      (`appendices/review-step-notes.md`, which this case does load): a `review_pr` naming a `MERGED` or
      `CLOSED` PR means the cursor is stale — report which, and **wait**.
    - **`unreadable`** — report it; nothing is derived, nothing starts.

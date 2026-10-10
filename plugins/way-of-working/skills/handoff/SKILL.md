@@ -230,18 +230,39 @@ github_milestones` — `{backlog.repo}`.
    has its own rule):
 
    1. **The PR is the one resume will derive.** On a clean tree (`git status --short` prints
-      nothing), with this session's login from a fresh `gh api user --jq .login`:
+      nothing), with this session's acting login (user mode: `gh api user`; App mode: the declared `dev_app`, below):
       ```bash
-      T=$(mktemp -d) && LOGIN=$(gh api user --jq .login) &&
+      T=$(mktemp -d) &&
+      if LOGIN=$(gh api user --jq .login); then MODE=user DEVAPP=-
+      else MODE=app LOGIN=- &&
+        env -u GH_HOST -u GH_ENTERPRISE_TOKEN gh api --hostname github.com --paginate installation/repositories \
+          --jq '.repositories[].full_name' >"$T/repos.txt" &&
+        [ "$(gh-identity.sh reach {repo} <"$T/repos.txt")" = reached ] &&
+        TOPLEVEL=$(git rev-parse --show-toplevel) && U=$(git -C "$TOPLEVEL" remote get-url origin) &&
+        R=$(gh repo view "$U" --json nameWithOwner --jq .nameWithOwner) && [ "$R" = "{repo}" ] &&
+        D=$(gh repo view "$U" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') && [ -n "$D" ] &&
+        git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
+        git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml" >"$T/def.yml" &&
+        SEL='explode(.) | .identities | select(tag == "!!map") | .dev_app | select(tag == "!!map" and ((.id | tag) == "!!int") and .id > 0 and ((.login | tag) == "!!str"))' &&
+        DEVAPP=$(yq -r "$SEL | .login" "$T/def.yml") && DEVID=$(yq -r "$SEL | .id" "$T/def.yml") &&
+        if [ -z "$DEVAPP" ]; then DEVAPP=-
+        else [ "$(gh-identity.sh role "$DEVAPP" "$DEVID" "$T/def.yml")" = dev_app ]; fi
+      fi &&
+      ACTOR=$(review-step.sh login "$MODE" "$LOGIN" "$DEVAPP") &&
       gh pr list --repo {repo} --state open --limit 200 \
         --json number,state,isCrossRepository,author,headRefOid,title,body \
         --jq '.[] | [.number, .state, .isCrossRepository, .author.login, .headRefOid, .title, .body] | @tsv' \
         >"$T/prs.tsv" &&
-      review-step.sh derive "$LOGIN" {repo} <{backlog.repo}, or - when null> <N> 200 <"$T/prs.tsv"
+      review-step.sh derive "$ACTOR" {repo} <{backlog.repo}, or - when null> <N> 200 <"$T/prs.tsv"
       ```
-      (Under an installation token `gh api user` is refused, the chain stops at its `LOGIN` read,
-      and this is a failed link like any other: the ledger PR opens, and you say so.
-      `<N>` is the anchored task issue; the block makes its own `$T`; the `&&` chain is load-bearing —
+      (This is `/way-of-working:resume`'s *acting login, by mode* rule, `WB-D24`, `#381`: in user
+      mode `gh api user` names the login; an installation token is refused that call, so the `else`
+      branch probes it as `reference/conventions.md` § *Acting identity and reach* does, with
+      `GH_HOST` and `GH_ENTERPRISE_TOKEN` unset, and runs in App mode as the `identities.dev_app.login`
+      the **default branch's** `.ai/project.yml` declares, validated as a map with a positive integer
+      `id` and a string `login` and confirmed by `gh-identity.sh role` (`origin` must be `{repo}`, as in resume). A `null`, absent or malformed `dev_app`, or a token that does not
+      reach `{repo}`, fails the chain, and this is a failed link like any other: the ledger PR
+      opens, and you say so. `<N>` is the anchored task issue; the block makes its own `$T`; the `&&` chain is load-bearing —
       a failed `gh` call must never reach the predicate, since a missing document reads as
       `none`). Require exactly `one <M> <oid>` **and** `<oid>` equal to this checkout's own
       `git rev-parse HEAD` (taken here, on the work branch, before link 5's switch). `none`,
