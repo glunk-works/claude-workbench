@@ -12,13 +12,11 @@
 #       FILE for --network   `docker network inspect <the internal network>`
 #       FILE for --proxy     `docker inspect <a proxy container>`; repeatable, at least one
 #
-#   preflight.sh github-dispatch --rules FILE --rulesets FILE --app-id N --identities FILE \
+#   preflight.sh github-dispatch --rules FILE --identities FILE \
 #       --issue FILE --issue-number N (--spec-comment FILE --spec-comment-id N | --no-spec-comment)
-#       Run at dispatch, with the maintainer's read-only view.
-#       FILE for --rules     `GET /repos/R/rules/branches/{pr_base}` (the rules that apply, each
-#                            carrying its ruleset_id)
-#       FILE for --rulesets  a JSON array of `GET /repos/R/rulesets/{id}` for every ruleset id
-#                            in --rules (the list endpoint does not carry bypass_actors)
+#       Run at dispatch, with the maintainer's view (a pre-cutover author check reads
+#       author_association, which is viewer-relative; the rules read needs no admin).
+#       FILE for --rules     `GET /repos/R/rules/branches/{pr_base}` (the rules that apply)
 #       --issue/--spec-comment  the task issue and the anchored spec comment, as fetched
 #       FILE for --identities  the `identities` value of .ai/project.yml on the DEFAULT branch,
 #                            as one JSON document: null before the repo cuts over, a map
@@ -33,7 +31,10 @@
 #       --app FILE --loop-identity LOGIN
 #       Run after the token is minted, with the token's own view.
 #       FILE for --installation  `GET /installation/repositories`
-#       FILE for --rulesets      as above, fetched with the minted token (that is what makes
+#       FILE for --rules         `GET /repos/R/rules/branches/{pr_base}`, fetched with the minted
+#                                token; each rule must carry its ruleset_id
+#       FILE for --rulesets      a JSON array of `GET /repos/R/rulesets/{id}` for every ruleset id
+#                                in --rules, fetched with the minted token (that is what makes
 #                                current_user_can_bypass describe the App)
 #       FILE for --app           `GET /app` (the slug; the bot login is slug + "[bot]")
 #       --loop-identity          orchestration.loop_identity; "-" for null, which refuses
@@ -57,11 +58,14 @@
 #                   --proxy is running and attached to it. A gateway address is never derived
 #                   from a subnet: an isolated network has none, and the subnet's .1 belongs to
 #                   a container.
-#   update-rule     the rules on pr_base include one of type `update` (decision 9).
-#   bypass          no applicable ruleset lists the App (actor_type Integration, actor_id
-#                   --app-id) in bypass_actors; a null bypass_actors (the view hides it) is
-#                   unreadable. Applicable means its id appears in --rules; a missing ruleset
-#                   document, or one supplied twice, is unreadable.
+#   approval-rule   the rules on pr_base include the approval gate (WB-D24, replacing decision 9's
+#                   `update` rule): across the `pull_request` rules that apply, at least one
+#                   has required_approving_review_count >= 1, at least one has
+#                   require_code_owner_review true and at least one has
+#                   require_last_push_approval true (GitHub combines overlapping rulesets by
+#                   taking the strictest of each). Having no `pull_request` rule is refused; a rule
+#                   whose parameters lack one of the three fields, or hold the wrong type for
+#                   it, is unreadable. An `update` rule is neither required nor enough.
 #   author          the task issue is --issue-number (and not a pull request), and its author,
 #                   and the spec comment's (id --spec-comment-id, issue_url ending
 #                   /issues/<number>), are trusted. With --identities null that is
@@ -78,7 +82,11 @@
 #   installation    /installation/repositories lists exactly --repo (case-folded) and its
 #                   total_count equals the list it shows.
 #   can-bypass      at least one ruleset applies to pr_base and every one reads
-#                   current_user_can_bypass: never.
+#                   current_user_can_bypass: never. This is the only bypass read: it is the App's
+#                   own view, so it needs no admin (bypass_actors is hidden from a non-admin).
+#                   UNMEASURED: the field read `never` for an App that is not a bypass actor
+#                   (GITHUB-APP-EVALUATION.md T2d); it has not been observed for an App that is
+#                   one, so that it then reads something other than `never` is an assumption.
 #   identity        the App's slug + "[bot]" equals --loop-identity, case-folded.
 #
 # The driver's captures: a paginated read must be one complete document. `gh api --paginate`
@@ -90,12 +98,16 @@
 # minted token.
 #
 # Not checked here: a non-root name that /etc/passwd or /etc/group maps to id 0 inside the image
-# (inspect cannot show it); that the update rule comes from the ruleset orchestration.restrict_updates
-# names (the task asks only that the rule is present); bypass actors that are not the App
-# itself (a team or role the App is a member of) -- the can-bypass read at push time covers
-# those; a named volume backed by a host path (`--opt o=bind`, which needs `docker volume
-# inspect`); how many containers sit on the network, and that the credential is absent from
-# `docker inspect` (launch.sh checks both and is not moved onto this script).
+# (inspect cannot show it); which ruleset the approval rule comes from (the task asks only that
+# the rules on pr_base carry it); that stale approvals are dismissed (dismiss_stale_reviews_on_push:
+# #388 names count, code owner and last push only; adding it is a small, local change); that CODEOWNERS
+# on pr_base exists and covers the changed paths (require_code_owner_review does nothing without it,
+# leaving only the approval count); that every rule /rules/branches returns is from an active ruleset
+# (it carries no enforcement field; the docs say evaluate- or disabled-mode rulesets are not returned); that the
+# approval rule also holds on the push-time --rules capture; a named volume backed by a host path
+# (`--opt o=bind`, which needs `docker volume inspect`); how many containers sit on the network, and
+# that the credential is absent from `docker inspect` (launch.sh checks both and is not moved onto
+# this script).
 set -euo pipefail
 
 die() { echo "preflight.sh: $*" >&2; exit 2; }
@@ -245,20 +257,21 @@ case "$mode" in
     ;;
 
   github-dispatch)
-    need rules rulesets app_id issue issue_no identf
-    digits app-id "$app_id"; digits issue-number "$issue_no"
+    need rules issue issue_no identf
+    [ -z "$rulesets" ] && [ -z "$app_id" ] || die "github-dispatch takes no --rulesets or --app-id (the bypass read is github-push's, with the App's own token)"
+    digits issue-number "$issue_no"
     if [ -n "$no_comment" ]; then
       [ -z "$comment" ] && [ -z "$comment_id" ] || die "--no-spec-comment excludes --spec-comment and --spec-comment-id"
     else
       need comment comment_id
       digits spec-comment-id "$comment_id"
     fi
-    files=("$rules" "$rulesets" "$issue" "$identf"); [ -z "$comment" ] || files+=("$comment")
+    files=("$rules" "$issue" "$identf"); [ -z "$comment" ] || files+=("$comment")
     check_files "${files[@]}"
     [ -z "$unreadable_files" ] || report "${unreadable_files%$'\n'}"
     cf=${comment:-/dev/null}
-    out=$(jq -n -r --slurpfile r "$rules" --slurpfile rs "$rulesets" --slurpfile i "$issue" --slurpfile ids "$identf" \
-      --argjson app "$app_id" --argjson inum "$issue_no" --arg haveC "${comment:+1}" --argjson cid "${comment_id:-0}" \
+    out=$(jq -n -r --slurpfile r "$rules" --slurpfile i "$issue" --slurpfile ids "$identf" \
+      --argjson inum "$issue_no" --arg haveC "${comment:+1}" --argjson cid "${comment_id:-0}" \
       --slurpfile c "$cf" '
       def trusted: . == "OWNER" or . == "MEMBER" or . == "COLLABORATOR";
       ($ids[0]) as $ID |
@@ -283,24 +296,23 @@ case "$mode" in
           elif $hit[0].role != "maintainer" then "R \(rule): \(what) author \(o.user.login) is the declared \($hit[0].role), not a maintainer"
           else empty end
         end;
-      ($r[0]) as $R | ($rs[0]) as $RS | ($i[0]) as $I | ($c[0]) as $c |
-      if ($R | type) != "array" or ([$R[] | select(type != "object" or (.ruleset_id | type) != "number")] | length) > 0
-        then "U update-rule: rules are not a list of rule objects carrying ruleset_id"
-      elif ($RS | type) != "array" or ([$RS[] | select(type != "object")] | length) > 0
-        then "U bypass: rulesets are not a list of ruleset objects"
+      ($r[0]) as $R | ($i[0]) as $I | ($c[0]) as $c |
+      if ($R | type) != "array" or any($R[]; type != "object")
+        then "U approval-rule: rules are not a list of rule objects"
       elif ($I | type) != "object" then "U author: issue is not an object"
       else
-        ([$R[].ruleset_id] | unique) as $ids |
-        ( if any($R[]; .type == "update") then empty else "R update-rule: no `update` rule applies to pr_base" end ),
-        ( $ids[] as $id |
-          [$RS[] | select(.id == $id)] as $m |
-          if ($m | length) == 0 then "U bypass: ruleset \($id) applies to pr_base but its document was not supplied"
-          elif ($m | length) > 1 then "U bypass: ruleset \($id) was supplied \($m | length) times"
-          elif ($m[0].bypass_actors | type) != "array" then "U bypass: ruleset \($id) bypass_actors is not visible to this view"
-          elif any($m[0].bypass_actors[]; type != "object") then "U bypass: ruleset \($id) has a bypass actor that is not an object"
-          elif any($m[0].bypass_actors[]; (.actor_type // "") == "Integration" and ((.actor_id // null) | type) != "number") then "U bypass: ruleset \($id) has an Integration actor with no numeric actor_id"
-          elif any($m[0].bypass_actors[]; (.actor_type // "") == "Integration" and .actor_id == $app) then "R bypass: the App is a bypass actor of ruleset \($id)"
-          else empty end ),
+        ([$R[] | select(.type == "pull_request")]) as $P |
+        ( if ($P | length) == 0 then "R approval-rule: no `pull_request` rule applies to pr_base"
+          elif any($P[]; (.parameters | type) != "object"
+                         or (.parameters.required_approving_review_count | type) != "number"
+                         or (.parameters.require_code_owner_review | type) != "boolean"
+                         or (.parameters.require_last_push_approval | type) != "boolean")
+            then "U approval-rule: a pull_request rule has no parameters, or one of the three approval fields is missing or the wrong type"
+          else
+            ( if any($P[]; .parameters.required_approving_review_count >= 1) then empty else "R approval-rule: required_approving_review_count is below 1" end ),
+            ( if any($P[]; .parameters.require_code_owner_review) then empty else "R approval-rule: require_code_owner_review is not set" end ),
+            ( if any($P[]; .parameters.require_last_push_approval) then empty else "R approval-rule: require_last_push_approval is not set" end )
+          end ),
         ( if ($I.number // null) != $inum then "U author: issue number is not \($inum)"
           elif ($I | has("pull_request")) then "U author: #\($inum) is a pull request, not an issue"
           else empty end ),

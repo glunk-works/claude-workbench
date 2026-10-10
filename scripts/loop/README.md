@@ -137,7 +137,7 @@ to exercise them. Tests: `sh tests/driver-core.test.sh`.
 
 ```
 bash scripts/loop/preflight.sh container --session F --network F --expect-network NAME --proxy F...
-bash scripts/loop/preflight.sh github-dispatch --rules F --rulesets F --app-id N --identities F --issue F --issue-number N \
+bash scripts/loop/preflight.sh github-dispatch --rules F --identities F --issue F --issue-number N \
   (--spec-comment F --spec-comment-id N | --no-spec-comment)
 bash scripts/loop/preflight.sh github-push --installation F --repo OWNER/NAME --rules F --rulesets F \
   --app F --loop-identity LOGIN
@@ -146,16 +146,19 @@ bash scripts/loop/preflight.sh github-push --installation F --repo OWNER/NAME --
 Plan v9 § 7.3's preflight and decision 9, as pure functions over captured JSON: the driver runs
 `docker inspect`, `docker network inspect` and the `gh api` reads, writes each to a file, and this
 script only judges them (the header lists the endpoint behind each file). `container` checks the
-session, its network and the proxies; `github-dispatch` runs at dispatch with the maintainer's view
-(the `update` rule is on `pr_base`, the App is no applicable ruleset's bypass actor, the task issue and
-spec comment authors are trusted: by `identities` once the repo has cut over, by `author_association` before); `github-push` runs once the token exists (it reaches exactly the
-dispatched repo, every ruleset on `pr_base` reads `current_user_can_bypass: never`, the App's bot login
+session, its network and the proxies; `github-dispatch` runs at dispatch with the maintainer's view (the rules read needs no admin; a pre-cutover `author_association` is viewer-relative; the
+approval gate is on `pr_base` -- a `pull_request` rule with `required_approving_review_count >= 1`,
+`require_code_owner_review` and `require_last_push_approval`, each satisfied by some rule that applies, as
+GitHub takes the strictest of overlapping rulesets; an `update` rule is neither required nor enough
+(`WB-D24`) -- and the task issue and spec comment authors are trusted: by `identities` once the repo has
+cut over, by `author_association` before); `github-push` runs once the token exists (it reaches exactly the
+dispatched repo, every ruleset on `pr_base` reads `current_user_can_bypass: never` -- the App's own view,
+the only bypass read, since `bypass_actors` is hidden from a non-admin -- the App's bot login
 is `orchestration.loop_identity`). stdout is `pass` (exit 0) or one `refused <rule>: <detail>` /
 `unreadable <rule>: <detail>` line per finding (exit 3); a missing field, a file that does not parse or a
 truncated list is `unreadable`, never a pass. No gateway address is ever derived from a subnet. The
 session may hold only named volumes and tmpfs (any bind is refused), no added capabilities, and one
-network. Not checked: that the `update` rule belongs to the ruleset `orchestration.restrict_updates`
-names; a named volume backed by a host path (needs `docker volume inspect`); how many containers sit on
+network. Not checked: which ruleset the approval rule comes from; that stale approvals are dismissed; that CODEOWNERS on `pr_base` exists and covers the changed paths; that the rules come only from active rulesets; a named volume backed by a host path (needs `docker volume inspect`); how many containers sit on
 the network and the credential-not-in-inspect grep (`launch.sh` still does both). A paginated `gh api`
 capture must be one complete document (the header says how). The live run against the real App is M2b. Tests: `sh tests/loop-preflight.test.sh`.
 

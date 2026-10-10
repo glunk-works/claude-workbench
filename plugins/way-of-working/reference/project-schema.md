@@ -692,13 +692,12 @@ when it is a map, so a `null` repo is asked nothing more.
   the name of the **separate** ruleset that restricts updates of
   `{pr_base}` to its bypass actor (plan § 8.5 option (a): the repository admin role only, never
   the loop's identity), which is what makes "the loop cannot merge" a property of the
-  repository and not a promise. The driver's preflight checks that the base has an `update` rule and refuses to
-  dispatch if it is missing or the App can bypass it. When non-null, a non-empty string, never starting with `-`
+  repository and not a promise. The driver's preflight does not read this name and, since `#388`, no longer requires an
+  `update` rule: it requires the approval gate on the base instead, whatever this key says
+  (`scripts/loop/preflight.sh github-dispatch`, rule `approval-rule`). When non-null, a non-empty string, never starting with `-`
   and carrying no quote or backslash (spaces are fine). `null` is a complete answer and records
-  only that no such ruleset is named. It is **not** "the loop needs no restriction": the driver's
-  preflight (`scripts/loop/preflight.sh`) does not read this name today, it requires an `update`
-  rule on the base, so `null` changes nothing there until a later `WB-D24` task replaces that
-  check with the approval-ruleset one. A repo that has
+  only that no such ruleset is named. It is **not** "the loop needs no restriction": the loop
+  still needs the approval gate, which the preflight checks on the base itself. A repo that has
   no restricting ruleset and no cutover still answers `orchestration: null` rather than naming
   a ruleset that does not restrict anything. A reader binds it as a value
   (`jq --arg`, as `ruleset.name` is), never splices it. The ruleset itself is the maintainer's
@@ -904,7 +903,7 @@ orchestration:
   critics: [architect, security-critic, docs-consistency]
   round_cap: 2
   human_only_paths: [.github/, .ai/, CLAUDE.md]
-  restrict_updates: null          # cut over; preflight still wants an update rule until a later WB-D24 task
+  restrict_updates: null          # cut over; nothing to name
   loop_identity: "loop-orchestrator-loop[bot]"
 
 identities:
