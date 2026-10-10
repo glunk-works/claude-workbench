@@ -139,34 +139,67 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
      not exist before it starts or after it is committed or aborted. For a merge already
      committed, the incoming side is `HEAD^2`.
    - **Push-reach preflight, before any commit:**
-     ```bash
-     gh api repos/{repo} --jq .permissions.push   # substitute {repo}'s real owner/name —
-                                                   # gh expands {repo} itself, and a literal
-                                                   # brace produces an indistinguishable 404
-     ```
-     - Errors (repo unreachable / wrong identity entirely) → stop, before committing
-       anything, and tell the human, naming the actor as `reference/conventions.md` §
-       *Acting identity and reach* does (a bare `gh api user` is refused to an installation
-       token). If
-       `{repo}` was left unsubstituted, the error is this same 404 — check that first,
-       since it means "not run correctly" rather than "no access."
-     - Returns `false` → stop the same way — this identity can see the repo but cannot
-       push to it. An installation token reads `false` **even where the App can write**
-       (`reference/conventions.md` § *Acting identity and reach*), and write reach is not
-       provable in App mode: when the actor is an installation token, the stop says
-       `App-mode push preflight is not yet supported`, not "no access". Never clear it on
-       that section's `reached` probe.
-     - Only `true` clears this check. (Don't "fix" a 404 by widening the call to
-       `repos/{owner}/{repo}` — `gh` resolves those from the local git remote, not from
-       `.ai/project.yml`'s `repo`, so on a fork or a mismatched remote it silently
-       preflights the wrong repo.)
+     **Name the actor first** (`reference/conventions.md` § *Acting identity and reach*): `gh api
+     user --jq .login`. The mode is decided here, never by what `.permissions.push` reads.
+     - **It succeeds (user mode):**
+       ```bash
+       gh api repos/{repo} --jq .permissions.push   # substitute {repo}'s real owner/name —
+                                                     # gh expands {repo} itself, and a literal
+                                                     # brace produces an indistinguishable 404
+       ```
+       - Errors (repo unreachable / wrong identity entirely) → stop, before committing
+         anything, and tell the human, naming the actor. If `{repo}` was left unsubstituted,
+         the error is this same 404 — check that first, since it means "not run correctly"
+         rather than "no access."
+       - Returns `false` → stop the same way — this identity can see the repo but cannot push
+         to it.
+       - **Only** `true` clears this check. (Don't "fix" a 404 by widening the call to
+         `repos/{owner}/{repo}` — `gh` resolves those from the local git remote, not from
+         `.ai/project.yml`'s `repo`, so on a fork or a mismatched remote it silently
+         preflights the wrong repo.)
 
-     This only verifies **`gh`'s** identity — `git push` can still resolve a different,
-     write-less account through its own credential helper and fail later regardless of a
-     healthy result here (see `reference/conventions.md` § *Push identity*). If the
-     *Push the branch* step's push 403s despite this check passing, that mismatch is the first thing to check —
-     use the workaround documented there — though a 403 can also mean SSO authorization,
-     an IP allow-list, or a credential that expired between this check and the push.
+       This only verifies **`gh`'s** identity — `git push` can still resolve a different,
+       write-less account through its own credential helper and fail later regardless of a
+       healthy result here (see `reference/conventions.md` § *Push identity*). If the
+       *Push the branch* step's push 403s despite this check passing, that mismatch is the first thing to check —
+       use the workaround documented there — though a 403 can also mean SSO authorization,
+       an IP allow-list, or a credential that expired between this check and the push.
+     - **It fails (refused to an installation token, or any other failure):** run that
+       section's installation probe. Anything but `reached` → stop: `could not establish the
+       actor`; never clear on a guessed identity. `reached` is **App mode** (`#464`), and
+       `.permissions.push` is not read — it is all `false` for an App even where it can write.
+       Before any commit, in order, each a stop that writes nothing:
+       1. **`origin` is `{repo}`, over HTTPS, for fetch and push alike.** Both `git remote
+          get-url --all origin` and `git remote get-url --push --all origin` must each print
+          exactly one line, starting with `https://github.com/`, and each line must resolve to
+          `{repo}`: `R=$(gh repo view "$U" --json nameWithOwner --jq .nameWithOwner) && [ "$R"
+          = "{repo}" ]` with `$U` set to each in turn. The push URL is checked separately
+          because `pushurl` and `pushInsteadOf` can send a push somewhere the fetch URL does
+          not name, `--all` because git pushes to every configured push URL, and over SSH no
+          credential helper is consulted at all, so the pin below would pin nothing. The
+          probes, the push and the actor check must all be about the same repository.
+       2. **A dev App is declared.** Read the **default branch's** committed `.ai/project.yml`
+          (the same read the *Open the PR* step's recipe makes; each step reads its own copy)
+          and require `yq -r '.identities.dev_app | tag'` to print `!!map`. A `null`, absent
+          or non-map `dev_app` means the actor check below could only ever fail: stop now,
+          before a branch is pushed. (A map with a bad shape inside still reads `mismatch`
+          later.)
+       3. **Pin `git` to `gh`'s token for every push this skill makes**, using the workaround
+          in `reference/conventions.md` § *Push identity* (`git -c credential.helper= -c
+          credential.helper='!gh auth git-credential' …`), so a host-configured helper cannot
+          push as another account, a human's included. Add `-c http.extraHeader=` too: a
+          persisted `Authorization` header would otherwise supply credentials and the helper
+          would never be asked. Then probe write reach, creating nothing:
+          ```bash
+          git -c credential.helper= -c credential.helper='!gh auth git-credential' \
+              -c http.extraHeader= \
+              push --dry-run origin <branch>      # the work branch
+          ```
+          A refusal (non-zero, e.g. `403 Write access to repository not granted`) stops ship.
+          A pass says the token `gh` holds can write; it does not say *which* App that is. The
+          *Open the PR* step's actor check does, and it can only run after the branch push,
+          so that push is the one write made before the dev App is proven — by the token
+          `gh` holds over HTTPS, not by whatever account `git`'s own helper stores.
 
 2. **Review the diff, then compose the commit.** `git status --short` + `git diff --staged`
    (stage with `git add` as needed). Write the message per `reference/conventions.md`
@@ -181,7 +214,9 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    - If commits are signed, a signing *timeout* usually means the host pinentry is waiting
      for input — answer it and re-run the commit; it is not a commit failure.
 
-3. **Push the branch** (`git push -u origin <branch>`). Push freely to the work branch,
+3. **Push the branch** (`git push -u origin <branch>`; in App mode `git -c credential.helper=
+   -c credential.helper='!gh auth git-credential' -c http.extraHeader= push -u origin <branch>`,
+   the pin from the preflight). Push freely to the work branch,
    **never to `{pr_base}`**. Once asked to push in a session, keep pushing later commits
    without re-confirming — but always to the branch.
 
@@ -198,7 +233,9 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    and re-check.
 
 5. **Open the PR against `{pr_base}`.**
-   `gh pr create --base {pr_base} --title "$TITLE" --body "…"`. Body: a `## What` / `## Why`
+   `gh pr create --repo {repo} --base {pr_base} --head <branch> --title "$TITLE" --body "…"`
+   (`--repo` and `--head` name the destination; `gh` would otherwise pick the repo from ambient
+   state, and the App-mode actor check below reads the PR from `{repo}`). Body: a `## What` / `## Why`
    summary, and the scope (which boundary changed). If `{review.ci_gate}` is set and this
    diff touches none of `{code_paths}`, note that the review gate is exempt for this PR.
 
@@ -223,6 +260,37 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    someone's memory has already failed for the next reader. If a criterion gates this change
    and you cannot confirm it was met, **say so in the PR body and tell the human** rather
    than opening quietly; that is a question for them, not a blocker this skill resolves.
+
+   **App mode only: prove the dev App opened it, before anything else is written.** The
+   *Push-reach preflight* showed the token `gh` holds can write, not which App it is, and the
+   branch push already happened. This is the first check of identity: the PR is the first
+   write that returns an actor. Immediately after `gh pr create` returns the PR number `<N>`,
+   read the PR's `user` and test it against the declared `identities.dev_app` from the
+   **default branch's** committed `.ai/project.yml` (never the working tree's: a PR under
+   review can edit it — the same read `/way-of-working:resume`'s *Derive the review step from
+   GitHub* step makes, `origin` confirmed to be `{repo}` first). It proves the token `gh` holds
+   is the dev App; the pinned credential in the preflight is what ties the push to that token.
+   Capture first, chain with `&&`, and end on the comparison so the chain's status is the verdict:
+   ```bash
+   TOPLEVEL=$(git rev-parse --show-toplevel) &&
+   U=$(git -C "$TOPLEVEL" remote get-url origin) &&
+   R=$(gh repo view "$U" --json nameWithOwner --jq .nameWithOwner) && [ "$R" = "{repo}" ] &&
+   D=$(gh repo view "$U" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') &&
+   [ -n "$D" ] &&
+   git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
+   DEF_YML_FILE=$(mktemp) &&
+   git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml" >"$DEF_YML_FILE" &&
+   LU=$(gh api repos/{repo}/pulls/<N> --jq '[.user.login, .user.id] | @tsv') &&
+   LOGIN=$(printf '%s' "$LU" | cut -f1) && ID=$(printf '%s' "$LU" | cut -f2) &&
+   A=$(gh-identity.sh pr-actor "$LOGIN" "$ID" "$DEF_YML_FILE") && [ "$A" = match ]
+   rc=$?; rm -f "$DEF_YML_FILE"; [ "$rc" -eq 0 ]
+   ```
+   Only a zero status continues. Anything else — `mismatch`, exit 2, a failed `gh` call —
+   **stops loudly and touches nothing further**: report the PR number, the actual author (or
+   that it could not be read) and the expected `identities.dev_app` (or that it is `null`),
+   and say the PR must not be merged and that its branch was pushed. No close, comment, label,
+   draft conversion or body edit — each is another write by the possibly-wrong identity; the
+   human decides. The remaining steps below do not run.
 
 6. **Label on the three axes** if labels are being used: type (`bug`/`feature`/`docs`/
    `chore`), `area/*` (mirrors the scope), `status/*` — see `reference/conventions.md`

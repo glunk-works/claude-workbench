@@ -824,6 +824,12 @@ matches it against that declared entry through `gh-identity.sh role`; the actor 
 response obtained with the token (measured in `#380`: the `user` of an issue or PR it created, so only after a first write). Nothing yet acts as `reviewer_app` or
 `loop_app`, which is the same stated, temporary state as `orchestration`'s.
 
+**`ship` reads `dev_app` in App mode** (`#464`). Before pushing it requires the default branch's
+copy to declare a `dev_app` map; after `gh pr create` it passes the PR's `user` login and id to
+`gh-identity.sh pr-actor`, which prints `match` only for the declared `dev_app` and `mismatch` for
+any other account it can read (a `null` `dev_app` included), and exits 2 when it cannot say.
+Anything but `match` stops ship.
+
 **The review-step derivation reads `dev_app` too** (`#381`). Under an installation token, where
 `gh api user` is refused, `/way-of-working:resume` and `/way-of-working:handoff` read `dev_app`
 from the default branch's copy, confirm it with `gh-identity.sh role`, and pass its login to

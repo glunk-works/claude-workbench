@@ -133,14 +133,16 @@ report itself into a second failure, and an all-`false` `.permissions` is not "n
    `gh api repos/{repo} --jq .permissions` is the user-token probe. When it reads all `false`,
    run the *Name the actor* probe: `reached` is **read** reach only (the repo is listed for the installation;
    not that Issues, rulesets or contents are readable, and not that it may write). A read that
-   follows is chained with `&&`, and a 403 there is a stop, never an empty result. **Write reach
-   is not provable in App mode** by anything wired into a skill: a step that needs it (`ship`'s
-   *Push-reach preflight*) does not clear on `reached`, and stops saying App-mode is not yet
-   supported for that step. A write probe exists and is measured (`git push --dry-run` of the
-   work branch, creating nothing: passes with a `contents: write` token, `403 Write access to
-   repository not granted` with `contents: read`), but it tests the credential `git` holds, not
-   which App it is, so by itself it would pass a reviewer-style or loop App with write. It is
-   not wired in until the dev App can be proven (*Name the mode*, above).
+   follows is chained with `&&`, and a 403 there is a stop, never an empty result. **`reached`
+   never proves write reach.** The write probe is `git push --dry-run` of the work branch,
+   creating nothing (measured: passes with a `contents: write` token, `403 Write access to
+   repository not granted` with `contents: read`). It tests the credential `git` holds, not
+   which App it is, so by itself it would pass any credential with write: a reviewer-style or
+   loop App, or a human's stored login. `ship`'s *Push-reach preflight* therefore runs it in App
+   mode with `git` pinned to `gh`'s token (see *Push identity*), and pairs it with a check after
+   the first write that returns an actor (`#464`; the branch push precedes it): the opened PR's
+   `user` must be the declared `identities.dev_app` (`gh-identity.sh pr-actor`), else ship
+   stops and touches nothing further.
 
 Every consumer of this procedure fails closed: a step that cannot be completed is a stop or the
 skill's own safe fallback (handoff opens the ledger PR), and its report names which step failed.

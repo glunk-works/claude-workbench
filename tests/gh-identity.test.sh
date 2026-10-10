@@ -134,6 +134,42 @@ else
   run role alice-dev abc "$tmp/full.yml"
   expect "role: bad id" "" 2
 
+  # pr-actor: did the declared dev App open the PR? (#464) Only `match` clears.
+  run pr-actor 'acme-dev[bot]' 2001 "$tmp/full.yml"
+  expect "pr-actor: the dev App" match 0
+  run pr-actor 'ACME-DEV[bot]' 2001 "$tmp/full.yml"
+  expect "pr-actor: the dev App, login case folded" match 0
+  run pr-actor 'acme-review[bot]' 2002 "$tmp/full.yml"
+  expect "pr-actor: wrong App (reviewer)" mismatch 0
+  run pr-actor 'acme-loop[bot]' 2003 "$tmp/full.yml"
+  expect "pr-actor: wrong App (loop)" mismatch 0
+  run pr-actor alice-dev 1001 "$tmp/full.yml"
+  expect "pr-actor: a maintainer's user login" mismatch 0
+  run pr-actor stranger 9999 "$tmp/full.yml"
+  expect "pr-actor: an undeclared account" mismatch 0
+  run pr-actor 'acme-dev[bot]' 2999 "$tmp/full.yml"
+  expect "pr-actor: the dev App's login with an undeclared id" mismatch 0
+  run pr-actor 'acme-dev[bot]' 2002 "$tmp/full.yml"
+  expect "pr-actor: dev App login on another App's id will not be guessed" "" 2
+  run pr-actor 'acme-dev[bot]' 2001 "$tmp/noapps.yml"
+  expect "pr-actor: dev_app null" mismatch 0
+  run pr-actor 'acme-dev[bot]' 2001 "$tmp/null.yml"
+  expect "pr-actor: identities null (no dev App declared)" mismatch 0
+  run pr-actor 'acme-dev[bot]' 2001 "$tmp/bad.yml"
+  expect "pr-actor: malformed dev_app entry" mismatch 0
+  run pr-actor '' '' "$tmp/full.yml"
+  expect "pr-actor: unreadable response (no login, no id)" "" 2
+  run pr-actor 'acme-dev[bot]' '' "$tmp/full.yml"
+  expect "pr-actor: unreadable response (no id)" "" 2
+  run pr-actor 'null' 'null' "$tmp/full.yml"
+  expect "pr-actor: a jq null for login and id" "" 2
+  run pr-actor 'acme-dev[bot]' 2001 "$tmp/absent.yml"
+  expect "pr-actor: identities absent" "" 2
+  run pr-actor 'acme-dev[bot]' 2001 "$tmp/missing.yml"
+  expect "pr-actor: project file missing" "" 2
+  run pr-actor 'acme-dev[bot]' 2001
+  expect "pr-actor: too few arguments" "" 2
+
   # user mode
   run classify alice-dev 1001 "$tmp/full.yml"
   expect "maintainer, exact login" user 0
