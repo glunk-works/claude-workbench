@@ -1,15 +1,16 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 14** (cursor id `sprint-14`) on [milestone 17, *Identity M2: dual-mode plugin v0.18.0*](https://github.com/glunk-works/claude-workbench/milestone/17), anchored at `19b1f96`. Status: **planning** (task #464 needs a plan before it is built).
+**Now:** **Sprint 14** (cursor id `sprint-14`) on [milestone 17, *Identity M2: dual-mode plugin v0.18.0*](https://github.com/glunk-works/claude-workbench/milestone/17), anchored at `06656e9`. Status: **implementing**.
 
-**Just done (2026-10-09):**
-- Task #380 merged (PR #465, `19b1f96`) as **read-side only**: one procedure in `conventions.md` (*Acting identity and reach*) and resume, ship, handoff, archive-sprint, plan-sprint and retro now point at it. The PR says `Refs #380`, so **#380 is still open**: its "done when" (each skill runs on scratch under both tokens) was not met; the human decides whether to close or narrow it.
-- Measured under a dev-App token on the identity scratch repo (`docs/proposals/IDENTITY-SCRATCH-RESULTS.md`, session 6): `gh api user` 403; `.permissions` all `false`; `reached` is read reach only; `git push --dry-run` is a working write probe; an App's `{login, id}` is the `user` of a write response, so `classify` returns `app` only after a first write. The skills' command sequences were run by hand, not as interactive sessions.
-- Critic pass on #380: architect, security-critic and docs-consistency, 2 rounds, converged; all on their own default models, no second-opinion round (never offered). Round 1 caught a wrong premise (`.permissions` is all `false`, not `null`) and a weakened ship preflight. No fresh-session `architect-review` ran.
-- Filed #464 (unmilestoned) for the follow-up.
+**Just done (2026-10-10), planning #464 with the human, one question at a time:**
+- **Split with #381:** #381 now owns the whole App-mode review-step path, meaning the predicate plus resume's and handoff's `gh api user` call, which takes the identity from the declared `dev_app` and derives nothing when it is `null`. Recorded as a [scope comment on #381](https://github.com/glunk-works/claude-workbench/issues/381#issuecomment-6097114066), which is the anchored spec.
+- **#464 plan** ([comment](https://github.com/glunk-works/claude-workbench/issues/464#issuecomment-6097114231)) starts after #381. PR 1 changes ship's App-mode preflight: `git push --dry-run` before the push, then once the PR is opened its author must equal `identities.dev_app`. On a mismatch ship stops loudly and leaves the PR untouched. A critic round follows. PR 2 is the end-to-end runs: the human launches six interactive sessions under a dev-App token on scratch, with a run sheet per skill, and the results are recorded. #464 is now in milestone 17.
+- **#380 closed** on its read side; its remaining "done when" moved to #464. **Filed #467** in milestone 17 for `pr-checks`' BLOCKED diagnosis under an App token, which depends on #381.
+- **Milestone 17's build order edited** to add #464 and #467 after #381 and to relabel #380 and #381. Re-anchored on the edited description.
+- No code changed, so there was no critic pass.
 
-**Next:** plan #464 — the end-to-end skill runs under a dev-App token, and how ship's push preflight unblocks in App mode (a `git push --dry-run` check and/or accepting the actor after the first write and stopping if it is not the declared `dev_app`). Settle the split with #381 (review-step in App mode) first, since resume's derivation and handoff's no-op handoff also start with `gh api user`. Also decide whether #464 joins milestone 17 (v0.18.0 depends on #380) and whether `pr-checks`' bare `gh api user` belongs in it. Planning is a dialogue, one question at a time, on **opus** (architect); then the build goes to sonnet. A relaxed preflight needs a critic round.
+**Next:** task #381 — build the App-mode review-step path per the [spec comment](https://github.com/glunk-works/claude-workbench/issues/381#issuecomment-6097114066): `review-step.sh` matches the declared `identities.dev_app` under an App token (running login in user mode), and resume's derive chain and handoff's no-op handoff take the identity from `dev_app` instead of `gh api user`, deriving nothing when `dev_app` is `null`. Fixtures for both modes, then the green gate, `/way-of-working:critic-gate` and `/way-of-working:ship` with `Closes #381`. Build on **sonnet** (coder).
 
-**HITL Gate: NONE OPEN — the planning dialogue is the work; the human's merge of each task PR is the next gate.**
+**HITL Gate: NONE OPEN — the #464 plan was settled with the human this session; the next gate is the human's merge of the #381 PR.**
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) · [milestone 17](https://github.com/glunk-works/claude-workbench/milestone/17) · [.ai/parked/](parked/)
