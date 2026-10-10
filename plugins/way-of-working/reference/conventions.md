@@ -95,6 +95,57 @@ The prefix matches the commit `type` the branch will land as.
   conflict). Auto-deletion makes that structural rather than remembered — you cannot push
   to a branch that no longer exists.
 
+### Acting identity and reach: a token is not always a user's
+
+A skill that needs to *name* who is acting (to report a reach failure) or to *prove* it can see
+a repo must not assume the token is a human's. GitHub refuses `GET /user` to an **installation
+token** (an App acting as itself), and `gh api repos/{repo} --jq .permissions` reads **all
+`false`** under one even on a repo it reaches (measured, claude-workbench's identity scratch results (`docs/proposals/IDENTITY-SCRATCH-RESULTS.md` there)
+case i: "not a reach signal"). So a bare `gh api user` as the "name the identity" fallback turns the
+report itself into a second failure, and an all-`false` `.permissions` is not "no access"
+(`WB-D24`, `#380`). One procedure, used by every skill that says *"report the actor"*:
+
+1. **Name the actor.** Try `gh api user --jq .login`. It succeeds for a user token, and for a
+   GitHub App *user-to-server* token it names the human that App acts for. If it **fails**
+   (refused, or any other failure: the cause is not read from the failure), probe whether the token is an
+   installation token that reaches the repo (capture first, so a failed call can never read as
+   an empty list):
+   ```bash
+   T=$(mktemp -d) &&
+   gh api --hostname github.com --paginate installation/repositories \
+     --jq '.repositories[].full_name' >"$T/repos.txt" &&
+   gh-identity.sh reach {repo} <"$T/repos.txt"
+   ```
+   (with `GH_HOST` and `GH_ENTERPRISE_TOKEN` unset, as `token-check.sh`'s recipe has it.)
+   `reached` — report `an installation token that reaches {repo}; which App is not established`.
+   Anything else (`unreached`, a failed call, exit 2) — report `could not establish the actor:
+   GET /user failed and the installation probe did not reach {repo}` and stop. Never report an
+   empty or guessed login.
+2. **Name the mode only when a decision turns on it.** `gh-identity.sh classify` over the
+   *default branch's* committed `identities` (`reference/project-schema.md` § `identities`)
+   answers `user` or `app` from a login and numeric id. The *Name the actor* probe reads no login
+   under an installation token, but the `user` object of a **write response** the token made (an
+   issue or PR it created) does carry the App's `[bot]` login and id, and `classify` returns
+   `app` for it (measured, `#380`). That arrives only *after* a first write, so it can report who
+   acted but cannot gate that write: a decision that needs the dev App *proven* beforehand — not
+   merely an installation that lists the repo — cannot be made in App mode and stops.
+3. **Reach is asked of the repo, never of `gh auth status`** (token *scope* is not *reach*).
+   `gh api repos/{repo} --jq .permissions` is the user-token probe. When it reads all `false`,
+   run the *Name the actor* probe: `reached` is **read** reach only (the repo is listed for the installation;
+   not that Issues, rulesets or contents are readable, and not that it may write). A read that
+   follows is chained with `&&`, and a 403 there is a stop, never an empty result. **Write reach
+   is not provable in App mode** by anything wired into a skill: a step that needs it (`ship`'s
+   *Push-reach preflight*) does not clear on `reached`, and stops saying App-mode is not yet
+   supported for that step. A write probe exists and is measured (`git push --dry-run` of the
+   work branch, creating nothing: passes with a `contents: write` token, `403 Write access to
+   repository not granted` with `contents: read`), but it tests the credential `git` holds, not
+   which App it is, so by itself it would pass a reviewer-style or loop App with write. It is
+   not wired in until the dev App can be proven (*Name the mode*, above).
+
+Every consumer of this procedure fails closed: a step that cannot be completed is a stop or the
+skill's own safe fallback (handoff opens the ledger PR), and its report names which step failed.
+
+
 ### Push identity: `git` and `gh` can silently disagree
 
 On some machines, `git push` and `gh` resolve GitHub identity through **different**
@@ -113,7 +164,7 @@ access to the repo being pushed to.
 *scope*, never push *reach*, and says nothing about which identity `git` itself will use.
 A clean `gh auth status` does not mean the next `git push` will succeed.
 
-**Diagnosis:** compare the identity `gh` is using against the identity `git`'s credential
+**Diagnosis** (a user token; for any other token, name the actor as above first): compare the identity `gh` is using against the identity `git`'s credential
 helper will hand over. `git credential fill` prints the **full** credential record,
 including a live token as `password=…` — never run it unfiltered where the output is
 logged or captured; only the `username=` line is needed here. Its behavior also varies by

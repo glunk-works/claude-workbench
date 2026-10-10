@@ -3743,3 +3743,36 @@ $ gh api repos/603-Identity/identity-ruleset-scratch/branches --jq map(.name)
 ```
 exit: 0
 
+
+## Session 6 (#380): the plugin's identity reads under a dev App token
+
+Run on 2026-10-09 against `603-Identity/identity-ruleset-scratch`, with tokens minted from the
+dev App by `scripts/identity/mint.sh` (host config, key `dev.pem`), tokens kept in the session
+scratchpad, never printed. Read-only except one `git push --dry-run`, which creates nothing
+(confirmed: no `wow-380-probe` branch afterwards). Not a recorded-helper run: results below are
+what the commands returned, not a raw log.
+
+| Probe (token) | Result |
+|---|---|
+| `gh api user` (`contents:write, pull_requests:write`) | **403** "Resource not accessible by integration". The skills' bare `gh api user` fails under a dev App token; this is the first measurement of it. |
+| `gh api repos/R --jq .permissions` (same) | `{"admin":false,"maintain":false,"pull":false,"push":false,"triage":false}`, exit 0. Confirms case i. |
+| `installation/repositories` then `gh-identity.sh reach R` | `reached` (one repo listed). |
+| `token-check.sh verify any R …` | `installation`. |
+| milestones, rulesets, `rules/branches/main` (same token) | readable: `0` milestones, rulesets `wb-approval, wb-checks, wb-tags`, rule types `pull_request, deletion, non_fast_forward, required_status_checks`. |
+| open issues, token with `contents`+`pull_requests` only | **403**. `reached` is not read access to Issues. |
+| open issues, token with `issues: read, contents: read` | `0`, exit 0. The backlog reads work when the token carries `issues`. |
+| `git push --dry-run` of a new branch, `contents: write` | succeeds (`[new branch] HEAD -> wow-380-probe`), nothing created. |
+| same, `contents: read` | **403** "Write access to repository not granted", rc 128. |
+| skill command sequences as the App, in a clone with a scratch `.ai/project.yml` | `schema-complete.sh` `complete`; `cursor-sync-pr.sh` `none`; `rulesets` and `rules/branches/main` readable (`pull_request, deletion, non_fast_forward`); prune's `gh pr list --state merged` works; `plan-gather.sh unmilestoned/milestones` exit 0; resume's review-step first link (`gh api user`) fails rc 1, so nothing derives. |
+| retro/archive-sprint style writes: `gh issue create`, `comment`, `close` (`issues: write`) | all succeed. The created issue's `user` is `603id-dev[bot]`, id 340163647, `author_association` **NONE** (viewer-relative, as WB-D24 says). |
+| ship end to end: branch, commit, `git push`, `gh pr create` (`contents`+`pull_requests` write) | all succeed. The PR's `user` is the same `[bot]` login and id; `mergeable_state` `blocked` (approval gate). The probe PR (#6) was closed and its branch deleted. ship's own preflight (`.permissions.push`) reads `false` here and would have stopped it. |
+| `gh-identity.sh classify` / `role` / `author` with that `{login, id}` against an `identities` map declaring it as `dev_app` | `app` / `dev_app` / `untrusted`. So an App's `{login, id}` **is** obtainable: from the `user` of a write response, after a first write. |
+
+Consequences recorded in `conventions.md` § *Acting identity and reach*: the `reached` probe is
+read reach only; a backlog read needs a token minted with `issues`; `git push --dry-run` is a
+working write probe for the credential `git` holds but does not say which App holds it; an App's
+`{login, id}` comes from the `user` of a write response, so it can report who acted after the
+first write but cannot gate it, which is why ship's push preflight still stops in App mode.
+Not measured: the skills run as interactive Claude Code sessions (the command sequences above
+were run by hand in a scratch clone), and resume's review-step derivation, which needs a user
+login.

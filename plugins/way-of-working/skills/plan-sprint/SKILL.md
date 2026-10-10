@@ -49,7 +49,8 @@ accepted a grounded recommendation in one turn; that is the shape this skill now
    else is a config error — report it as such, per `reference/project-schema.md` § `planning`,
    never silently degrade.
 3. **Reach.** `gh api repos/{backlog.repo} --jq .permissions`. No `pull` → stop, report the
-   identity (`gh api user --jq .login`) — a missing repo reads as `404`, not `403`, so this
+   actor (`reference/conventions.md` § *Acting identity and reach*; an all-`false` `.permissions`
+   under an installation token goes to its `reached` probe on `{backlog.repo}`, read reach only) — a missing repo reads as `404`, not `403`, so this
    call is what tells "unreachable" apart from "genuinely has no backlog," same doctrine
    `/way-of-working:resume`/`/way-of-working:archive-sprint` use. `pull` alone only proves the
    **Gather** step will work — the **Placement dialogue** and **Apply & stage** steps' own

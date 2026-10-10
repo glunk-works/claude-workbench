@@ -145,11 +145,17 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
                                                    # brace produces an indistinguishable 404
      ```
      - Errors (repo unreachable / wrong identity entirely) → stop, before committing
-       anything, and tell the human, naming the identity (`gh api user --jq .login`). If
+       anything, and tell the human, naming the actor as `reference/conventions.md` §
+       *Acting identity and reach* does (a bare `gh api user` is refused to an installation
+       token). If
        `{repo}` was left unsubstituted, the error is this same 404 — check that first,
        since it means "not run correctly" rather than "no access."
      - Returns `false` → stop the same way — this identity can see the repo but cannot
-       push to it.
+       push to it. An installation token reads `false` **even where the App can write**
+       (`reference/conventions.md` § *Acting identity and reach*), and write reach is not
+       provable in App mode: when the actor is an installation token, the stop says
+       `App-mode push preflight is not yet supported`, not "no access". Never clear it on
+       that section's `reached` probe.
      - Only `true` clears this check. (Don't "fix" a 404 by widening the call to
        `repos/{owner}/{repo}` — `gh` resolves those from the local git remote, not from
        `.ai/project.yml`'s `repo`, so on a fork or a mismatched remote it silently

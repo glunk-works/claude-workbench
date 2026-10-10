@@ -73,8 +73,8 @@ Loaded on demand from `SKILL.md`'s *Offer to merge a forgotten cursor-sync PR* s
      it — not merely the restriction — so look at the PR's checks, and at which required
      ones are absent from them, before saying what to do. `bypass-never` means the PR is `BLOCKED` by a restrict-updates ruleset and
      the **active `gh` identity** cannot bypass it (`current_user_can_bypass: never`), so the
-     `--admin` merge would be refused by the server (`#250`): name the identity
-     (`gh api user --jq .login`) and tell the human to merge in the web UI signed in as a
+     `--admin` merge would be refused by the server (`#250`): name the actor
+     (as `reference/conventions.md` § *Acting identity and reach* does) and tell the human to merge in the web UI signed in as a
      bypass-capable account, or to run that one `gh` command as one (a per-command token, not `gh auth switch`) — never offer the merge, and never switch the account
      yourself. `files` is also what a `/way-of-working:park-sprint` or
      `/way-of-working:unpark-sprint` PR returns — they share handoff's branch prefix but also

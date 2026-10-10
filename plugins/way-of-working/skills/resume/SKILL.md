@@ -135,8 +135,10 @@ edited it. **Default to the full checklist whenever unsure.**
        `planning`).
 
        **Reach before belief:** `gh api repos/{backlog.repo} --jq .permissions`; no `pull` is a
-       stop, reported as *"couldn't read the milestone (as `<login>`)"* — never as "no tasks"
-       (the same 404-not-403 doctrine the ruleset check uses).
+       stop, reported as *"couldn't read the milestone (as `<actor>`)"* — never as "no tasks"
+       (the same 404-not-403 doctrine the ruleset check uses). `<actor>` is named by
+       `reference/conventions.md` § *Acting identity and reach*, which also covers an all-`false`
+       `.permissions` under an installation token (use its `reached` probe, on `{backlog.repo}`; read reach only).
 
        Then, exactly once, **projected at the source on BOTH calls**, so unbound text (the
        milestone description, titles, bodies) never enters context:
@@ -261,8 +263,14 @@ edited it. **Default to the full checklist whenever unsure.**
    gh api repos/{repo} --jq .permissions     # e.g. {"admin":true,"push":true,…}
    ```
    If it errors, or returns neither `admin` nor `push`, **stop here** — do not make the ruleset
-   call, whose answer could not mean anything. Report, naming the identity (`gh api user --jq
-   .login`): `Ruleset check: could not run — authenticated as <login>, which lacks access to
+   call, whose answer could not mean anything — **except** when `.permissions` reads all
+   `false` and `reference/conventions.md` § *Acting identity and reach* reports an installation
+   token that `reached` `{repo}`: that is listing only, not proof the rulesets are readable, so
+   the ruleset read below may run, but a result of "weakened or missing" is then reported as
+   **inconclusive** (a partial view reads as a missing ruleset), never as weakened. Otherwise
+   report, naming the actor as that section does
+   (not a bare `gh api user`, which an installation token is refused): `Ruleset check: could
+   not run — authenticated as <actor>, which lacks access to
    {repo}.` "Couldn't look" has two causes needing opposite responses (the ruleset is weakened,
    or this session is the wrong identity), and GitHub answers an unreachable resource with
    **`404`, not `403`**, so without this call the second reads as *"that ruleset does not
@@ -424,6 +432,10 @@ edited it. **Default to the full checklist whenever unsure.**
      >"$T/prs.tsv" &&
    DERIVED=$(review-step.sh derive "$LOGIN" "$R" "${BREPO:--}" "$N" 200 <"$T/prs.tsv")
    ```
+   `LOGIN=$(gh api user …)` is the chain's first link and is refused to an installation token
+   (`reference/conventions.md` § *Acting identity and reach*): when it fails the chain stops
+   there and nothing derives — report `failed link: GET /user failed`, plus that section's
+   actor line, which is the fail-closed answer, never a guessed `LOGIN`.
    Any failed link, `derive` exiting 2, or `decide` exiting 2 (an empty `$ARCH` or `$NA`, a value
    outside its vocabulary), derives **nothing and auto-starts nothing**: report *which* link
    failed (an unreachable identity and a mismatched `origin` are different reports), never
