@@ -142,7 +142,8 @@ github_milestones` — `{backlog.repo}`.
    **The plan anchor, under `{planning.kind}: github_milestones`.** Before writing `pointers`,
    establish reach on `{backlog.repo}` the same way `/way-of-working:resume`'s ruleset-check
    step establishes it on `{repo}` — `gh api repos/{backlog.repo} --jq .permissions`, no
-   `pull` is a stop, reported naming the identity, never as "nothing to anchor." Then:
+   `pull` is a stop, reported naming the actor (`reference/conventions.md` § *Acting identity
+   and reach*, which also covers an all-`false` `.permissions`, read reach only, probed on `{backlog.repo}`), never as "nothing to anchor." Then:
 
    ```bash
    plan-anchor.sh write {backlog.repo} <milestone> <N|-> [<comment-id|->]
@@ -238,7 +239,9 @@ github_milestones` — `{backlog.repo}`.
         >"$T/prs.tsv" &&
       review-step.sh derive "$LOGIN" {repo} <{backlog.repo}, or - when null> <N> 200 <"$T/prs.tsv"
       ```
-      (`<N>` is the anchored task issue; the block makes its own `$T`; the `&&` chain is load-bearing —
+      (Under an installation token `gh api user` is refused, the chain stops at its `LOGIN` read,
+      and this is a failed link like any other: the ledger PR opens, and you say so.
+      `<N>` is the anchored task issue; the block makes its own `$T`; the `&&` chain is load-bearing —
       a failed `gh` call must never reach the predicate, since a missing document reads as
       `none`). Require exactly `one <M> <oid>` **and** `<oid>` equal to this checkout's own
       `git rev-parse HEAD` (taken here, on the work branch, before link 5's switch). `none`,

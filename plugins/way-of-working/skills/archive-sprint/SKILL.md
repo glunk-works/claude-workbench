@@ -99,7 +99,8 @@ command that archives — do not invoke it for ordinary session switches.
    If `{backlog.repo}` is set, that backlog lives in a **sibling repo** and every `gh issue`
    call takes `--repo {backlog.repo}` (`gh issue create --repo {backlog.repo} …`). Confirm
    reach first — `gh api repos/{backlog.repo} --jq .permissions`, no `pull` means stop and
-   report the identity from `gh api user --jq .login` — because an unreachable repo answers
+   report the actor (`reference/conventions.md` § *Acting identity and reach*; an all-`false`
+   `.permissions` under an installation token goes to its `reached` probe on `{backlog.repo}`, read reach only) — because an unreachable repo answers
    `404`, not `403`, and a precondition that cannot tell "not tracked" from "could not look"
    is the same defect this one exists to catch. **Never archive against a backlog you could
    not read.** See `reference/project-schema.md`.

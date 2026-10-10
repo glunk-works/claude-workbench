@@ -294,7 +294,7 @@ honest. Do not invent a path that escapes the repo.
 > ```bash
 > gh api repos/{backlog.repo} --jq .permissions
 > ```
-> No `pull` means **stop and report the identity** (`gh api user --jq .login`) — never
+> No `pull` means **stop and report the actor** (`conventions.md` § *Acting identity and reach*; a bare `gh api user` is refused to an installation token) — never
 > report the backlog as empty or missing. An empty backlog and an unreachable one are
 > different facts, and only one of them means "nothing has been decided yet."
 
@@ -821,7 +821,7 @@ refuse them (as authors, and by `classify` as the acting identity) and to catch 
 `bin/token-check.sh verify` (`#436`) is the exception: a consumer of a minted token runs it before
 acting, and for a `dev_app`, `reviewer_app` or `loop_app` role it requires the token's actor and
 matches it against that declared entry through `gh-identity.sh role`; the actor must come from a GitHub
-response obtained with the token, a source not yet measured. Nothing yet acts as `reviewer_app` or
+response obtained with the token (measured in `#380`: the `user` of an issue or PR it created, so only after a first write). Nothing yet acts as `reviewer_app` or
 `loop_app`, which is the same stated, temporary state as `orchestration`'s.
 
 ---

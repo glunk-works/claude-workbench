@@ -24,9 +24,10 @@
 # refuses `GET /user` to an installation token, so under an installation token it fails and the
 # chain stops: App mode is then unreachable by this source, and fails closed. Where the
 # {login, id} of an App actor comes from is the caller's to establish (for example the
-# `user` object of a write response), and is NOT yet measured; classify is source-agnostic
-# and only compares what it is given. Until that is measured, do not document the recipe
-# above as the way to reach `app`. A GitHub App USER-to-server token is different: it may
+# `user` object of a write response, MEASURED in #380: an issue or PR the dev App token created
+# reported its `user` as the App's `[bot]` login and numeric id, which `classify` returned as `app`);
+# classify is source-agnostic and only compares what it is given. That source arrives only AFTER a
+# write, so it cannot gate the first one. A GitHub App USER-to-server token is different: it may
 # call `GET /user` and returns the human it acts for, so it classifies as that human.
 #
 # `user` is a MODE, never a trust grant. With identities null it is printed for any plain

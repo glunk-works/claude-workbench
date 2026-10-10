@@ -54,7 +54,7 @@ gh issue create --repo {backlog.repo} --title "…" --body "…"
 > ```bash
 > gh api repos/{backlog.repo} --jq .permissions
 > ```
-> No `pull` → **stop and report the identity** (`gh api user --jq .login`); do not run the
+> No `pull` → **stop and report the actor** (`reference/conventions.md` § *Acting identity and reach*; an all-`false` `.permissions` under an installation token goes to its `reached` probe on `{backlog.repo}`, read reach only); do not run the
 > retro against a backlog you could not read. Same failure class as `/way-of-working:resume`'s
 > *Check the branch-protection ruleset for drift* step's ruleset preflight, on a
 > different surface.
