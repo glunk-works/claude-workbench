@@ -1633,6 +1633,14 @@ take effect. Full reasoning and the task breakdown that implements them:
       after a writer's push the approval requirement is the only guard.
     - Until each repo's cutover, its sessions run under the old login, so admin-class work
       happens in the browser.
+  - **Amendment to `WB-D22` (`#381`).** `WB-D22` chose the running login over a schema key so the
+    PR's author and its reviewer cannot drift apart. An installation token is refused `GET
+    /user`, so under one the review step derives as the declared `identities.dev_app` instead
+    (`review-step.sh login app`); a `null`, absent or malformed `dev_app` derives nothing. The
+    drift that choice guarded against returns in App mode, because which App holds the token is
+    unproven and the loop-identity guard then sees only the declared App. So App mode is capped
+    at `show <M> app-mode`: it derives, it never reaches `auto`, and a human's "go" runs the
+    review.
   - **Cost.**
     - Approve replaces Merge, and Dependabot PRs need an approval, with a `GITHUB_TOKEN`
       workflow arming their auto-merge.

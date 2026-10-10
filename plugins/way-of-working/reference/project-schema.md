@@ -720,7 +720,7 @@ when it is a map, so a `null` repo is asked nothing more.
   stale after the loop's login changed protects nothing against the new login, which is what
   the driver's preflight login-equality check (plan § 7.3) is for. `/way-of-working:resume`'s
   review-step derivation reads it too (`#295`, `WB-D22`'s loop-identity guard): `review-step.sh
-  decide` prints `none` when the running login equals it, folded as `plan-anchor.sh` folds it
+  decide` prints `none` when the acting login equals it, folded as `plan-anchor.sh` folds it
   (case-insensitively, a trailing `[bot]` ignored on both sides), from the same default-branch read; `null`
   passes `-` and the guard does not fire. **`null` is a complete answer**; a loop dispatch needs a non-null value, and that refusal is the
   driver's preflight, which does not exist yet. Shape-checked when non-null: a stem of letters,
@@ -823,6 +823,12 @@ acting, and for a `dev_app`, `reviewer_app` or `loop_app` role it requires the t
 matches it against that declared entry through `gh-identity.sh role`; the actor must come from a GitHub
 response obtained with the token (measured in `#380`: the `user` of an issue or PR it created, so only after a first write). Nothing yet acts as `reviewer_app` or
 `loop_app`, which is the same stated, temporary state as `orchestration`'s.
+
+**The review-step derivation reads `dev_app` too** (`#381`). Under an installation token, where
+`gh api user` is refused, `/way-of-working:resume` and `/way-of-working:handoff` read `dev_app`
+from the default branch's copy, confirm it with `gh-identity.sh role`, and pass its login to
+`review-step.sh login app`; a `null`, absent or malformed `dev_app` derives nothing. The App holding
+the token is unproven, so `review-step.sh decide` never lets App mode reach `auto` (`show <M> app-mode`).
 
 ---
 
