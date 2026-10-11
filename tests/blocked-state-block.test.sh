@@ -1,12 +1,12 @@
 #!/bin/sh
 # Fixture tests for the shell block around blocked-state.sh in
-# plugins/way-of-working/skills/pr-checks/SKILL.md (block (b), "ask the predicate").
+# plugins/way-of-working/skills/pr-checks/SKILL.md (block (b), "ask the predicate"; block (c), the acting identity, #467).
 #
 # Issue #244: tests/blocked-state.test.sh covers the predicate; this covers the chain that
 # feeds it. A failed gh must never reach the predicate and never print `lag`, and a branch
 # name is untrusted text that must stop the chain before any gh api call. The block is
 # extracted from the skill itself (not copied here), its placeholders filled in, and run
-# against a stub gh on PATH. Three mutants then prove the assertions can fail.
+# against a stub gh on PATH. Mutants then prove the assertions can fail.
 #
 # Permitted toolset: POSIX sh and its standard utilities. No jq, no yq, no python.
 set -eu
@@ -60,6 +60,14 @@ case "$1 $2" in
   "api --paginate")
     [ "${STUB_API_RC:-0}" = 0 ] || { echo "stub gh: api failed" >&2; exit 1; }
     [ -z "${STUB_RULES-}" ] || printf '%s\n' "$STUB_RULES" ;;
+  "api user")
+    [ "${STUB_USER_RC:-0}" = 0 ] || { echo "stub gh: 403" >&2; exit 1; }
+    [ -n "${STUB_USER_EMPTY-}" ] || printf 'octocat\n' ;;
+  "api --hostname")
+    [ -z "${STUB_INST_REPOS-}" ] || printf '%s\n' "$STUB_INST_REPOS"
+    [ "${STUB_INST_RC:-0}" = 0 ] || { echo "stub gh: installation refused" >&2; exit 1; } ;;
+  "api repos/o/r/rulesets/"*)
+    printf '%s\n' "${STUB_BYPASS-}" ;;
   *) exit 99 ;;
 esac
 EOF
@@ -111,6 +119,47 @@ done
 assert_eq "slashes, dots, dashes in a branch are allowed" "lag|0" \
   "$(STUB_BASE='feat/v1.2_x-y' run_block "$work/block.sh")"
 
+# --- block (c): the acting identity, user token or App token (#467) -------------
+# A user token names a login; an installation token is refused `gh api user`, so the block
+# probes installation/repositories and prints `actor app -`. A probe that does not reach the
+# repo, or a refused call, must stop the chain before any ruleset line.
+awk '/^ *# \(c\) the active identity/ { p = 1 } p && /^ *```/ { exit } p' "$skill" |
+  sed -e 's/^ *//' -e 's/<N>/7/g' -e 's/{repo}/o\/r/g' >"$work/blockc.sh"
+if [ ! -s "$work/blockc.sh" ] || grep -Eq '(^|[^$])[<{][A-Za-z0-9_.-]+[>}]' "$work/blockc.sh"; then
+  echo "FAIL - could not extract block (c) from $skill, or it has an unfilled placeholder" >&2
+  exit 1
+fi
+# gh-identity.sh by bare name, as the skill calls it (via sh, so no exec bit is needed).
+cat >"$stub/gh-identity.sh" <<EOF
+#!/bin/sh
+exec sh "$root_dir/plugins/way-of-working/bin/gh-identity.sh" "\$@"
+EOF
+chmod +x "$stub/gh-identity.sh"
+
+export STUB_USER_RC=0 STUB_INST_RC=0 STUB_INST_REPOS=o/r STUB_BYPASS=never
+rules_b="$STUB_RULES"
+STUB_RULES=5
+export STUB_RULES
+assert_eq "user token -> actor user octocat, ruleset line" "actor user octocat
+5 never|0" "$(run_block "$work/blockc.sh")"
+assert_eq "user token -> installation probe never ran" "0" "$(calls '^api --hostname')"
+assert_eq "App token reaching the repo -> actor app -, ruleset line" "actor app -
+5 never|0" "$(STUB_USER_RC=1 run_block "$work/blockc.sh")"
+assert_eq "App token -> installation probe ran" "1" "$(calls '^api --hostname')"
+assert_eq "App token not reaching the repo -> no output, non-zero" "|1" \
+  "$(STUB_USER_RC=1 STUB_INST_REPOS=o/other run_block "$work/blockc.sh")"
+assert_eq "App token, probe refused -> no output, non-zero" "|1" \
+  "$(STUB_USER_RC=1 STUB_INST_RC=1 STUB_INST_REPOS= run_block "$work/blockc.sh")"
+assert_eq "App token, refused probe -> rules never read" "0" "$(calls '^api --paginate')"
+assert_eq "App token, probe lists the repo then fails -> no output, non-zero" "|1" \
+  "$(STUB_USER_RC=1 STUB_INST_RC=1 run_block "$work/blockc.sh")"
+assert_eq "App token, probe returned nothing -> no output, non-zero" "|1" \
+  "$(STUB_USER_RC=1 STUB_INST_REPOS= run_block "$work/blockc.sh")"
+assert_eq "user token printing an empty login -> no output, non-zero" "|1" \
+  "$(STUB_USER_EMPTY=1 run_block "$work/blockc.sh")"
+assert_eq "failing rules read -> no output, non-zero" "|1" "$(STUB_API_RC=1 run_block "$work/blockc.sh")"
+STUB_RULES="$rules_b"
+
 # --- mutants: the assertions above must be able to fail ------------------------
 # (1) T=$(gh api ...) no longer chained to what follows (the && after it dropped).
 sed -e '/^T=\$(/ s/ &&$//' "$work/block.sh" >"$work/mut1.sh"
@@ -134,6 +183,18 @@ assert_eq "mutant 2 (branch check not chained) fails open on a;b" "lag|0" \
 assert_eq "mutant 2 made the gh api call" "1" "$(calls '^api')"
 assert_eq "mutant 3 (gh piped straight in) fails open on a failing gh api" "lag|0" \
   "$(STUB_API_RC=1 run_block "$work/mut3.sh")"
+
+# (4) block (c): the && after the installation probe dropped, so a probe that lists the repo
+# on page 1 and then fails on a later page still reads as an App token that reaches it.
+sed -e '/repos.txt" &&$/ s/ &&$//' "$work/blockc.sh" >"$work/mut4.sh"
+if cmp -s "$work/blockc.sh" "$work/mut4.sh"; then
+  echo "FAIL - mutant 4 did not change block (c) (the mutation no longer applies)" >&2
+  fail=1
+fi
+STUB_RULES=5
+assert_eq "mutant 4 (probe && dropped) fails open on a partly failed probe" "actor app -
+5 never|0" "$(STUB_USER_RC=1 STUB_INST_RC=1 run_block "$work/mut4.sh")"
+STUB_RULES="$rules_b"
 
 if [ "$fail" -ne 0 ]; then
   echo "blocked-state-block.test.sh: FAILED" >&2
