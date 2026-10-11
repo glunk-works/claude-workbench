@@ -97,7 +97,8 @@
 #                         means the caller dropped the parameters
 # Bypass actors are deliberately not read: `current_user_can_bypass` is `never` to a
 # non-admin viewer, so for the viewers who most need the answer it cannot be reached
-# from here; the pr-checks skill's block (c) names the identity and its value instead.
+# from here; the pr-checks skill's block (c) names the identity (under an App token, only
+# that an installation token is acting) and the value the token reads instead.
 #
 # What `admin-merge-ready` does not establish: an `update` rule applying says why the
 # PR can read BLOCKED, not that it is the ONLY unmet rule. A rule type outside the lists
