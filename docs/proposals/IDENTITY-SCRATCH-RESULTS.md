@@ -3813,6 +3813,9 @@ the task), #9 (milestone 1, closed) and #10 (no milestone). A local `.ai/state.j
 | handoff, second run | **Matched the sheet.** After the ledger was tracked (PR #16, App-authored, merged by the App after approval), it opened PR #17 with the cursor sync: author `603id-dev[bot]` id 340163647, one file changed, not merged, auto-merge not armed. The push was pinned because the maintainer said so, not because the skill does it (#478). The commit is again authored and committed by Jared Groves (verified). Read from GitHub: the PR's patch **removes** the stale `Milestone close:` line. It ran on Sonnet against an assigned opus and said so. This run chose the ledger PR; the no-op handoff was not exercised. |
 | retro | **Found nothing, filed nothing.** Run in the dev-App session, it read the scratch backlog and judged that no friction met its signal bar (a model mismatch, a hand-written `sed`, the all-`false` `.permissions`, an untouched ledger on `main`, a CRLF warning), so it wrote nothing. The sheet's expected issue or comment under the dev App's login was therefore **not produced by retro**; that write path is shown by plan-sprint's comment above. |
 
+| ship, declared `dev_app` wrong | **The designed `mismatch` stop, seen live.** A second probe, run after the rows above, because no other App here can push. PR #18 (dev App, approved and auto-merged) set `identities.dev_app` on `main` to `603id-mismatch[bot]`, id 999999999. ship was run with the real dev token and no extra instruction. Its preflight cleared (including the pinned `git push --dry-run`), it pushed the branch and opened PR #19 as `603id-dev[bot]`, and the actor check read `mismatch`: it stopped, added no label or comment, and left the PR for the maintainer. Read back from GitHub: #19 has 0 labels, 0 comments, auto-merge not armed. The stop came **after** the push and the PR, as #476 says. This stands in for a wrong credential with a wrong declaration; from ship's check the two are the same. PR #19 was closed and its branch deleted, and PR #20 restored the real `dev_app` (merged 19:54:16 UTC). |
+| pr-checks, block (c) with an `update` rule | **Not reached, and not reachable here.** The maintainer's admin credential created a temporary branch ruleset `wow-464-update-probe` (an `update` rule on the default branch, repo admin role as the only bypass), so `main`'s rules read `deletion, non_fast_forward, pull_request, required_status_checks, update`. PR #21 (dev App) had `scratch/status` green and the maintainer's approval; GitHub showed "Merging is blocked: Cannot update this protected ref." pr-checks read `BLOCKED`, `reviewDecision` `APPROVED`, and returned **COULD NOT TELL**: `blocked-state.sh` refused to judge, naming three rules it cannot evaluate (the approval requirement, the code-owner review, the check pinned to an app). That refusal is its design (#248). Block (c) is only reached on the admin-merge path, which the approval gate removes; #384 replaces that verdict with `awaiting-approval`. The ruleset was deleted, #21 closed and its branch deleted. |
+
 Follow-ups from this session: #476 (ship checks the acting App against `dev_app` before the push),
 #478 (handoff and archive-sprint push as the human in App mode), #479 (archive-sprint reads a null
 `backlog.repo` as no repo), and a comment on #386 (ship arms auto-merge). #478, #479 and the #386
@@ -3823,20 +3826,26 @@ comment came from a retro run in the maintainer's own session, not from the dev-
 
 - Every skill has an entry above, including those that stopped. Met.
 - ship's actor check seen to `match` for the dev App: met (#11). Seen to stop for a different
-  credential: **not as designed.** The stop observed was the session's own judgement before any
-  write; `mismatch` was not reached live (#476).
-- `pr-checks` block (c) seen under the dev App token: **not met.** No `update` rule applies to
-  this repo's branch, so the path does not exist here.
+  credential: **met with a substitute.** With a reviewer-App token the stop was the session's own
+  judgement before any write; the designed `mismatch` stop was then seen live with a wrong
+  `dev_app` declaration standing in for the wrong credential (PR #19). A real wrong-App token that
+  can push was never available.
+- `pr-checks` block (c) seen under the dev App token: **not met, and not reachable on this
+  repo.** With an `update` rule applied, `blocked-state.sh` returns `could not tell` on the
+  approval and pinned-check rules, so block (c) is never printed. The path is the admin-merge
+  verdict the approval gate retires (#384).
 
-Two of the three criteria are not met as written, so #464 should stay open until the maintainer
-decides whether to change the criteria or the scratch ruleset.
+The first criterion is met; the second is met with the substitute described; the third is not
+met as written and cannot be on a repo under the approval ruleset. The maintainer decides whether
+to close #464 with the third criterion recorded as superseded by #384.
 
 ## Configuration changes made during session 7
 
 - `603-Identity/identity-ruleset-scratch`: PRs #7 (`.ai/project.yml`), #11 (`s5/a.txt`), #14 and #15
   (README roadmap row, `.gitignore` and `backlog.repo`), #16 (tracks `.ai/next-steps.md`), all merged;
-  #12 and #13 closed unmerged (replaced by #14 and #15); #17 (cursor sync) open, not merged by this
-  session. Milestones 1 (closed by a direct write at 19:27:50 UTC) and 2; issues #8 (closed by the same
+  #12 and #13 closed unmerged (replaced by #14 and #15); #17 (cursor sync) merged by the maintainer;
+  #18 (a wrong `dev_app`) and #20 (restoring it) merged; #19 (ship's probe PR) and #21 (the block (c)
+  probe) closed unmerged with their branches deleted. Milestones 1 (closed by a direct write at 19:27:50 UTC) and 2; issues #8 (closed by the same
   direct write), #9 (closed fixture) and #10 (placed in milestone 2).
 - The clone's `.git/info/exclude` held `.ai/state.json` and, until #16 merged, `.ai/next-steps.md`.
 - Tokens: dev App, `contents`/`pull_requests`/`issues` write, with `statuses`/`checks` read from the
@@ -3844,4 +3853,8 @@ decides whether to change the criteria or the scratch ruleset.
   minted to files outside any repo, never printed; the expired and reviewer files were deleted.
 - Auto-merge was armed by hand as the dev App on #7, #11, #12, #13, #14, #15 and #16. On #11 it merged the PR
   at once, as described above.
-- No ruleset, App or org setting was changed.
+- A temporary repo ruleset, `wow-464-update-probe`, was created with an admin-App token the
+  maintainer minted (`administration: write`, passphrase entered by them) and deleted afterwards;
+  the repo's rulesets are `wb-approval`, `wb-checks` and `wb-tags` again, and `main`'s rule types
+  are as before. While it existed nothing could merge into `main`. No App or org setting was
+  changed.
