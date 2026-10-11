@@ -14,6 +14,7 @@
 #   gh-identity.sh classify <login> <id> <project.yml>
 #   gh-identity.sh author <login> <id> <project.yml>
 #   gh-identity.sh role <login> <id> <project.yml>
+#   gh-identity.sh pr-actor <login> <id> <project.yml>
 #   <records> | gh-identity.sh reach <owner/repo>
 #
 #   LU=$(gh api user --jq '[.login, .id] | @tsv') &&
@@ -83,6 +84,18 @@
 # file or key, a non-map identities, an id declared twice or under another login). Unlike
 # classify it does NOT refuse an undeclared account, a reviewer or loop App, or a [bot] under null.
 #
+# pr-actor is the after-the-write check ship runs in App mode (#464): did the dev App open
+# the PR? The caller passes the `user` {login, id} of the PR response it just created. It
+# prints exactly one word:
+#   match     -- the id and login are the declared `identities.dev_app`
+#   mismatch  -- anything else the lookup can read: another App (reviewer, loop), a maintainer's
+#                user login, an undeclared account, `dev_app` null or absent, or `identities`
+#                null (no dev App is declared, so none can be proven)
+# It exits 2, printing nothing, when it cannot say (the cases `role` shares: a missing or
+# malformed login or id, i.e. an unreadable response; an unreadable or absent file or key; a
+# non-map identities; an id declared twice or under another login). The CALLER stops on
+# anything but `match`, exit 2 included: only `match` clears.
+#
 # reach is the App-mode probe: is the token in use an installation token that can reach
 # <owner/repo>? Feed it one `full_name` per line from
 #   gh api --paginate installation/repositories --jq '.repositories[].full_name'
@@ -98,7 +111,7 @@
 # working tree (the same stance as `orchestration` and the review gate): a PR under review
 # can edit its own `identities`.
 #
-# Permitted toolset: POSIX sh, tr(1), yq (mikefarah v4) for classify, author and role.
+# Permitted toolset: POSIX sh, tr(1), yq (mikefarah v4) for classify, author, role and pr-actor.
 set -eu
 
 die() { echo "gh-identity.sh: $1" >&2; exit 2; }
@@ -123,7 +136,7 @@ valid_id() {
   return 0
 }
 
-# find_role <login> <id> <project.yml> -- the lookup classify, author and role share. Sets ROLE to
+# find_role <login> <id> <project.yml> -- the lookup classify, author, role and pr-actor share. Sets ROLE to
 # maintainer, dev_app, reviewer_app, loop_app, or empty (undeclared); LEGACY=1 when identities
 # is null. Dies (exit 2) only on bad input (login or id shape, file or key, a
 # non-map identities, an id declared twice or under another login); classify does the refusing.
@@ -201,6 +214,12 @@ role() {
   if [ -n "$ROLE" ]; then echo "$ROLE"; else echo undeclared; fi
 }
 
+pr_actor() {
+  [ "$#" -eq 3 ] || { echo "usage: gh-identity.sh pr-actor <login> <id> <project.yml>" >&2; exit 2; }
+  find_role "$1" "$2" "$3"
+  if [ "$LEGACY" != 1 ] && [ "$ROLE" = dev_app ]; then echo match; else echo mismatch; fi
+}
+
 reach() {
   [ "$#" -eq 1 ] || { echo "usage: <records> | gh-identity.sh reach <owner/repo>" >&2; exit 2; }
   repo="$1"
@@ -231,6 +250,7 @@ case "${1:-}" in
   classify) shift; classify "$@" ;;
   author) shift; author "$@" ;;
   role) shift; role "$@" ;;
+  pr-actor) shift; pr_actor "$@" ;;
   reach) shift; reach "$@" ;;
-  *) echo "usage: gh-identity.sh classify|author|role <login> <id> <project.yml> | reach <owner/repo>" >&2; exit 2 ;;
+  *) echo "usage: gh-identity.sh classify|author|role|pr-actor <login> <id> <project.yml> | reach <owner/repo>" >&2; exit 2 ;;
 esac
