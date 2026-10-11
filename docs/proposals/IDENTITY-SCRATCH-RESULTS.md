@@ -3776,3 +3776,43 @@ first write but cannot gate it, which is why ship's push preflight still stops i
 Not measured: the skills run as interactive Claude Code sessions (the command sequences above
 were run by hand in a scratch clone), and resume's review-step derivation, which needs a user
 login.
+
+
+## Session 7 (#464 PR 2): the skills as interactive sessions under a dev-App token
+
+Run on 2026-10-11 against `603-Identity/identity-ruleset-scratch`, following
+[docs/identity/APP-MODE-RUN-SHEET.md](../identity/APP-MODE-RUN-SHEET.md). Each skill ran as a
+`claude` CLI session in a VS Code terminal started with `GH_TOKEN` set from a token minted by
+`scripts/identity/mint.sh`, with the plugin loaded by `--plugin-dir plugins/way-of-working` (the
+0.17.0 source at `84ba6fc`; the scratch clone does not enable the plugin). Before each launch,
+`gh api user` returned 403 and `installation/repositories` listed only the scratch repo. Results
+below are the sessions' own summaries plus what GitHub shows afterwards, not a raw log. **Not run
+yet:** handoff, archive-sprint, plan-sprint, retro. #464 stays open until they are.
+
+Setup, all by the dev App (`603id-dev[bot]`, id 340163647) unless noted: PR #7 added
+`.ai/project.yml` (`identities.maintainer` JaredGroves-603 id 281693088, `dev_app`, `reviewer_app`
+`603id-review[bot]` id 340164886 taken from `apps.json`, not yet seen in a write response);
+the maintainer approved it and it merged by auto-merge. Milestones 1 and 2, issues #8 (milestone 1,
+the task), #9 (milestone 1, closed) and #10 (no milestone). A local `.ai/state.json` and
+`.ai/next-steps.md`, git-excluded, with `plan-anchor.sh verify` printing `match`.
+
+| Skill | Result |
+|---|---|
+| resume | **Waited, for a reason the sheet did not expect.** The author-trust check on #8 came back untrusted: the dev App wrote the issue and `identities.maintainer` lists only the human. That is the fixture, not a plugin defect; auto-start under App mode needs a maintainer-authored task. `Ruleset check` healthy, read through an installation token. The review step read `none`: no PR existed yet, so `show <M> app-mode` was **not exercised**. After the human's `go` it read #8 once (`updated_at` matched the anchor) and made the edit. |
+| ship | **Matched the sheet.** PR #11, author `603id-dev[bot]` id 340163647, `pr-actor` printed `match`, `git push --dry-run` passed, push pinned to `gh`'s token, `mergeable_state` `blocked`. `review.ci_gate` is `null`. **New:** the commit inside the PR is authored and committed by `Jared Groves <jared.groves@603identity.com>`, GPG-verified, because the clone uses the human's git config with `commit.gpgsign=true`; the session asked for the human's passphrase. The PR is the App's, the commit is the human's. |
+| ship, wrong credential | **Stopped, but not at the designed check.** Token from the reviewer App (`contents: read`, `pull_requests: write`; `contents: write` was refused at mint, 422 "not granted to this installation"). The session stopped before commit, push or any probe, because `gh auth status` showed `603id-review[bot]` against the declared `603id-dev[bot]`. `ship/SKILL.md` has no such pre-push check; its designed catch is `pr-actor` after the PR exists. No other App here can push, so `mismatch` was **not reached live** (fixtures in `tests/gh-identity.test.sh` only). Filed as #476. |
+| pr-checks, token without `statuses`/`checks` | **COULD NOT TELL.** `gh pr checks` (GraphQL), `commits/{sha}/status` and `commits/{sha}/check-runs` all returned 403. It gave no verdict and named the missing permissions. The run sheet's mint recommendation does not include them. |
+| pr-checks, token with `statuses: read`, `checks: read` | **NOT READY, correct.** `scratch/status` green on `28cad25`; `BLOCKED`, `reviewDecision` `REVIEW_REQUIRED`; passed `green=0` to `blocked-state.sh`, as its header says to for `REVIEW_REQUIRED`. Fell back to REST because `gh pr checks` fails under an App token. Noted, without verifying, that the check is pinned to an app. **Block (c) was not reached:** the only `update` rule is in `wb-tags`, which targets `refs/tags/v*`, not `main` (`wb-approval` and `wb-checks` carry none), so the admin-merge path does not exist for this repo's branch. |
+| merge | After the maintainer's approval and a green `scratch/status`, `gh pr merge 11 --auto --squash` run as the dev App merged PR #11 at once, 17:35:11 UTC, `merged_by` `603id-dev[bot]`. This is case k again. ship arms nothing, so the merge was a manual command; filed as #475. |
+
+Follow-ups filed from this session: #475 (ship arms auto-merge after the actor check) and #476
+(ship checks the acting App against `dev_app` before the push).
+
+## Configuration changes made during session 7
+
+- `603-Identity/identity-ruleset-scratch`: PR #7 (`.ai/project.yml`), PR #11 (`s5/a.txt`), milestones
+  1 and 2, issues #8 to #10. Branches `wow-464-project-config` and `chore/s5-a-probe-line`.
+- Tokens: dev App, `contents`/`pull_requests`/`issues` write with `statuses`/`checks` read on the
+  second; reviewer App, `contents: read` and `pull_requests: write`. All under an hour, minted to
+  files outside any repo, never printed; the reviewer file deleted after use.
+- No ruleset, App or org setting was changed.
