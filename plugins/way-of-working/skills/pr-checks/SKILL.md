@@ -231,10 +231,15 @@ what is actually enforced.
      # (c) the active identity, and its bypass state per ruleset carrying an update rule
      B=$(gh pr view <N> --repo {repo} --json baseRefName -q .baseRefName) &&
      case "$B" in '' | *[!A-Za-z0-9._/-]*) false ;; esac &&
-     L=$(gh api user --jq .login) &&
+     if L=$(gh api user --jq .login); then [ -n "$L" ] && M=user
+     else M=app L=- && T=$(mktemp -d) &&
+       env -u GH_HOST -u GH_ENTERPRISE_TOKEN gh api --hostname github.com --paginate \
+         installation/repositories --jq '.repositories[].full_name' >"$T/repos.txt" &&
+       [ "$(gh-identity.sh reach {repo} <"$T/repos.txt")" = reached ]
+     fi &&
      I=$(gh api --paginate "repos/{repo}/rules/branches/$B" \
            --jq '.[] | select(.type=="update") | .ruleset_id') &&
-     printf 'login %s\n' "$L" &&
+     printf 'actor %s %s\n' "$M" "$L" &&
      for id in $I; do
        case "$id" in '' | *[!0-9]*) echo "bad-id"; break ;; esac
        printf '%s %s\n' "$id" "$(gh api "repos/{repo}/rulesets/$id" --jq '.current_user_can_bypass // ""')"
@@ -247,9 +252,22 @@ what is actually enforced.
      one `gh` command as one (a per-command token, not `gh auth switch`). The verdict stays
      READY (admin merge), since the checks are what it judges. `<login>` is the identity
      **this session's `gh` runs as**; it holds for the human's merge only if theirs is the
-     same account — say so. **Never switch the account yourself** (`gh auth switch` is
+     same account — say so. **Under an App token** (the block printed `actor app -`: `gh api user`
+     failed, and the installation probe `reached` `{repo}`) there is no `<login>`: say
+     `an installation token that reaches {repo}; which App is not established` in its place
+     (`reference/conventions.md` § *Acting identity and reach*). The declared `dev_app` is not
+     named, because nothing the block can read proves the token is that App; that proof is
+     ship's actor check after its first write. `current_user_can_bypass` read `never` for an
+     App that is not a bypass actor (`docs/proposals/GITHUB-APP-EVALUATION.md` T2d); for an
+     App that is one it is unobserved. Either way the value is the **App's own** view, not
+     the human's, so under `actor app -` do not relay it as the human's `--admin` outcome:
+     report it as "the installation token reads `<value>`, which describes the App and not
+     the account that will merge", or as "could not confirm" when it is empty or unrecognised.
+     A block that fails at the probe (`unreached`, a refused call, nothing returned) reports
+     `could not establish the actor: GET /user failed and the installation probe did not
+     reach {repo}` (`reference/conventions.md`), and no bypass value. **Never switch the account yourself** (`gh auth switch` is
      global on a host with a concurrent session) — the advice is the human's to act on. A
-     failed block, no ruleset line after `login`, a `bad-id` line, or a value that is empty
+     failed block, no ruleset line after `actor`, a `bad-id` line, or a value that is empty
      or not one of `always`, `pull_requests_only`, `exempt`, `never`, is reported as "could
      not confirm which identity can bypass", never with a value filled in. The base is named so the human sees what the verdict was judged against. Re-read
      `headRefOid` **and** `baseRefName`
@@ -270,7 +288,8 @@ what is actually enforced.
      that list (`workflows`, a commit-message pattern) it ignores, and the admin's bypass
      would skip those too.
      `blocked-state.sh` does not read bypass actors — `current_user_can_bypass` is `never`
-     to a non-admin viewer, so for them it is out of reach; block (c) names the identity.
+     to a non-admin viewer, so for them it is out of reach; block (c) names the identity (under
+     an App token, only that an installation token is acting).
    - **STALE-RED (auto-clearable)** — only possible when `{review.ci_gate}` is set. The
      *Read the review gate on both surfaces it can post to* step's predicate reads
      `success` and the *only* red is a superseded run of the gate's name (or, on a
