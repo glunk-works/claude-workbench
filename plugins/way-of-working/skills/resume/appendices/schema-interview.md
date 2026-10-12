@@ -105,6 +105,8 @@ runs `git status --short` itself (the step it used to cite comes later).
    2. Insert each collected answer into the checkout's `.ai/project.yml` as a **quoted,
       minimal line edit** — never `yq -i`, which rewrites comments and flow-style maps and
       would turn this into a much larger, unreviewable diff than the human's own answers.
+      **A `ruleset.name` answer is written single-quoted with every `'` doubled** (`'it''s'`), so a
+      `'`, a `\` or a `$` in it survives as text and no escape sequence is read.
       **A `list`-kind answer is inserted as a flow sequence, never a bare quoted string** — a
       quoted scalar there is `!!str`, and the re-check below would reject it as `invalid`
       every time, silently making that key impossible to complete through this interview.
@@ -116,16 +118,15 @@ runs `git status --short` itself (the step it used to cite comes later).
       **A map answer for `identities` is inserted as a block map** too, `maintainer` as a flow
       sequence of `{login, id}` maps (`[ { "login": "…", "id": 1001 } ]`) and each non-null App
       as a flow map (`{ "login": "…", "id": 2001 }`), `id` a **bare integer** — a quoted App
-      answer is `!!str` and the re-check rejects it, and a bare-string `maintainer` entry would
-      pass the checker (it confirms the sequence, not its elements) while carrying no `id`,
-      which the trust rule needs; likewise a quoted `id` inside a map passes the checker but leaves that entry untrusted. `rulesets` is never asked; an `invalid rulesets` finding is
-      reported and needs a hand edit (or removing the key).
+      answer is `!!str` and the re-check rejects it, as it does a bare-string `maintainer` entry
+      or a quoted `id` inside a map — the trust rule needs a bare-integer `id`. `rulesets` is never asked; an `invalid rulesets…` finding (it may carry an index, `rulesets[0].source`)
+      is reported and needs a hand edit (or removing the key).
       Most list keys (`load_bearing_docs`, `code_paths`, `ruleset.rule_types`,
       `ruleset.required_checks`, `agents.enabled`, `orchestration.critics`,
       `orchestration.human_only_paths`, and a non-null `review.ci_gate.triggers_on`
       — that last one prints as `missing … nullable`, not `list`, since its kind is
       conditional on `review.ci_gate` being a map, but its non-null form is still a list) are
-      lists of **strings**: `[ "a", "b" ]`. **`gates.green` (and `identities.maintainer`, above) are the exceptions — lists of
+      lists of **strings**: `[ "a", "b" ]`. **`gates.green` is the exception — a list of
       `{run, cwd?}` maps**, per `reference/project-schema.md` § `gates.green`
       (`[ { "run": "…" }, { "cwd": "…", "run": "…" } ]`), never a list of bare command
       strings — the schema-completeness checker only confirms the tag is a sequence, not the

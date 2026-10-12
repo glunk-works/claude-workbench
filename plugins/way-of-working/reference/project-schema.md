@@ -487,7 +487,7 @@ critics on a diff that does not build.
 `{pr_base}`; after a cutover that is more than one (the checks ruleset and the code-owner
 approval ruleset, one of them possibly an organization's). Each entry is:
 
-- **`name`** — the ruleset's name. A reader binds it as a value (`jq --arg`), never splices it.
+- **`name`** — the ruleset's name, here and in the legacy `ruleset.name`. A reader binds it as a value (read into a variable, then `jq --arg`), never splices it into shell text. The checker holds both to one rule: a non-empty string with no control character (no newline or tab); a space, a `'` or a `$` is a legal name, because the binding, not the charset, keeps it inert.
 - **`source`** — exactly `repo` (a repository ruleset) or `org` (an organization ruleset). It
   decides which API a reader asks: `repos/{repo}/rulesets` or `orgs/<owner>/rulesets`, with
   `<owner>` the owner of `{repo}`. A reader matches the two values **exactly** and treats
@@ -497,7 +497,7 @@ approval ruleset, one of them possibly an organization's). Each entry is:
   `required_status_checks`: every check that ruleset requires. Everything said below about
   `required_checks` applies to it, and a reader takes the **union** of every entry's list.
 
-The checker confirms the sequence, not its elements, as it does for `gates.green`. Like the
+The checker confirms the sequence and each entry (`#452`): a map with a `name` (the rule above), a `source` of exactly `repo` or `org` and `rule_types` as a list, plus `required_checks` as a list when it is present and not `null` (`#527`). The elements of both lists stay the reader's to bind. Like the
 rest of this file, read it from the **default branch's** copy before enforcing anything from it.
 
 **Who reads the list (`#384`).** `/way-of-working:resume` reads it when it is present: its
@@ -813,9 +813,14 @@ example a bare login, or an `id` written as a string) is **never matched by `log
 it matches nothing. A reader that cannot validate an entry treats the identity as undeclared,
 never as the nearest name it can find.
 
-The checker confirms the shapes (a non-empty sequence, a map or `null`), not their elements,
-as it does for `gates.green`: a reader binds each `login` and `id` as a value (`jq --arg`),
-never splices one into a shell command. It also does not compare `loop_app` with
+The checker confirms the shapes (a non-empty sequence, a map or `null`) and every element
+(`#452`): each `maintainer` entry and each non-null App is a map with a positive-integer `id`
+(bare decimal of at most 15 digits, so it is exact in any reader; a quoted `id`, a `_`, `+` or base
+prefix, or a 16-digit one is `invalid`) and a `login` that passes the GitHub-login check; a
+`maintainer` login may not end in `[bot]`, which is an App's suffix. The checker reads each entry
+with aliases and merge keys resolved, as the readers do; an aliased list or map as a whole is
+`invalid`. A reader still binds each `login` and `id` as a value (`jq --arg`), never splices one
+into a shell command. It also does not compare `loop_app` with
 `orchestration.loop_identity`. Like `orchestration`, a reader that **enforces** this block reads
 the **default branch's** committed copy, never the working tree's.
 

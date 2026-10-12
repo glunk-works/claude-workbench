@@ -17,6 +17,8 @@
 #                                finding:
 #                                  missing <dotted.path> <kind>
 #                                  invalid <dotted.path> <json-value>
+#                                <dotted.path> may carry an index for one element of a list
+#                                of maps: `identities.maintainer[1]`, `rulesets[0].source`.
 #                                <kind> is one of: enum:<a>|<b>  nullable
 #                                value  list  int. <json-value> is the OFFENDING
 #                                value, compact JSON (`yq -o=json -I=0`),
@@ -153,8 +155,9 @@ set -eu
 #   kind:  value | nullable | list | nelist | int | enum:<a>|<b>|...
 #          | cigate (review.ci_gate only) | orchmap (orchestration only)
 #          | identmap (identities only) | optnelist (rulesets only: optional, non-empty if present)
-#   shape: - | ownername | branch | ghlogin | rulename | pair   (consulted for value/nullable;
-#          `pair` is a {login, id} map, `identities.*_app` only)
+#   shape: - | ownername | branch | ghlogin | rulename | textname | pair   (consulted for
+#          value/nullable; `pair` is a {login, id} map, `identities.*_app` only; `textname`
+#          is a ruleset name a reader binds as a value, #451)
 MAIN_KEYS='
 repo value ownername
 pr_base value branch
@@ -193,7 +196,7 @@ RULESETS_KEYS='
 rulesets optnelist -
 '
 RULESET_KEYS='
-ruleset.name value -
+ruleset.name value textname
 ruleset.rule_types list -
 ruleset.required_checks list -
 '
@@ -203,8 +206,9 @@ ruleset.required_checks list -
 # the declared set, and then these sub-keys are required -- present, so absent prompts.
 # `maintainer` is a non-empty list of {login, id} pairs (trust is by declared identity,
 # not author_association); each App is a {login, id} pair or `null` (not created yet).
-# The checker confirms the sequence and the map, not their elements, as it does for
-# `gates.green` -- a reader binds each login and id as a value, never splices one.
+# The checker confirms the sequence and the map, and every element (#452): a map with a
+# positive-integer `id` and a `login` that passes the GitHub-login check. A reader still
+# binds each login and id as a value, never splices one.
 IDENT_KEYS='
 identities.maintainer nelist -
 identities.dev_app nullable pair
@@ -402,13 +406,14 @@ is_branch_name() { # is_branch_name <value> -- safe charset, round-trips check-r
 # `kind`/`shape` are the table's own literals, echoed back so the loop below needs
 # no lookup. `present` is `has()` on the parent, guarded by `select(tag == "!!map")`
 # so a scalar parent (`planning: 5`) reads as absent, never as a failed call that
-# would take every other key down with it. `safe` is the [A-Za-z0-9._/-] charset
+# would take every other key down with it. `safe` is the [A-Za-z0-9._/-] charset (or, for
+# the `textname` shape, a no-control-character test)
 # test done INSIDE yq, against the parsed string, never against a shell-captured
 # `$(...)` value: `$(...)` strips every trailing newline, so `pr_base: "main\n"`
 # would read back as the harmless "main" and pass a check that never saw the
 # newline (a round-2 security-critic finding). `json` is `to_json(0)` -- compact,
 # one line, newlines escaped -- so a row can never be split by a value, and a
-# string that passed `safe` has no escapes to undo (see `unquote`). `@tsv` is not
+# string that passed the charset `safe` test has no escapes to undo (see `unquote`; a `textname` is never unquoted). `@tsv` is not
 # used: it csv-quotes fields containing `"`, which every JSON string does.
 TAB=$(printf '\t')
 
@@ -427,7 +432,15 @@ build_rows() { # build_rows <table> -- the yq expression, one row per key
     # `safe`: a string by charset; an INT by its RAW spelling (`to_string` keeps `0x10`,
     # `+2`, `1_0`, `02` as written, which `to_json` would normalize to a clean number a
     # later `yq` read would not return).
-    row="$row + \"\t\" + ((($v | select(tag == \"!!str\") | test(\"^[A-Za-z0-9._/-]+\$\")) // ($v | select(tag == \"!!int\") | to_string | test(\"^[1-9][0-9]{0,2}\$\")) // false) | to_string)"
+    # `textname` (a ruleset name, which a reader reads into a variable and binds with
+    # `jq --arg`, never splicing it into shell text, #451): any non-empty string with no control character
+    # (`\p{Cc}`, so no newline or tab). A `'`, a space or a `$` is a legal name; the binding,
+    # not the charset, is what keeps them inert.
+    case "$shape" in
+      textname) safe_test='test("^[^\\p{Cc}]+$")' ;;
+      *) safe_test='test("^[A-Za-z0-9._/-]+$")' ;;
+    esac
+    row="$row + \"\t\" + ((($v | select(tag == \"!!str\") | $safe_test) // ($v | select(tag == \"!!int\") | to_string | test(\"^[1-9][0-9]{0,2}\$\")) // false) | to_string)"
     row="$row + \"\t\" + (($v | to_json(0)) // \"null\")"
     if [ -z "$expr" ]; then expr="$row"; else expr="$expr, $row"; fi
   done <<EOF_ROWS
@@ -437,7 +450,7 @@ EOF_ROWS
 }
 
 unquote() { # unquote <json-string> -- "abc" -> abc. Only ever called on a string whose
-            # charset has no quote or backslash -- by the `safe` column, or (rulename, ghlogin) by a
+            # charset has no quote or backslash -- by the charset `safe` column (never `textname`'s), or (rulename, ghlogin) by a
             # check made right after -- so there are no JSON escapes to undo.
   v="${1#\"}"
   printf '%s' "${v%\"}"
@@ -481,6 +494,10 @@ check_value_shape() { # check_value_shape <shape> <tag> <safe> <json> -- exit 0 
       # cannot start with `-` (a flag) and carries no quote or escape (the JSON form
       # shows any control character as one). Spaces are legal in a ruleset name.
       [ "$tag" = '!!str' ] && is_rule_name "$(unquote "$json")"
+      ;;
+    textname)
+      # `safe` already holds "a string, non-empty, no control character" (build_rows).
+      [ "$tag" = '!!str' ] && [ "$safe" = true ]
       ;;
     ghlogin)
       # No `safe` test: its charset has no brackets, and the suffix needs them. The
@@ -618,15 +635,97 @@ EOF_ROWS
   [ -z "$want" ] || { echo unreadable; exit 0; }
 }
 
+# Each `rulesets` entry is a map with a `name` (the `ruleset.name` rule, #451: a non-empty
+# string with no control character), a `source` of exactly `repo` or `org`, and `rule_types`
+# as a list (#452). `required_checks` is optional: absent or `null` is "none", anything else
+# must be a list (#527; a string there made `pr-checks` drop the entry's checks without a
+# word). The elements of both lists stay the reader's to bind. One yq call, one row per
+# entry: <index> <is_map> <name_ok> <source_ok> <rule_types_ok> <required_checks_ok>
+# <entry-json> <name-json> <source-json> <rule_types-json> <required_checks-json>. The index is yq's
+# own integer, the flags are booleans computed inside yq and every json is `to_json(0)`, so a
+# value cannot forge a row (no raw tag or scalar text is read back).
+check_ruleset_entries() {
+  expr='.rulesets | explode(.) | select(tag == "!!seq") | to_entries | .[] | (.key | to_string)
+    + "\t" + ((.value | tag == "!!map") | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | .name | select(tag == "!!str") | test("^[^\\p{Cc}]+$")) // false)) | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | .source | select(tag == "!!str") | (. == "repo" or . == "org")) // false)) | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | .rule_types | kind == "seq") // false)) | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | [.required_checks | select(kind != "seq" and tag != "!!null")] | length == 0) // false)) | to_string)
+    + "\t" + (.value | to_json(0))
+    + "\t" + ((.value | select(tag == "!!map") | .name | to_json(0)) // "null")
+    + "\t" + ((.value | select(tag == "!!map") | .source | to_json(0)) // "null")
+    + "\t" + ((.value | select(tag == "!!map") | .rule_types | to_json(0)) // "null")
+    + "\t" + ((.value | select(tag == "!!map") | .required_checks | to_json(0)) // "null")'
+  entry_rows=$(yq eval "$expr" "$FILE" 2>/dev/null) || { echo unreadable; exit 0; }
+  [ -n "$entry_rows" ] || return 0
+  while IFS="$TAB" read -r idx is_map name_ok src_ok rt_ok rc_ok ejson njson sjson rjson cjson; do
+    case "$idx" in '' | *[!0-9]*) echo unreadable; exit 0 ;; esac
+    if [ "$is_map" != true ]; then
+      invalid_finding "rulesets[$idx]" "$ejson"; continue
+    fi
+    [ "$name_ok" = true ] || invalid_finding "rulesets[$idx].name" "$njson"
+    [ "$src_ok" = true ] || invalid_finding "rulesets[$idx].source" "$sjson"
+    [ "$rt_ok" = true ] || invalid_finding "rulesets[$idx].rule_types" "$rjson"
+    [ "$rc_ok" = true ] || invalid_finding "rulesets[$idx].required_checks" "$cjson"
+  done <<EOF_ENTRIES
+$entry_rows
+EOF_ENTRIES
+}
+
+# Each `identities.maintainer` entry and each non-null App is a map with a positive-integer
+# `id` (a bare integer of at most 15 digits, so it is exact in any reader: a quoted one is
+# `!!str`, and a reader that matched on a string would trust nothing) and a `login` that
+# passes the GitHub-login check (#452). A maintainer is a person, so its login may not end in
+# `[bot]` -- that suffix is an App's, and an App declared as a maintainer would hold a
+# maintainer's trust. Every entry's rows are read from `explode(.)` of its own list, the value
+# the readers bind, so a merge key or alias inside an entry cannot make the checker and a reader
+# see different entries (only the subtree is exploded: a whole-document explode would expand
+# every alias in the file on each call). The list or map itself is shape-checked above without
+# exploding, so an aliased container is `invalid` there. Same row discipline as above: <index> <is_map> <id_ok> <login_is_string> <login-json> <entry-json>.
+PAIR_ROW='(.key | to_string)
+    + "\t" + ((.value | tag == "!!map") | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | .id | select(tag == "!!int") | to_string | test("^[1-9][0-9]{0,14}$")) // false)) | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | .login | tag == "!!str") // false)) | to_string)
+    + "\t" + ((.value | select(tag == "!!map") | .login | to_json(0)) // "null")
+    + "\t" + (.value | to_json(0))'
+
+check_pairs() { # check_pairs <yq sequence expression> <label> <indexed: 1 = maintainer[i], 0 = a single App>
+  pair_rows=$(yq eval "$1 | explode(.) | select(tag == \"!!seq\") | to_entries | .[] | $PAIR_ROW" "$FILE" 2>/dev/null) || { echo unreadable; exit 0; }
+  [ -n "$pair_rows" ] || return 0
+  while IFS="$TAB" read -r idx is_map id_ok lstr ljson ejson; do
+    case "$idx" in '' | *[!0-9]*) echo unreadable; exit 0 ;; esac
+    label="$2"
+    [ "$3" = 1 ] && label="$2[$idx]"
+    login=$(unquote "$ljson")
+    if [ "$is_map" = true ] && [ "$id_ok" = true ] && [ "$lstr" = true ] && is_gh_login "$login" \
+      && { [ "$3" != 1 ] || [ "${login%'[bot]'}" = "$login" ]; }; then
+      :
+    else
+      invalid_finding "$label" "$ejson"
+    fi
+  done <<EOF_PAIRS
+$pair_rows
+EOF_PAIRS
+}
+
+check_identity_entries() {
+  check_pairs '.identities.maintainer' identities.maintainer 1
+  for app in dev_app reviewer_app loop_app; do
+    check_pairs "[.identities.$app | explode(.) | select(tag == \"!!map\")]" "identities.$app" 0
+  done
+}
+
 cigate_is_map=0
 orch_is_map=0
 ident_is_map=0
 run_table "$MAIN_KEYS"
 run_table "$RULESETS_KEYS"
+check_ruleset_entries
 run_table "$RULESET_KEYS"
 [ "$cigate_is_map" = 1 ] && run_table "$CIGATE_KEYS"
 [ "$orch_is_map" = 1 ] && run_table "$ORCH_KEYS"
 [ "$ident_is_map" = 1 ] && run_table "$IDENT_KEYS"
+[ "$ident_is_map" = 1 ] && check_identity_entries
 
 if [ -z "$findings" ]; then
   echo complete
