@@ -735,9 +735,10 @@ for v in "\"it${sq}s a name\"" '"a $(id) b"' "${sq}back\slash${sq}"; do
 done
 for v in '""' '"a\nb"' '"a\tb"' '"a\u001b[31mb"' '"a\u0085b"' 5 null; do
   rs_name_fixture "$v" "$tmp/rsn_bad.yml"
+  out=$(run_check "$tmp/rsn_bad.yml")
   assert_eq "rulesets[0].name: $v is invalid, and the only finding" \
     "incomplete|invalid rulesets[0].name|2" \
-    "$(run_check "$tmp/rsn_bad.yml" | { read -r a; read -r b; echo "$a|$(echo "$b" | cut -d' ' -f1,2)|$(( 2 + $(cat | wc -l) ))"; })"
+    "$(printf '%s\n' "$out" | sed -n '1p;2p' | cut -d' ' -f1,2 | paste -sd'|')|$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
 done
 { cat "$base"; printf 'rulesets:\n  - name: fine\n    source: repo\n    rule_types: [deletion]\n  - source: org\n    rule_types: [deletion]\n'; } >"$tmp/rsn_missing.yml"
 assert_eq "rulesets[1].name: an entry with no name is invalid at its own index" \
