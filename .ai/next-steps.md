@@ -3,11 +3,12 @@
 **Now:** **Sprint 14** (cursor id `sprint-14`) on [milestone 17, *Identity M2: dual-mode plugin v0.18.0*](https://github.com/glunk-works/claude-workbench/milestone/17). Status: **implementing**.
 
 **Just done (2026-10-12):**
-- **Backlog triaged** (`/way-of-working:plan-sprint`, recommendation accepted whole; #520). Milestone 17's build order gains steps 23–33 before the release (#391, now step 34); #515, #514 and #489/#488/#490 went to milestones 18, 19 and 23; #223 and #334 stay unmilestoned. Each placed issue carries a `[plan-sprint]` triage comment.
-- **Milestone 17 re-anchored** on the description this session wrote: the live description matched the write, and `plan-anchor.sh verify --plan` against the fresh baseline printed `match`. Anchor task: #478.
+- **#476 merged** (#528, `d189e93`): ship's App-mode preflight now reads the acting App through GraphQL `viewer { login databaseId }` and tests it with `gh-identity.sh pr-actor` before the dry-run and the first push; the post-PR PR-user check stays as the backstop. `viewer` was measured on the dev and reviewer Apps (not the loop App) against the scratch repo, because the Apps are not installed on this repo.
+- Critic pass on #476: architect, security-critic and docs-consistency, 2 rounds, converged; all critics ran on their frontmatter defaults (no second-opinion round). Subagent critics only; no fresh-session review gate is configured.
+- Follow-ups filed: #529 (architect-review proves the reviewer App via `viewer` before posting) and #530 (coupling-check misses hardcoded App logins).
 
-**Next:** task #478 — make handoff's cursor-PR push and archive-sprint's roadmap and compaction pushes take ship's App-mode pinned push from one shared place, with a fixture that no skill pushes unpinned in App mode; run the green gate, then `/way-of-working:critic-gate` (`architect`, `security-critic`), then `/way-of-working:ship`. Run on **sonnet** (coder).
+**Next:** task #479 — make archive-sprint read a null `backlog.repo` as the repo itself, stated once where it reads the config, and check the other skills that name `{backlog.repo}` in a call (resume, handoff beyond its derive line); add a fixture or a recorded run; run the green gate, then `/way-of-working:critic-gate` (`architect`, `security-critic`), then `/way-of-working:ship`. Run on **sonnet** (coder). Build order step 25; no dependency.
 
-**HITL Gate: NONE OPEN** — next gate: the human's merge of #478's PR.
+**HITL Gate: NONE OPEN** — next gate: the human's merge of #479's PR.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) · [milestone 17](https://github.com/glunk-works/claude-workbench/milestone/17) · [.ai/parked/](parked/)
