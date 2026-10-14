@@ -1739,8 +1739,8 @@ take effect. Full reasoning and the task breakdown that implements them:
     by the previous container, not a forwarded socket. Read the `find` result with that in mind:
     a socket that refuses a connection and is older than the container is stale; wipe the home
     volume to get a clean no-output pass. Vigilant mode is on for the maintainer account
-    `Seuss27` (the maintainer's report, 2026-10-14); it is per account, and the terraform repos'
-    PRs are opened as `JaredGroves-603`, which has not been confirmed.
+    `Seuss27` and `JaredGroves-603`, the account that opens the terraform repos' PRs (the
+    maintainer's report, 2026-10-14; it is a per-account setting the dev App cannot read).
 
 ## Status
 
