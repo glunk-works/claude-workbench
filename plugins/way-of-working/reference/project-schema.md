@@ -844,7 +844,7 @@ account including the dev App, which `author` never trusts (it also judges issue
 `identities` is `null`, where the reader keeps its `author_association` allowlist (`OWNER`,
 `MEMBER`, `COLLABORATOR`). A spec comment's author is the one exception, judged by `bin/spec-comment.sh` through `gh-identity.sh role` (`#660`): the dev App may write a spec comment, never approves one, and a dev-App spec comment is used only with a declared maintainer's approving reaction after its last edit, wherever it is read (`plan-anchor.sh verify --dev-app-id`, and the reactions file each reader passes `spec-comment.sh` under a map). The readers are `resume`'s author-trust check (and the `coder`
 agent's, which points at it), `bin/review-sandbox.sh trust`, `plan-sprint` (judging the login and
-id `bin/plan-gather.sh` prints), `spec-task` (the issue it drafts for) and `scripts/loop/preflight.sh github-dispatch`
+id `bin/plan-gather.sh` prints), `spec-task` (the issue it drafts for, read through `bin/spec-issue.sh`) and `scripts/loop/preflight.sh github-dispatch`
 (`--identities`, the one reader that is its own implementation of the rule rather than a call
 to `gh-identity.sh`). Outside `token-check.sh` (below) and `scripts/identity/review/entrypoint.sh` (which requires `reviewer_app` to be a map, `#634`, checking it with its own `yq` read), `reviewer_app` and `loop_app` are read only to
 refuse them (as authors, and by `classify` as the acting identity) and to catch a duplicate id.
