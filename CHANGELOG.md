@@ -67,6 +67,11 @@ unchanged.
 - **The loop's dispatch preflight accepts a declared dev-App spec comment** (#666) that a declared
   maintainer reacted to after its last edit, through a new optional `--spec-reactions` file judged by
   `bin/spec-reaction.sh`. Check 16 pins its call. The task issue's author stays maintainer-only.
+- **The loop's dispatch preflight needs a maintainer's reaction on every spec comment under a map** (#682,
+  `WB-D30`). A maintainer-authored spec comment now passes only with a declared maintainer's approving
+  reaction after its last edit, as a dev-App one already did (#666), `--no-spec-comment` is refused under a
+  map, a config listing the dev App's id among the maintainers is refused, and a maintainer's comment under
+  a malformed non-null `dev_app` is unreadable. Repos with `identities: null` are unchanged.
 - **`/way-of-working:architect-review` has a container mode** (#636). Inside the review container
   it reviews with no local execution and writes the launcher's outbox; it never posts, files or
   mints a token. On a host or in a dev container under a map it prints the launcher command and
