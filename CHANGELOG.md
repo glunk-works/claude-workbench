@@ -34,8 +34,23 @@ comment, a maintainer's included, needs a declared maintainer's approving reacti
 edit; and `/way-of-working:handoff` no longer anchors the spec. Repos with `identities: null` are
 unchanged.
 
+**⚠️ Migration** — on a map repo a build now refuses a spec whose *Files touched* section is not one
+`- ` bullet per file with the path in backticks (`bad-shape`), or whose listed paths changed on the
+base since its commit (`stale`) (#663, `WB-D31`). Re-draft an already-approved spec that reads either,
+with `/way-of-working:spec-task`, and move the maintainer's reaction to the new comment.
+
 ### Added
 
+- **`bin/spec-fresh.sh`, `bin/draft-identity.sh` and `spec-find.sh pending`** (#663, `WB-D31`): on a
+  map repo a build now re-checks the paths its spec lists under *Files touched* against the commit
+  in the spec's marker and refuses a stale spec (`resume`'s body read and the `coder` agent run
+  `spec-comment.sh check`, then `spec-fresh.sh check`, then `spec-comment.sh body`). As the declared
+  dev App with no stored login behind it, `resume` may instead draft and post one spec comment (when
+  the finder finds none, or when the approved one is stale and no newer draft is waiting) and end without
+  building. `spec-task` may be run ahead for any task whose `depends_on` is met, and runs
+  `spec-fresh.sh shape` on its draft. Tested by `tests/spec-fresh.test.sh`,
+  `tests/draft-identity.test.sh` and the new `pending` fixtures in `tests/spec-find.test.sh`; invariants
+  check 17 now covers `spec-fresh.sh`.
 - **`bin/spec-find.sh`** (#662, part 1): finds the one approved spec comment on a task issue and
   prints its id and `updated_at`, or a word that means wait. Called by `resume`, the `coder` agent
   and `architect-review` since part 2 (#678). Tested by `tests/spec-find.test.sh`; invariants checks 16 and 17
