@@ -10,6 +10,7 @@
 
 **Next:** as the driver session **inside the container**, on **opus**:
 1. Run `/way-of-working:spec-task 707` and `/way-of-working:spec-task 714`. In the container they post as the dev App. The maintainer reacts to each.
+   - `main`'s `spec-task` is ahead of the installed v0.19.0, so draft from `main`'s `plugins/way-of-working/skills/spec-task/SKILL.md`, with `main`'s `plugins/way-of-working/bin` first on `PATH`.
 2. Once #707's spec is reacted, the maintainer launches #707 as the first container lane, on #714's trial shape below. Critics: `architect` and `security-critic`.
 3. After that lane's PR merges, a fresh session that drafted no spec builds #714's write-up from what the trial showed.
 4. Correct milestone 19's description: steps 7 and 8 are done, the #397 `BLOCKING` line is obsolete, and the **Lanes** line still names host lanes. Use `/way-of-working:plan-sprint`, which edits it through `milestone-desc.sh`.
