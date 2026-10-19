@@ -34,6 +34,7 @@ the new comment.
   `spec-issue.sh` and `spec-post.sh` for App-filed issues is wider by the same two ranges.
   **Behaviour change, `identities: null` repos:** `spec-task`'s `spec-fresh.sh shape` gate has no map
   condition, so a draft carrying such a character is refused on every repo.
+- `/way-of-working:plan-sprint` shows each unmilestoned issue's author as `trusted`, `agent`, `untrusted`, `legacy` (or `unjudged`), judged by `gh-identity.sh task-author` through the new read-only `plan-gather.sh authors`, so an issue filed by the declared dev or reviewer App no longer reads `untrusted`. An `agent` row carries a note that drafting its spec needs a declared maintainer's approving reaction after the issue's last change. Display only: nothing is gated on the word (#710, `WB-D32`).
 
 ## [0.20.0] — 2026-10-18
 
