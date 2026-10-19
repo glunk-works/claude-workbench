@@ -19,6 +19,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 `v0.5.0` are summarized from their tags; the full record is `docs/decisions.md` (`WB-D*`) and
 the GitHub release notes.
 
+## [Unreleased]
+
+**⚠️ Migration** — on a map repo a build now refuses, as `bad-shape`, an approved spec whose body
+carries a zero-width, bidi, soft hyphen or Unicode tag character anywhere, not only in *Files touched*
+(#709, `WB-D31`). Re-draft it with `/way-of-working:spec-task` and move the maintainer's reaction to
+the new comment.
+
+### Changed
+
+- **`spec-fresh.sh` refuses a hidden character anywhere in a spec comment** (#709, `WB-D31`): `check` and
+  `shape` print `bad-shape` for a `HID` character on any line of the body, `HID` gains the soft hyphen
+  (U+00AD) and the Unicode tag block (U+E0000 to U+E007F) in all three copies, and the `hidden` screen of
+  `spec-issue.sh` and `spec-post.sh` for App-filed issues is wider by the same two ranges.
+  **Behaviour change, `identities: null` repos:** `spec-task`'s `spec-fresh.sh shape` gate has no map
+  condition, so a draft carrying such a character is refused on every repo.
+
 ## [0.20.0] — 2026-10-18
 
 **⚠️ Migration** — on a map repo a build now refuses a spec whose *Files touched* section is not one
