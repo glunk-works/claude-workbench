@@ -61,6 +61,7 @@ ID2=$(printf '%064d' 0 | tr 0 b)
 ID3=$(printf '%064d' 0 | tr 0 c)
 
 case "$(uname -s)" in MINGW*|MSYS*) msys=1 ;; *) msys= ;; esac
+STUB_MSYS=$msys; export STUB_MSYS
 
 # --- stubs -------------------------------------------------------------------------------------
 # On MSYS the stubs are .cmd shims that run the sh stubs: they take the same cmd.exe re-parse path as
@@ -102,10 +103,12 @@ case "$1" in
         exit "${STUB_SESSION_EXIT:-0}" ;;
       "exec -u app "*)
         # wow-lane.ps1's in-container step: run the script for real, with the container's two literal
-        # directories swapped for the scratch ones.
+        # directories swapped for the scratch ones. MSYS mkdir -m fails (cannot change permissions) under
+        # its /tmp, so there the script runs with a plain mkdir; elsewhere it runs as sent.
         shift
         while [ "$1" != /bin/sh ]; do shift; done
         shift 2; script=$1; shift 2
+        [ -z "${STUB_MSYS:-}" ] || script=$(printf '%s' "$script" | sed 's/mkdir -m 700/mkdir/g')
         n=$#
         while [ "$n" -gt 0 ]; do
           a=$1; shift
@@ -504,7 +507,7 @@ exec_shape() { non_ps | awk '{print $2, $3, $4}' | tr '\n' ,; }
 lane_setup() {
   reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"
   rm -rf "$lanes" "$tmp/otherwt" "$stubdir/moved-wt"; $real_git -C "$crepo" worktree prune
-  mkdir -m 700 "$lanes"
+  mkdir "$lanes"; chmod 700 "$lanes" # not mkdir -m: MSYS fails it under its /tmp
   printf '%s exited /elsewhere/CANARY-LABEL\n' "$ID3" >"$stubdir/ps.label"
   $real_git -C "$crepo" worktree add -q --detach "$lanes/5" "$c2"
   printf 'CANARY-PROMPT: do things\n' >"$lanes/5-prompt.md"
