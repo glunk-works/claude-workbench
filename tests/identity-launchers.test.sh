@@ -55,17 +55,26 @@ ID1=$(printf '%064d' 0 | tr 0 a)
 ID2=$(printf '%064d' 0 | tr 0 b)
 ID3=$(printf '%064d' 0 | tr 0 c)
 
+case "$(uname -s)" in MINGW*|MSYS*) msys=1 ;; *) msys= ;; esac
+
 # --- stubs -------------------------------------------------------------------------------------
 # On MSYS the stubs are .cmd shims that run the sh stubs: they take the same cmd.exe re-parse path as
 # the real devcontainer.cmd, so the -Clone character set protects them too.
 mkstub() { # mkstub <name> <body-file>
-  case "$(uname -s)" in
-    MINGW*|MSYS*)
-      cp "$2" "$stubdir/$1.sh"
-      printf '@sh "%%~dp0%s.sh" %%*\r\n' "$1" >"$stubdir/$1.cmd" ;;
-    *) cp "$2" "$stubdir/$1"; chmod +x "$stubdir/$1" ;;
-  esac
+  if [ -n "$msys" ]; then
+    cp "$2" "$stubdir/$1.sh"
+    printf '@sh "%%~dp0%s.sh" %%*\r\n' "$1" >"$stubdir/$1.cmd"
+  else cp "$2" "$stubdir/$1"; chmod +x "$stubdir/$1"; fi
 }
+# mklink_dir <link> <target>: a directory link, a junction on MSYS (no admin, and MSYS ln -s copies);
+# non-zero where a real link cannot be made.
+mklink_dir() {
+  if [ -n "$msys" ]; then
+    "$pwsh_abs" -NoProfile -NonInteractive -Command "New-Item -ItemType Junction -Path '$(wp "$1")' -Target '$(wp "$2")' | Out-Null" >/dev/null 2>&1 &&
+      "$pwsh_abs" -NoProfile -NonInteractive -Command "if ((Get-Item -LiteralPath '$(wp "$1")' -Force).LinkType) { exit 0 } else { exit 1 }" >/dev/null 2>&1
+  else ln -s "$2" "$1" 2>/dev/null && [ -L "$1" ]; fi
+}
+skip() { echo "SKIP - $1" >&2; }
 cat >"$tmp/docker.body" <<'STUB'
 #!/bin/sh
 d=$STUB_DIR
@@ -108,7 +117,9 @@ exec "$REAL_GIT" "$@"
 STUB
 mkstub docker "$tmp/docker.body"
 mkstub devcontainer "$tmp/devcontainer.body"
-mkstub git "$tmp/git.body"
+# On MSYS a .cmd git shim would lose the ^ of ^{commit} to cmd.exe, which the real git.exe never sees, so
+# the launcher runs the real git and run_with projects git's own trace2 log into git.log instead.
+[ -n "$msys" ] || mkstub git "$tmp/git.body"
 
 # --- a scratch Reference clone, a Clone folder and the installed scripts -----------------------------
 seed="$tmp/seed" origin="$tmp/origin.git" ref="$tmp/refs/wb-ref" clone="$tmp/clones/wb-driver"
@@ -148,7 +159,12 @@ drv_path() { printf '%s' "$stubdir:$PATH_BASE"; }
 # run_drv [args...]: the default arguments are overridden by later duplicates, so cases pass full sets with run_with.
 run_with() { # run_with <script> <args...>
   s=$1; shift; rc=0
-  PATH=$(drv_path) UP_ID=$ID1 "$pwsh_abs" -NoProfile -NonInteractive -File "$(wp "$s")" "$@" >"$tmp/out" 2>"$tmp/err" || rc=$?
+  rm -f "$tmp/git.trace"
+  if [ -n "$msys" ]; then tr2=$(wp "$tmp/git.trace"); else tr2=; fi
+  PATH=$(drv_path) UP_ID=$ID1 GIT_TRACE2_EVENT=$tr2 "$pwsh_abs" -NoProfile -NonInteractive -File "$(wp "$s")" "$@" >"$tmp/out" 2>"$tmp/err" || rc=$?
+  # Top-level git processes only (a child's sid holds a /), as "git <argv>" like the stub's line.
+  [ ! -e "$tmp/git.trace" ] || jq -r 'select(.event == "start" and (.sid | contains("/") | not)) | "git " + (.argv[1:] | join(" "))' \
+    "$tmp/git.trace" | tr -d '\r' >>"$stubdir/git.log"
   [ -z "${LAUNCH_TEST_VERBOSE:-}" ] || echo "# rc=$rc: $(tail -n 1 "$tmp/err" | head -c 300)" >&2
 }
 run_drv() { run_with "$home/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")" "$@"; }
@@ -202,13 +218,13 @@ cp "$tmp/keep" "$home/bin/MANIFEST"
 reset; run_with "$tmp/other/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")"
 check "not installed: a bin outside -WowHome exits 1" test "$rc" -eq 1
 check "not installed: ...before any stub call" none_called
-if ln -s "$home" "$tmp/homelink" 2>/dev/null; then
+if mklink_dir "$tmp/homelink" "$home"; then
   reset; echo "$ID1 exited" >"$stubdir/ps.vol.1"; echo "$ID1 running" >"$stubdir/ps.vol.3"
   run_with "$home/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$tmp/homelink")"
   check "not installed: a -WowHome reached through a link passes" test "$rc" -eq 7
   reset; run_with "$tmp/homelink/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")"
   check "not installed: a script run through the link passes the bin check" test "$rc" -ne 1 -o -s "$stubdir/calls.log"
-fi
+else skip "a directory link cannot be made here; the -WowHome link fixtures did not run"; fi
 
 # --- bad arguments -----------------------------------------------------------------------------
 bad_arg() { # bad_arg <label> <args...>: exit 2, a usage line, no stub or git call
@@ -219,6 +235,8 @@ bad_arg() { # bad_arg <label> <args...>: exit 2, a usage line, no stub or git ca
   check "bad argument: $l makes no external call" none_called
 }
 C=$(wp "$clone"); R=$(wp "$ref"); H=$(wp "$home")
+# The -Clone path as the launcher passes it on: Get-FinalPath's form, backslashes on Windows.
+if [ -n "$msys" ]; then CF=$(printf '%s' "$C" | tr / '\\'); else CF=$C; fi
 bad_arg 'a missing -Clone' -Reference "$R" -WowHome "$H"
 bad_arg 'a missing -Reference' -Clone "$C" -WowHome "$H"
 bad_arg 'a relative -Clone' -Clone wb-driver -Reference "$R" -WowHome "$H"
@@ -240,10 +258,10 @@ fi
 mkdir -p "$tmp/a&b/wb-amp" "$tmp/a%b/wb-pct"
 bad_arg 'an & in a parent of -Clone' -Clone "$(wp "$tmp/a&b/wb-amp")" -Reference "$R" -WowHome "$H"
 bad_arg 'a % in a parent of -Clone' -Clone "$(wp "$tmp/a%b/wb-pct")" -Reference "$R" -WowHome "$H"
-if ln -s "$clone" "$tmp/clones/wb-link" 2>/dev/null && ln -s "$ref" "$tmp/refs/wb-rlink" 2>/dev/null; then
+if mklink_dir "$tmp/clones/wb-link" "$clone" && mklink_dir "$tmp/refs/wb-rlink" "$ref"; then
   bad_arg 'a link as -Clone' -Clone "$(wp "$tmp/clones/wb-link")" -Reference "$R" -WowHome "$H"
   bad_arg 'a link as -Reference' -Clone "$C" -Reference "$(wp "$tmp/refs/wb-rlink")" -WowHome "$H"
-fi
+else skip "a directory link cannot be made here; the link-argument fixtures did not run"; fi
 mkdir -p "$tmp/refs/wb-wt"; echo 'gitdir: /nowhere' >"$tmp/refs/wb-wt/.git"
 bad_arg 'a -Reference whose .git is a file' -Clone "$C" -Reference "$(wp "$tmp/refs/wb-wt")" -WowHome "$H"
 mkdir -p "$tmp/other-parent/wb-driver/.git"; bad_arg 'a -Reference sharing the clone leaf' -Clone "$C" -Reference "$(wp "$tmp/other-parent/wb-driver")" -WowHome "$H"
@@ -258,7 +276,7 @@ done
 # --- start of day ------------------------------------------------------------------------------
 start_ok() { # start_ok <label>: the sequence, the record, the exec, the exit code
   check "$1: exits with the session's code" test "$rc" -eq 7
-  check "$1: devcontainer up, then the exec, and nothing else between" test "$(non_ps)" = "devcontainer up --skip-post-attach --remove-existing-container --workspace-folder $C
+  check "$1: devcontainer up, then the exec, and nothing else between" test "$(non_ps)" = "devcontainer up --skip-post-attach --remove-existing-container --workspace-folder $CF
 $exec_line"
   check "$1: six ps calls, two of them after up" test "$(calls | grep -c '^docker ps ')" -eq 6
   check "$1: the last two ps calls follow up" test "$(calls | sed -n '/^devcontainer up/,$p' | grep -c '^docker ps ')" -eq 2
@@ -299,15 +317,21 @@ mismatch() { # mismatch <label> <mutation command...>
 }
 mismatch 'a changed byte' sh -c "printf 'X' >>'$clone/.devcontainer/sub/x.sh'"
 mismatch 'an extra file' sh -c "echo x >'$clone/.devcontainer/extra.txt'"
-mismatch 'a case variant of a committed file' sh -c "cp '$clone/.devcontainer/Dockerfile' '$clone/.devcontainer/dockerfile'; echo evil >>'$clone/.devcontainer/Dockerfile'"
+# A case-insensitive folder (NTFS) cannot hold both names: the cp would fail and the evil byte alone would refuse.
+if [ -d "$tmp/CLONES" ]; then skip "a case-insensitive file system; the case-variant fixture did not run"
+else mismatch 'a case variant of a committed file' sh -c "cp '$clone/.devcontainer/Dockerfile' '$clone/.devcontainer/dockerfile' && echo evil >>'$clone/.devcontainer/Dockerfile'"; fi
 mismatch 'a near-duplicate name (soft hyphen)' sh -c "cp '$clone/.devcontainer/Dockerfile' \"$clone/.devcontainer/Docker\$(printf '\\302\\255')file\"; echo evil >>'$clone/.devcontainer/Dockerfile'"
 mismatch 'a missing file' rm "$clone/.devcontainer/sub/x.sh"
 mismatch 'a CRLF checkout' sh -c "sed 's/\$/\r/' '$seed/.devcontainer/sub/x.sh' >'$clone/.devcontainer/sub/x.sh'"
-if ln -s /etc/hostname "$tmp/probe-link" 2>/dev/null; then
-  mismatch 'a link under it' sh -c "rm '$clone/.devcontainer/sub/x.sh' && ln -s /etc/hostname '$clone/.devcontainer/sub/x.sh'"
-  mismatch 'a link as the directory' sh -c "mv '$clone/.devcontainer' '$tmp/dc-moved' && ln -s '$tmp/dc-moved' '$clone/.devcontainer'"
-  rm -rf "$tmp/dc-moved"
-fi
+echo x >"$tmp/link-target"
+if ln -s "$tmp/link-target" "$tmp/probe-link" 2>/dev/null && [ -L "$tmp/probe-link" ]; then
+  mismatch 'a link under it' sh -c "rm '$clone/.devcontainer/sub/x.sh' && ln -s '$tmp/link-target' '$clone/.devcontainer/sub/x.sh'"
+else skip "a file symlink cannot be made here; the link-under-it fixture did not run"; fi
+dc_as_link() { mv "$clone/.devcontainer" "$tmp/dc-moved" && mklink_dir "$clone/.devcontainer" "$tmp/dc-moved"; }
+if mklink_dir "$tmp/probe-dlink" "$tmp/refs"; then
+  mismatch 'a link as the directory' dc_as_link
+else skip "a directory link cannot be made here; the link-as-the-directory fixture did not run"; fi
+rm -rf "$tmp/dc-moved"
 
 # containers found only by label, or on the Reference
 reset; echo "$ID1 running $(wp "$clone")" >"$stubdir/ps.label.1"
@@ -429,8 +453,10 @@ check "blank ps line: exit 1 with no devcontainer call" test "$rc" -eq 1 -a "$(c
 # missing tool: yq off PATH
 nobin="$tmp/nobin"; mkdir "$nobin"
 for t in sh cat cp env dirname uname rm mkdir sed grep tr; do p=$(command -v "$t") && ln -s "$p" "$nobin/$t"; done
+# On MSYS git has no stub, so its own directory (no yq in it) stands in for the stub.
+nopath="$stubdir:$nobin"; [ -z "$msys" ] || nopath="$nopath:$(dirname "$real_git")"
 reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"
-rc=0; PATH="$stubdir:$nobin" "$pwsh_abs" -NoProfile -NonInteractive -File "$(wp "$home/bin/wow-driver.ps1")" -Clone "$C" -Reference "$R" -WowHome "$H" >"$tmp/out" 2>"$tmp/err" || rc=$?
+rc=0; PATH="$nopath" "$pwsh_abs" -NoProfile -NonInteractive -File "$(wp "$home/bin/wow-driver.ps1")" -Clone "$C" -Reference "$R" -WowHome "$H" >"$tmp/out" 2>"$tmp/err" || rc=$?
 check "missing tool: yq off PATH exits 1" test "$rc" -eq 1
 check "missing tool: ...naming yq" err_has 'yq not found'
 check "missing tool: ...before any docker call" none_called
@@ -467,10 +493,10 @@ rc=0; out=$("$pwsh_abs" -NoProfile -NonInteractive -Command "
   \$other = \$ast.EndBlock.Statements | Where-Object { \$_ -isnot [System.Management.Automation.Language.FunctionDefinitionAst] }
   if (\$ast.BeginBlock -or \$ast.ProcessBlock -or \$other) { 'top-level statement' } else { 'functions only' }" 2>&1) || rc=$?
 check "helper: wow-launch-common.ps1 has functions only" test "$out" = 'functions only'
-if ln -s "$tmp/clones" "$tmp/clones-link" 2>/dev/null; then
+if mklink_dir "$tmp/clones-link" "$tmp/clones"; then
   out=$("$pwsh_abs" -NoProfile -NonInteractive -Command ". '$(wp "$root_dir/scripts/identity/wow-launch-common.ps1")'; Get-FinalPath '$(wp "$tmp/clones-link/wb-driver")'" 2>&1) || true
   check "helper: Get-FinalPath follows a link in a parent" test "$(norm "$out")" = "$(norm "$(wp "$clone")")"
-fi
+else skip "a directory link cannot be made here; the Get-FinalPath link fixture did not run"; fi
 
 [ "$fail" -eq 0 ] || { echo "identity-launchers: FAILED" >&2; exit 1; }
 echo "identity-launchers: all passed"
