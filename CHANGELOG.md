@@ -46,11 +46,24 @@ and move the maintainer's reaction to the new comment.
 **⚠️ Migration** — `/way-of-working:spec-task` now spawns critic subagents on every draft (real spend,
 bounded by the cap) and stops `no-critics` on a repo whose `agents.enabled` lacks `architect`. `spec-post.sh`
 refuses a draft without a critic line, so re-posting a body drafted before this change needs one (#629,
-`WB-D34`).
+`WB-D35`).
+
+### Added
+
+- **Context controls and lane state for the long-running driver session** (#729, `WB-D34`). A
+  `PreCompact` and a `PostCompact` hook (matcher `auto`, `hooks/compact-handoff.sh`) tell the driver
+  to run `/way-of-working:handoff` when an automatic compaction happens; they are silent outside a
+  main worktree, never block, and a manual `/compact` is untouched. This repo's `.claude/settings.json`
+  gains a `statusLine` that shows `ctx NN%`. `bin/lane-state.sh` derives the live lanes from the
+  `dir/<N>` worktrees, the spec finder and GitHub's same-repository PRs; `/way-of-working:handoff`
+  writes them to the cursor's new `lanes` field and `/way-of-working:resume` prints a `Lanes:` line
+  and compares it with the record. The new key `lanes` (`null` or `{ dir }`) is optional and never
+  asked (`reference/project-schema.md` § `lanes`). No consuming repo needs a migration: a repo opts in
+  by adding `lanes` to its project file.
 
 ### Changed
 
-- **`critic-gate` gains a spec mode, and `spec-task` runs it on every draft** (#629, `WB-D34`): critics chosen by
+- **`critic-gate` gains a spec mode, and `spec-task` runs it on every draft** (#629, `WB-D35`): critics chosen by
   rule, unattended, under the same cap; a converged draft is posted with a critic line, a draft that hits the cap
   or stops converging is posted through `spec-post.sh escalate` with its open findings. `spec-post.sh` stops
   `no-critic-line` on a draft without a well-formed critic line for its mode. Nothing writes to Slack.
