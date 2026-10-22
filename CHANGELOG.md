@@ -31,6 +31,15 @@ the GitHub release notes.
   paraphrased friction list, never verbatim transcript text. A finding seen only in other
   sessions needs the human's OK before it becomes a memory or a fix.
 
+### Fixed
+
+- **Invariants check 24 no longer reads a hash inside a quote that closes on the same line, or a
+  hash after a Unicode space, as a comment (`#882`).** A gate call such as `bash
+  scripts/invariants-check.sh " #" || true`, or one followed by U+2003 and `# || true`, left the
+  check silent while bash still ran a narrowed or empty call. The whole-line test and the
+  trailing-comment strip now see only ASCII spaces and tabs, and a line whose trailing comment holds
+  a quote now fails.
+
 ## [0.23.0] — 2026-10-22
 
 **⚠️ Migration** — on a repo whose reviews post through the host launcher (`wow-review`), reinstall
