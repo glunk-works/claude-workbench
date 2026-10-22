@@ -27,9 +27,23 @@ the GitHub release notes.
   selects the host's top-level Claude Code transcripts whose `cwd` is the main worktree or a
   path under `lanes.dir`, changed since the reviewed sprint began (from the newest
   `.ai/archive/` snapshot, else the last 7 days, or a window the human names), newest first and
-  at most 50. One subagent confined to `jq`, `ls` and `stat` reads them and returns a
+  at most 50. One subagent reads them and returns a
   paraphrased friction list, never verbatim transcript text. A finding seen only in other
   sessions needs the human's OK before it becomes a memory or a fix.
+
+- **Retro's transcript reader is confined by its tool list (`#899`).** The reader is now the
+  plugin agent `transcript-reader`, whose frontmatter grants only `Read`, `Grep` and `Glob`, over
+  text the parent stages with one fixed `jq` filter into a temporary directory, instead of a
+  subagent told in prose to run only a few commands.
+
+### Fixed
+
+- **Invariants check 24 no longer reads a hash inside a quote that closes on the same line, or a
+  hash after a Unicode space, as a comment (`#882`).** A gate call such as `bash
+  scripts/invariants-check.sh " #" || true`, or one followed by U+2003 and `# || true`, left the
+  check silent while bash still ran a narrowed or empty call. The whole-line test and the
+  trailing-comment strip now see only ASCII spaces and tabs, and a line whose trailing comment holds
+  a quote now fails.
 
 ## [0.23.0] — 2026-10-22
 

@@ -6,6 +6,8 @@
 # objects it is asked for in that bare repository. A stub git sends every fetch to the bare
 # repository, so no test reaches the network.
 #
+# The global git config is a file in the scratch home whatever GIT_CONFIG_GLOBAL the caller sets.
+#
 # Permitted toolset: POSIX sh, git, jq, yq and base64 (the script's own, plus the stubs').
 set -eu
 
@@ -35,11 +37,13 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT INT TERM
 mkdir "$work/bin" "$work/home"
 export HOME="$work/home" GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG_GLOBAL="$HOME/.gitconfig"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
 export GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' GIT_COMMITTER_DATE='2026-01-01T00:00:00Z'
 "$real_git" config --global init.defaultBranch main
 "$real_git" config --global commit.gpgsign false
 "$real_git" config --global protocol.file.allow always
+assert_eq "global git config is the scratch file" "$work/home/.gitconfig" "${GIT_CONFIG_GLOBAL:-}"
 
 bare="$work/bare.git"
 repo="$work/repo"
@@ -484,7 +488,8 @@ assert_eq "a path with edge spaces publishes" "0" "$(run origin feat/sp)"
 assert_eq "the edge spaces survive in the remote tree" " sp ace " "$("$real_git" --git-dir="$bare" ls-tree --name-only feat/sp | grep 'sp ace')"
 
 # --- static: the script's own shape -----------------------------------------------------
-assert_eq "the script is stored with mode 100755" "100755" "$("$real_git" -C "$root_dir" ls-files -s plugins/way-of-working/bin/api-commit.sh | cut -d' ' -f1)"
+# the only git call that reads the checkout, which may be owned by another user (/workspace in the dev container): safe.directory here, not in the shared env
+assert_eq "the script is stored with mode 100755" "100755" "$("$real_git" -c safe.directory="$root_dir" -C "$root_dir" ls-files -s plugins/way-of-working/bin/api-commit.sh | cut -d' ' -f1)"
 assert_eq "every gh call goes through the pinned wrapper" "0" "$(grep -n 'gh api' "$script" | grep -v -- '--hostname github.com' | grep -vc '^[0-9]*:#' || true)"
 assert_eq "the script never builds an author or committer field" "0" "$(grep -v '^#' "$script" | grep -cE 'author|committer' || true)"
 
