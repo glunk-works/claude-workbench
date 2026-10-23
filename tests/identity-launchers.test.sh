@@ -28,7 +28,7 @@
 # Concurrency (#937): the sections run at once, each in a subshell with its own scratch world
 # (setup_world: its own tmp, stub directory, clones, WowHome and STUB_* exports), so no case reads state
 # another section wrote. Each section's output goes to files that are replayed in section order; the
-# suite fails if any section prints FAIL or exits non-zero.
+# suite fails if any section reports a FAIL through `check` or exits non-zero.
 #
 # Permitted toolset: POSIX sh, its standard utilities, pwsh, git, yq and jq (skipped, loudly, if any is absent).
 set -eu
@@ -42,11 +42,6 @@ for t in pwsh git yq jq; do
   fi
 done
 
-# TEMP-PROFILE (#937): five no-op pwsh runs for the start-up median; removed before the PR is ready.
-for i in 1 2 3 4 5; do
-  t0=$(date +%s%N); pwsh -NoProfile -NonInteractive -Command exit; t1=$(date +%s%N)
-  echo "startup-run $i: $(( (t1 - t0) / 1000000 )) ms"
-done
 tmp_root="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$tmp_root"' EXIT
 
@@ -255,6 +250,7 @@ no_dc_exec() { ! calls | grep -q '^devcontainer exec'; }
 no_canary() { ! { calls; glog; } | grep -q CANARY; }
 # --- wow-lane.ps1 ------------------------------------------------------------------------------------
 run_lane() { run_with "$home/bin/wow-lane.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")" "$@"; }
+LANE_CONTAINER_STAGE=
 LHASH=$ID1   # any 64 lowercase hex digits are a valid -Hash
 no_app_exec() { ! calls | grep -q ' -u app '; }
 no_banned() { ! calls | grep -q '[&|^%"]'; }
@@ -920,9 +916,14 @@ done
 
 # Run every section at once; replay each one's output in order.
 sections="notinst badargs start startb attach lanea laneb lanec misc msys"
+pids=
+# An interrupt stops the section subshells and removes the scratch tree (a signal skips the EXIT trap);
+# a pwsh run already in flight ends on its own, as test-all.sh's header allows.
+stop_sections() { kill $pids 2>/dev/null || :; rm -rf "$tmp_root" || :; exit "$1"; }
+trap 'stop_sections 129' HUP; trap 'stop_sections 130' INT; trap 'stop_sections 143' TERM
 for n in $sections; do
   ( setup_world "$n"; "sec_$n"; [ "$fail" -eq 0 ] ) >"$tmp_root/$n.out" 2>"$tmp_root/$n.err" &
-  eval "pid_$n=$!"
+  eval "pid_$n=$!"; pids="$pids $!"
 done
 all_ok=1
 for n in $sections; do
