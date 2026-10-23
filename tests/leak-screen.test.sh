@@ -76,7 +76,7 @@ case_ "abspath known miss: a space in the first segment" "ok" 0 "/Program Files/
 case_ "abspath known miss: a home path as a bare environment variable" "ok" 0 'cat $HOME/.ssh/config'
 case_ "abspath known miss: a file URL with a host" "ok" 0 "file://host/etc/passwd"
 case_ "abspath known miss: a relative climb" "ok" 0 "../../etc/passwd"
-case_ "abspath known miss: a backslash path with no drive letter" "ok" 0 'server\share\x'
+case_ "abspath known miss: a backslash path with no drive letter" "ok" 0 '\\server\share\x'
 case_ "later line" "leak 3 home" 1 "a" "b" "/home/x"
 case_ "order wins over line order" "leak 2 home" 1 "ghp""_$body" "/home/x"
 
