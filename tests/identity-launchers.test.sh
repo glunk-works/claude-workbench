@@ -36,6 +36,11 @@ for t in pwsh git yq jq; do
   fi
 done
 
+# TEMP-PROFILE (#937): five no-op pwsh runs for the start-up median; removed before the PR is ready.
+for i in 1 2 3 4 5; do
+  t0=$(date +%s%N); pwsh -NoProfile -NonInteractive -Command exit; t1=$(date +%s%N)
+  echo "startup-run $i: $(( (t1 - t0) / 1000000 )) ms"
+done
 tmp="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
