@@ -23,6 +23,10 @@ the GitHub release notes.
 
 ### Changed
 
+- **The leak screen also drops a report on slash-led text with a second slash (`#952`).**
+  A new last shape, `abspath`, catches an absolute path outside the existing shapes, and a file
+  URL with an empty host (any colon followed by three slashes). Slash commands, plain URLs, and repo-relative paths and star globs still pass; the
+  header comment states its known misses and false drops.
 - **The transcript reader's instructions no longer trip the leak screen (`#981`, `#982`).**
   The agent file describes a home-relative path in words instead of writing it, so a report that
   restates the rule is not dropped, and retro's sentence about a path-shape drop no longer lists
