@@ -34,6 +34,8 @@ the GitHub release notes.
   Step 7 said the *Consider bumping the plugin pin* step "follows on any answer", which read as
   waiting for a reply to the offer, so with no reply the note was never given. The note now goes
   before the offer in the same message, and retro runs only on a yes typed later.
+- **`bin/lane-groups.sh` prints only `unreadable` when its final pass fails (`#1009`).**
+  Before, a failure partway left some rows on stdout followed by `unreadable`.
 
 ## [0.24.0] — 2026-10-23
 
@@ -50,8 +52,9 @@ the GitHub release notes.
 
 - **The leak screen also drops a report on slash-led text with a second slash (`#952`).**
   A new last shape, `abspath`, catches an absolute path outside the existing shapes, and a file
-  URL with an empty host (any colon followed by three slashes). Slash commands, plain URLs, and repo-relative paths and star globs still pass; the
-  header comment states its known misses and false drops.
+  URL with an empty host (any colon followed by three slashes). Slash commands, plain URLs, and
+  repo-relative paths and star globs still pass; the header comment states its known misses and
+  false drops.
 - **archive-sprint offers a retro at every sprint close (`#898`).**
   The offer no longer depends on the closing session having done the sprint's work, since retro now
   reads the repo's other recent sessions. It stays one optional line and never a gate.
