@@ -44,8 +44,6 @@ type label (`WB-D40`).
 
 ### Fixed
 
-- **`spec-task` says when a maintainer's `spec-task-answer:` comment is not used (`#1078`).**
-  When the answer branch does not apply, `spec-find.sh answer` prints `ignored <ids>` and the skill names those comments before drafting from the body.
 - **`/way-of-working:retro`'s held-items question states the reply form, and the routing report no longer waits on a reply (`#1066`, `#1067`, `#1068`).**
   The question tells the human to confirm each item by its own number with a yes to both parts
   (a range or "all" confirms nothing; only the human's next message is the reply), the routing report goes in the same message as the
@@ -72,6 +70,8 @@ type label (`WB-D40`).
   between the report and the retro offer, so the order is readable from either step.
 - **`bin/lane-groups.sh` prints only `unreadable` when its final pass fails (`#1009`).**
   Before, a failure partway left some rows on stdout followed by `unreadable`.
+- **`spec-task` says when a maintainer's `spec-task-answer:` comment is not used (`#1078`).**
+  When the answer branch does not apply, `spec-find.sh answer` prints `ignored <ids>` and the skill names those comments before drafting from the body.
 
 ## [0.24.0] — 2026-10-23
 
