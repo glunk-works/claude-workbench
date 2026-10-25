@@ -25,6 +25,12 @@ the GitHub release notes.
 
 - The `identities` config read that the five spec scripts shared as copies now lives in `bin/declared-ids.sh`, with no change to any word they print (`#1079`).
 
+### Fixed
+
+- **`/way-of-working:retro`'s run-again remedy names the window the first run used (`#1092`).**
+  After a reply that only asks a question, the human runs retro again naming the window the first
+  run said it used, so a sprint close's transcripts are not left outside the second run's window.
+
 ## [0.25.0] — 2026-10-24
 
 **⚠️ Migration** — in each repo that labels by type, rename the four type labels in place
@@ -32,7 +38,9 @@ the GitHub release notes.
 existing issues and PRs. Where the host launcher (`wow-review`) files findings into that repo (the reviewed
 repo's `backlog.repo`, else the reviewed repo itself), also reinstall the host tools from a default branch at
 or after this release in every home; while only one of the two is done, the findings it files carry no
-type label (`WB-D40`).
+type label (`WB-D40`). Optional: this repo also deleted the six GitHub default labels (`duplicate`, `invalid`,
+`question`, `wontfix`, `good first issue`, `help wanted`), each once it had no uses; an adopter need not (this
+sentence was added after the release).
 
 ### Added
 
