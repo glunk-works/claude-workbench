@@ -21,6 +21,14 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- The five callers of `declared-ids.sh` carry a pointer to its five-way parser note, so a change to its `ok` line is visible as a five-way edit from the caller side (`#1115`).
+
+### Fixed
+
+- `gh-identity.sh` and the architect-review label read refuse a maintainer id not in canonical decimal instead of matching nobody, so every `gh-identity.sh` caller that gates refuses such a config until it is corrected (`#1114`).
+
 ## [0.26.0] — 2026-10-25
 
 **⚠️ Migration** — on a map repo, a maintainer id not written in canonical decimal (`0x3E9`, `1_001`, `01001`, `+101`) makes the spec readers refuse the config until it is corrected on the default branch; `schema-complete.sh` already reports such an id invalid.
