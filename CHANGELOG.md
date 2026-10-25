@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- The `identities` config read that the five spec scripts shared as copies now lives in `bin/declared-ids.sh`, with no change to any word they print (`#1079`).
+
 ## [0.25.0] — 2026-10-24
 
 **⚠️ Migration** — in each repo that labels by type, rename the four type labels in place
