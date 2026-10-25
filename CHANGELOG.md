@@ -28,6 +28,7 @@ the GitHub release notes.
 ### Changed
 
 - The `identities` config read that the five spec scripts shared as copies now lives in `bin/declared-ids.sh`, with no change to any word they print (`#1079`).
+- `wow-review-poll` runs up to `WOW_REVIEW_MAX` reviews at once (1 to 9, default 2); `wow-review` waits up to 300 seconds for its lock and keeps a heartbeat lease per run, so the overdue sweep leaves a live run whose lease is fresh (`#1107`).
 
 ### Fixed
 
