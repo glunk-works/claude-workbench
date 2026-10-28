@@ -8,9 +8,9 @@
 - **Cost rule recorded:** a paid feature beyond what is already paid for needs a real benefit at the current team size; prefer the free equivalent.
 - **IaC rule recorded:** everything non-secret goes in IaC; anything hand-managed is a named residual with a reason and a follow-up, and an IaC migration never blocks a security fix.
 
-**Next:** Wait for the maintainer to report that #419's privately tracked fixes have landed (they are worked from host sessions). Then re-check #419's done-when live with the maintainer and, if it is met, close #419 and run `/way-of-working:archive-sprint` for sprint-18 (opus). Nothing here starts unattended.
+**Next:** Walk the maintainer through #419's privately tracked fix issues one at a time, in their filing order (opus). The maintainer pastes each issue into the session, since this session cannot read the private record; the driver explains it, then hands over host commands one step at a time with a live read-back after each. Every admin write and merge is the maintainer's. After the last fix, re-check #419's done-when live and, if it is met, close #419 and run `/way-of-working:archive-sprint` for sprint-18.
 
-**HITL Gate: NONE OPEN** — next gate: the maintainer confirms 419 done-when is met before it closes
+**HITL Gate: NONE OPEN** — next gate: the maintainer starts each 419 fix, every admin write and merge theirs
 
 **Critic pass:** none; this session wrote no code in this repo.
 
