@@ -1,14 +1,16 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 18** (cursor id `sprint-18`), status **implementing**, working from milestone 20, *Identity M5: glunk-works repos cut over*. #410 (scope-core) is cut over, with its done-when met; #419 is next.
+**Now:** **Sprint 18** (cursor id `sprint-18`), status **implementing**, working from milestone 20, *Identity M5: glunk-works repos cut over*. #408 and #410 are closed after a live done-when check; #419 is the milestone's last open issue and is next.
 
 **Just done (2026-10-28, driver session in the container, opus):**
-- **#410 scope-core cutover, done-when met.** The driver walked `reference/cutover.md` at v0.28.0 step by step with a host scope-core session (Seuss27, every write approved) and read back live state after each step. The full record is on #410, in the cutover record comment. #410 closes on the maintainer's call.
+- **#410 scope-core cutover, done-when met.** The driver walked `reference/cutover.md` at v0.28.0 step by step with a host scope-core session (Seuss27, every write approved) and read back live state after each step. The full record is on #410, in the cutover record comment. #410 and #408 were closed after a live re-check of their done-when.
   - scope-core had no `.ai/project.yml`, so the schema fold was its first one, plus a `docs/decisions.md` stub serving as roadmap, decision log (`SC-D`) and threat model (scope-core #6). CODEOWNERS was #7.
   - The single ruleset was split: `main-required-checks` (26051193, strict) was created first, then `protected-integration-branches` (19521159) was rewritten as the approval ruleset, squash only. Strict and squash only were the maintainer's decisions. Neither ruleset has bypass actors.
   - PR 1 was #8 (identities map, `review.ci_gate`, both `rulesets` entries, the gate workflow byte-identical to v0.28.0, a new `.claude/settings.json` pin). The pinned check was added right after it. The first real gated PR through `wow-review` was #9, which closed scope-core#4 (a non-required zizmor job). Its review finding is scope-core#10.
   - The dev App stays off scope-core, by the maintainer's decision.
 - Milestone 20's description now marks #410 done and names #419 next.
+- **scope-core#5 closed:** #11 seeded scope-core's cursor (a planning cursor, no milestone picked, `.ai/state.json` git-ignored), and `/way-of-working:resume` then ran clean in a fresh host session.
+- **Filed #1211:** on a Windows host, resume's ruleset check reads `inconclusive` because the shell tool collapses the regex's doubled backslashes. It fails safe.
 - **Lessons for the next cutover:**
   - `gh`'s login token cannot list `/user/installations` (403). Read `orgs/<org>/installations` plus the repo's GitHub Apps settings page instead.
   - The first REST read after a repo-settings PATCH can be stale. Re-read, or confirm through GraphQL, before calling it wrong.
