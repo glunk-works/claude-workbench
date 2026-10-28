@@ -1,23 +1,16 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 18** (cursor id `sprint-18`), status **implementing**, working from milestone 20, *Identity M5: glunk-works repos cut over*. #408 and #410 are closed after a live done-when check; #419 is the milestone's last open issue and is next.
+**Now:** **Sprint 18** (cursor id `sprint-18`), status **implementing**, working from milestone 20, *Identity M5: glunk-works repos cut over*. #419 is the milestone's last open issue; its audit is done and its fixes are in progress, tracked privately.
 
 **Just done (2026-10-28, driver session in the container, opus):**
-- **#410 scope-core cutover, done-when met.** The driver walked `reference/cutover.md` at v0.28.0 step by step with a host scope-core session (Seuss27, every write approved) and read back live state after each step. The full record is on #410, in the cutover record comment. #410 and #408 were closed after a live re-check of their done-when.
-  - scope-core had no `.ai/project.yml`, so the schema fold was its first one, plus a `docs/decisions.md` stub serving as roadmap, decision log (`SC-D`) and threat model (scope-core #6). CODEOWNERS was #7.
-  - The single ruleset was split: `main-required-checks` (26051193, strict) was created first, then `protected-integration-branches` (19521159) was rewritten as the approval ruleset, squash only. Strict and squash only were the maintainer's decisions. Neither ruleset has bypass actors.
-  - PR 1 was #8 (identities map, `review.ci_gate`, both `rulesets` entries, the gate workflow byte-identical to v0.28.0, a new `.claude/settings.json` pin). The pinned check was added right after it. The first real gated PR through `wow-review` was #9, which closed scope-core#4 (a non-required zizmor job). Its review finding is scope-core#10.
-  - The dev App stays off scope-core, by the maintainer's decision.
-- Milestone 20's description now marks #410 done and names #419 next.
-- **scope-core#5 closed:** #11 seeded scope-core's cursor (a planning cursor, no milestone picked, `.ai/state.json` git-ignored), and `/way-of-working:resume` then ran clean in a fresh host session.
-- **Filed #1211:** on a Windows host, resume's ruleset check reads `inconclusive` because the shell tool collapses the regex's doubled backslashes. It fails safe.
-- **Lessons for the next cutover:**
-  - `gh`'s login token cannot list `/user/installations` (403). Read `orgs/<org>/installations` plus the repo's GitHub Apps settings page instead.
-  - The first REST read after a repo-settings PATCH can be stale. Re-read, or confirm through GraphQL, before calling it wrong.
+- **#419 audit done.** The driver walked the maintainer through #419's checklist on the host, one live read-back at a time. The public summary is on #419 (comment 6477938022): 13 roles reviewed, 2 deleted. Findings, decisions and the per-repo fix list are kept privately, because they describe gaps that are still open.
+- **Rule for public text from here on:** no role names, open gaps, row numbers or private links in a public issue, PR, commit, code comment or decision log. Fix PRs are titled by the change, not the gap.
+- **Cost rule recorded:** a paid feature beyond what is already paid for needs a real benefit at the current team size; prefer the free equivalent.
+- **IaC rule recorded:** everything non-secret goes in IaC; anything hand-managed is a named residual with a reason and a follow-up, and an IaC migration never blocks a security fix.
 
-**Next:** Walk the maintainer through #419 by its own checklist, one step at a time with a live read-back after each (opus). #419: every AWS role a workflow can assume trusts only Environment or main subjects, and the Infisical identities are retired. Every admin write and merge is the maintainer's.
+**Next:** Wait for the maintainer to report that #419's privately tracked fixes have landed (they are worked from host sessions). Then re-check #419's done-when live with the maintainer and, if it is met, close #419 and run `/way-of-working:archive-sprint` for sprint-18 (opus). Nothing here starts unattended.
 
-**HITL Gate: NONE OPEN** — next gate: the maintainer starts #419, every admin write and merge theirs
+**HITL Gate: NONE OPEN** — next gate: the maintainer confirms 419 done-when is met before it closes
 
 **Critic pass:** none; this session wrote no code in this repo.
 
