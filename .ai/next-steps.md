@@ -1,20 +1,26 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 18** (cursor id `sprint-18`), status **implementing**, working from milestone 20, *Identity M5: glunk-works repos cut over*. Every Claude build on it has merged and v0.28.0 is released; what remains is triage of the follow-ups, then the maintainer's cutovers.
+**Now:** **Sprint 18** (cursor id `sprint-18`), status **implementing**, working from milestone 20, *Identity M5: glunk-works repos cut over*. #406 (bounty-infra) is cut over and closed; the global-bootstrap cutover (#407) is next.
 
-**Just done (2026-10-26, driver session in the container, opus):**
-- **Plan-sprint triage of 35 unmilestoned issues**, confirmed by the maintainer, every write live and read back, a `[plan-sprint]` comment on each issue:
-  - **New milestone 27**, *v0.28.0 follow-ups: runbook and reference docs* (due 2026-11-06): #1197, #1198, #1188 (`cutover.md`, first), #1192, #1194, #1195, #1186, #1187, #1184, #1143, #1160, #791.
-  - **New milestone 28**, *Fewer manual steps per lane and review* (due 2026-11-13): #1155, #1154, #1153, #1021, #1023, #1022.
-  - **New milestone 29**, *Follow-ups: host and script hardening* (due 2026-11-20): #1172, #1180, #1033, #1032, #1035, #1028, #1029, #1030, #1156.
-  - **Milestone 26** gained #1161 as step 4, through `milestone-desc.sh` (`live ok`; order `1164, 715, 1165` → `1164, 715, 1165, 1161`).
-  - **Decisions taken:** #1143 delete `schema_version`; #1160 record the fresh-session residual in `WB-D22` (option C); #1156 the review proxy is the likely 403 cause, so confirm it, then per-suite annotations from `test-all.sh`; #791 notify-only through the GitHub Slack app's label filter (the maintainer sets up the subscription); #1022 doc-only. #1150 closed as not planned.
-  - **Left unmilestoned:** #223, #334, #409, #792, #1020, #1167.
+**Just done (2026-10-27/28, driver session in the container, opus):**
+- **#406 bounty-infra cutover, closed as completed.** The driver walked `reference/cutover.md` at v0.28.0 step by step with a host bounty-infra session (Seuss27, every command approved) and read back live state after each step. The full record is on #406: the briefing comment, the step 7 read-back and the install comment.
+  - The rulesets were split into `main-required-checks` (9 checks @15368, `architect-review` included) and the approval ruleset (code-owner review, 1 approval, last-push approval, stale dismissal), both with no bypass actors. `restrict-updates-to-main` is deleted.
+  - Two code owners (`@Seuss27 @JaredGroves-603`), so no admin App is needed.
+  - PR 1 is bounty-infra #188; PR 2, #189, was the first real gated PR through `wow-review`.
+  - bounty-infra #179 (CI credentials) closed first. The dev App was installed last, with Administration and Workflows no access and Actions read-only.
+- **Filed #1206.** The `slack` App holds Actions and Workflows write on every repo, which widens the integration pin's limit. bounty-infra was removed from it.
+- **#791's Slack subscription test** ran on 2026-10-26; the results are on #791.
 
-**Next:** The maintainer starts #406 bounty-infra by `reference/cutover.md`; #1197 (milestone 27 step 1) says what that runbook's approval-ruleset read-back must show, so it is worth landing first. Claude-side, specs for milestone 27's items, then 28 and 29; which milestone the cursor anchors next is the maintainer's pick, followed by `/way-of-working:handoff`.
+**Next:** Walk the maintainer through the #407 global-bootstrap cutover by `reference/cutover.md` at v0.28.0, one step at a time, with a live read-back after each step (opus). Apply the bounty-infra lessons from #406:
+- read every App installation (org owner), not only the dev App's registration;
+- use two code owners;
+- create the checks ruleset before rewriting the approval ruleset, so the checks are never unrequired;
+- PR 1 is pushed by the maintainer.
 
-**HITL Gate: NONE OPEN** — next gate: the maintainer's #406 cutover, and their pick of the next milestone to anchor
+The remaining cutovers are #408 and #410, then #419.
 
-**Critic pass:** none on #1200 or #1201, a version string, a CHANGELOG heading and a pin ref, as for #1149 and #1151. #1200 went through the `architect-review` gate.
+**HITL Gate: NONE OPEN** — next gate: the maintainer starts the #407 global-bootstrap cutover, every admin write and merge theirs
+
+**Critic pass:** none; this session wrote no code.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) · [milestone 20](https://github.com/glunk-works/claude-workbench/milestone/20) · [milestone 26](https://github.com/glunk-works/claude-workbench/milestone/26) · [.ai/parked/](parked/)
