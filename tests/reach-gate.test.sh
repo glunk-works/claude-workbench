@@ -181,13 +181,13 @@ done
 
 # a missing jq: PATH holds only the stub gh and the tools the hook needs, not jq
 nojq="$tmp/nojq"; mkdir -p "$nojq"
+cp "$stubbin/gh" "$nojq/gh"   # before the loop, whose -e check then skips the runner's own gh
 for d in /usr/bin /bin; do
   for f in "$d"/*; do
     b=${f##*/}
     [ "$b" = jq ] || [ -e "$nojq/$b" ] || ln -s "$f" "$nojq/$b" 2>/dev/null || true
   done
 done
-cp "$stubbin/gh" "$nojq/gh"
 n=$((n + 1)); T="$tmp/t$n"; mkdir -p "$T"; STUB_LOG="$T/log"; : >"$STUB_LOG"; export STUB_LOG
 RG_TMPDIR="$tmp/off-jq"; mkdir -p "$RG_TMPDIR"
 printf '{"session_id":"nojq"}' | (cd "$proj" && TMPDIR="$RG_TMPDIR" PATH="$nojq" "$hook" >"$T/out" 2>"$T/err") && rc=0 || rc=$?
