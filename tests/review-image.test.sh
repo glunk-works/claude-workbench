@@ -214,7 +214,13 @@ case "${1:-} ${2:-}" in
     [ ! -e "$REC/fail.install" ] || exit 1
     sh "$REC/on-install.sh" ;;
   'plugin marketplace')
-    [ ! -e "$REC/fail.mkt" ] || exit 1 ;;
+    [ ! -e "$REC/fail.mkt" ] || exit 1
+    # what the add leaves in $HOME: one entry per name in mkt.names (default claude-workbench), none if the file is empty
+    mkdir -p "$HOME/.claude/plugins"
+    names=$(cat "$REC/mkt.names" 2>/dev/null || echo claude-workbench)
+    for n in $names; do
+      printf '"%s": {"source": {"source": "github", "repo": "glunk-works/claude-workbench", "ref": "v1.2.3"}}\n' "$n"
+    done | paste -sd, - | sed 's/^/{/; s/$/}/' >"$HOME/.claude/plugins/known_marketplaces.json" ;;
 esac
 exit 0
 STUB
@@ -246,8 +252,8 @@ esac
 if [ "${LINK:-no}" = yes ]; then mkdir -p "$(dirname "$ipath")"; ln -s "$real" "$ipath"; fi
 entry=$(printf '{"scope": "%s", "installPath": "%s", "gitCommitSha": "%s"}' "${SCOPE:-user}" "$ipath" "${SHA:-@COMMIT@}")
 if [ "${ENTRIES:-1}" = 2 ]; then arr="[$entry, $entry]"; else arr="[$entry]"; fi
-printf '{"version": 2, "plugins": {"way-of-working@claude-workbench": %s}}
-' "$arr" >"$chome/.claude/plugins/installed_plugins.json"
+printf '{"version": 2, "plugins": {"way-of-working@%s": %s}}
+' "$(cat "@REC@/mkt.names" 2>/dev/null || echo claude-workbench)" "$arr" >"$chome/.claude/plugins/installed_plugins.json"
 SCRIPT
 
 # fresh: a clean world and the default (succeeding) answers.
@@ -404,6 +410,34 @@ for f in \
   stop_case "a wrong pin [$f]" plugin settings_edit "$f"
   check "...with no ls-remote or claude plugin call" no_plugin_calls
 done
+# the settings key and the installed name are kept apart (WB-D42 step 2)
+rename_key() { settings_edit ".extraKnownMarketplaces[\"$1\"] = .extraKnownMarketplaces[\"claude-workbench\"] | del(.extraKnownMarketplaces[\"claude-workbench\"]) | .enabledPlugins[\"way-of-working@$1\"] = true | del(.enabledPlugins[\"way-of-working@claude-workbench\"])"; }
+ep rename_key my-mkt
+assert_eq "another settings key: claude's status by exec" 0 "$rc"
+check "...the install argv still names way-of-working@claude-workbench" grep -qxF "claude [plugin] [install] [way-of-working@claude-workbench] [--scope] [user]" "$REC/claude.plugin.argv"
+set_names() { printf '%s\n' "$1" >"$REC/mkt.names"; }
+ep set_names reg-name
+assert_eq "another registered name: claude's status by exec" 0 "$rc"
+check "...the install argv follows it" grep -qxF "claude [plugin] [install] [way-of-working@reg-name] [--scope] [user]" "$REC/claude.plugin.argv"
+second_key() { settings_edit '.extraKnownMarketplaces["other"] = .extraKnownMarketplaces["claude-workbench"]'; }
+stop_case "a second key naming the marketplace repository" plugin second_key
+check "...with no ls-remote or claude plugin call" no_plugin_calls
+stop_case "a settings key containing a slash" plugin rename_key 'a/b'
+check "...with no ls-remote or claude plugin call" no_plugin_calls
+stop_case "a settings key containing a space" plugin rename_key 'a b'
+check "...with no ls-remote or claude plugin call" no_plugin_calls
+unenable() { rename_key my-mkt; settings_edit "$1"; }
+stop_case "a renamed key with no enabledPlugins entry" plugin unenable 'del(.enabledPlugins["way-of-working@my-mkt"]) | .enabledPlugins["way-of-working@claude-workbench"] = true'
+check "...with no ls-remote or claude plugin call" no_plugin_calls
+stop_case "a renamed key with its entry false" plugin unenable '.enabledPlugins["way-of-working@my-mkt"] = false | .enabledPlugins["way-of-working@claude-workbench"] = true'
+check "...with no ls-remote or claude plugin call" no_plugin_calls
+no_install() { ! grep -q '\[install\]' "$REC/claude.plugin.argv"; }
+stop_case "no registered entry for the marketplace repository" plugin set_names ""
+check "...and no claude plugin install call" no_install
+stop_case "two registered entries for the marketplace repository" plugin set_names "a b"
+check "...and no claude plugin install call" no_install
+stop_case "a registered name that is not plain" plugin set_names "a:b"
+check "...and no claude plugin install call" no_install
 stop_case "a missing settings file" plugin rm -f "$REC/clonesrc/.claude/settings.json"
 heads_line() { printf '%s\trefs/heads/v1.2.3\n' "$TAGSHA" >>"$REC/ans.lsremote"; }
 stop_case "a branch named like the tag" plugin heads_line
