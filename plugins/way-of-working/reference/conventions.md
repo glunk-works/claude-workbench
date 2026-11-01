@@ -147,8 +147,10 @@ report itself into a second failure, and an all-`false` `.permissions` is not "n
    actor as the backstop (`#464`): the opened PR's `user` must be the declared
    `identities.dev_app` (`gh-identity.sh pr-actor`), else ship stops and touches nothing further.
 
-Every consumer of this procedure fails closed: a step that cannot be completed is a stop or the
-skill's own safe fallback (handoff opens the ledger PR), and its report names which step failed.
+Every skill that consumes this procedure fails closed: a step that cannot be completed is a stop or
+the skill's own safe fallback (handoff opens the ledger PR), and its report names which step failed.
+The two hooks that run it do not: the banner prints `unknown` on a failure, and the
+`UserPromptSubmit` reach hook passes the prompt on one, refusing only on a positive `unreached`.
 
 
 ### Push identity: `git` and `gh` can silently disagree

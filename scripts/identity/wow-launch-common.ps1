@@ -12,8 +12,9 @@
   What is here: the argument checks and the canonical-path resolution; tool resolution; the two
   process runners (every external call goes through ProcessStartInfo.ArgumentList, one element per
   argument, never a joined string); the commit and model read from the Reference clone; the in-process
-  git blob id; the strict record read and the atomic record write; the two container listings; the
-  relay probe. The launcher sets $script:LaunchProg and $script:LaunchUsage before calling any of it.
+  git blob id; the Reference's origin repository (the one configured url, as lowercase owner/name,
+  never echoed); the strict record read (four fields: id, commit, clone, origin; the old three-field shape reads with no origin) and the atomic
+  record write; the two container listings; the relay probe. The launcher sets $script:LaunchProg and $script:LaunchUsage before calling any of it.
 
   Honest limit. Everything above is an accident guard. If a container can write the Reference clone
   it can plant git config or hooks that run when git runs there; the control is a Reference clone no
@@ -312,33 +313,70 @@ function Get-DevTreeId([string]$Git, [string]$Reference, [string]$Commit) {
 
 function Get-RecordPath([string]$WowHome, [string]$Leaf) { Join-Path (Join-Path $WowHome 'driver') "$Leaf.json" }
 
-# Read-Record: $null when absent; refuses on anything but exactly {id, commit, clone} in their shapes.
-function Read-Record([string]$Path) {
-  if (-not (Test-Path -LiteralPath $Path)) { return $null }
-  if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Test-ReparsePoint $Path)) { Stop-Launch 'the driver record is not a regular file' }
-  if (([IO.FileInfo]::new($Path)).Length -gt 4096) { Stop-Launch 'the driver record is larger than 4 KiB' }
-  try { $o = [IO.File]::ReadAllText($Path) | ConvertFrom-Json -ErrorAction Stop } catch { Stop-Launch 'the driver record is not valid JSON' }
-  if ($o -isnot [pscustomobject]) { Stop-Launch 'the driver record is not a JSON object' }
-  $names = @($o.PSObject.Properties.Name | Sort-Object -CaseSensitive)
-  if ($names.Count -ne 3 -or $names[0] -cne 'clone' -or $names[1] -cne 'commit' -or $names[2] -cne 'id') {
-    Stop-Launch 'the driver record must hold exactly id, commit and clone'
+# Get-ReferenceOrigin: the Reference's <Remote> repository as lowercase owner/name, from the one configured
+# url (git runs only in the Reference). Only the three github.com forms are accepted: https (a plain user
+# name before the host is dropped, a password part refuses), git@github.com:owner/name and
+# ssh://git@github.com/owner/name, each with an optional .git. It reads the configured url, not where an
+# insteadOf rewrite sends the fetch. A refusal never prints the url.
+function Get-ReferenceOrigin([string]$Git, [string]$Reference, [string]$Remote) {
+  $r = Invoke-Tool $Git @('-C', $Reference, 'config', '--get-all', "remote.$Remote.url")
+  if ($r.Code -ne 0) { Stop-Launch "the Reference clone has no $Remote url" }
+  $vals = @([Text.Encoding]::UTF8.GetString($r.Out).Split("`n") | ForEach-Object { $_.TrimEnd("`r") } | Where-Object { $_ -ne '' })
+  if ($vals.Count -ne 1) { Stop-Launch "the Reference clone's $Remote must have exactly one url" }
+  $seg = '([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?'
+  foreach ($form in @("https://(?:[A-Za-z0-9._-]+@)?github\.com/$seg", "git@github\.com:$seg", "ssh://git@github\.com/$seg")) {
+    $m = [regex]::Match($vals[0], "\A$form\z")
+    if ($m.Success) { return ("$($m.Groups[1].Value)/$($m.Groups[2].Value)").ToLowerInvariant() }
   }
-  foreach ($n in $names) { if ($o.$n -isnot [string]) { Stop-Launch "the driver record's $n is not a string" } }
-  if (-not (Test-Hex $o.id 64)) { Stop-Launch "the driver record's id is not 64 lowercase hex digits" }
-  if (-not (Test-Hex $o.commit 40)) { Stop-Launch "the driver record's commit is not 40 lowercase hex digits" }
-  [pscustomobject]@{ id = $o.id; commit = $o.commit; clone = $o.clone }
+  Stop-Launch "the Reference clone's $Remote url is not a github.com https or ssh url of the accepted forms"
+}
+
+function Test-OriginShape([string]$Value) { $Value -cmatch '\A[a-z0-9._-]+/[a-z0-9._-]+\z' }
+
+# Get-RecordResult: { Record; Error }. Record is $null with Error $null when the file is absent. A record in the
+# old three-field shape reads with origin $null; anything else outside the four fields in their shapes is an Error.
+function Get-RecordResult([string]$Path) {
+  $bad = { param($m) [pscustomobject]@{ Record = $null; Error = $m } }
+  if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Record = $null; Error = $null } }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Test-ReparsePoint $Path)) { return & $bad 'the driver record is not a regular file' }
+  if (([IO.FileInfo]::new($Path)).Length -gt 4096) { return & $bad 'the driver record is larger than 4 KiB' }
+  try { $o = [IO.File]::ReadAllText($Path) | ConvertFrom-Json -ErrorAction Stop } catch { return & $bad 'the driver record is not valid JSON' }
+  if ($o -isnot [pscustomobject]) { return & $bad 'the driver record is not a JSON object' }
+  $names = @($o.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+  $want3 = $names.Count -eq 3 -and $names[0] -ceq 'clone' -and $names[1] -ceq 'commit' -and $names[2] -ceq 'id'
+  $want4 = $names.Count -eq 4 -and $names[0] -ceq 'clone' -and $names[1] -ceq 'commit' -and $names[2] -ceq 'id' -and $names[3] -ceq 'origin'
+  if (-not $want3 -and -not $want4) { return & $bad 'the driver record must hold exactly id, commit, clone and origin' }
+  foreach ($n in $names) { if ($o.$n -isnot [string]) { return & $bad "the driver record's $n is not a string" } }
+  if (-not (Test-Hex $o.id 64)) { return & $bad "the driver record's id is not 64 lowercase hex digits" }
+  if (-not (Test-Hex $o.commit 40)) { return & $bad "the driver record's commit is not 40 lowercase hex digits" }
+  $origin = $null
+  if ($want4) {
+    if (-not (Test-OriginShape $o.origin)) { return & $bad "the driver record's origin is not a lowercase owner/name" }
+    $origin = $o.origin
+  }
+  [pscustomobject]@{ Record = [pscustomobject]@{ id = $o.id; commit = $o.commit; clone = $o.clone; origin = $origin }; Error = $null }
+}
+
+# Read-Record: $null when absent; refuses on anything but the four fields in their shapes. A record in the
+# old three-field shape is returned with origin $null, for the caller to refuse or replace. With -NoRefuse
+# anything the strict read would refuse returns $null instead (start of day only).
+function Read-Record([string]$Path, [switch]$NoRefuse) {
+  $r = Get-RecordResult $Path
+  if ($null -ne $r.Error) { if ($NoRefuse) { return $null } else { Stop-Launch $r.Error } }
+  $r.Record
 }
 
 # Write-Record: a temp file in the same directory, then a rename over the old record.
-function Write-Record([string]$Path, [string]$Id, [string]$Commit, [string]$Clone) {
+function Write-Record([string]$Path, [string]$Id, [string]$Commit, [string]$Clone, [string]$Origin) {
   if (-not (Test-Hex $Id 64) -or -not (Test-Hex $Commit 40)) { Stop-Launch 'refusing to record a malformed id or commit' }
+  if (-not (Test-OriginShape $Origin)) { Stop-Launch 'refusing to record a malformed origin' }
   $dir = Split-Path -Parent $Path
   if (Test-Path -LiteralPath $dir) {
     if (-not (Test-Path -LiteralPath $dir -PathType Container) -or (Test-ReparsePoint $dir)) { Stop-Launch 'driver/ under WowHome is not a plain directory' }
   } else { $null = New-Item -ItemType Directory -Path $dir }
   $tmp = Join-Path $dir ".$([IO.Path]::GetFileName($Path)).$([guid]::NewGuid().ToString('N')).tmp"
   try {
-    $json = [ordered]@{ id = $Id; commit = $Commit; clone = $Clone } | ConvertTo-Json -Compress
+    $json = [ordered]@{ id = $Id; commit = $Commit; clone = $Clone; origin = $Origin } | ConvertTo-Json -Compress
     [IO.File]::WriteAllText($tmp, $json + "`n")
     [IO.File]::Move($tmp, $Path, $true)
   } finally { if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } }

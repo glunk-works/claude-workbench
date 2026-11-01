@@ -14,10 +14,15 @@
        Reference clone, a different clone: same files, same bytes, no link anywhere;
     2. recreates the container: devcontainer up --skip-post-attach --remove-existing-container;
     3. checks that exactly the container up reported is running;
-    4. records its id, the commit compared against and the clone's path in
-       <WowHome>\driver\<leaf>.json (never mounted into a container);
+    4. records its id, the commit compared against, the clone's path and the Reference's origin
+       repository (lowercase owner/name) in <WowHome>\driver\<leaf>.json (never mounted into a
+       container);
     5. enters it with docker exec, into /usr/local/bin/claude --model <models.architect> --effort medium
        in /workspace.
+
+  Before the fetch, both paths read the Reference's <Remote> repository and the driver record. A start
+  of day whose record names this clone and a different origin refuses (a Reference of another
+  repository was given); attach refuses a record with no origin and one whose origin differs.
 
   Attach (the driver restarted while lanes run in the same container): when the one running container
   is the one the record names, runs the relay probe and enters it with docker exec. No compare, no up,
@@ -50,6 +55,8 @@
 .PARAMETER Reference
   A different full clone that no container opens (for example the one install-host-tools.ps1 installs
   from): its .git a directory, not a file. It supplies the committed .devcontainer/ and models.architect.
+  Its <Remote> must have exactly one github.com url, and its repository must match the driver
+  record's origin when there is one.
 
 .PARAMETER WowHome
   Default: $env:WOW_HOME, else $HOME/.config/glunk-identity. The Clone may not contain it.
@@ -136,9 +143,23 @@ try {
   if ($refBusy.Count -gt 0) {
     Stop-Launch "the Reference clone is in use by container $($refBusy[0].Id): the Reference must be a clone no container opens"
   }
+  $refOrigin = Get-ReferenceOrigin $git $refP $Remote
+  $record = Get-RecordPath $wowP $leaf
+  if ($mode -eq 'start') {
+    # Anything the strict read would refuse counts as no record: the start replaces it.
+    $old = Read-Record $record -NoRefuse
+    if ($null -ne $old -and $null -ne $old.origin -and (Format-PathKey $old.clone) -eq (Format-PathKey $cloneP) -and $old.origin -cne $refOrigin) {
+      Stop-Launch "the driver record for this clone names $($old.origin) but the Reference's $Remote is ${refOrigin}: a Reference of another repository was given (delete $record only if the repository really changed)"
+    }
+  } else {
+    $rec = Read-Record $record
+    if ($null -ne $rec -and (Format-PathKey $rec.clone) -eq (Format-PathKey $cloneP)) {
+      if ($null -eq $rec.origin) { Stop-Launch "the driver record has no origin (written by an older launcher): docker stop $($mine[0].Id) once no lane runs, then rerun at start of day" }
+      if ($rec.origin -cne $refOrigin) { Stop-Launch "the driver record names $($rec.origin) but the Reference's $Remote is ${refOrigin}: a Reference of another repository was given" }
+    }
+  }
   $commit = Get-ReferenceCommit $git $refP $Remote $Base
   $model = Get-RoleModel $git $yq $refP $commit 'architect'
-  $record = Get-RecordPath $wowP $leaf
 
   if ($mode -eq 'start') {
     # 1. compare
@@ -164,11 +185,10 @@ try {
       Stop-Launch "after up, expected only $id running, found: $(if ($ids) { $ids } else { 'none' }). docker stop the new container ($id) and docker rm any other, then rerun"
     }
     # 4. record
-    Write-Record $record $id $commit $cloneP
+    Write-Record $record $id $commit $cloneP $refOrigin
     Write-LaunchLine "started $id from $commit"
   } else {
     # attach
-    $rec = Read-Record $record
     if ($null -eq $rec) { Stop-Launch "no driver record at $record for the running container: stop it (docker stop $($mine[0].Id)), then rerun at start of day" }
     if ((Format-PathKey $rec.clone) -ne (Format-PathKey $cloneP)) { Stop-Launch 'the driver record names another clone: no two checkouts may share a folder name' }
     $id = $mine[0].Id
