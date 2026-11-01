@@ -2948,3 +2948,25 @@ posts that form any more. Deferred and tracked:
 - the release-tag and immutable-release check for the other repos' cutovers (#433, milestone 20).
 
 Sprint 17 closed at `e11108b` (PR #1151), the pin bump to `v0.27.0`.
+
+Sprint 18 (milestone 20, *Identity M5: glunk-works repos cut over*, all its issues closed) cuts
+the other four glunk-works repos over to the code-owner approval gate. The cutover runbook,
+`reference/cutover.md`, landed first (#1158, PR #1173), with four review fixes (#1176 to #1179,
+PR #1185) and when each App is installed (#1191, PR #1196). `WB-D42` records the adopted dev
+container route (#1163, PR #1169). `cursor-drift.sh` and `token-check.sh` refuse a revision name
+and a bare-name call (#1159, PR #1170), `review-token.sh` refuses a slash-less `$0` (#1171,
+PR #1174), and resume resolves `last_commit` by object id (#1168, PR #1182). The review gate's
+header match is described as exact line equality (#1175, PR #1183), and `workflow.md` says who
+posts the review in each mode (#1181, PR #1190; #1189, PR #1193). It shipped in `v0.28.0`, tagged
+at `8ec8a4d` (PR #1200).
+
+Verified live: bounty-infra (#406), global-bootstrap (#407), bedrock-serverless-rag (#408) and
+scope-core (#410) were cut over on 2026-10-28, each with its ruleset read-back recorded on the
+issue. Immutable releases read `true` on all four (#433, 2026-10-26, as the admin account; a
+non-admin caller gets `404`). #419 audited the AWS role trust policies the glunk-works workflows
+can assume, and retired every Infisical identity but loop-orchestrator's, which is kept until
+2027-03-31 and deleted by glunk-works/loop-orchestrator#216. Deferred and tracked:
+- the `sh.cmd` path of the launchers' `cygpath` conversion on a real Windows Git Bash (#885).
+
+Sprint 18 closed on 2026-11-01; its last change to this repo is `a00405c` (PR #1201), the pin
+bump to `v0.28.0`.
