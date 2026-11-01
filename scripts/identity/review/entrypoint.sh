@@ -76,7 +76,6 @@ HOME='/home/app'
 PATH='/usr/local/bin:/usr/bin:/bin'
 SHELL='/bin/bash'
 MKT_REPO='glunk-works/claude-workbench'
-MKT_NAME='claude-workbench'
 export PATH
 
 PR=${WOW_REVIEW_PR:-}
@@ -215,7 +214,14 @@ cenv "$LIBEXEC/token-check.sh" verify reviewer_app "$repo" "$TOKDIR/session-toke
 
 # --- step 5: plugin ------------------------------------------------------------------------------
 settings=$WORK/.claude/settings.json
-cenv jq -e --arg n "$MKT_NAME" --arg r "$MKT_REPO" '
+# The settings key is the name the reviewed repo gave the marketplace: the one entry naming MKT_REPO.
+by_repo='(if type == "object" then [to_entries[]
+    | select((.value | type == "object") and (.value.source | type == "object"))
+    | select(.value.source.source == "github" and .value.source.repo == $r) | .key] else [] end)
+  | if length == 1 then .[0] else empty end'
+skey=$(cenv jq -er --arg r "$MKT_REPO" ".extraKnownMarketplaces | $by_repo" "$settings" 2>/dev/null) || stop entry-plugin "the plugin pin is missing or wrong"
+valid_name "$skey" || stop entry-plugin "the plugin pin is missing or wrong"
+cenv jq -e --arg n "$skey" --arg r "$MKT_REPO" '
   (.enabledPlugins[("way-of-working@" + $n)] == true)
   and (.extraKnownMarketplaces[$n].source
        | type == "object"
@@ -224,7 +230,7 @@ cenv jq -e --arg n "$MKT_NAME" --arg r "$MKT_REPO" '
          and .repo == $r
          and (.ref | type == "string" and test("\\Av[0-9]+[.][0-9]+[.][0-9]+\\z")))
 ' "$settings" >/dev/null 2>&1 || stop entry-plugin "the plugin pin is missing or wrong"
-ref=$(cenv jq -r --arg n "$MKT_NAME" '.extraKnownMarketplaces[$n].source.ref' "$settings") || stop entry-plugin "the plugin pin is unreadable"
+ref=$(cenv jq -r --arg n "$skey" '.extraKnownMarketplaces[$n].source.ref' "$settings") || stop entry-plugin "the plugin pin is unreadable"
 case $ref in v*.*.*) ;; *) stop entry-plugin "the plugin pin is wrong" ;; esac
 case $ref in *[!0-9v.]*) stop entry-plugin "the plugin pin is wrong" ;; esac
 
@@ -246,9 +252,12 @@ case $commit in *[!0-9a-f]*|'') stop entry-plugin "the tag commit is malformed" 
 [ "${#commit}" -eq 40 ] || stop entry-plugin "the tag commit is malformed"
 
 (cd "$HOME" && cenv timeout 300 claude plugin marketplace add "$MKT_REPO@$ref" --scope user) >/dev/null || stop entry-plugin "marketplace add failed"
-(cd "$HOME" && cenv timeout 300 claude plugin install "way-of-working@$MKT_NAME" --scope user) >/dev/null || stop entry-plugin "plugin install failed"
+# The add registers the manifest's name, whatever key the reviewed repo used: read it back.
+mname=$(cenv jq -er --arg r "$MKT_REPO" ". | $by_repo" "$HOME/.claude/plugins/known_marketplaces.json" 2>/dev/null) || stop entry-plugin "the registered marketplace is missing or wrong"
+valid_name "$mname" || stop entry-plugin "the registered marketplace is missing or wrong"
+(cd "$HOME" && cenv timeout 300 claude plugin install "way-of-working@$mname" --scope user) >/dev/null || stop entry-plugin "plugin install failed"
 
-key="way-of-working@$MKT_NAME"
+key="way-of-working@$mname"
 installed=$HOME/.claude/plugins/installed_plugins.json
 cenv jq -e --arg k "$key" --arg c "$commit" '
   (.plugins[$k] | type == "array" and length == 1 and (.[0].scope == "user") and (.[0].gitCommitSha == $c))

@@ -150,14 +150,14 @@ unblock one.
 
 `.claude/settings.json` on the default branch carries:
 
-- `extraKnownMarketplaces`, keyed by exactly `claude-workbench`. Its `source` has exactly the
+- `extraKnownMarketplaces`, keyed by `claude-workbench`. The review container accepts another plain key (letters, digits, `.`, `_`, `-`; not `.`, `..` or starting with `-`) in its place. Whatever the key, it must be the only key whose source is `github` with the marketplace repository `glunk-works/claude-workbench`, and `enabledPlugins` must set `way-of-working@` plus that key. Its `source` has exactly the
   keys:
   - `source`, the value `github`;
   - `repo`, the value exactly `glunk-works/claude-workbench`. The review container accepts
-    only these two values, so a fork or another marketplace name is refused;
+    only these two values, so a fork or another repository is refused;
   - `ref`, a `vMAJOR.MINOR.PATCH` tag at or after the release that ships this runbook,
     resolving to exactly one tag with no branch of the same name.
-- `enabledPlugins`, setting `way-of-working@claude-workbench` to true.
+- `enabledPlugins`, setting `way-of-working@` plus that key (`way-of-working@claude-workbench` by default) to true.
 
 A repo may have neither key today. Bumping the pin later follows `conventions.md`'s *Bumping a
 pinned plugin* section, which this file does not restate.
