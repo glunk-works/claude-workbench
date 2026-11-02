@@ -21,7 +21,7 @@ set -eu
 
 # Fixed, not overridable from the environment: a session could otherwise point the helper at
 # a missing directory on purpose. tests/dev-token.test.sh runs a sed-substituted copy.
-dir=/run/glunk-identity/dev
+dir=/run/wow
 file=$dir/dev-token
 margin=300
 

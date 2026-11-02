@@ -14,16 +14,15 @@ that serves the host's git credential (see Hazards that remain).
 - The host broker (`scripts/identity/broker.ps1`) keeps `~/.config/glunk-identity/tokens/claude-workbench/dev-token`
   current: the token on line 1, its `expires_at` on line 2. The broker's scheduled task starts pwsh through
   `conhost.exe --headless`, so it opens no window; re-running `register-broker-task.ps1` brings an older registration up to date. Endpoint security software and public detection rules for headless conhost may flag that launch as a living-off-the-land pattern, and an alert on this task is expected; the flagged command line should show `conhost.exe` from the system directory starting pwsh on the installed copy of `bin\broker.ps1` under `WOW_HOME`, though a match shows only that the launch has this task's shape, not that the task or the installed script is unmodified.
-- `devcontainer.json` bind-mounts that **directory**, read-only, at `/run/glunk-identity/dev`. A
+- `devcontainer.json` bind-mounts that **directory**, read-only, once, at `/run/wow`. A
   single-file mount would keep showing the file the broker replaced by atomic rename. Nothing else
   under the host's `glunk-identity` directory is mounted. The mount source names the GitHub repo
   (`claude-workbench`), not the checkout folder, so a clone folder with another name still mounts
   the right directory; it must exist, which `install-host-tools.ps1` ensures for each repo in `broker.json`.
-- `wow-admin` writes the admin token into the same host directory (when `WOW_HOME` is the default
-  directory, as *Opening it* already requires), and `devcontainer.json` mounts that directory a second
-  time, read-only, at `/run/wow`. That is the fixed path where the plugin's SessionStart banner looks for
-  the admin token (`/run/wow/admin-token`); the dev token is visible there too. A container created
-  before this change lacks the mount until the driver launcher's start-of-day path recreates it.
+  the `dev-token` script reads the `dev-token` file there, and the plugin's SessionStart banner reads `admin-token` there
+  (`/run/wow/admin-token`, the fixed path it looks at); `wow-admin` writes the admin token into the same
+  host directory (when `WOW_HOME` is the default directory, as *Opening it* already requires). The change
+  takes effect when the driver launcher's start-of-day path recreates the container.
 - `/usr/local/libexec/dev-token` reads the file **on every call** and refuses (in plain mode: exit 2, no stdout)
   unless it holds a `ghs_` installation token with 5 minutes or more left on the container's
   clock. The broker refreshes at 30 minutes left, so a failed mint has about 25 minutes of slack.
@@ -136,7 +135,7 @@ that serves the host's git credential (see Hazards that remain).
     has changed since, and the container should then be recreated at start of day once the lanes are
     done. Attach still fetches the Reference for the model, so an offline driver restart refuses.
   - **A live-run check for the maintainer's first run:** `docker inspect` of the recreated container
-    shows only the six mounts `devcontainer.json` declares, since the pinned base image might
+    shows only the five mounts `devcontainer.json` declares, since the pinned base image might
     declare a `VOLUME`. This is a check for the human, not launcher code.
 - **By hand**, from PowerShell or cmd on the host (not Git Bash), and only after the compare:
   ```sh

@@ -78,15 +78,10 @@
     // clone folder named otherwise, e.g. claude-workbench-2, would mount nothing), and it must exist
     // or `devcontainer up` fails: install-host-tools.ps1 creates it for each repo in
     // broker.json. USERPROFILE is Windows-only on purpose; nothing else under the host's
-    // glunk-identity directory is mounted. /usr/local/bin/gh and git's credential helper read
-    // dev-token from here on every call (see Dockerfile).
-    "source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/claude-workbench,target=/run/glunk-identity/dev,type=bind,readonly",
-
-    // claude-workbench: the same token directory again, at /run/wow (#814). The plugin's
-    // SessionStart banner reads the admin token at /run/wow/admin-token whatever the environment
-    // says; this mount puts the directory wow-admin writes at that path. The dev token file is
-    // visible there too, which exposes nothing new to this container. A directory, not the
-    // single file, for the reason given above.
+    // glunk-identity directory is mounted. The one mount, at /run/wow (#814, #1225):
+    // /usr/local/bin/gh and git's credential helper read dev-token from here on every call (see
+    // Dockerfile), and the plugin's SessionStart banner reads admin-token from here, the file
+    // wow-admin writes into this directory.
     "source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/claude-workbench,target=/run/wow,type=bind,readonly",
 
     // PER-REPO home directory: everything user-scoped lives on this ONE volume. That is

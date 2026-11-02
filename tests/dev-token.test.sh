@@ -12,7 +12,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 # The production script fixes its directory; test a copy pointing at the fixture directory.
 mkdir "$tmp/d"
-sed "s|^dir=/run/glunk-identity/dev\$|dir=$tmp/d|" "$root_dir/.devcontainer/dev-token" >"$tmp/script"
+sed "s|^dir=/run/wow\$|dir=$tmp/d|" "$root_dir/.devcontainer/dev-token" >"$tmp/script"
 grep -q "^dir=$tmp/d\$" "$tmp/script" || { echo "FAIL - could not substitute dir" >&2; exit 1; }
 script="$tmp/script"
 
