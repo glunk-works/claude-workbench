@@ -1448,6 +1448,16 @@ take effect. Full reasoning and the task breakdown that implements them:
       hold against an interactive session, which acts under the owner's own `gh` login and
       could open a qualifying PR itself. That session already holds the owner's credentials.
       The derived step is a review, never a merge, and the human still merges.
+    - **The `fresh` input to `review-step.sh decide` is the resuming session's own report, and
+      the script cannot check it (`#1160`).** Resume sets `$FRESH` from its own judgment that the
+      conversation had no assistant turn and no work before the resume, and `auto` needs
+      `fresh=yes`. It is accepted. Under `identities: null` the attestation the review posts is
+      itself the reviewing session's statement, which CI cannot check either, so a wrong `yes`
+      costs the human's "go" prompt and no gate integrity. Under an identities map App mode never
+      reaches `auto`, and a user-mode `auto` starts architect-review in host mode, which prints
+      the `wow-review` launcher command and stops; the review runs in the launcher's review
+      container and posts as the reviewer App, so a wrong `yes` posts nothing. Considered and not
+      built: (A) a SessionStart-hook marker that `decide` reads, and (B) no `auto` under a map.
     - **Confirmed in the build: a PR mentioning `#N` does not bump the issue's `updated_at`.** The
       PR that carries this build (#284, "Closes #230") left `#230`'s `updated_at` at the anchored
       value. The no-op handoff still re-takes the anchor after the PR exists, as a precaution.
