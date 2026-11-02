@@ -48,6 +48,7 @@ gates:
     - { run: bash scripts/lint.sh }
     - { run: bash scripts/coupling-check.sh }
     - { run: bash scripts/invariants-check.sh }
+    - { run: bash scripts/test-all.sh }
 
 # ── branch protection ────────────────────────────────────────────────────────
 # `rulesets` is what resume and pr-checks read; `ruleset` is the legacy key the other
