@@ -173,6 +173,12 @@ function Resolve-Tool([string]$Name) {
 # Test-YqVersion <text>: the minimum host yq (a literal here, in no other launcher file) against the text
 # `yq --version` printed. Status is ok (at or above the minimum, no maximum), older (Found holds the parsed
 # version, for ok too) or unparseable; every outcome carries Minimum. Only mikefarah's one-line form parses.
+# Why the minimum is 4.54.1: the expression Get-ReferenceLanesDir (wow-lane.ps1) passes to yq uses the
+# if/then/else/end form, and a host yq v4.53.6 fails on it (#1256). v4.54.1 is the first release with yq's
+# if/then/else/end operator (v4.54.1, mikefarah/yq#2871); no release exists between v4.53.6 and v4.54.1.
+# The minimum moves down only after every yq expression the launchers pass has been run on the lower release
+# and works; it moves up when a launcher starts depending on a newer yq feature. A change to $min updates
+# this comment in the same change.
 function Test-YqVersion([string]$Text) {
   $min = '4.54.1'
   $r = { param($s, $f) [pscustomobject]@{ Status = $s; Found = $f; Minimum = $min } }
