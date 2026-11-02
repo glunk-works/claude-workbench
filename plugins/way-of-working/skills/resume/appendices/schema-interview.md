@@ -66,7 +66,7 @@ runs `git status --short` itself (the step it used to cite comes later).
        its own question: `maintainer` (`list`, non-empty `{login, id}` pairs) and `dev_app`, `reviewer_app`,
        `loop_app` (each `nullable`, a `{login, id}` pair). **No suggested options** for any of them: a
        login or id offered here is a trust decision taken. Once those four have been asked (not on a `null`
-       answer, and not when `identities` is declined), the interview prints the following line as written
+       answer, and not when `identities` is declined), the interview prints the quoted line as written, without its > markers, as one line
        and repeats it in the pick-up summary:
 
        > `rulesets` and `identities.dev_app.commit_route` are not
