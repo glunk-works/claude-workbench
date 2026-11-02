@@ -55,7 +55,7 @@
     pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Spec N[,N...]
   With an MSYS-form WOW_HOME (/c/...) the $env:WOW_HOME script path in those commands does not resolve in
   pwsh, so give the installed copy's path in Windows form; the launchers convert their own default -WowHome.
-  yq (mikefarah v4) must be on PowerShell's PATH too. It runs only from there: it checks the MANIFEST.
+  yq (mikefarah v4, v4.54.1 or newer; the launchers refuse an older or unidentifiable yq) must be on PowerShell's PATH too. It runs only from there: it checks the MANIFEST.
 
 .PARAMETER SourceRepo
   The git checkout to install from. Default: the repository containing this script.

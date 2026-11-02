@@ -69,7 +69,8 @@ that serves the host's git credential (see Hazards that remain).
   (`//server/share/...`) is unsupported and both launchers refuse it on Windows. The script path in the `pwsh -File
   $env:WOW_HOME\bin\...` commands is not converted: either set the user-level variable in the form
   above or spell the script path in that form. `install-host-tools.ps1` refuses an MSYS-form `WowHome`.
-  `yq` must be on PowerShell's `PATH`. It runs the checks below in the safe order, so that order is
+  `yq` must be on PowerShell's `PATH`, v4.54.1 or newer; both launchers refuse an older or unidentifiable `yq`
+  before any docker call. The driver launcher runs the checks below in the safe order, so that order is
   the only one it offers.
   - **`-Clone`** is the clone the container opens (an absolute directory, not a link, whose leaf
     follows Docker's volume-name rule and whose whole path holds only letters, digits, space, `.`,

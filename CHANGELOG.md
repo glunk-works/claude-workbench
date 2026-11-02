@@ -21,6 +21,12 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+**⚠️ Migration** — once the new host tools are installed, `wow-driver.ps1` (start of day and attach) and `wow-lane.ps1` (`-Issue`, `-Spec`, `-SpecSweep`) refuse a host `yq` older than v4.54.1 or one whose version cannot be read, so upgrade the host's `yq` first (`#1256`).
+
+### Changed
+
+- The host launchers check `yq --version` right after resolving `yq`, before any docker or git call, and refuse one below v4.54.1, or one whose version cannot be read, up front; `wow-lane.ps1` used to stop later with `yq could not read lanes.dir` (`#1256`).
+
 ## [0.29.0] — 2026-11-02
 
 **⚠️ Migration** — a consuming repo that bumps to this release gets `hooks/reach-gate.sh`: in a session whose GitHub token is an installation token that does not reach the repository `origin` names, every prompt is refused until it does. Check that the dev container mounts that repository's own token directory, and that `origin` names the repository's current owner and name, before bumping (`#1164`).
