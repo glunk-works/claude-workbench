@@ -32,8 +32,8 @@
 #                   working directory is a spec leaf), the spec record, the -SpecSweep mode (it kills and removes nothing, but fetches in the Reference)
 #                   (the busy-check and sweep fixtures are skipped loudly under MSYS), the shared lanes-directory guard
 #                   (an owner override in the stub docker makes `test -O` false on the lanes path, a dangling
-#                   lanes link and a missing lanes directory are fixtures), and the static shape of the guard, the four scripts and both message
-#                   templates
+#                   lanes link and a missing lanes directory are fixtures), and the static shape of the guard, the four scripts and the message
+#                   templates (the lane and spec ones in wow-lane.ps1, the driver one in wow-driver.ps1)
 #
 #
 # Concurrency (#937): the sections run at once, each in a subshell with its own scratch world
@@ -269,7 +269,7 @@ non_ps() { calls | grep -v '^docker ps '; }
 probe_guarded() { case "$probe_script" in *"-e '[v]scode-remote-containers-server' -e '[v]scode-server'"*) return 0 ;; esac; return 1; }
 probe_script=$(sed -n 's/^  "\(\/bin\/ls -d .*\)"$/\1/p' "$root_dir/scripts/identity/wow-launch-common.ps1")
 rec_ok_commit() { jq -e --arg c "$c2" '.commit == $c' "$home/driver/wb-driver.json" >/dev/null; }
-exec_line="docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /workspace $ID1 /usr/local/bin/claude --model opus --effort medium"
+exec_line="docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /workspace $ID1 /usr/local/bin/claude --model opus --effort medium Driver for acme/widgets."
 
 running1() { reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; }
 
@@ -281,6 +281,7 @@ run_lane() { run_with "$home/bin/wow-lane.ps1" -Clone "$(wp "$clone")" -Referenc
 LANE_CONTAINER_STAGE=
 LHASH=$ID1   # any 64 lowercase hex digits are a valid -Hash
 no_app_exec() { ! calls | grep -q ' -u app '; }
+no_secretuser() { ! calls | grep -q SECRETUSER; }
 no_banned() { ! calls | grep -q '[&|^%!"]'; }
 it_line() { calls | grep ' -it '; }
 app_execs() { calls | grep ' -u app ' | grep -v ' -it '; }
@@ -417,6 +418,7 @@ start_ok() { # start_ok <label>: the sequence, the record, the exec, the exit co
 $exec_line"
   check "$1: six ps calls, two of them after up" test "$(calls | grep -c '^docker ps ')" -eq 6
   check "$1: the last two ps calls follow up" test "$(calls | sed -n '/^devcontainer up/,$p' | grep -c '^docker ps ')" -eq 2
+  check "$1: no argv holds & | ^ % ! or a double quote" no_banned
   check "$1: the record is exactly id, commit, clone and origin" rec_ok
   check "$1: the record existed when the session started" test -f "$stubdir/record-at-exec"
   check "$1: no devcontainer exec" no_dc_exec
@@ -732,7 +734,7 @@ lane_setup; run_lane -Issue 5 -Hash "$(echo "$PH" | tr 0-9a-f 1-9a-f0)"; probe_r
 sec_lanec() {
 # lane happy path
 lane_setup; run_lane -Issue 5 -Hash "$PH"
-lane_msg="Lane for issue #5. In one Bash call, run: T=\$(mktemp -d); cp /tmp/lanes/5-prompt.md \$T/p.md; sha256sum \$T/p.md; echo \$T/p.md. Stop unless that call printed the hash $PH. If it did, read only that copy and follow it."
+lane_msg="Lane for acme/widgets issue #5. In one Bash call, run: T=\$(mktemp -d); cp /tmp/lanes/5-prompt.md \$T/p.md; sha256sum \$T/p.md; echo \$T/p.md. Stop unless that call printed the hash $PH. If it did, read only that copy and follow it."
 check "wow-lane lane: exits with the session's code" test "$rc" -eq 7
 check "wow-lane lane: the interactive argv is exactly the declared one" test "$(non_ps | tail -1)" = "docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /tmp/lanes/5 $ID1 /usr/local/bin/claude --model sonnet $lane_msg"
 check "wow-lane lane: relay probe, in-container probe, then the session, and nothing else" test "$(exec_shape)" = "exec -u root,exec -u app,exec -it -u,"
@@ -757,7 +759,7 @@ for w in "$STUB_LANES"/spec-*; do
 done
 HOOK
 spec_setup; cp "$tmp/hook.ok" "$stubdir/it.hook"; run_lane -Spec 12,7,30
-spec_line="docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /tmp/lanes/spec-[a-z0-9]{6} $ID1 /usr/local/bin/claude --model opus --effort high Run /way-of-working:spec-task for each of these issues, one at a time, in this order: 12, 7, 30. Build nothing, and start no build for any of them.\$"
+spec_line="docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /tmp/lanes/spec-[a-z0-9]{6} $ID1 /usr/local/bin/claude --model opus --effort high Spec session for acme/widgets. Run /way-of-working:spec-task for each of these issues, one at a time, in this order: 12, 7, 30. Build nothing, and start no build for any of them.\$"
 check "wow-lane spec: exits with the session's code" test "$rc" -eq 7
 spec_it_ok() { it_line | grep -E -q -e "^$spec_line"; }
 spec_seen() { # the hook saw a detached worktree at the Reference's commit, under the leaf the argv names
@@ -832,7 +834,7 @@ check "wow-lane spec (the lanes directory missing): the prep makes it and the se
 check "wow-lane spec (the lanes directory missing): a detached worktree existed during the session" spec_seen
 rm -rf "$lanes"; $real_git -C "$crepo" worktree prune
 
-# static shape of the four scripts and both message templates
+# static shape of the four scripts and the three message templates
 lane_fn() { sed -n "/^function $1 /,/^}/p" "$root_dir/scripts/identity/wow-lane.ps1"; }
 lane_line() { lane_fn "$1" | sed -n 2p; }
 clean_line() { # no & | ^ % ! or double quote, and no single quote between the outer pair
@@ -878,10 +880,12 @@ for t in 'test -d $L/$N;' 'test -e $L/record-$F;' 'test $lw = ok;'; do
 done
 sweep_pure() { ! { guard_line; lane_rest Get-SpecSweepScript; } | grep -q -w -e kill -e rm -e mkdir -e git; }
 check "static: the guard and Get-SpecSweepScript hold none of kill, rm, mkdir or git as a whole word" sweep_pure
-tpl_line() { grep -E "^[\$]script:$1 = '" "$root_dir/scripts/identity/wow-lane.ps1" | sed "s/^[^']*'//; s/'\$//"; }
-for tpl in LaneMessage SpecMessage; do
-  check "static: the $tpl template exists" test -n "$(tpl_line $tpl)"
-  check "static: the $tpl template holds none of & | ^ % ! or a double quote" clean_line "$(tpl_line $tpl)"
+tpl_line() { grep -E "^[\$]script:$1 = '" "$root_dir/scripts/identity/$2" | sed "s/^[^']*'//; s/'\$//"; }
+for tplf in LaneMessage:wow-lane.ps1 SpecMessage:wow-lane.ps1 DriverMessage:wow-driver.ps1; do
+  tpl=${tplf%%:*}; tplfile=${tplf#*:}
+  check "static: the $tpl template exists" test -n "$(tpl_line $tpl $tplfile)"
+  check "static: the $tpl template holds none of & | ^ % ! or a double quote" clean_line "$(tpl_line $tpl $tplfile)"
+  check "static: the $tpl template holds @ORIGIN@ exactly once" test "$(tpl_line $tpl $tplfile | grep -o '@ORIGIN@' | wc -l)" -eq 1
 done
 
   :
@@ -1035,7 +1039,7 @@ check "model: a value outside the four names refuses" test "$rc" -eq 1
 check "model: ...with no -it exec" no_it
 push_yml 'fable'
 reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
-check "model: a valid value reaches argv as the script's literal" test "$(non_ps | tail -1)" = "docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /workspace $ID1 /usr/local/bin/claude --model fable --effort medium"
+check "model: a valid value reaches argv as the script's literal" test "$(non_ps | tail -1)" = "docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /workspace $ID1 /usr/local/bin/claude --model fable --effort medium Driver for acme/widgets."
 push_yml 'opus; rm -rf'
 reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
 check "model: an injected value refuses and reaches no argv" test "$rc" -eq 1 -a "$(calls | grep -c 'rm -rf')" -eq 0
@@ -1279,6 +1283,7 @@ set_url 'https://SECRETUSER@github.com/Acme/Widgets.git'
 $real_git -C "$ref" config "url.$(wp "$origin").insteadOf" 'https://SECRETUSER@github.com/Acme/Widgets.git'
 reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; run_drv
 start_ok_origin 'a Reference url with only a user name'
+check "a Reference url with only a user name: the name does not reach the session argv" no_secretuser
 check "a Reference url with only a user name: the name is in neither the record nor the output" sh -c "! grep -q SECRETUSER '$home/driver/wb-driver.json' '$tmp/out' '$tmp/err'"
 check "start of day: git ran only in the Reference (origin read included)" sh -c "! grep -q 'wb-driver' '$stubdir/git.log'"
 }

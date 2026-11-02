@@ -32,7 +32,12 @@
        build context (#634): the Dockerfile plus exactly the files it copies, flat. The old bin is kept as bin.old until the swap succeeds and is
        put back if it fails; a leftover bin.old with no bin is restored on the next run.
     5. Creates $WowHome\tokens\<repo> for each repo in broker.json (a container mount whose source
-       is missing fails to start). A bad broker.json is a warning here, not a failed install.
+       is missing fails to start). A bad broker.json is a warning here, not a failed install. It then
+       cross-checks, when broker.json names at least one valid repo, broker.json, review-poll.json and
+       the tokens\ directories by bare repo name (case-insensitive, owner ignored) and warns, one fixed
+       line per mismatch (an absent review-poll.json is not compared; an unreadable one gets one fixed line), about a poll entry with
+       no broker.json entry, a broker.json entry with no poll entry, and a tokens\ directory with no
+       broker.json entry. It only warns: the install's result never changes and no list is edited.
 
   Honest limit. The checks in step 2 catch accidents (an unreviewed worktree, a checkout about to
   be deleted). They do not narrow the hostile case. If a container can write the source clone, it
@@ -213,14 +218,67 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
     }
 
     $cfg = Join-Path $WowHome 'broker.json'
+    $brokerNames = @()
     if (Test-Path -LiteralPath $cfg -PathType Leaf) {
       try {
+        $found = @()
         foreach ($r in @((Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json).repos)) {
           if ($r -is [string] -and $r -match '\A[A-Za-z0-9._-]+\z' -and $r -notmatch '\A[-.]' -and $r -notmatch '\.\z') {
             $null = New-Item -ItemType Directory -Force -Path (Join-Path $WowHome "tokens/$r")
+            $found += $r
           }
         }
+        $brokerNames = $found
       } catch { Write-Warning "broker.json unreadable ($($_.Exception.Message)); tokens/<repo> not created" }
+    }
+
+    # Cross-check of the three host repo lists: broker.json (bare names), review-poll.json (owner/name) and tokens/.
+    # It only warns, with fixed text that holds no exception message; the owner half is ignored, names compare case-insensitively.
+    if ($brokerNames.Count -gt 0) {
+      try {
+        $okName = { param($n) $n -is [string] -and $n -match '\A[A-Za-z0-9._-]+\z' -and $n -notmatch '\A[-.]' -and $n -notmatch '\.\z' }
+        $brokerSet = [ordered]@{}
+        foreach ($n in $brokerNames) { if (-not $brokerSet.Contains($n.ToLowerInvariant())) { $brokerSet[$n.ToLowerInvariant()] = $n } }
+        $pollSet = $null
+        $pollFile = Join-Path $WowHome 'review-poll.json'
+        if (Test-Path -LiteralPath $pollFile -PathType Leaf) {
+          $entries = $null
+          try {
+            $poll = Get-Content -LiteralPath $pollFile -Raw | ConvertFrom-Json -ErrorAction Stop
+            $prop = @($poll.PSObject.Properties | Where-Object { $_.Name -ceq 'repos' })
+            if ($poll -is [pscustomobject] -and $prop.Count -eq 1 -and $prop[0].Value -is [object[]]) {
+              $vals = $prop[0].Value
+              if (@($vals | Where-Object { $_ -isnot [string] }).Count -eq 0) { $entries = $vals }
+            }
+          } catch { $entries = $null }
+          if ($null -eq $entries) {
+            Write-Warning 'review-poll.json is not readable as a repos list of strings: not compared with broker.json'
+          } else {
+            $pollSet = [ordered]@{}
+            foreach ($e in $entries) {
+              $parts = $e.Split('/')
+              if ($parts.Count -eq 2 -and (& $okName $parts[0]) -and (& $okName $parts[1])) {
+                if (-not $pollSet.Contains($parts[1].ToLowerInvariant())) { $pollSet[$parts[1].ToLowerInvariant()] = $parts[1] }
+              }
+            }
+          }
+        }
+        if ($null -ne $pollSet) {
+          foreach ($k in @($pollSet.PSBase.Keys)) {
+            if (-not $brokerSet.Contains($k)) { Write-Warning "$($pollSet[$k]) is in review-poll.json but not broker.json: no dev token is minted for it on this host" }
+          }
+          foreach ($k in @($brokerSet.PSBase.Keys)) {
+            if (-not $pollSet.Contains($k)) { Write-Warning "$($brokerSet[$k]) is in broker.json but not review-poll.json: no automatic reviews for it" }
+          }
+        }
+        $tokDir = Join-Path $WowHome 'tokens'
+        if (Test-Path -LiteralPath $tokDir -PathType Container) {
+          foreach ($d in @(Get-ChildItem -LiteralPath $tokDir -Directory -Force | Sort-Object Name)) {
+            if ($d.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+            if ((& $okName $d.Name) -and -not $brokerSet.Contains($d.Name.ToLowerInvariant())) { Write-Warning "tokens/$($d.Name) has no broker.json entry" }
+          }
+        }
+      } catch { Write-Warning 'the cross-check of broker.json, review-poll.json and tokens/ could not run' }
     }
     "installed commit $head into $bin"
   } finally {

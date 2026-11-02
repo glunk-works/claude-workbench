@@ -21,7 +21,7 @@
 #   install      install-host-tools.ps1 exports committed files only into bin with a MANIFEST (commit, hashes),
 #                the review image's build context into bin/review/ from the table in the script,
 #                refuses an uncommitted change (in any source directory) or a HEAD not on origin/main, and
-#                creates tokens/<repo>;
+#                creates tokens/<repo>; warns, without failing, when broker.json, review-poll.json and tokens/ name different repos;
 #                register-broker-task.ps1 -WhatIf points the task at bin, runs pwsh through conhost --headless and installs nothing (skipped, loudly,
 #                where New-ScheduledTaskAction is not available)
 #   task process task-process.ps1 (dot-sourced): Get-FileArgSpan finds the -File span of the broker task's conhost action
@@ -289,6 +289,39 @@ done
 check "install: files are LF" not_cr "$home/bin/mint.sh" "$home/bin/wow-admin" "$home/bin/broker.ps1"
 check "install: no staging left" test ! -e "$home/bin.new" -a ! -e "$home/bin.old"
 check "install: tokens/<repo> created for each repo" test -d "$home/tokens/alpha" -a -d "$home/tokens/beta"
+# cross-check of broker.json, review-poll.json and tokens/ (#1161): warns only, never changes the exit code
+xc_warns() { grep -c 'WARNING: ' "$tmp/out"; }
+xc_has() { grep -q -F -e "WARNING: $1" "$tmp/out"; }
+reset; echo '{"repos": ["acme/alpha", "acme/gamma"]}' >"$home/review-poll.json"; mkdir -p "$home/tokens/delta"
+run_install
+check "cross-check: a mismatch still exits 0" test "$rc" -eq 0
+check "cross-check: a poll name not in broker.json is named" xc_has "gamma is in review-poll.json but not broker.json: no dev token is minted for it on this host"
+check "cross-check: a broker.json name with no poll entry is named" xc_has "beta is in broker.json but not review-poll.json: no automatic reviews for it"
+check "cross-check: a tokens directory with no broker.json entry is named" xc_has "tokens/delta has no broker.json entry"
+check "cross-check: exactly three warnings" test "$(xc_warns)" -eq 3
+reset; echo '{"repos": ["acme/alpha", "other/beta"]}' >"$home/review-poll.json"
+run_install
+check "cross-check: matching sets give no warning" test "$(xc_warns)" -eq 0
+reset; rm -f "$home/review-poll.json"; mkdir -p "$home/tokens/delta"
+run_install
+check "cross-check: no poll file gives no poll warning" test "$(grep -c 'review-poll.json' "$tmp/out")" -eq 0
+check "cross-check: no poll file still reports the extra tokens directory" xc_has "tokens/delta has no broker.json entry"
+reset; echo 'POLLSECRET not json' >"$home/review-poll.json"
+run_install
+check "cross-check: a poll file that is not JSON: one warning, exit 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
+check "cross-check: a poll file that is not JSON: the file content is not echoed" sh -c "! grep -q POLLSECRET '$tmp/out'"
+reset; echo '{"repos": ["acme/alpha", 7, "POLLSECRET/x"]}' >"$home/review-poll.json"
+run_install
+check "cross-check: a poll file with a non-string entry: one warning, exit 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
+check "cross-check: a poll file with a non-string entry: the content is not echoed" sh -c "! grep -q POLLSECRET '$tmp/out'"
+reset; echo '{"repos": ["Alpha"]}' >"$home/broker.json"; echo '{"repos": ["acme/alpha"]}' >"$home/review-poll.json"
+run_install
+check "cross-check: names compare case-insensitively" test "$rc" -eq 0 -a "$(xc_warns)" -eq 0
+reset; echo '{"repos": ["keys", "alpha"]}' >"$home/broker.json"; echo '{"repos": ["acme/keys", "acme/gamma"]}' >"$home/review-poll.json"
+run_install
+check "cross-check: a repo named keys does not hide other broker.json names" xc_has "alpha is in broker.json but not review-poll.json: no automatic reviews for it"
+check "cross-check: a repo named keys does not hide other poll names" xc_has "gamma is in review-poll.json but not broker.json: no dev token is minted for it on this host"
+reset; rm -f "$home/review-poll.json"
 manifest=$(cat "$home/bin/MANIFEST")
 
 echo '# dirty' >>"$src/scripts/identity/mint.sh"
