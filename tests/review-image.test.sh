@@ -573,12 +573,12 @@ for a in CLAUDE_VERSION CLAUDE_SHA256; do
   v=$(arg "$df" $a); w=$(arg "$root_dir/scripts/loop/Dockerfile" $a)
   if [ -n "$v" ] && [ "$v" = "$w" ]; then ok "Dockerfile: $a equals scripts/loop/Dockerfile's"; else bad "Dockerfile: $a [$v] differs from the loop's [$w]"; fi
 done
-check "Dockerfile: the dev-token dir rewrite is present" grep -qF "s|^dir=/run/glunk-identity/dev\$|dir=/run/glunk-identity/review|" "$df"
+check "Dockerfile: the dev-token dir rewrite is present" grep -qF "s|^dir=/run/wow\$|dir=/run/glunk-identity/review|" "$df"
 check "Dockerfile: the dev-token file rewrite is present" grep -qF "s|^file=\$dir/dev-token\$|file=\$dir/session-token|" "$df"
 check "Dockerfile: the grep check for the dir rewrite is present" grep -qF "grep -q '^dir=/run/glunk-identity/review\$' /usr/local/libexec/dev-token" "$df"
 check "Dockerfile: the grep check for the file rewrite is present" grep -qF "grep -q '^file=\$dir/session-token\$' /usr/local/libexec/dev-token" "$df"
 # The rewrite really matches the committed dev-token's two lines.
-sed -e 's|^dir=/run/glunk-identity/dev$|dir=/run/glunk-identity/review|' -e 's|^file=$dir/dev-token$|file=$dir/session-token|' \
+sed -e 's|^dir=/run/wow$|dir=/run/glunk-identity/review|' -e 's|^file=$dir/dev-token$|file=$dir/session-token|' \
   "$root_dir/.devcontainer/dev-token" >"$tmp/dev-token.rewritten"
 check "Dockerfile: the rewrite takes on the committed dev-token (dir)" grep -q '^dir=/run/glunk-identity/review$' "$tmp/dev-token.rewritten"
 check "Dockerfile: the rewrite takes on the committed dev-token (file)" grep -q '^file=$dir/session-token$' "$tmp/dev-token.rewritten"

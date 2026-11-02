@@ -57,7 +57,7 @@ COPY --chown=root:root --chmod=0555 dev-token /usr/local/libexec/dev-token
 COPY --chown=root:root --chmod=0555 gh /usr/local/libexec/gh-shim
 RUN set -eu; \
     sed -i \
-      -e 's|^dir=/run/glunk-identity/dev$|dir=/run/glunk-identity/review|' \
+      -e 's|^dir=/run/wow$|dir=/run/glunk-identity/review|' \
       -e 's|^file=$dir/dev-token$|file=$dir/session-token|' \
       /usr/local/libexec/dev-token; \
     grep -q '^dir=/run/glunk-identity/review$' /usr/local/libexec/dev-token; \

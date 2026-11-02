@@ -50,16 +50,21 @@ else
   static_fail=1
 fi
 
-dev_line="$(printf '%s\n' "$dc_lines" | grep -F 'target=/run/glunk-identity/dev,' || true)"
-dev_n="$(printf '%s\n' "$dev_line" | grep -c . || true)"
-wow_src="$(printf '%s\n' "$wow_line" | sed -n 's/.*\(source=[^,]*\),.*/\1/p')"
-dev_src="$(printf '%s\n' "$dev_line" | sed -n 's/.*\(source=[^,]*\),.*/\1/p')"
-if [ "$dev_n" = 1 ] && [ -n "$wow_src" ] && [ "$wow_src" = "$dev_src" ]; then
-  echo "ok - the /run/wow mount has the same source as the dev token mount"
-else
-  echo "FAIL - dev token mount lines: $dev_n; sources differ or are empty ('$wow_src' vs '$dev_src')"
+if printf '%s\n' "$dc_lines" | grep -qF 'target=/run/glunk-identity/'; then
+  echo "FAIL - devcontainer.json still has a glunk-identity mount target; the token directory is mounted once, at /run/wow"
   static_fail=1
+else
+  echo "ok - devcontainer.json has no glunk-identity mount target"
 fi
+
+wow_src="$(printf '%s\n' "$wow_line" | sed -n 's/.*\(source=[^,]*\),.*/\1/p')"
+case "$wow_src" in
+  */tokens/claude-workbench)
+    echo "ok - the /run/wow mount's source is the claude-workbench token directory" ;;
+  *)
+    echo "FAIL - the /run/wow mount's source does not end with /tokens/claude-workbench ('$wow_src')"
+    static_fail=1 ;;
+esac
 
 # The static block ends here; the skips below end the file with exit 0, so fail first.
 [ "$static_fail" = 0 ] || exit 1
