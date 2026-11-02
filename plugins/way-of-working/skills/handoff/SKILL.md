@@ -378,7 +378,7 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
 3. **Write `.ai/state.json`.** (The previous cursor's critic record was read before the
    *Determine the new cursor* step wrote anything; it is not read here, after the PR body or
    the cursor has been overwritten.)
-   Write it (this file is git-ignored — it's a local convenience mirror). Keep `schema_version: 1`. Overwrite it wholesale with the new cursor — "wholesale" means every field above, `hitl_gate` included; an overwrite that drops a field is how a cursor loses one. **Every handoff other than the no-op shape above writes `pointers.review_pr: null`**: a value left behind by an earlier no-op handoff still has to match an open PR at its pinned head, so it would fail closed, but an explicit `null` keeps a stale vote out of the cursor. A missing field reads as `null`.
+   Write it (this file is git-ignored — it's a local convenience mirror). Overwrite it wholesale with the new cursor — "wholesale" means every field above, `hitl_gate` included; an overwrite that drops a field is how a cursor loses one. **Every handoff other than the no-op shape above writes `pointers.review_pr: null`**: a value left behind by an earlier no-op handoff still has to match an open PR at its pinned head, so it would fail closed, but an explicit `null` keeps a stale vote out of the cursor. A missing field reads as `null`.
 
    **Then check the written `hitl_gate`** when it is meant to be closed: read it back into a
    variable and pass only the variable, never typing it into a command line, because the

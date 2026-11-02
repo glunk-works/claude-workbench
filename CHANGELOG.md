@@ -31,6 +31,7 @@ the GitHub release notes.
 - `install-host-tools.ps1` warns, and only warns, when `broker.json` names a repo and it, `review-poll.json` and the `tokens/` directories name different repos (`#1161`).
 - The same cross-check also warns once, with a count, when `review-poll.json` has entries it cannot read as `owner/name`, instead of skipping them silently (`#1265`).
 - The resume schema interview prints one line after a map answer for `identities`, telling the human to hand-add `rulesets` and, where the default branch requires signed commits, `commit_route: api` (`#1161`).
+- `/way-of-working:handoff` no longer writes `schema_version` into `.ai/state.json`; no reader ever checked it, a cursor that still has it reads the same, and no migration is needed (`#1143`).
 
 ## [0.29.0] — 2026-11-02
 
