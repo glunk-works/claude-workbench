@@ -21,7 +21,7 @@
 #   attach refuses  mismatched/missing/malformed record, another clone, dirty probe, two containers,
 #                   restarting/paused, a failed docker ps, a missing tool
 #   yq minimum      the host yq version check: the pure comparison on stubbed version lines, both launchers refuse a
-#                   stub yq below v4.54.1 (the driver also an unreadable one) before any docker or git call, and the number is in neither launcher file
+#                   stub yq below v4.54.1 or an unreadable one (the lane through an exit-0 stub printing another yq's form) before any docker or git call, and the number is in neither launcher file
 #   model, canary, edit after up, the declared values the docker exec literals copy
 #   wow-lane        not installed, bad arguments, container and record refusals (the sweep's lanes-directory
 #                   refusal too), the lane probe and the
@@ -1328,6 +1328,11 @@ reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(js
 check "yq version: a failing yq --version exits 1" test "$rc" -eq 1
 check "yq version: ...with the unparseable message" err_has 'no yq version could be read'
 check "yq version: ...before any docker or git call" none_called
+yq_stub 'yq 3.4.1' 0
+reset; run_lane -Spec 7
+check "yq version: wow-lane refuses an exit-0 other-form yq with exit 1" test "$rc" -eq 1
+check "yq version: wow-lane, other-form yq, with the unparseable message" err_has 'no yq version could be read'
+check "yq version: wow-lane, other-form yq, before any docker or git call" none_called
 
 # static: the minimum is written once, in the shared code
 check "yq version: 4.54.1 is in wow-launch-common.ps1" grep -qF '4.54.1' "$root_dir/scripts/identity/wow-launch-common.ps1"
