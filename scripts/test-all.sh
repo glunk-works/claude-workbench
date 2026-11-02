@@ -62,6 +62,7 @@
 #     tests/identity-broker.test.sh needs `pwsh`.
 #   - tests/invariants-files-filter.test.sh needs `jq` (the checker's check 20 does).
 #   - tests/invariants-manifest-agents.test.sh needs `jq` (the checker's check 25 does).
+#   - tests/invariants-manifest-skills.test.sh needs `jq` (the checker's check 27 does).
 #   - tests/identity-review.test.sh takes 26 s alone and its bound is 52 s; see the Runtime
 #     bullet of the Lanes section of docs/identity/DEV-CONTAINER.md.
 # The script is verified under bash 5 (the dev container and CI); it has not been run under bash

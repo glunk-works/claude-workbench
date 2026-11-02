@@ -32,7 +32,7 @@ report() {
 # the tests/invariants-*.test.sh fixtures, which copy the tree and look for one check's message.
 # It is an argument on purpose, never an environment variable, so nothing ambient can narrow a
 # gate run; the gate (CI, release, gates.green) never passes it.
-ALL_IDS=(1 2 2b 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26)
+ALL_IDS=(1 2 2b 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27)
 only=
 only_set=0
 usage() {
@@ -1396,8 +1396,8 @@ if want 25; then
 # and the manifest, never the agent name or any description text. A name that is missing, repeated
 # or outside [A-Za-z0-9_-], an unreadable agent file, a manifest or entry that is missing,
 # duplicated or has no string name or non-empty string description, an unreadable manifest, jq not on PATH, and a tree with no agent file at all are
-# hits: a check that cannot look must not pass (as checks 13 and 23). Outside it: skills and
-# commands, whether `name` equals the file name, and marketplace.json's top-level description.
+# hits: a check that cannot look must not pass (as checks 13 and 23). Outside it: skills (check 27's)
+# and commands, whether `name` equals the file name, and marketplace.json's top-level description.
 mfagents_hits=""
 mfagents_seen=0
 mfagents_jq=1
@@ -1600,6 +1600,87 @@ if [ -n "$rc_hits" ]; then
   report "a required check name is not a job's check run, or its matrix job can be skipped (#1104)" \
     "$rc_hits" \
     "Keep each required_checks name equal to a workflow job's id or name (a matrix job's expanded name), and skip a matrix job only at step level."
+fi
+fi
+
+# --- 27. Every skill is named in both manifest descriptions (#1249) ---------------------------
+if want 27; then
+#
+# v0.28.0 shipped a plugin.json description that named neither /way-of-working:pr-checks,
+# /way-of-working:archive-sprint nor /way-of-working:retro; check 25 compares agents only, so
+# nothing tied the descriptions to plugins/*/skills/. For each plugin directory holding a direct
+# child skills/*/ directory (with or without a SKILL.md; nested directories are not skills), the
+# directory name must appear as `/PLUGIN:SKILL`, followed by end of text or a character outside
+# [A-Za-z0-9_-], in the `description` of that plugin's .claude-plugin/plugin.json and in the
+# `description` of the one .claude-plugin/marketplace.json `plugins[]` entry with the plugin's
+# name. The leading `/` is the only left boundary: a bare name does not count. No description text
+# is ever a pattern. Hits name the skill directory and the manifest, never description text. A
+# skill or plugin name outside [A-Za-z0-9_-], a manifest or entry that is missing, duplicated or
+# lacks a non-empty string name or description, an unreadable manifest, jq not on PATH, and a tree
+# with no skill directory at all are hits: a check that cannot look must not pass (as checks 13, 23
+# and 25). Outside it: agents (check 25's), commands, whether SKILL.md `name` equals the directory
+# name, and marketplace.json's top-level description.
+mfskills_hits=""
+mfskills_seen=0
+mfskills_jq=1
+command -v jq >/dev/null 2>&1 || { mfskills_jq=0; mfskills_hits+="  (jq not found on PATH)"$'\n'; }
+if [ "$mfskills_jq" -eq 1 ]; then
+  for mfskills_dir in plugins/*/; do
+    mfskills_dir=${mfskills_dir%/}
+    mfskills_skills=()
+    for f in "$mfskills_dir"/skills/*/; do [ -d "$f" ] && mfskills_skills+=("${f%/}"); done
+    [ "${#mfskills_skills[@]}" -gt 0 ] || continue
+    mfskills_seen=1
+    mfskills_pj="$mfskills_dir/.claude-plugin/plugin.json"
+    mfskills_mp=".claude-plugin/marketplace.json"
+    mfskills_pname="" mfskills_pdesc="" mfskills_mdesc="" mfskills_pok=1 mfskills_mok=1
+    if [ ! -f "$mfskills_pj" ]; then
+      mfskills_hits+="  $mfskills_pj: missing, so its skills cannot be checked"$'\n'; mfskills_pok=0
+    elif mfskills_pname=$(jq -r '.name | strings' "$mfskills_pj" 2>/dev/null) \
+      && mfskills_pdesc=$(jq -r '.description | strings' "$mfskills_pj" 2>/dev/null) \
+      && [ -n "$mfskills_pname" ] && [ -n "$mfskills_pdesc" ]; then :
+    else
+      mfskills_hits+="  $mfskills_pj: unreadable, or no string name and non-empty string description"$'\n'; mfskills_pok=0
+    fi
+    if [ "$mfskills_pok" -eq 1 ] && ! [[ "$mfskills_pname" =~ ^[A-Za-z0-9_-]+$ ]]; then
+      mfskills_hits+="  $mfskills_pj: name is outside [A-Za-z0-9_-], so its skills cannot be checked"$'\n'; mfskills_pok=0
+    fi
+    if [ ! -f "$mfskills_mp" ]; then
+      mfskills_hits+="  $mfskills_mp: missing, so $mfskills_dir's skills cannot be checked"$'\n'; mfskills_mok=0
+    elif [ "$mfskills_pok" -eq 1 ]; then
+      if ! mfskills_cnt=$(jq --arg n "$mfskills_pname" '[.plugins[]? | select(.name == $n)] | length' "$mfskills_mp" 2>/dev/null); then
+        mfskills_hits+="  $mfskills_mp: unreadable"$'\n'; mfskills_mok=0
+      elif [ "$mfskills_cnt" != 1 ]; then
+        mfskills_hits+="  $mfskills_mp: $mfskills_cnt plugins[] entries named like the name in $mfskills_pj (want exactly 1)"$'\n'; mfskills_mok=0
+      elif mfskills_mdesc=$(jq -r --arg n "$mfskills_pname" '.plugins[] | select(.name == $n) | .description | strings' "$mfskills_mp" 2>/dev/null) \
+        && [ -n "$mfskills_mdesc" ]; then :
+      else
+        mfskills_hits+="  $mfskills_mp: the entry for $mfskills_dir has no non-empty string description"$'\n'; mfskills_mok=0
+      fi
+    else
+      mfskills_mok=0
+    fi
+    [ "$mfskills_pok" -eq 1 ] || continue
+    for f in "${mfskills_skills[@]}"; do
+      mfskills_n=${f##*/}
+      if ! [[ "$mfskills_n" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        mfskills_hits+="  $mfskills_dir/skills/: a skill directory name is outside [A-Za-z0-9_-]"$'\n'; continue
+      fi
+      mfskills_re="/${mfskills_pname}:${mfskills_n}(\$|[^A-Za-z0-9_-])"
+      if ! [[ "$mfskills_pdesc" =~ $mfskills_re ]]; then
+        mfskills_hits+="  $f: not named in the description of $mfskills_pj"$'\n'
+      fi
+      if [ "$mfskills_mok" -eq 1 ] && ! [[ "$mfskills_mdesc" =~ $mfskills_re ]]; then
+        mfskills_hits+="  $f: not named in the $mfskills_mp description of its plugin"$'\n'
+      fi
+    done
+  done
+  [ "$mfskills_seen" -eq 1 ] || mfskills_hits+="  (no plugins/*/skills/*/ directory found)"$'\n'
+fi
+if [ -n "$mfskills_hits" ]; then
+  report "a skill is missing from a manifest description (#1249)" \
+    "$mfskills_hits" \
+    "Name the skill as /PLUGIN:SKILL in both the plugin.json description and the marketplace.json entry's description."
 fi
 fi
 

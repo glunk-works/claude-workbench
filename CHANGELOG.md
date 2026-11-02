@@ -29,10 +29,15 @@ the GitHub release notes.
 - The project status line appends `handoff` at 60% or more of context used (`#792`).
 - The host launchers check `yq --version` right after resolving `yq`, before any docker or git call, and refuse one below v4.54.1, or one whose version cannot be read, up front; `wow-lane.ps1` used to stop later with `yq could not read lanes.dir` (`#1256`).
 - The first message of every launch names the Reference's origin repository: `Driver for <owner>/<name>.`, `Lane for <owner>/<name> issue #N.` and `Spec session for <owner>/<name>.` (`#1161`).
+- The way-of-working entry's description in `.claude-plugin/marketplace.json` names the SessionStart cursor banner, the UserPromptSubmit token-reach hook and the PreCompact/PostCompact compaction hooks, as plugin.json's does (`#1252`).
 - `install-host-tools.ps1` warns, and only warns, when `broker.json` names a repo and it, `review-poll.json` and the `tokens/` directories name different repos (`#1161`).
 - The same cross-check also warns once, with a count, when `review-poll.json` has entries it cannot read as `owner/name`, instead of skipping them silently (`#1265`).
 - The resume schema interview prints one line after a map answer for `identities`, telling the human to hand-add `rulesets` and, where the default branch requires signed commits, `commit_route: api` (`#1161`).
 - `/way-of-working:handoff` no longer writes `schema_version` into `.ai/state.json`; no reader ever checked it, a cursor that still has it reads the same, and no migration is needed (`#1143`).
+
+### Added
+
+- `scripts/invariants-check.sh` check 27 fails when a directory under a plugin's `skills/` is not named as `/PLUGIN:SKILL` in both the plugin.json description and the marketplace entry's description (`#1249`).
 
 ## [0.29.0] — 2026-11-02
 
