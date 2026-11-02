@@ -20,6 +20,8 @@
 #                   refused on attach and in the lane; url shapes that refuse without echoing the url
 #   attach refuses  mismatched/missing/malformed record, another clone, dirty probe, two containers,
 #                   restarting/paused, a failed docker ps, a missing tool
+#   yq minimum      the host yq version check: the pure comparison on stubbed version lines, both launchers refuse a
+#                   stub yq below v4.54.1 (the driver also an unreadable one) before any docker or git call, and the number is in neither launcher file
 #   model, canary, edit after up, the declared values the docker exec literals copy
 #   wow-lane        not installed, bad arguments, container and record refusals (the sweep's lanes-directory
 #                   refusal too), the lane probe and the
@@ -1281,8 +1283,56 @@ check "a Reference url with only a user name: the name is in neither the record 
 check "start of day: git ran only in the Reference (origin read included)" sh -c "! grep -q 'wb-driver' '$stubdir/git.log'"
 }
 
+# --- section: the host yq minimum version (#1256) ---
+sec_yqver() {
+common=$(wp "$root_dir/scripts/identity/wow-launch-common.ps1")
+yq_line() { printf 'yq (https://github.com/mikefarah/yq/) version %s' "$1"; }
+yq_status() { # yq_status <text>: the pure function's Status and Found in $out
+  out=$(YQ_TEXT="$1" "$pwsh_abs" -NoProfile -NonInteractive -Command "\$script:LaunchProg = 't'; \$script:LaunchUsage = 'u'; . '$common'; \$v = Test-YqVersion \$env:YQ_TEXT; \"\$(\$v.Status) \$(\$v.Found) \$(\$v.Minimum)\"" 2>&1 | tr -d '\r') || out="error $out"
+}
+for v in v4.53.6 v4.6.0 v3.99.99; do
+  yq_status "$(yq_line "$v")"; check "yq version: $v is older" test "$out" = "older ${v#v} 4.54.1"
+done
+for v in v4.54.1 v4.54.2 v4.55.0 v4.100.0 v5.0.0; do
+  yq_status "$(yq_line "$v")"; check "yq version: $v passes" test "$out" = "ok ${v#v} 4.54.1"
+done
+yq_status "$(yq_line v4.54.1)
+"; check "yq version: a trailing newline passes" test "$out" = "ok 4.54.1 4.54.1"
+yq_status ''; check "yq version: empty output is unparseable" test "$out" = "unparseable  4.54.1"
+yq_status 'yq 3.4.1'; check "yq version: another yq's form is unparseable" test "$out" = "unparseable  4.54.1"
+yq_status "$(yq_line v4.54)"; check "yq version: two components are unparseable" test "$out" = "unparseable  4.54.1"
+yq_status "$(yq_line v4.54.1-rc1)"; check "yq version: a pre-release suffix is unparseable" test "$out" = "unparseable  4.54.1"
+yq_status "$(yq_line v4.54.1)
+second line"; check "yq version: a second line is unparseable" test "$out" = "unparseable  4.54.1"
+
+# end to end: a stub yq ahead of the real one that only prints and exits
+yq_stub() { # yq_stub <text> <exit code>
+  printf '#!/bin/sh\nprintf "%%s\\n" "%s"\nexit %s\n' "$1" "$2" >"$tmp/yq.body"; mkstub yq "$tmp/yq.body"
+}
+yq_stub "$(yq_line v4.53.6)" 0
+reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
+check "yq version: wow-driver refuses v4.53.6 with exit 1" test "$rc" -eq 1
+check "yq version: wow-driver names v4.53.6 and v4.54.1" sh -c "grep -q 'v4.53.6' '$tmp/err' && grep -q 'v4.54.1' '$tmp/err'"
+check "yq version: wow-driver refuses before any docker or git call" none_called
+reset; run_lane -Spec 7
+check "yq version: wow-lane refuses v4.53.6 with exit 1" test "$rc" -eq 1
+check "yq version: wow-lane names v4.53.6 and v4.54.1" sh -c "grep -q 'v4.53.6' '$tmp/err' && grep -q 'v4.54.1' '$tmp/err'"
+check "yq version: wow-lane refuses before any docker or git call" none_called
+yq_stub "$(yq_line v4.55.0)" 1
+reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
+check "yq version: a failing yq --version exits 1" test "$rc" -eq 1
+check "yq version: ...with the unparseable message" err_has 'no yq version could be read'
+check "yq version: ...before any docker or git call" none_called
+
+# static: the minimum is written once, in the shared code
+check "yq version: 4.54.1 is in wow-launch-common.ps1" grep -qF '4.54.1' "$root_dir/scripts/identity/wow-launch-common.ps1"
+for f in wow-driver.ps1 wow-lane.ps1; do
+  check "yq version: 4.54.1 is not in $f" sh -c "! grep -qF '4.54.1' '$root_dir/scripts/identity/$f'"
+done
+}
+
 # Run every section at once; replay each one's output in order.
-sections="notinst badargs start startb attach lanea laneb lanec laned misc msys origin"
+sections="notinst badargs start startb attach lanea laneb lanec laned misc msys origin yqver"
 pids=
 # An interrupt stops the section subshells and removes the scratch tree (a signal skips the EXIT trap);
 # a pwsh run already in flight ends on its own, as test-all.sh's header allows.

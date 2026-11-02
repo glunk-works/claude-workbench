@@ -33,7 +33,8 @@
     1. The MANIFEST check, inline, before the helper is dot-sourced (as wow-driver.ps1 does it).
     2. The arguments (exit 2, before any external call, except the sh run that converts an MSYS-form -WowHome).
     3. Installed from bin under the final -WowHome.
-    4. git, docker and yq. No devcontainer: this launcher never runs it.
+    4. git, docker and yq (a yq below the minimum wow-launch-common.ps1 holds, or one whose version cannot
+       be read, is refused). No devcontainer: this launcher never runs it.
     5. Exactly one container for the clone, running; none for the Reference; the driver record names
        this clone and that container; the relay probe is clean. The record is never written here.
     6. The Reference's origin repository against the driver record's (refused when the record has none
@@ -315,6 +316,7 @@ try {
   $git = Resolve-Tool 'git'
   $docker = Resolve-Tool 'docker'
   $yq = Resolve-Tool 'yq'
+  Assert-YqVersion $yq
 
   # --- the one running container, recorded by the driver launcher -------------------------------
   $mine = @(Get-LaunchContainers $docker $cloneP $leaf)

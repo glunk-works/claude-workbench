@@ -9,8 +9,8 @@
   inline MANIFEST check, and nothing here runs before that check. Like the launchers it runs only
   from the installed copy in $WOW_HOME/bin (install-host-tools.ps1), never from a checkout.
 
-  What is here: the argument checks and the canonical-path resolution; tool resolution; the two
-  process runners (every external call goes through ProcessStartInfo.ArgumentList, one element per
+  What is here: the argument checks and the canonical-path resolution; tool resolution and the host yq
+  version check; the two process runners (every external call goes through ProcessStartInfo.ArgumentList, one element per
   argument, never a joined string); the commit and model read from the Reference clone; the in-process
   git blob id; the Reference's origin repository (the one configured url, as lowercase owner/name,
   never echoed); the strict record read (four fields: id, commit, clone, origin; the old three-field shape reads with no origin) and the atomic
@@ -168,6 +168,34 @@ function Resolve-Tool([string]$Name) {
   $found = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
   if (-not $found) { Stop-Launch "$Name not found on PATH" }
   $found.Source
+}
+
+# Test-YqVersion <text>: the minimum host yq (a literal here, in no other launcher file) against the text
+# `yq --version` printed. Status is ok (at or above the minimum, no maximum), older (Found holds the parsed
+# version, for ok too) or unparseable; every outcome carries Minimum. Only mikefarah's one-line form parses.
+function Test-YqVersion([string]$Text) {
+  $min = '4.54.1'
+  $r = { param($s, $f) [pscustomobject]@{ Status = $s; Found = $f; Minimum = $min } }
+  $line = if ($null -eq $Text) { '' } else { $Text.TrimEnd() }
+  $m = [regex]::Match($line, '\Ayq \(https://github\.com/mikefarah/yq/\) version v([0-9]{1,9})\.([0-9]{1,9})\.([0-9]{1,9})\z', 'None')
+  if (-not $m.Success) { return & $r 'unparseable' $null }
+  $have = @(1, 2, 3 | ForEach-Object { [int]$m.Groups[$_].Value })
+  $want = @($min.Split('.') | ForEach-Object { [int]$_ })
+  $found = $have -join '.'
+  foreach ($i in 0..2) {
+    if ($have[$i] -gt $want[$i]) { return & $r 'ok' $found }
+    if ($have[$i] -lt $want[$i]) { return & $r 'older' $found }
+  }
+  & $r 'ok' $found
+}
+
+# Assert-YqVersion <yq path>: refuses (exit 1) a host yq below the minimum or one whose version cannot be read,
+# before any docker or git call. A failed `yq --version` reads as unparseable; its output is never echoed.
+function Assert-YqVersion([string]$Yq) {
+  $run = Invoke-Tool $Yq @('--version')
+  $v = Test-YqVersion $(if ($run.Code -eq 0) { [Text.Encoding]::UTF8.GetString($run.Out) } else { '' })
+  if ($v.Status -ceq 'older') { Stop-Launch "yq v$($v.Found) is older than the required v$($v.Minimum): upgrade the host's yq and rerun" }
+  if ($v.Status -ceq 'unparseable') { Stop-Launch "no yq version could be read from yq --version; v$($v.Minimum) or newer is required" }
 }
 
 # Invoke-Tool: stdout as bytes, the exit code, and stderr text. Stderr goes to the console with

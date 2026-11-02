@@ -126,6 +126,7 @@ try {
   $docker = Resolve-Tool 'docker'
   $devcontainer = Resolve-Tool 'devcontainer'
   $yq = Resolve-Tool 'yq'
+  Assert-YqVersion $yq
 
   # --- the Clone's containers: which path --------------------------------------------------------
   $mine = @(Get-LaunchContainers $docker $cloneP $leaf)
