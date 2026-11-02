@@ -2708,7 +2708,7 @@ take effect. Full reasoning and the task breakdown that implements them:
   - **Migration order.** claude-workbench keeps working throughout:
     1. The plugin's token-reaches-origin check (#1164).
     2. The host tools' Reference-origin check (#1164) and the marketplace name derived in the review entrypoint.
-    3. This repo collapses its two token mounts to one at `/run/wow`, retiring `/run/glunk-identity/dev` together with the review image's rewrite and the tests that pin those paths, and takes the mount source from `WOW_HOME` once that substitution is tested on the Windows host.
+    3. This repo collapses its two token mounts to one at `/run/wow`, retiring `/run/glunk-identity/dev` together with the review image's rewrite and the tests that pin those paths, and takes the mount source from `WOW_HOME` once that substitution is tested on the Windows host. *Amended by `#1239`: the review image keeps its dev-token rewrite, now from `/run/wow` to `/run/glunk-identity/review`, so the review container's mount path, its launcher mount and its entrypoint are unchanged.*
     4. 603-Identity/devcontainers replaces `devcontainers#391` and `devcontainers#392` with the flavour design, then builds and publishes it.
     5. The template is updated and this repo's `.devcontainer/` is rebased on it (the Dockerfile `FROM` the flavour plus its `pwsh` block), adopting `verify / verify` here.
     6. Lanes move into the plugin (#715).
