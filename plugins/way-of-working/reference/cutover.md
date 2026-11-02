@@ -34,7 +34,11 @@ What the copy does:
   whatever its review. A PR from a fork, exempt or not, does not pass by default: its token is read-only, so the status cannot be posted (a private repo's setting that sends write tokens to fork pull request workflows must stay off, since a fork's run uses the fork's own copy of the workflow). Any other PR reads `success` only with a fresh-session review by the
   reviewer App on its current head whose last matching review carries `Review verdict: pass`.
 - It covers PRs into the default branch only: on a PR whose base is another branch it posts no
-  status, and any run it makes there ends green.
+  status, and any run it makes there ends green. After cutover, for a PR into the branch the
+  default branch's `migration_base` names, that means no ruleset on that branch may require the
+  context `review.ci_gate.check` names; the gate runs on the landing PR into the default branch,
+  under the 300-changed-files limit the bullet above states, so a landing PR of 300 or more changed
+  files cannot pass.
 
 The edits the copy needs:
 
@@ -130,7 +134,24 @@ Numbered, with who makes each change after the list:
 The dev App's installation does not include the repo, and the repo is not in the host's token
 broker (the host tool that mints the dev App's tokens), until items 1 to 6 are in place and the
 approval ruleset has been confirmed live by reading it back, because before that a dev-App token
-could merge a PR no human approved.
+could merge a PR no human approved. Item 6's Workflows half is on that list for the integration
+pin's limit (see *The gate workflow*): a dev-App token holding Workflows write could edit a
+workflow to post the gate's context and so forge the review status.
+
+The read-back is the approval ruleset fetched by its id (taken from the repo's rulesets list by
+name and `source_type`) through the repo's rulesets endpoint, or `orgs/<owner>/rulesets/<id>` for
+an org ruleset, by someone who can edit that ruleset: a repo admin for a repo ruleset, an org owner for an org
+one. A read that omits `bypass_actors` or sends it null means unknown, not none, and does not
+pass. A ruleset whose enforcement is `evaluate` or `disabled`, or whose conditions miss the
+default branch, reads back with all its rules and enforces nothing there, so the read must show:
+
+- `enforcement` `active`;
+- `target` `branch`, with `conditions.ref_name` including the default branch (for example
+  `~DEFAULT_BRANCH`) and excluding nothing that matches it, and, for an org ruleset, repository
+  conditions that include this repo and exclude nothing that matches it;
+- `bypass_actors` an empty list;
+- a `pull_request` rule with every parameter item 2 names (code-owner review, stale reviews
+  dismissed on push, last-push approval, and `required_approving_review_count` 1).
 
 Who makes each: a repo ruleset needs repo admin, in the browser or through an admin App; an
 org ruleset only an org owner in the browser, since a repo-scoped admin-App token cannot edit
@@ -150,7 +171,7 @@ unblock one.
 
 `.claude/settings.json` on the default branch carries:
 
-- `extraKnownMarketplaces`, keyed by `claude-workbench`. The review container accepts another plain key (letters, digits, `.`, `_`, `-`; not `.`, `..` or starting with `-`) in its place. Whatever the key, it must be the only key whose source is `github` with the marketplace repository `glunk-works/claude-workbench`, and `enabledPlugins` must set `way-of-working@` plus that key. Its `source` has exactly the
+- `extraKnownMarketplaces`, keyed by `claude-workbench`. The review container accepts another plain key (letters, digits, `.`, `_`, `-`; not `.`, `..` or starting with `-`) in its place. Whatever the key, it must be the only key whose source is `github` with the marketplace repository `glunk-works/claude-workbench`, and `enabledPlugins` must set `way-of-working@` plus that key. The entry's `source` has exactly the
   keys:
   - `source`, the value `github`;
   - `repo`, the value exactly `glunk-works/claude-workbench`. The review container accepts
