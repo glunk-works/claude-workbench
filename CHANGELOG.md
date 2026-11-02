@@ -23,6 +23,12 @@ the GitHub release notes.
 
 ## [0.29.0] — 2026-11-02
 
+**⚠️ Migration** — a consuming repo that bumps to this release gets `hooks/reach-gate.sh`: in a session whose GitHub token is an installation token that does not reach the repository `origin` names, every prompt is refused until it does. Check that the dev container mounts that repository's own token directory, and that `origin` names the repository's current owner and name, before bumping (`#1164`).
+
+**⚠️ Migration** — the reinstalled `wow-lane.ps1` refuses `-Issue`, `-Spec` and `-SpecSweep` for a Reference with no `lanes` declared (it reads `lanes.dir` from the Reference at `-Base`), and `-SpecSweep` now also refuses a driver record with no origin or one naming another repository, and needs the Reference to fetch.
+
+**⚠️ Migration** — once the new host tools are installed, attach and `wow-lane.ps1` (`-Issue` and `-Spec`) refuse a container started under the old ones (its driver record has no origin) until one fresh start of day with `wow-driver.ps1`. `wow-driver.ps1`, and `wow-lane.ps1` for `-Issue`, `-Spec` and `-SpecSweep`, also now refuse a Reference whose `<Remote>` has more than one url or a url outside the three github.com forms (an ssh host alias, a trailing slash, another host), where they accepted any fetchable one before.
+
 ### Changed
 
 - `plugins/way-of-working/reference/cutover.md`: the review container accepts another plain settings key in place of `claude-workbench` for the marketplace, and now refuses a settings file with more than one key whose source is the marketplace repository (#1224).
@@ -32,10 +38,6 @@ the GitHub release notes.
 - `/way-of-working:lanes` and `bin/lane.sh`, which replaces `scripts/lanes/lane.sh` (`#715`, `WB-D43`): `prep`, `status` and `done` for coder lanes from the plugin, reading `lanes.dir` from the default branch's project file. `prep` adds the stops `no-lanes` and `unreached` (it needs an installation token that reaches the repository), `status` and `done` stop `no-lanes` too, and `done` prints `next` lines for what the freed lane can take.
 - `hooks/reach-gate.sh`, a `UserPromptSubmit` hook: a session whose token is an installation token that does not reach the repository `origin` names now has every prompt refused, until it does. It passes on every failure, remembers a pass for the session, and an `origin` URL still naming a renamed repo's old name refuses too until `origin` is updated (`#1164`, `WB-D42`).
 - The host launchers record the Reference's origin repository in the driver record and refuse a Reference of another repository on a later start of day, on attach and in `wow-lane.ps1` (`#1164`, `WB-D42`).
-
-**⚠️ Migration** — the reinstalled `wow-lane.ps1` refuses `-Issue`, `-Spec` and `-SpecSweep` for a Reference with no `lanes` declared (it reads `lanes.dir` from the Reference at `-Base`), and `-SpecSweep` now also refuses a driver record with no origin or one naming another repository, and needs the Reference to fetch.
-
-**⚠️ Migration** — once the new host tools are installed, attach and `wow-lane.ps1` (`-Issue` and `-Spec`) refuse a container started under the old ones (its driver record has no origin) until one fresh start of day with `wow-driver.ps1`. `wow-driver.ps1`, and `wow-lane.ps1` for `-Issue`, `-Spec` and `-SpecSweep`, also now refuse a Reference whose `<Remote>` has more than one url or a url outside the three github.com forms (an ssh host alias, a trailing slash, another host), where they accepted any fetchable one before.
 
 ## [0.28.0] — 2026-10-26
 
