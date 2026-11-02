@@ -32,6 +32,10 @@ the GitHub release notes.
 - The same cross-check also warns once, with a count, when `review-poll.json` has entries it cannot read as `owner/name`, instead of skipping them silently (`#1265`).
 - The resume schema interview prints one line after a map answer for `identities`, telling the human to hand-add `rulesets` and, where the default branch requires signed commits, `commit_route: api` (`#1161`).
 
+### Fixed
+
+- `project-schema.md` attributes the exact first-line and third-line review match to the gate workflow in the plugin's source repository (`WB-D37`) and names the fifth-line `Review verdict:` read (`WB-D38`) (`#1186`, `#1187`).
+
 ## [0.29.0] — 2026-11-02
 
 **⚠️ Migration** — a consuming repo that bumps to this release gets `hooks/reach-gate.sh`: in a session whose GitHub token is an installation token that does not reach the repository `origin` names, every prompt is refused until it does. Check that the dev container mounts that repository's own token directory, and that `origin` names the repository's current owner and name, before bumping (`#1164`).
