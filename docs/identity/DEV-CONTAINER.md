@@ -291,14 +291,14 @@ only `/workspace`, and its `.git` file names a host path.
   not owned by the container user, as the lane and spec modes do; a missing lanes directory is not refused.
 - **Driver handoff points** (#729). The driver runs `/way-of-working:handoff` after each lane PR
   merges and its `lane.sh done N` has run, after each batch of spec sessions, and whenever the
-  status line shows the context running high, rather than only when it runs low.
+  status line shows `handoff` (60% or more of context used), rather than only when the context runs low.
 - **Context controls** (#729). The project `.claude/settings.json` sets a status line that shows
   `ctx NN%`, the integer part of the session's context use (`ctx --` before the first message). The
   plugin's `PreCompact` and `PostCompact` hooks fire on an automatic compaction only (matcher `auto`):
   the first adds instructions to the summary to keep the next action, any open gate and every in-flight
   lane, and the second shows a line telling the driver to run handoff before new work. Both stay silent
   in a lane or spec worktree and outside a main worktree, never block a compaction, and a manual
-  `/compact` runs neither. The status line marks no threshold: the value is still open. Lane state
+  `/compact` runs neither. At 60% or more of context used the line reads `ctx NN% handoff` (#792). Lane state
   reads `lanes: { dir: /tmp/lanes }` in `.ai/project.yml` (#793; kept by the maintainer or driver,
   since lanes never write under `.ai/`), and `bin/lane-state.sh` lets handoff record the live lanes and
   resume report them, and `lane.sh status` reads it with `lane-state.sh` too.

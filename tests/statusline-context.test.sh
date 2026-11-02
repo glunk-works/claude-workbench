@@ -1,7 +1,7 @@
 #!/bin/sh
 # Fixture tests for the project statusLine in .claude/settings.json (#729): an inline jq
 # command that prints `ctx NN%` from context_window.used_percentage, or `ctx --` when the value
-# is null, absent, not a number or outside 0 to 100.
+# is null, absent, not a number or outside 0 to 100. At 60 or more it appends ` handoff` (#792).
 #
 # Runs the REAL command text read out of settings.json with canned stdin. Needs jq on PATH
 # (the command's own dependency); skips loudly without it.
@@ -36,7 +36,11 @@ run() { printf '%s' "$1" | sh -c "$cmd"; }
 
 assert_eq "0 prints ctx 0%" "ctx 0%" "$(run '{"context_window":{"used_percentage":0}}')"
 assert_eq "42.7 prints the integer part" "ctx 42%" "$(run '{"context_window":{"used_percentage":42.7}}')"
-assert_eq "100 prints ctx 100%" "ctx 100%" "$(run '{"context_window":{"used_percentage":100}}')"
+assert_eq "59 prints ctx 59% with no flag" "ctx 59%" "$(run '{"context_window":{"used_percentage":59}}')"
+assert_eq "59.9 prints the integer part with no flag" "ctx 59%" "$(run '{"context_window":{"used_percentage":59.9}}')"
+assert_eq "60 prints the handoff flag" "ctx 60% handoff" "$(run '{"context_window":{"used_percentage":60}}')"
+assert_eq "64.2 prints the integer part with the flag" "ctx 64% handoff" "$(run '{"context_window":{"used_percentage":64.2}}')"
+assert_eq "100 prints ctx 100% handoff" "ctx 100% handoff" "$(run '{"context_window":{"used_percentage":100}}')"
 assert_eq "null prints ctx --" "ctx --" "$(run '{"context_window":{"used_percentage":null}}')"
 assert_eq "an absent field prints ctx --" "ctx --" "$(run '{"context_window":{}}')"
 assert_eq "an absent context_window prints ctx --" "ctx --" "$(run '{"model":{"id":"x"}}')"
