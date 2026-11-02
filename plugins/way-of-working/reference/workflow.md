@@ -76,8 +76,11 @@ SONNET (code)  /way-of-working:resume -> branch sprint/NN-slug -> implement + te
    v   *** NEW SESSION (context empty), then /model opus ***                  |
    |   /model alone does NOT clear context — a reviewer holding the authoring |
    |   context proofreads its own reasoning instead of re-deriving it.        |
-OPUS (review)  /way-of-working:resume -> /way-of-working:architect-review <PR> -> file findings
-   |           -> /way-of-working:handoff -> STOP                             |
+OPUS (review)  /way-of-working:resume -> /way-of-working:architect-review <PR>
+   |           identities: null -> the session files findings ->                             |
+   |            /way-of-working:handoff -> STOP                                              |
+   |           identities map -> the skill prints the launcher command and STOPs; the host   |
+   |            launcher (wow-review) posts the review and files the findings                |
    |                                                                          |
    v                                                                          |
 HUMAN          review the PR -> approval (code-owner where required) -> merge (auto-merge where armed) -> /way-of-working:archive-sprint, plan next
@@ -269,12 +272,13 @@ be a gate approving itself. Findings never go into the cursor. Who does the rest
 Under `identities: null` the skill does all of it from the review session: it reviews a trusted
 PR by execution in the `bin/review-sandbox.sh` sandbox (accident containment, not a container)
 and an untrusted one from the required checks' own witness alone, posts with `POST …/reviews`,
-verifies the check went green on the head on **both** surfaces a gate can post to, and files
+verifies the check went green on the head on **both** surfaces a gate can post to (with
+`--pin`, a success counts only on the pinned head, and a head that moved is a stop), and files
 every non-blocking finding as a backlog item. Under an `identities` map no session posts: on a
 host the skill prints the launcher command and stops; the host launcher (`wow-review`) starts a
 review container that runs the skill, which directs no local execution, and writes its outbox; the launcher
 posts as the declared reviewer App, polls the gate (logged only) and files at most five of the
-outbox's findings, only into a `github_issues` backlog with the PR repository's owner.
+outbox's findings, only into a `github_issues` backlog owned by the PR repository's owner.
 `skills/architect-review/SKILL.md` owns the steps and stops of each mode. The posted review is a
 timestamped, threadable event distinct from the PR *description*: an audit record that survives
 edits to the description and cannot be mistaken for the human's approval.

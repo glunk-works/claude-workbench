@@ -122,9 +122,10 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
    fi
    ```
    Then stop. This session never runs `wow-review` itself (with `--rerun` or without), never
-   mints a token and never posts: the launcher is the human's command, and a host process
-   that did these things would put the reviewer credential back in a session that also reads
-   PR text. A failed `jq` or `mv` is reported, never ignored.
+   mints a token and never posts: `wow-review` starts on the host, by the human's hand or,
+   where the host has registered `wow-review-poll` for this repo, from the poller on a
+   schedule, and a session that also reads PR text must not hold the reviewer credential. A
+   failed `jq` or `mv` is reported, never ignored.
 
 2. **State the integrity precondition, then honor it.** If this context contains
    authoring the diff — you wrote it, then `/clear`ed or `/model`-switched —
@@ -612,4 +613,5 @@ by the *End with the pointer* step. The session ends after its one outcome call.
 - Wrong session, no gate, unreadable schema, a moved head: each is a stop, never a best
   effort. In container mode each stop is one `review-outbox.sh outcome` call.
 - Under an `identities` map this session never posts, files, mints a token or runs the
-  launcher; the human runs `wow-review` on the host.
+  launcher or `wow-review-poll`; `wow-review` starts on the host, run by the human or, where
+  the host has registered `wow-review-poll` for this repo, by the poller.
