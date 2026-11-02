@@ -28,6 +28,7 @@ the GitHub release notes.
 - The host launchers check `yq --version` right after resolving `yq`, before any docker or git call, and refuse one below v4.54.1, or one whose version cannot be read, up front; `wow-lane.ps1` used to stop later with `yq could not read lanes.dir` (`#1256`).
 - The first message of every launch names the Reference's origin repository: `Driver for <owner>/<name>.`, `Lane for <owner>/<name> issue #N.` and `Spec session for <owner>/<name>.` (`#1161`).
 - `install-host-tools.ps1` warns, and only warns, when `broker.json` names a repo and it, `review-poll.json` and the `tokens/` directories name different repos (`#1161`).
+- The same cross-check also warns once, with a count, when `review-poll.json` has entries it cannot read as `owner/name`, instead of skipping them silently (`#1265`).
 - The resume schema interview prints one line after a map answer for `identities`, telling the human to hand-add `rulesets` and, where the default branch requires signed commits, `commit_route: api` (`#1161`).
 
 ## [0.29.0] — 2026-11-02

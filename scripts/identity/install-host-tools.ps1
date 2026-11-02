@@ -37,7 +37,8 @@
        the tokens\ directories by bare repo name (case-insensitive, owner ignored) and warns, one fixed
        line per mismatch (an absent review-poll.json is not compared; an unreadable one gets one fixed line), about a poll entry with
        no broker.json entry, a broker.json entry with no poll entry, and a tokens\ directory with no
-       broker.json entry. It only warns: the install's result never changes and no list is edited.
+       broker.json entry. It also warns once, with a count and no entry text, when review-poll.json
+       has string entries it cannot read as owner/name. It only warns: the install's result never changes and no list is edited.
 
   Honest limit. The checks in step 2 catch accidents (an unreviewed worktree, a checkout about to
   be deleted). They do not narrow the hostile case. If a container can write the source clone, it
@@ -255,12 +256,14 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
             Write-Warning 'review-poll.json is not readable as a repos list of strings: not compared with broker.json'
           } else {
             $pollSet = [ordered]@{}
+            $skipped = 0
             foreach ($e in $entries) {
               $parts = $e.Split('/')
               if ($parts.Count -eq 2 -and (& $okName $parts[0]) -and (& $okName $parts[1])) {
                 if (-not $pollSet.Contains($parts[1].ToLowerInvariant())) { $pollSet[$parts[1].ToLowerInvariant()] = $parts[1] }
-              }
+              } else { $skipped++ }
             }
+            if ($skipped -gt 0) { Write-Warning "review-poll.json entries this check cannot read as owner/name: $skipped; they are not compared with broker.json" }
           }
         }
         if ($null -ne $pollSet) {

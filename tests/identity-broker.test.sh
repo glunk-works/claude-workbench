@@ -21,7 +21,8 @@
 #   install      install-host-tools.ps1 exports committed files only into bin with a MANIFEST (commit, hashes),
 #                the review image's build context into bin/review/ from the table in the script,
 #                refuses an uncommitted change (in any source directory) or a HEAD not on origin/main, and
-#                creates tokens/<repo>; warns, without failing, when broker.json, review-poll.json and tokens/ name different repos;
+#                creates tokens/<repo>; warns, without failing, when broker.json, review-poll.json and tokens/ name different repos, and
+#                gives poll entries it cannot read as owner/name one warning holding only their count;
 #                register-broker-task.ps1 -WhatIf points the task at bin, runs pwsh through conhost --headless and installs nothing (skipped, loudly,
 #                where New-ScheduledTaskAction is not available)
 #   task process task-process.ps1 (dot-sourced): Get-FileArgSpan finds the -File span of the broker task's conhost action
@@ -321,6 +322,18 @@ reset; echo '{"repos": ["keys", "alpha"]}' >"$home/broker.json"; echo '{"repos":
 run_install
 check "cross-check: a repo named keys does not hide other broker.json names" xc_has "alpha is in broker.json but not review-poll.json: no automatic reviews for it"
 check "cross-check: a repo named keys does not hide other poll names" xc_has "gamma is in review-poll.json but not broker.json: no dev token is minted for it on this host"
+reset; echo '{"repos": ["alpha"]}' >"$home/broker.json"; echo '{"repos": ["acmealpha"]}' >"$home/review-poll.json"
+run_install
+check "cross-check: an unreadable poll entry: exit 0" test "$rc" -eq 0
+check "cross-check: an unreadable poll entry is counted" xc_has "review-poll.json entries this check cannot read as owner/name: 1; they are not compared with broker.json"
+check "cross-check: an unreadable poll entry: the broker-only name is still named" xc_has "alpha is in broker.json but not review-poll.json: no automatic reviews for it"
+check "cross-check: an unreadable poll entry: exactly two warnings" test "$(xc_warns)" -eq 2
+reset; echo '{"repos": ["acme/alpha", "other/beta", "POLLSECRET", "acme/POLLSECRET/x", "acme/POLLSECRET x"]}' >"$home/review-poll.json"
+run_install
+check "cross-check: mixed poll entries: exit 0" test "$rc" -eq 0
+check "cross-check: mixed poll entries: the skipped ones are counted" xc_has "review-poll.json entries this check cannot read as owner/name: 3; they are not compared with broker.json"
+check "cross-check: mixed poll entries: exactly one warning" test "$(xc_warns)" -eq 1
+check "cross-check: mixed poll entries: the entry text is not echoed" sh -c "! grep -q POLLSECRET '$tmp/out'"
 reset; rm -f "$home/review-poll.json"
 manifest=$(cat "$home/bin/MANIFEST")
 
