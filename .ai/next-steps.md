@@ -9,16 +9,17 @@
 - **#1241** (`38f8cd6`): `bash scripts/test-all.sh` is now a `gates.green` entry, since #715's lane prompt runs only those entries.
 - **#1229** filed (bound every job in `pr-title.yml` and `ci.yml` with `timeout-minutes`) after a `pr-title` job stuck in progress on PR #1228.
 - **PR #1246** opened, auto-merge armed: retires the `lanes` area in `CLAUDE.md` and fixes the `.ai/project.yml` comment (part of #1243). The five open `area/lanes` issues now carry `area/way-of-working`.
+- **PR #1248** opened, auto-merge armed: the v0.29.0 release PR (`CHANGELOG.md` heading, `plugin.json` version, both plugin descriptions listing `/way-of-working:lanes`, closing #1243 with #1246). Local gate passed, `test-all.sh` included. It touches `code_paths`, so it needs `wow-review`.
 - Milestone 26's description kept current through each merge; its build order is now #1226, #1165, #1161.
 
-**Next:** Host session (maintainer): cut the way-of-working release carrying #1164, #1224 and #715, bump this repo's plugin pin with no other container session open, reinstall the host tools from main, and run one start of day with no lane running; then, on opus, run `/way-of-working:plan-sprint` to triage the unmilestoned backlog (#1229 to #1237, #1243 and older) into milestones.
+**Next:** Host session (maintainer): run `wow-review` on release PR #1248 and approve it, dispatch the release workflow from main (dry run first), merge the pin bump to v0.29.0 and install it with no other container session open, reinstall the host tools from main, and run one start of day with no lane running; then, on opus, run `/way-of-working:plan-sprint` to triage the unmilestoned backlog (#1229 to #1237, #1243 and older) into milestones.
 
-**HITL Gate: OPEN** — the release, the pin bump, the host-tools reinstall and the start of day are the maintainer's host steps; no lane can be prepped until the release carrying bin/lane.sh is installed
+**HITL Gate: OPEN** — the review and approval of #1248, the release dispatch, the pin bump, the host-tools reinstall and the start of day are the maintainer's host steps; no lane can be prepped until the release carrying bin/lane.sh is installed
 
 **Critic pass:** none in this session; every code change came through a lane, each with its own critic gate.
 
 **Maintainer actions:**
-- Approve PR #1246, then delete the `area/lanes` label on GitHub. The release PR lists `/way-of-working:lanes` in the `plugin.json` and `marketplace.json` descriptions, the rest of #1243.
+- Approve PR #1246, then delete the `area/lanes` label on GitHub.
 - At the start of day after the reinstall: #1225 takes effect (one token mount at `/run/wow`). Check that `gh` works, that `/run/glunk-identity/dev` is gone and that `docker inspect` shows five mounts. The same start of day writes the four-field driver record #1164 needs.
 - Exit the leftover #1164 spec session in `/tmp/lanes/spec-lwlgdu`.
 - Still open from earlier: file `WB-D42` route step 4 in 603-Identity/devcontainers (the draft is in the 2026-11-01 comment on #1226); #1226 and #1165 wait on it.
