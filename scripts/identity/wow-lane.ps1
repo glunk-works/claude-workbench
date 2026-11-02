@@ -35,7 +35,8 @@
     4. git, docker and yq. No devcontainer: this launcher never runs it.
     5. Exactly one container for the clone, running; none for the Reference; the driver record names
        this clone and that container; the relay probe is clean. The record is never written here.
-    6. The Reference's commit and the role's model.
+    6. The Reference's origin repository against the driver record's (refused when the record has none
+       or another one), then the Reference's commit and the role's model.
     7. One non-interactive docker exec -u app of an in-container script (a lane probe, or the spec
        worktree prep, which runs its busy check right after its lanes-directory check and before the
        base fetch). Its single-word answer decides, or for the prep a busy line (busy, the leaf, a
@@ -306,6 +307,9 @@ try {
   $commit = $null
   $model = $null
   if (-not $hasSweep) {
+    if ($null -eq $rec.origin) { Stop-Launch 'the driver record has no origin (written by an older launcher): stop the container once no lane runs, then rerun wow-driver.ps1' }
+    $refOrigin = Get-ReferenceOrigin $git $refP $Remote
+    if ($rec.origin -cne $refOrigin) { Stop-Launch "the driver record names $($rec.origin) but the Reference's $Remote is ${refOrigin}: a Reference of another repository was given" }
     $commit = Get-ReferenceCommit $git $refP $Remote $Base
     $model = Get-RoleModel $git $yq $refP $commit $(if ($hasSpec) { 'architect' } else { 'coder' })
   }

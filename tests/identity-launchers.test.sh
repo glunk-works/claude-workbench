@@ -15,6 +15,9 @@
 #   start of day    zero, exited or created container: up, re-list, record, docker exec -it, the exec's code
 #   refusals        .devcontainer/ mismatch, label-only or Reference containers, bad up results, bad re-list
 #   attach          record + running container + clean probe: no compare, no devcontainer, no git on the Clone
+#   origin          the Reference's origin repository against the four-field record: start of day, attach,
+#                   wow-lane -Issue/-Spec refuse another origin; a three-field record is replaced at start and
+#                   refused on attach and in the lane; url shapes that refuse without echoing the url
 #   attach refuses  mismatched/missing/malformed record, another clone, dirty probe, two containers,
 #                   restarting/paused, a failed docker ps, a missing tool
 #   model, canary, edit after up, the declared values the docker exec literals copy
@@ -185,6 +188,11 @@ $G -C "$seed" commit -q -am two
 $real_git -C "$seed" remote add origin "$(wp "$origin")"; $real_git -C "$seed" push -q origin main
 c2=$($real_git -C "$seed" rev-parse HEAD)
 $real_git clone -q "$(wp "$origin")" "$ref"
+# The Reference's origin is a github.com url (the launcher records it as lowercase owner/name); its fetch still
+# reaches the local bare repo through a scoped insteadOf rewrite, which the launcher's config read never applies.
+ref_url='https://github.com/Acme/Widgets.git'
+$real_git -C "$ref" config remote.origin.url "$ref_url"
+$real_git -C "$ref" config "url.$(wp "$origin").insteadOf" "$ref_url"
 # wow-lane's container clone (cloned from the same origin) and a second one whose origin/main is c1.
 crepo="$tmp/crepo" crepo2="$tmp/crepo2" origin2="$tmp/origin2.git" lanes="$tmp/lanes"
 $real_git clone -q "$(wp "$origin")" "$crepo"
@@ -240,14 +248,18 @@ no_it() { ! calls | grep -q ' -it '; }
 no_dc() { ! calls | grep -q '^devcontainer '; }
 err_has() { grep -q -- "$1" "$tmp/err"; }
 out_has() { grep -q -- "$1" "$tmp/out"; }
-write_record() { # write_record <id> <commit> <clone>
+write_record() { # write_record <id> <commit> <clone> [origin]: the four-field record
+  mkdir -p "$home/driver"
+  printf '{"id":"%s","commit":"%s","clone":"%s","origin":"%s"}\n' "$1" "$2" "$3" "${4:-acme/widgets}" | sed 's,\\,\\\\,g;' >"$home/driver/wb-driver.json"
+}
+write_record3() { # write_record3 <id> <commit> <clone>: the old three-field record
   mkdir -p "$home/driver"
   printf '{"id":"%s","commit":"%s","clone":"%s"}\n' "$1" "$2" "$3" | sed 's,\\,\\\\,g;' >"$home/driver/wb-driver.json"
 }
 json_clone() { printf '%s' "$(wp "$clone")" | sed 's,\\,\\\\,g'; }
-rec_ok() { # the record holds exactly id, commit, clone
+rec_ok() { # the record holds exactly id, commit, clone, origin
   f=$home/driver/wb-driver.json
-  [ -f "$f" ] && jq -e --arg i "$ID1" --arg c "$c2" 'keys == ["clone","commit","id"] and .id == $i and .commit == $c' "$f" >/dev/null &&
+  [ -f "$f" ] && jq -e --arg i "$ID1" --arg c "$c2" 'keys == ["clone","commit","id","origin"] and .id == $i and .commit == $c and .origin == "acme/widgets"' "$f" >/dev/null &&
     [ "$(norm "$(jq -r .clone "$f")")" = "$(norm "$(wp "$clone")")" ]
 }
 # The calls other than docker ps, in order.
@@ -403,7 +415,7 @@ start_ok() { # start_ok <label>: the sequence, the record, the exec, the exit co
 $exec_line"
   check "$1: six ps calls, two of them after up" test "$(calls | grep -c '^docker ps ')" -eq 6
   check "$1: the last two ps calls follow up" test "$(calls | sed -n '/^devcontainer up/,$p' | grep -c '^docker ps ')" -eq 2
-  check "$1: the record is exactly id, commit and clone" rec_ok
+  check "$1: the record is exactly id, commit, clone and origin" rec_ok
   check "$1: the record existed when the session started" test -f "$stubdir/record-at-exec"
   check "$1: no devcontainer exec" no_dc_exec
   check "$1: nothing from the clone, the listings or up reaches an argv" no_canary
@@ -551,17 +563,17 @@ running1; write_record "$ID2" "$c2" "$(json_clone)"; run_drv; attach_refuses 'a 
 running1; run_drv; attach_refuses 'a missing record'
 running1; mkdir -p "$home/driver"; echo '{"id":"x"}' >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'a missing field'
 running1; mkdir -p "$home/driver"
-printf '{"id":"%s","commit":"%s","clone":"%s","extra":"1"}\n' "$ID1" "$c2" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'an extra field'
+printf '{"id":"%s","commit":"%s","clone":"%s","origin":"acme/widgets","extra":"1"}\n' "$ID1" "$c2" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'an extra field'
 running1; mkdir -p "$home/driver"
-printf '{"id":"abc","commit":"%s","clone":"%s"}\n' "$c2" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'a short id'
+printf '{"id":"abc","commit":"%s","clone":"%s","origin":"acme/widgets"}\n' "$c2" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'a short id'
 running1; mkdir -p "$home/driver"
-printf '{"id":"%s","commit":"%s","clone":"%s"}\n' "$(echo "$ID1" | tr a A)" "$c2" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'an uppercase id'
+printf '{"id":"%s","commit":"%s","clone":"%s","origin":"acme/widgets"}\n' "$(echo "$ID1" | tr a A)" "$c2" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'an uppercase id'
 running1; mkdir -p "$home/driver"
-printf '{"id":"%s","commit":"%s","clone":"%s"}\n' "$ID1" "$(echo "$c2" | cut -c1-12)" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'a short commit'
+printf '{"id":"%s","commit":"%s","clone":"%s","origin":"acme/widgets"}\n' "$ID1" "$(echo "$c2" | cut -c1-12)" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'a short commit'
 running1; mkdir -p "$home/driver"; echo 'not json' >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'not JSON'
 running1; mkdir -p "$home/driver"; echo '[1,2]' >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'a JSON array'
 running1; mkdir -p "$home/driver"
-printf '{"id":1,"commit":"%s","clone":"%s"}\n' "$c2" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'a non-string id'
+printf '{"id":1,"commit":"%s","clone":"%s","origin":"acme/widgets"}\n' "$c2" "$(json_clone)" >"$home/driver/wb-driver.json"; run_drv; attach_refuses 'a non-string id'
 running1; write_record "$ID1" "$c2" "$(wp "$tmp/clones/elsewhere" | sed 's,\\,\\\\,g')"; run_drv; attach_refuses "another clone's record"
 running1; write_record "$ID1" "$c2" "$(json_clone)"; echo "dirty" >"$stubdir/probe.out"; run_drv; attach_refuses 'a probe that prints a line'
 check "attach refuses: ...naming the VS Code attach" err_has 'VS Code'
@@ -1151,8 +1163,94 @@ done
   :
 }
 
+# --- section: the Reference's origin repository (#1164, WB-D42) ---
+sec_origin() {
+set_url() { $real_git -C "$ref" config --replace-all remote.origin.url "$1"; }
+no_fetch() { ! grep -q ' fetch ' "$stubdir/git.log"; }
+attach_refuses() { # attach_refuses <label>: exit 1, no devcontainer, no -it, a reason
+  check "attach refuses ($1): exit 1" test "$rc" -eq 1
+  check "attach refuses ($1): no devcontainer call" no_dc
+  check "attach refuses ($1): no -it exec" no_it
+  check "attach refuses ($1): says why on stderr" test -s "$tmp/err"
+}
+refuses_early() { # refuses_early <label>: exit 1, a reason, no fetch, no devcontainer, no -it exec
+  check "$1: exit 1" test "$rc" -eq 1
+  check "$1: says why on stderr" test -s "$tmp/err"
+  check "$1: before the fetch" no_fetch
+  check "$1: no devcontainer call" no_dc
+  check "$1: no -it exec" no_it
+}
+
+# start of day: a record naming this clone and another origin refuses and is left alone
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record "$ID2" "$c1" "$(json_clone)" other/repo; cp "$home/driver/wb-driver.json" "$tmp/snap"
+run_drv
+refuses_early 'start of day, another origin'
+check "start of day, another origin: names both repositories" sh -c "grep -q other/repo '$tmp/err' && grep -q acme/widgets '$tmp/err'"
+check "start of day, another origin: the record is unchanged" cmp -s "$tmp/snap" "$home/driver/wb-driver.json"
+# a record naming another clone does not bind this one
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record "$ID2" "$c1" "$(wp "$tmp/clones/elsewhere" | sed 's,\\,\\\\,g')" other/repo
+run_drv
+start_ok_origin() { check "$1: exits with the session's code" test "$rc" -eq 7; check "$1: writes a four-field record" rec_ok; }
+start_ok_origin 'start of day, a record of another clone'
+# no record, a three-field record and an unreadable record each write four fields
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; run_drv
+start_ok_origin 'start of day, no record'
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record3 "$ID2" "$c1" "$(json_clone)"; run_drv
+start_ok_origin 'start of day, a three-field record'
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; mkdir -p "$home/driver"; echo '{not json' >"$home/driver/wb-driver.json"; run_drv
+start_ok_origin 'start of day, an unreadable record'
+check "start of day: the Reference's mixed-case url is recorded as lowercase" test "$(jq -r .origin "$home/driver/wb-driver.json")" = acme/widgets
+
+# attach: a different origin, a three-field record
+running1; write_record "$ID1" "$c2" "$(json_clone)" other/repo; run_drv
+attach_refuses 'another origin'; check "attach refuses (another origin): before the fetch" no_fetch
+running1; write_record3 "$ID1" "$c2" "$(json_clone)"; run_drv
+attach_refuses 'a three-field record'; check "attach refuses (a three-field record): before the fetch" no_fetch
+check "attach refuses (a three-field record): says to rerun at start of day" err_has 'start of day'
+running1; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
+check "attach with the same origin still attaches" test "$rc" -eq 7
+
+# wow-lane: -Issue and -Spec refuse another origin and a three-field record; -SpecSweep lists with either
+LANE_CONTAINER_STAGE=1
+for mode in issue spec; do
+  lane_setup; write_record "$ID1" "$c2" "$(json_clone)" other/repo; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
+  [ "$mode" = issue ] && run_lane -Issue 5 -Hash "$PH" || run_lane -Spec 7
+  lane_refuses "$mode, another origin"; check "wow-lane refuses ($mode, another origin): before the fetch" no_fetch
+  lane_setup; write_record3 "$ID1" "$c2" "$(json_clone)"; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
+  [ "$mode" = issue ] && run_lane -Issue 5 -Hash "$PH" || run_lane -Spec 7
+  lane_refuses "$mode, a three-field record"; check "wow-lane refuses ($mode, a three-field record): before the fetch" no_fetch
+done
+if [ -z "$msys" ]; then
+  lane_setup; write_record3 "$ID1" "$c2" "$(json_clone)"; run_lane -SpecSweep
+  check "wow-lane -SpecSweep lists with a three-field record" test "$rc" -eq 0
+  lane_setup; write_record "$ID1" "$c2" "$(json_clone)" other/repo; run_lane -SpecSweep
+  check "wow-lane -SpecSweep lists with another origin" test "$rc" -eq 0
+fi
+LANE_CONTAINER_STAGE=
+
+# the Reference's url: shapes that refuse without echoing it, and one with a user name that is accepted
+bad_url() { # bad_url <label> <url> <secret word>
+  set_url "$2"; reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; run_drv
+  refuses_early "a Reference url ($1)"
+  check "a Reference url ($1): the url is not echoed" sh -c "! grep -q -e '$3' '$tmp/err' '$tmp/out'"
+}
+bad_url 'a password part on https' 'https://u:SECRETPW@github.com/acme/widgets' SECRETPW
+bad_url 'another host' 'https://example.com/SECRETHOST/widgets' SECRETHOST
+bad_url 'a local path' "$(wp "$origin")" origin.git
+set_url 'https://github.com/Acme/Widgets.git'; $real_git -C "$ref" config --add remote.origin.url 'https://github.com/SECRETTWO/two.git'
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; run_drv
+refuses_early 'a Reference with two url values'
+check "a Reference with two url values: the urls are not echoed" sh -c "! grep -q -e SECRETTWO '$tmp/err' '$tmp/out'"
+set_url 'https://SECRETUSER@github.com/Acme/Widgets.git'
+$real_git -C "$ref" config "url.$(wp "$origin").insteadOf" 'https://SECRETUSER@github.com/Acme/Widgets.git'
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; run_drv
+start_ok_origin 'a Reference url with only a user name'
+check "a Reference url with only a user name: the name is in neither the record nor the output" sh -c "! grep -q SECRETUSER '$home/driver/wb-driver.json' '$tmp/out' '$tmp/err'"
+check "start of day: git ran only in the Reference (origin read included)" sh -c "! grep -q 'wb-driver' '$stubdir/git.log'"
+}
+
 # Run every section at once; replay each one's output in order.
-sections="notinst badargs start startb attach lanea laneb lanec laned misc msys"
+sections="notinst badargs start startb attach lanea laneb lanec laned misc msys origin"
 pids=
 # An interrupt stops the section subshells and removes the scratch tree (a signal skips the EXIT trap);
 # a pwsh run already in flight ends on its own, as test-all.sh's header allows.

@@ -34,6 +34,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/reach-gate.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

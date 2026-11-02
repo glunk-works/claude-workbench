@@ -26,7 +26,7 @@
 #                          copies, every kept copy of the session token, and its read-token, post-token
 #                          and filing-token, and the transient staged session log. Removed by the launcher's trap.
 #   driver/<leaf>.json     wow-driver.ps1's record of the container it started for the clone <leaf>: {id, commit,
-#                          clone}. Never mounted.
+#                          clone, origin}. Never mounted.
 #   review-state/          wow-review's lock and its dedupe ledger (<owner>/<name>/<N>/<sha>/).
 #   review-state/.home-key  the home's container-label key (wow.review.home), never to be removed while that home has containers, networks or volumes.
 #   review-state/.live/<id>  a live run's lease (wow-review), touched every 60 seconds while its launcher lives; the overdue sweep

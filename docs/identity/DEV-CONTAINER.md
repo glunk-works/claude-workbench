@@ -91,11 +91,16 @@ that serves the host's git credential (see Hazards that remain).
     `<Remote>/<Base>` in the Reference (same files, same bytes, no link anywhere; a CRLF checkout is
     refused as intended), recreates the container with `devcontainer up --skip-post-attach
     --remove-existing-container`, checks that exactly the container `up` reported is running, writes
-    the record, and enters it. A clone behind `main` after a `.devcontainer/` merge is brought forward
+    the record, and enters it. Before the fetch it reads the Reference's `<Remote>` repository (one
+    github.com url, kept as lowercase `owner/name`) and refuses when the record names this clone and
+    a different origin: a Reference of another repository was given. The limit: a start of day with no
+    readable four-field record for the clone checks nothing and records whatever origin the Reference
+    has, so the check catches a Reference that differs from the first one recorded, not a wrong first one. A clone behind `main` after a `.devcontainer/` merge is brought forward
     without running git on the host: `docker start <id>`, then `docker exec -u app -e
     GIT_TERMINAL_PROMPT=0 -w /workspace <id> git pull --ff-only`, then `docker stop <id>`, then rerun.
   - **The record** is `<WowHome>\driver\<leaf>.json`: `id` (the container, 64 hex digits), `commit`
-    (the commit compared against, 40) and `clone` (the canonical clone path). Unlike
+    (the commit compared against, 40), `clone` (the canonical clone path) and `origin` (the Reference's
+    repository as lowercase `owner/name`, never a raw url). Unlike
     `tokens/<repo>/`, the one directory the dev container mounts, it is never mounted into a container. It is written only after the re-list passes, to a
     temp file in the same directory and then renamed.
   - **Why recreate, then `docker exec`.** `WB-D33` requires the compare before every `up` and every
@@ -112,7 +117,9 @@ that serves the host's git credential (see Hazards that remain).
     `haiku` or `fable`; effort has no config key, so `medium` is fixed in the script.
   - **Attach** is for a driver restart while lanes run in the same container: when the one running
     container is the one the record names, the launcher enters it with `docker exec`, with no compare,
-    no `up` and no recreate, so the lanes and spec sessions are undisturbed. **Why it is sound, and what it trusts.**
+    no `up` and no recreate, so the lanes and spec sessions are undisturbed. It refuses a record with no
+    origin (written by an older launcher: stop the container once no lane runs, then rerun at start of day)
+    and one whose origin differs from the Reference's. **Why it is sound, and what it trusts.**
     Only a container the start-of-day path created and recorded can reach it. Its mounts and run
     arguments were fixed at creation from the compared file, and `docker exec` reads no host file; an
     in-container edit to `.devcontainer/` matters only at the next `up`, which the start-of-day path
@@ -209,7 +216,8 @@ only `/workspace`, and its `.git` file names a host path.
   `-Reference`, `-WowHome` and `-Base`, and `-Remote` names the remote in the Reference only. Before
   any interactive `docker exec` it checks the installed copy (the MANIFEST), the arguments, that
   the clone has exactly one container, running, and the Reference none, that the driver
-  record names that container and the clone, and the relay probe; it reads the model
+  record names that container and the clone, and the relay probe; for `-Issue` and `-Spec` it refuses a
+  record with no origin and one whose origin differs from the Reference's, then reads the model
   (`models.coder`) from the Reference, then checks in the container, as `app`, that the lanes
   directory is safe, `/tmp/lanes/N` is a worktree, `/tmp/lanes/N-prompt.md` is a regular file and
   its sha256 is `HASH`. It needs the driver's start of day to have recorded the container, and it
