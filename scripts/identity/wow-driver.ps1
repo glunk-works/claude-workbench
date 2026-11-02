@@ -18,7 +18,9 @@
        repository (lowercase owner/name) in <WowHome>\driver\<leaf>.json (never mounted into a
        container);
     5. enters it with docker exec, into /usr/local/bin/claude --model <models.architect> --effort medium
-       in /workspace.
+       in /workspace, with the first message "Driver for <owner>/<name>." naming the Reference's origin
+       repository. It names no command; any first message gives the session one turn before the
+       human types, in which the repo's CLAUDE.md may lead it to run resume.
 
   Before the fetch, both paths read the Reference's <Remote> repository and the driver record. A start
   of day whose record names this clone and a different origin refuses (a Reference of another
@@ -28,7 +30,7 @@
   is the one the record names, runs the relay probe and enters it with docker exec. No compare, no up,
   no recreate, so the lanes are undisturbed. An attached container runs the configuration of the
   commit it was created from; the launcher prints that commit and warns when .devcontainer/ has changed
-  since. It still fetches the Reference clone for the model, so an offline restart refuses.
+  since. The session gets the same first message as a start of day. It still fetches the Reference clone for the model, so an offline restart refuses.
 
   Anything else refuses and says what to run. docker exec reads no host copy of
   .devcontainer/devcontainer.json, which a running container can rewrite; devcontainer exec does
@@ -85,6 +87,9 @@ $notInstalled = {
   [Console]::Error.WriteLine('wow-driver: run the installed copy in $WOW_HOME/bin (install-host-tools.ps1)')
   exit 1
 }
+# First-message template: only @ORIGIN@ is filled, from the Reference's origin repository.
+$script:DriverMessage = 'Driver for @ORIGIN@.'
+
 try {
   $manifestPath = Join-Path $PSScriptRoot 'MANIFEST'
   if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { & $notInstalled }
@@ -205,8 +210,9 @@ try {
     }
   }
 
+  $message = $script:DriverMessage.Replace('@ORIGIN@', $refOrigin)
   $code = Invoke-Session $docker @('exec', '-it', '-u', 'app', '-e', 'GIT_TERMINAL_PROMPT=0', '-w', '/workspace', $id,
-    '/usr/local/bin/claude', '--model', $model, '--effort', 'medium')
+    '/usr/local/bin/claude', '--model', $model, '--effort', 'medium', $message)
 } catch {
   Stop-Launch $_.Exception.Message
 }

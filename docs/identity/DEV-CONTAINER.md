@@ -112,7 +112,10 @@ that serves the host's git credential (see Hazards that remain).
     the compare covers only the files; recreating while nothing runs makes the container's
     configuration come from the file just compared. The session is
     `/usr/local/bin/claude --model <models.architect> --effort medium` in `/workspace`, by absolute
-    path so a `claude` earlier on the container's `PATH` is not the one launched. The model is read
+    path so a `claude` earlier on the container's `PATH` is not the one launched. The session gets
+    the first message `Driver for <owner>/<name>.`, the Reference's origin repository, on a start of
+    day and on attach. It names no command, and any first message gives the session one turn before
+    the human types, in which the repo's CLAUDE.md may lead it to run resume. The model is read
     from `.ai/project.yml` at the Reference's `<Remote>/<Base>` and matched to `sonnet`, `opus`,
     `haiku` or `fable`; effort has no config key, so `medium` is fixed in the script.
   - **Attach** is for a driver restart while lanes run in the same container: when the one running
@@ -241,7 +244,7 @@ only `/workspace`, and its `.git` file names a host path.
   never writes the record. It then enters the container with `docker exec -it -u app -e
   GIT_TERMINAL_PROMPT=0 -w <lanes.dir>/N`, into `/usr/local/bin/claude --model <models.coder>`, and sends the lane
   this first message:
-  > Lane for issue #N. In one Bash call, run: T=$(mktemp -d); cp <lanes.dir>/N-prompt.md $T/p.md;
+  > Lane for <owner>/<name> issue #N. In one Bash call, run: T=$(mktemp -d); cp <lanes.dir>/N-prompt.md $T/p.md;
   > sha256sum $T/p.md; echo $T/p.md. Stop unless that call printed the hash HASH. If it did, read only that copy and
   > follow it.
 
@@ -255,7 +258,8 @@ only `/workspace`, and its `.git` file names a host path.
   ```
   Up to ten issue numbers, in order. It makes a detached worktree at the Reference's base commit
   under `<lanes.dir>/spec-XXXXXX` (refusing if the container clone's `origin/<Base>`
-  is another commit than the Reference's), starts a session there on `models.architect` at `--effort high`, and asks it to
+  is another commit than the Reference's), starts a session there on `models.architect` at `--effort high`, and sends it a
+  first message that names the origin repository and asks it to
   run `/way-of-working:spec-task` for each issue in turn and build nothing. When the session exits it
   removes the worktree, without `--force`, only if it is still that detached worktree at that
   commit. Otherwise it keeps it, prints its path and exits 1. The likely cause is an untracked file
