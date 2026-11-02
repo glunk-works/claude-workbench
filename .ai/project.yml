@@ -117,7 +117,8 @@ identities:
   loop_app: { login: "glunk-loop[bot]", id: 338193635 }
 
 # ── coder lanes ──────────────────────────────────────────────────────────────
-# #793: scripts/lanes/lane.sh and wow-lane.ps1 put each lane at /tmp/lanes/<N> in the dev
-# container. Declared so handoff records the live lanes and resume reports them.
+# #793, #715: the plugin's bin/lane.sh (/way-of-working:lanes) and wow-lane.ps1 put each lane
+# at <dir>/<N> in the dev container, and both refuse without this key. Declared so handoff
+# records the live lanes and resume reports them.
 lanes:
   dir: /tmp/lanes

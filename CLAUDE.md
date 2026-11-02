@@ -23,7 +23,6 @@ A commit scope is the suffix of exactly one `area/*` label, Dependabot's `ci(dep
 - `way-of-working` — `plugins/way-of-working/` except its `.claude-plugin/`
 - `identity` — `scripts/identity/`, `docs/identity/`
 - `loop` — `scripts/loop/`
-- `lanes` — `scripts/lanes/`
 - `devcontainer` — `.devcontainer/`
 - `ci` — `.github/`, `scripts/*.sh`
 - `release` — `.claude-plugin/`, `plugins/way-of-working/.claude-plugin/`, `.claude/`
