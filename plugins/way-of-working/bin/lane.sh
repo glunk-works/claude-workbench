@@ -1,11 +1,13 @@
 #!/bin/sh
-# Prepare and clean up one coder lane: a worktree under /tmp/lanes/N and the prompt file its
-# session reads (docs/identity/DEV-CONTAINER.md, Lanes). Issue #727. It lives under scripts/,
-# like the orchestrator driver (WB-D23): tooling for this repository's dev container, not
-# shared plugin code.
+# Prepare, report on and clean up coder lanes: a worktree under the lanes directory
+# (`lanes.dir`) and the prompt file its session reads. Wrapped by /way-of-working:lanes. Issue #715.
+# It runs only from the installed plugin, never as a working-tree copy by path: its siblings
+# (spec-find.sh, gh-identity.sh, prune-verdict.sh, lane-state.sh, lane-groups.sh) are found
+# beside it through $0.
 #
 # Usage:
 #   lane.sh prep N M BRANCH CRITICS
+#   lane.sh status
 #   lane.sh done N
 #
 #   N        the task issue number, digits with no leading zero
@@ -15,19 +17,25 @@
 #            a-z, 0-9 and `-`, starting with a letter or digit
 #   CRITICS  a comma list of architect, security-critic, docs-consistency; no repeats
 #
-# Environment: WOW_LANES_DIR overrides /tmp/lanes (the tests only): a slash, then one or
-# more of A-Za-z0-9._/-, with no `//`, no `.` or `..` component and no trailing slash.
+# The lanes directory is `lanes.dir` of the default branch's committed .ai/project.yml
+# (project-schema.md, `lanes`): an absolute path of A-Za-z0-9._/-, with no `//`, no `.` or
+# `..` component and no trailing slash. The default-branch read runs first in every mode.
 #
-# Output. Every stop prints exactly one line on stdout and exits 1; a bad argument prints a
-# usage line on stderr, nothing on stdout, and exits 2, before any git or gh call. No stderr
-# of git or gh is ever shown: the origin URL and gh's error text never print.
-#   not-main         both modes: not run from the main worktree (a linked worktree, a lane's
-#                    own tree, or outside a git work tree)
+# Output. Every stop prints exactly one line on stdout and exits 1; a bad argument, a slash-less
+# $0 or a missing sibling prints a usage line on stderr, nothing on stdout, and exits 2, before
+# any git or gh call. No stderr of git or gh is ever shown: the origin URL and gh's error text
+# never print.
+#   not-main         every mode: not run from the main worktree (a linked worktree, a lane's
+#                    own tree, inside the lanes directory, or outside a git work tree)
+#   no-lanes         every mode: the default branch's `lanes` is absent, null, not a map, or its
+#                    `dir` fails the rule above
 #   unsafe-dir       the lanes directory (or its resolved path) is a link, not a directory,
 #                    not owned by this user, or could not be made
 #   unreadable       a read failed or had an unexpected shape (the default-branch read, the
-#                    existence probes, the verdict inputs)
+#                    existence probes, the verdict inputs), or this script sits inside the main
+#                    worktree or the lanes directory instead of the installed plugin
 #   repo-mismatch    the default branch's .repo is not the origin's nameWithOwner
+#   unreached        prep: the installation token's repositories do not list origin's repository
 #   not-map          `identities` is not a map; lanes rely on the finder
 #   exists           prep: the worktree path, prompt file, branch or branch config is taken
 #   finder: WORD     prep: the finder printed WORD (none, unreacted, escalated, ambiguous,
@@ -53,36 +61,45 @@
 #   dirty            done: git refused to remove the worktree (unclean or locked)
 # Success. prep prints worktree=, branch=, found=ID UP, milestone=, prompt= and
 # prompt-sha256= lines; done prints removed-worktree PATH, deleted-branch X, then
-# removed-prompt PATH or no-prompt.
+# removed-prompt PATH or no-prompt, then `next` lines. status prints one TSV row per lane,
+# ordered by issue: origin's nameWithOwner, `<backlog repo>#<N>`, branch, PR (`#P STATE`, `-`
+# for none, `ambiguous`), checks (`-` unless the PR is open, else fail, pending, pass, none or
+# unreadable; a display summary only, /way-of-working:pr-checks is the merge verdict), spec
+# (`found` or the finder's word); `none` for no lanes or no lanes directory.
+# done's `next <group> #a #b` lines come from lane-groups.sh, minus issues with a lane here or
+# sharing a path with one; `next none` or `next unreadable` otherwise. They never change its
+# exit status.
 #
-# Trust. The project file and the plugin's bin/ scripts are read from the default branch's
-# committed copy, resolved ONCE to an oid, never from the working tree: the finder and
-# prune-verdict.sh run from a git-archive extraction of that commit, by absolute path.
+# GitHub host. The script unsets GH_HOST and GH_ENTERPRISE_TOKEN once at the top. Each gh call
+# names its host or repository explicitly (--hostname github.com, --repo, a repos/ path);
+# GH_CONFIG_DIR still selects which config and token gh reads.
+#
+# Trust. The project file is read from the default branch's committed copy, resolved ONCE to
+# an oid, never from the working tree. The scripts that decide are the installed plugin's own
+# bin/, beside this one: same-user-writable on the home volume, so a same-user process can edit
+# them, and a same-user lane.sh earlier on PATH can shadow this one.
 #
 # Residuals (stated, not fixed):
-#   - Every lane runs as the same user in the shared /tmp. Once a lane has checked the hash
-#     and read its copy, another same-user process can still change that lane's worktree.
+#   - Every lane runs as the same user in the same lanes directory. Once a lane has checked the
+#     hash and read its copy, another same-user process can still change that lane's worktree.
 #   - A post-checkout hook that fails makes `git worktree add` exit non-zero with the worktree
 #     still registered; rollback then removes nothing and prep prints `failed`, so a re-run
 #     stops with `exists`. A branch checked out between done's last re-read and its
 #     `update-ref -d` is deleted, since update-ref has no checked-out guard.
 #   - Every lane session is such a same-user process, and the least trusted one.
-#   - The shared /workspace/.git, and the git config on the home volume (~/.gitconfig,
+#   - The main worktree's .git, and the git config on the home volume (~/.gitconfig,
 #     ~/.config/git/), are also this script's trust root. A same-user process can
 #     edit it: its config (insteadOf, the remote URL), its hooks (a reference-transaction
-#     hook runs during the driver's fetch), info/attributes and core.attributesFile
-#     (export-ignore drops files from git archive, which then fails closed as unreadable; eol,
-#     ident, export-subst and a configured filter can rewrite the extracted scripts' content),
-#     and its refs. That is outside what this script can guard.
+#     hook runs during the driver's fetch), info/attributes and core.attributesFile, and its
+#     refs. That is outside what this script can guard.
 #   - /way-of-working:ship never sets a PR's milestone. The lane sets it to M after ship when
 #     the backlog is the repo and M is still open; the driver confirms it.
-#   - The lane's PATH line runs the plugin scripts from the worktree it is editing. A task
-#     that changes bin/spec-find.sh therefore checks its own pin with its own edited copy.
 #   - The M the driver types ties the task to the driver's milestone. Whether that milestone
 #     is the active sprint stays the driver's call.
 #
-# Permitted toolset: POSIX sh plus `test -O` and `-ef`, git 2.31 or later, gh (with its own --jq), yq
-# (mikefarah v4), tar, sha256sum, awk, cut, sed, tr, grep, mktemp, mkdir, ln, chmod, rm, rmdir.
+# Permitted toolset: POSIX sh plus `test -O` and `-ef`, git 2.36 or later (lane-state.sh's
+# floor), gh (with its own --jq), yq (mikefarah v4), sha256sum, awk, cut, sed, tr, grep, mktemp,
+# mkdir, ln, chmod, rm, rmdir, dirname, cat.
 set -eu
 set -f
 umask 077
@@ -90,6 +107,7 @@ LC_ALL=C
 GIT_TERMINAL_PROMPT=0
 GCM_INTERACTIVE=never
 export LC_ALL GIT_TERMINAL_PROMPT GCM_INTERACTIVE
+unset GH_HOST GH_ENTERPRISE_TOKEN
 
 TMP=
 trap '[ -z "$TMP" ] || rm -rf "$TMP"' EXIT
@@ -97,7 +115,7 @@ trap '[ -z "$TMP" ] || rm -rf "$TMP"' EXIT
 trap 'exit 1' INT TERM HUP
 
 usage() {
-  echo "usage: lane.sh prep N M BRANCH CRITICS | lane.sh done N" >&2
+  echo "usage: lane.sh prep N M BRANCH CRITICS | lane.sh status | lane.sh done N" >&2
   exit 2
 }
 
@@ -205,6 +223,9 @@ case "$MODE" in
     CRITICS=$5
     num_ok "$N" && num_ok "$M" && branch_ok "$BRANCH" && critics_ok "$CRITICS" || usage
     ;;
+  status)
+    [ "$#" -eq 1 ] || usage
+    ;;
   done)
     [ "$#" -eq 2 ] || usage
     N=$2
@@ -212,12 +233,19 @@ case "$MODE" in
     ;;
   *) usage ;;
 esac
-if [ "${WOW_LANES_DIR+set}" = set ]; then
-  lanes_shape_ok "$WOW_LANES_DIR" || usage
-  LANES=$WOW_LANES_DIR
-else
-  LANES=/tmp/lanes
-fi
+
+# The siblings are found beside this script through $0, as lane-state.sh finds spec-find.sh: a
+# slash-less $0 would resolve to the current directory, where a branch under review could supply
+# them.
+case "$0" in
+  */*) ;;
+  *) usage ;;
+esac
+BIN=$(cd -P "$(dirname -- "$0")" 2>/dev/null && pwd -P) || usage
+for sib in spec-find.sh gh-identity.sh prune-verdict.sh lane-state.sh lane-groups.sh; do
+  [ -f "$BIN/$sib" ] || usage
+done
+LANES=
 
 # ---- the main worktree --------------------------------------------------------------------
 
@@ -227,14 +255,6 @@ dirs=$(git -C "$TOPLEVEL" rev-parse --path-format=absolute --git-dir --git-commo
 gd=$(printf '%s\n' "$dirs" | awk 'NR==1')
 gc=$(printf '%s\n' "$dirs" | awk 'NR==2')
 [ -n "$gd" ] && [ "$gd" = "$gc" ] || stop not-main
-if [ -d "$LANES" ]; then
-  lanes_phys=$(cd -P "$LANES" 2>/dev/null && pwd -P) || lanes_phys=$LANES
-else
-  lanes_phys=$LANES
-fi
-case "$TOPLEVEL/" in
-  "$lanes_phys"/*) stop not-main ;;
-esac
 
 TMP=$(mktemp -d) || stop unreadable
 
@@ -260,7 +280,7 @@ lanes_check() {
 
 # ---- the default-branch read ---------------------------------------------------------------
 
-NAME= D= DOID= DEFFILE= BIN= BACKLOG= BASE=
+NAME= D= DOID= DEFFILE= BACKLOG= BASE=
 
 read_default() {
   rd_url=$(git -C "$TOPLEVEL" remote get-url origin 2>/dev/null) || stop unreadable
@@ -277,19 +297,15 @@ read_default() {
   hex40 "$DOID" || stop unreadable
   DEFFILE=$TMP/project.yml
   git -C "$TOPLEVEL" show "$DOID:.ai/project.yml" >"$DEFFILE" 2>/dev/null || stop unreadable
-  git -C "$TOPLEVEL" archive -o "$TMP/bin.tar" "$DOID" plugins/way-of-working/bin >/dev/null 2>&1 || stop unreadable
-  tar -x -f "$TMP/bin.tar" -C "$TMP" >/dev/null 2>&1 || stop unreadable
-  BIN=$TMP/plugins/way-of-working/bin
-  [ ! -L "$TMP/plugins" ] && [ ! -L "$TMP/plugins/way-of-working" ] || stop unreadable
-  [ -d "$BIN" ] && [ ! -L "$BIN" ] || stop unreadable
-  for rd_s in spec-find.sh gh-identity.sh spec-reaction.sh prune-verdict.sh declared-ids.sh; do
-    [ -f "$BIN/$rd_s" ] && [ ! -L "$BIN/$rd_s" ] || stop unreadable
-  done
   rd_repo=$(yq -r '.repo' "$DEFFILE" 2>/dev/null) || stop unreadable
   [ "$rd_repo" = "$NAME" ] || stop repo-mismatch
   rd_id=$(yq -r 'has("identities"), (.identities | tag)' "$DEFFILE" 2>/dev/null) || stop unreadable
   rd_id=$(printf '%s' "$rd_id" | tr '\n' ' ')
   [ "$rd_id" = "true !!map" ] || stop not-map
+  rd_lanes=$(yq -r 'explode(.) | (.lanes | tag) as $t | if $t == "!!map" then (.lanes.dir | tag) else "absent" end' "$DEFFILE" 2>/dev/null) || stop unreadable
+  [ "$rd_lanes" = "!!str" ] || stop no-lanes
+  LANES=$(yq -r 'explode(.) | .lanes.dir' "$DEFFILE" 2>/dev/null) || stop unreadable
+  lanes_shape_ok "$LANES" || stop no-lanes
   rd_tags=$(yq -r 'explode(.) | [(.pr_base | tag), ((.backlog.repo // .repo) | tag)] | join(" ")' "$DEFFILE" 2>/dev/null) || stop unreadable
   [ "$rd_tags" = "!!str !!str" ] || stop unreadable
   BASE=$(yq -r 'explode(.) | .pr_base' "$DEFFILE" 2>/dev/null) || stop unreadable
@@ -319,6 +335,23 @@ wt_state() {
     }
   ' "$TMP/wt.txt"
 }
+
+read_default
+
+# The main worktree may not sit inside the lanes directory.
+if [ -d "$LANES" ]; then
+  lanes_phys=$(cd -P "$LANES" 2>/dev/null && pwd -P) || lanes_phys=$LANES
+else
+  lanes_phys=$LANES
+fi
+case "$TOPLEVEL/" in
+  "$lanes_phys"/*) stop not-main ;;
+esac
+# The scripts that decide are the installed plugin's: a copy run by path from the main worktree or a
+# lane would make its own siblings the deciders.
+case "$BIN/" in
+  "$TOPLEVEL"/* | "$lanes_phys"/*) stop unreadable ;;
+esac
 
 # ---- prep -----------------------------------------------------------------------------------
 
@@ -371,7 +404,8 @@ fail() {
 emit_prompt_sed() {
   sed -e "s#@BACKLOG@#$BACKLOG#g" -e "s#@N@#$N#g" -e "s#@M@#$M#g" \
     -e "s#@ID@#$FID#g" -e "s#@UP@#$FUP#g" -e "s#@LANES@#$LANES#g" \
-    -e "s#@CRITICS@#$CRITICS#g"
+    -e "s#@CRITICS@#$CRITICS#g" -e "s#@BIN@#$BIN#g" -e "s#@CODER@#$CODER#g" \
+    -e "s#@TOPLEVEL@#$TOPLEVEL#g"
 }
 
 # The prompt is three quoted heredocs, each through the same sed expressions, the fifth step chosen
@@ -382,7 +416,7 @@ emit_prompt() {
   emit_prompt_sed <<'PROMPT' || return 1
 # Lane prompt: @BACKLOG@#@N@
 
-You are a **lane**. For this one task you act as the `coder` defined in `plugins/way-of-working/agents/coder.md` in this worktree. The driver session that ran `lane.sh prep` is your spawner.
+You are a **lane**. For this one task you act as the `coder` defined in `@CODER@`. The driver session that ran `lane.sh prep` is your spawner.
 
 ## Task
 
@@ -393,27 +427,27 @@ You are a **lane**. For this one task you act as the `coder` defined in `plugins
 
 ## PATH: on every Bash call that runs a plugin script
 
-A Bash tool call does not keep exports from earlier calls. So every Bash call that runs a plugin `bin/` script (`spec-find.sh`, `spec-comment.sh`, `spec-fresh.sh`, `gh-identity.sh`, `spec-reaction.sh` and the rest) starts with this line, which also checks that the worktree's scripts, not the installed plugin's older ones, are the ones found:
+A Bash tool call does not keep exports from earlier calls. So every Bash call that runs a plugin `bin/` script (`spec-find.sh`, `spec-comment.sh`, `spec-fresh.sh`, `gh-identity.sh`, `spec-reaction.sh` and the rest) starts with this line, which also checks that the installed plugin's scripts are the ones found:
 
-    export PATH='@LANES@/@N@/plugins/way-of-working/bin':"$PATH" && [ "$(command -v spec-find.sh)" = @LANES@/@N@/plugins/way-of-working/bin/spec-find.sh ] || { echo "PATH check failed"; exit 1; }
+    export PATH='@BIN@':"$PATH" && [ "$(command -v spec-find.sh)" = @BIN@/spec-find.sh ] || { echo "PATH check failed"; exit 1; }
 
 If that check fails, stop and report.
 
 ## Order of work
 
 1. Build the task per `coder.md`.
-2. Run every `gates.green` entry in `.ai/project.yml`, then `bash scripts/test-all.sh` in its own Bash call with the tool's maximum timeout (600000 ms); if that call times out, stop and report.
+2. Run every `gates.green` entry in `.ai/project.yml`, each from its `cwd` (the repo root when absent) in its own Bash call with the tool's maximum timeout (600000 ms); if one times out, stop and report.
 3. Run `/way-of-working:critic-gate` with no names on its invocation line. The driver's critics are `@CRITICS@`, given here as names this session holds: when critic-gate selects its critics by rule it unions them with its set and asks nothing; when it proposes, show both lists to the human in the pick-list, as before. That list is not the explicit-names shortcut, which only names the human types count for.
 4. Commit and open the PR with `/way-of-working:ship`. This is the explicit instruction to commit and push that `coder.md` asks for.
 PROMPT
   if [ "$BACKLOG" = "$NAME" ]; then
-    emit_prompt_sed <<'STEP5' || return 1
+    emit_prompt_sed <<'MILESTONEWRITE' || return 1
 5. Set this PR's milestone, only when ship's author check passed and ship reported the PR URL; `P` is the number at the end of that URL. In one Bash call, capture each value into a variable, check it is non-empty and chain with `&&`: require `P` to be digits with no leading zero; require `gh api repos/@BACKLOG@/pulls/$P --jq .head.ref` to print what `git branch --show-current` prints; require `gh api repos/@BACKLOG@/milestones/@M@ --jq .state` to print `open`; then run `gh api -X PATCH repos/@BACKLOG@/issues/$P -F milestone=@M@ --jq .milestone.number`, setting no other field. The milestone is set only when that last call prints `@M@`. Any other outcome (a `P` that is not digits, a branch mismatch, a closed milestone, a failed read, a PATCH that failed or the session refused, another number printed) is no further write. Report the outcome in your final message either way, and never retry with another value or another command.
-STEP5
+MILESTONEWRITE
   else
-    emit_prompt_sed <<'STEP5' || return 1
+    emit_prompt_sed <<'NOMILESTONE' || return 1
 5. Make no milestone write: milestone `@M@` is in the backlog repository, not this PR's. Say so in your final message.
-STEP5
+NOMILESTONE
   fi
   emit_prompt_sed <<'PROMPT' || return 1
 
@@ -421,18 +455,22 @@ STEP5
 
 - Never run `/way-of-working:resume`, `/way-of-working:handoff`, `/way-of-working:plan-sprint` or `/way-of-working:archive-sprint`. Never write anything under `.ai/`.
 - Never merge, approve or force-push.
-- Work only in `@LANES@/@N@`, never in `/workspace`'s working tree.
+- Work only in `@LANES@/@N@`, never in `@TOPLEVEL@`'s working tree.
 - A session that read the issue body or drafted the spec never builds the issue.
-- Every PR needs a code-owner approval, and approving a PR with auto-merge armed merges it.
 
 ## Identity
 
 - Do not prefix commands with `GH_TOKEN`.
-- Commits are unsigned (`WB-D25`).
 PROMPT
 }
 
 prep() {
+  # 1. the paths the prompt names: the installed plugin's bin/ and coder definition, and the
+  # main worktree
+  CODER=$(cd -P "$BIN/../agents" 2>/dev/null && pwd -P) || stop unreadable
+  CODER=$CODER/coder.md
+  lanes_shape_ok "$BIN" && lanes_shape_ok "$CODER" && lanes_shape_ok "$TOPLEVEL" \
+    && [ -f "$CODER" ] && [ ! -L "$CODER" ] || stop unreadable
   # 2. the lanes directory, if it exists
   if [ -e "$LANES" ] || [ -L "$LANES" ]; then
     lanes_check || stop unsafe-dir
@@ -450,8 +488,18 @@ prep() {
   case "$pb_rc" in 0) stop exists ;; 1) ;; *) stop unreadable ;; esac
   lsr=$(git -C "$TOPLEVEL" ls-remote --heads origin "refs/heads/$BRANCH" 2>/dev/null) || stop unreadable
   [ -z "$lsr" ] || stop exists
-  # 4. the default-branch read
-  read_default
+  # 4. the token's reach: an installation token that lists origin's repository
+  gh api --hostname github.com --paginate installation/repositories \
+    --jq '.repositories[].full_name' >"$TMP/reach.txt" 2>/dev/null || stop unreadable
+  [ -s "$TMP/reach.txt" ] || stop unreadable
+  rc_rc=0
+  rc_word=$(sh "$BIN/gh-identity.sh" reach "$NAME" <"$TMP/reach.txt" 2>/dev/null) || rc_rc=$?
+  [ "$rc_rc" -eq 0 ] || stop unreadable
+  case "$rc_word" in
+    reached) ;;
+    unreached) stop unreached ;;
+    *) stop unreadable ;;
+  esac
   # 5. the finder
   fd_rc=0
   fd_out=$(sh "$BIN/spec-find.sh" find "$N" "$DEFFILE" 2>/dev/null) || fd_rc=$?
@@ -545,10 +593,115 @@ prep() {
     "prompt=$LANES/$N-prompt.md" "prompt-sha256=$hex"
 }
 
+# ---- status ---------------------------------------------------------------------------------
+
+# pr_checks P: one display-only word for an open PR's whole rollup, reduced inside gh's own --jq.
+pr_checks() {
+  pk_w=$(gh pr view "$1" --repo "$NAME" --json statusCheckRollup --jq '
+    (.statusCheckRollup // []) as $r
+    | if ($r | length) == 0 then "none" else
+        [$r[] | if .__typename == "StatusContext" then (.state // "") else (.conclusion // "") end] as $v
+        | [$r[] | select(.__typename != "StatusContext") | select((.status // "") != "COMPLETED")] as $open
+        | if ([$v[] | select(. != "" and . != "SUCCESS" and . != "NEUTRAL" and . != "SKIPPED" and . != "PENDING" and . != "EXPECTED")] | length) > 0 then "fail"
+          elif ($open | length) > 0 or ([$v[] | select(. == "PENDING" or . == "EXPECTED")] | length) > 0 then "pending"
+          else "pass" end
+      end' 2>/dev/null) || pk_w=unreadable
+  case "$pk_w" in
+    fail | pending | pass | none) printf '%s' "$pk_w" ;;
+    *) printf unreadable ;;
+  esac
+}
+
+lane_status() {
+  if [ ! -e "$LANES" ] && [ ! -L "$LANES" ]; then
+    echo none
+    return 0
+  fi
+  lanes_check || stop unsafe-dir
+  st_json=$(sh "$BIN/lane-state.sh" list "$LANES" "$DEFFILE" 2>/dev/null) || stop unreadable
+  case "$st_json" in
+    '[]') echo none; return 0 ;;
+    '' | unreadable | *'
+'*) stop unreadable ;;
+  esac
+  printf '%s\n' "$st_json" >"$TMP/lanes.json"
+  yq -p=json -r '.[] | [(.issue | tostring), .branch,
+      ((.pr | tag) as $t | if $t == "!!null" then "-" elif $t == "!!str" then .pr else "#" + (.pr.number | tostring) + " " + .pr.state end),
+      ((.spec | tag) as $u | if $u == "!!map" then "found" else .spec end)] | @tsv' "$TMP/lanes.json" >"$TMP/lanes.tsv" 2>/dev/null || stop unreadable
+  awk -F'\t' 'NF!=4 {bad=1} END {exit (bad || NR==0)}' "$TMP/lanes.tsv" || stop unreadable
+  : >"$TMP/rows.tsv"
+  while IFS='	' read -r sr_n sr_b sr_p sr_s; do
+    num_ok "$sr_n" && branch_ok "$sr_b" || stop unreadable
+    case "$sr_s" in '' | *[!a-z]*) stop unreadable ;; esac
+    sr_c=-
+    case "$sr_p" in
+      - | ambiguous) ;;
+      '#'*' OPEN' | '#'*' CLOSED' | '#'*' MERGED')
+        sr_num=${sr_p#'#'}
+        sr_num=${sr_num%% *}
+        num_ok "$sr_num" || stop unreadable
+        case "$sr_p" in
+          *' OPEN') sr_c=$(pr_checks "$sr_num") ;;
+        esac
+        ;;
+      *) stop unreadable ;;
+    esac
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$NAME" "$BACKLOG#$sr_n" "$sr_b" "$sr_p" "$sr_c" "$sr_s" >>"$TMP/rows.tsv"
+  done <"$TMP/lanes.tsv"
+  cat "$TMP/rows.tsv"
+}
+
 # ---- done -----------------------------------------------------------------------------------
 
+# done_next: what the freed lane can take, from lane-groups.sh's groups minus issues with a worktree
+# here and issues sharing a path with one. Display only: it never changes the exit status.
+done_next() {
+  dn_ms=$(gh api "repos/$BACKLOG/issues/$N" --jq '(.milestone.number // 0) | tostring' 2>/dev/null) || dn_ms=
+  case "$dn_ms" in
+    0) echo "next none"; return 0 ;;
+  esac
+  if ! num_ok "$dn_ms"; then
+    echo "next unreadable"
+    return 0
+  fi
+  dn_rc=0
+  (cd "$TOPLEVEL" && sh "$BIN/lane-groups.sh" "$dn_ms" "$DEFFILE" >"$TMP/groups.tsv" 2>/dev/null) || dn_rc=$?
+  if [ "$dn_rc" -ne 0 ]; then
+    echo "next unreadable"
+    return 0
+  fi
+  dn_live=,
+  for dn_i in $(awk -F'\t' 'NF==5 && $1 ~ /^[1-9][0-9]*$/ {print $1}' "$TMP/groups.tsv"); do
+    if [ -d "$LANES/$dn_i" ]; then dn_live="$dn_live$dn_i,"; fi
+  done
+  dn_out=$(awk -F'\t' -v live="$dn_live" '
+    function isl(n) { return index(live, "," n ",") > 0 }
+    NF==5 && $1 ~ /^[1-9][0-9]*$/ {
+      drop[$1] = isl($1)
+      if ($4 ~ /^#[0-9]+(,#[0-9]+)*$/) {
+        k = split($4, sh, ",")
+        for (j = 1; j <= k; j++) { v = substr(sh[j], 2); if (isl(v)) drop[$1] = 1 }
+      }
+      next
+    }
+    $0 == "group\tnone" { seen = 1; next }
+    NF==3 && $1 == "group" && $2 ~ /^[1-9][0-9]*$/ && $3 ~ /^#[0-9]+( #[0-9]+)*$/ {
+      seen = 1
+      m = split($3, g, " "); line = ""
+      for (j = 1; j <= m; j++) if (!(substr(g[j], 2) in drop) || !drop[substr(g[j], 2)]) line = line " " g[j]
+      if (line != "") out[++c] = "next " $2 line
+      next
+    }
+    { bad = 1 }
+    END {
+      if (bad || !seen) exit 3
+      if (c == 0) print "next none"
+      for (j = 1; j <= c; j++) print out[j]
+    }' "$TMP/groups.tsv") || dn_out="next unreadable"
+  printf '%s\n' "$dn_out"
+}
+
 lane_done() {
-  read_default
   if [ -e "$LANES" ] || [ -L "$LANES" ]; then
     lanes_check || stop unsafe-dir
   fi
@@ -614,10 +767,12 @@ lane_done() {
   else
     echo no-prompt
   fi
+  done_next
 }
 
 FID= FUP=
 case "$MODE" in
   prep) prep ;;
+  status) lane_status ;;
   done) lane_done ;;
 esac

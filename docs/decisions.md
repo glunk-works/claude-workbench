@@ -2721,6 +2721,12 @@ take effect. Full reasoning and the task breakdown that implements them:
     - **Rewrite:** `devcontainers#27`, `devcontainers#28` (its `~/.aws` mount line), `devcontainers#391`, `devcontainers#392`, DEVC-D3 (its "VS Code only"), and IAC-D49 (its per-repo token clause).
     - **Keep:** `devcontainers#23`, `devcontainers#26` (its checklist amended), `devcontainers#393` (the vehicle for the new DEVC decision, written after `WB-D42`), `devcontainers#394`, `devcontainers#396`, `devcontainers#397`, `devcontainers#398`, and DEVC-D2, D5, D6 and D8.
   - **Unverified.** Which repos the dev App is installed on: a container's token is minted for one repo, so its installation's repository list cannot show the rest. That is checked on the host or in the browser, not here.
+- **WB-D43 (`#715`) — lane prep, status and cleanup live in the plugin's `bin/`, not in `scripts/`.** Builds on `WB-D23` (the orchestrator driver's placement under `scripts/`, whose reasoning `lane.sh`'s placement cited).
+  - **The decision.** `scripts/lanes/lane.sh` moves to `plugins/way-of-working/bin/lane.sh` with three modes, `prep`, `status` and `done`, wrapped by `/way-of-working:lanes`. It reads `lanes.dir` from the default branch's `.ai/project.yml` instead of a literal.
+  - **Why.** Consuming repos run lanes in their own containers, and `scripts/` is absent from every one of them.
+  - **The trust root moves.** It was a `git archive` extraction of the default branch's `plugins/way-of-working/bin`. It is now the installed plugin's own `bin/`, beside the script, which is same-user-writable on the home volume; the script header says so. A change reaches a lane only through a human merge and a release.
+  - **Loop reach.** `bin/` is outside `orchestration.human_only_paths` while `scripts/` is inside, so the loop may now edit `lane.sh`, under the critic floor and the human merge.
+  - **Merge limit.** This repo's pin is a release without `bin/lane.sh`, so no lane is prepped from the merge until the release carrying it is installed.
 
 ## Status
 

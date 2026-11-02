@@ -926,12 +926,11 @@ The GitHub-side cutover procedure (the gate workflow, the order, the approval si
 
 `lanes` is **optional**, like `rulesets`: it is either `null` or a map with one sub-key, `dir`.
 `null` means the repo runs no lanes. An undeclared `lanes` is simply not declared and is never
-asked (`WB-D34`): the readers then do nothing with lanes, exactly as under `null`. The checker is
+asked (`WB-D34`): the readers that only report then do nothing with lanes, exactly as under `null`, while `bin/lane.sh` and the host launcher refuse (below). The checker is
 silent when it is not there, accepts `null`, and otherwise needs a map whose `dir` is present.
 
 - **`dir`** — the directory that holds the lane worktrees. It must be an absolute path of
-  `A-Za-z0-9._/-` with no `//`, no `.` or `..` component and no trailing slash; it is bound as a
-  value, never spliced into shell text.
+  `A-Za-z0-9._/-` with no `//`, no `.` or `..` component and no trailing slash.
 
 **The layout contract.** A lane is a git worktree at exactly `<dir>/<N>`, where `<N>` is the task
 issue's number (digits, no leading zero), checked out on a branch. That layout is the whole
@@ -943,8 +942,8 @@ one JSON array. A worktree anywhere else, or one on a detached head, is not a la
 repo, `lanes.dir` is read from the **default branch's** committed `.ai/project.yml`, never from
 a working tree's, which a branch can edit. `/way-of-working:handoff` writes the live array into
 the cursor's `lanes` field, and `/way-of-working:resume` reports the live lanes on a `Lanes:`
-line and compares them with the recorded ones. Nothing else that gates work acts on `lanes`: a lane
-line never blocks or enables an auto-start. (A declared but malformed `lanes` is `incomplete` like any key and holds auto-start as one does, and
+line and compares them with the recorded ones. `bin/lane.sh` (`/way-of-working:lanes`; all three modes) and the host launcher `wow-lane.ps1` (all three modes, reading the Reference's copy at `-Base`) also read it, and refuse when `lanes` is not declared or its `dir` is bad: `no-lanes` from `lane.sh`, a refusal before the container exec from the launcher. Nothing that gates an auto-start acts on `lanes`: a lane
+line never blocks or enables one. (A declared but malformed `lanes` is `incomplete` like any key and holds auto-start as one does, and
 the interview never asks for it: an `invalid lanes…` or `missing lanes.dir` finding is fixed by hand, or by removing the key.)
 
 ---

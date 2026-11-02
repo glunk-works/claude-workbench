@@ -2,8 +2,8 @@
 # Which lanes are live, derived from the layout and GitHub rather than recorded anywhere
 # (#729). A lane is a git worktree at exactly <lanes dir>/<N> checked out on a branch, one per
 # task issue N (project-schema.md § `lanes`). Its callers: /way-of-working:handoff (writes the
-# array into the cursor's `lanes` field) and /way-of-working:resume (reports it on a `Lanes:`
-# line and compares it with the recorded one).
+# array into the cursor's `lanes` field), /way-of-working:resume (reports it on a `Lanes:`
+# line and compares it with the recorded one) and `lane.sh status` (one row per lane).
 #
 # Usage: lane-state.sh list  <dir> <project.yml>
 #        lane-state.sh check <dir> <project.yml> <state.json>
@@ -14,7 +14,7 @@
 #   <state.json>   `check` only: the cursor, .ai/state.json
 #
 # <dir> must be an absolute path of A-Za-z0-9._/- with no //, no . or .. component and no
-# trailing slash (scripts/lanes/lane.sh's lanes_shape_ok), a directory, not a link, owned by
+# trailing slash (bin/lane.sh's lanes_shape_ok), a directory, not a link, owned by
 # this user, and its resolved path (cd -P) must pass the same rule; the resolved path is what
 # worktrees are matched against. A <dir> that does not exist is no lanes: `[]`.
 #

@@ -9,26 +9,27 @@
 .DESCRIPTION
   Three modes, exactly one per run:
 
-    -Issue N -Hash HASH   Lane mode. Starts a coder lane in the worktree scripts/lanes/lane.sh prep N
-                          made (/tmp/lanes/N in the container), on models.coder, with the lane's fixed
-                          first message, which opens with the issue number. HASH is the prompt-sha256= value prep printed.
+    -Issue N -Hash HASH   Lane mode. Starts a coder lane in the worktree lane.sh prep N made (N under
+                          the lanes directory, lanes.dir, in the container), on models.coder, with the
+                          lane's fixed first message, which opens with the issue number. HASH is the
+                          prompt-sha256= value prep printed.
     -Spec N[,N...]        Spec mode. Makes a fresh detached worktree at the Reference's base commit
-                          under /tmp/lanes (spec- and six characters of a-z0-9), starts a session there
+                          under the lanes directory (spec- and six characters of a-z0-9), starts a session there
                           on models.architect at --effort high, whose first message asks it to run
                           /way-of-working:spec-task for each issue in order and build nothing. When that
                           session exits the worktree is removed, after checking it is still the one made.
-                          Beside the worktree the prep writes a record (/tmp/lanes/record- and the leaf:
-                          the issue list, one space, the launch time in Unix seconds), removed with it. The
+                          Beside the worktree the prep writes a record (record- and the leaf in the
+                          lanes directory: the issue list, one space, the launch time in Unix seconds), removed with it. The
                           run refuses, before the container clone's fetch and before any worktree or record is made, when a spec session already
                           running in the container covers an issue in the list (or has no readable record).
-    -SpecSweep            Sweep mode. Read-only: lists every spec worktree directory, spec record and
-                          running spec-session process under /tmp/lanes, each with its issues and start
-                          time. It kills, removes and edits nothing, and starts no session.
-                          It refuses, listing nothing, when /tmp/lanes in the container is a link, not a
-                          directory, or not owned by the container user.
+    -SpecSweep            Sweep mode. Lists every spec worktree directory, spec record and running
+                          spec-session process under the lanes directory, each with its issues and start
+                          time. It kills and removes nothing and starts no session, but fetches in the
+                          Reference (step 6). It refuses, listing nothing, when the lanes directory in
+                          the container is a link, not a directory, or not owned by the container user.
 
-  Order, lane and spec modes (-SpecSweep runs steps 1 to 5, skips steps 6 and 8, and its step 7 is the
-  one non-interactive docker exec -u app of the sweep script, whose lines it prints):
+  Order, lane and spec modes (-SpecSweep runs steps 1 to 7, skipping the model read in step 6 and step 8,
+  and its step 7 is the one non-interactive docker exec -u app of the sweep script, whose lines it prints):
     1. The MANIFEST check, inline, before the helper is dot-sourced (as wow-driver.ps1 does it).
     2. The arguments (exit 2, before any external call, except the sh run that converts an MSYS-form -WowHome).
     3. Installed from bin under the final -WowHome.
@@ -36,7 +37,10 @@
     5. Exactly one container for the clone, running; none for the Reference; the driver record names
        this clone and that container; the relay probe is clean. The record is never written here.
     6. The Reference's origin repository against the driver record's (refused when the record has none
-       or another one), then the Reference's commit and the role's model.
+       or another one), then the Reference's commit, the role's model (not for -SpecSweep) and the lanes
+       directory, lanes.dir in the Reference's .ai/project.yml at that commit (refused, before the step 7
+       docker exec, when lanes is absent, null, not a map, or its dir is not an absolute path of A-Za-z0-9._/-
+       with no //, no . or .. component and no trailing slash).
     7. One non-interactive docker exec -u app of an in-container script (a lane probe, or the spec
        worktree prep, which runs its busy check right after its lanes-directory check and before the
        base fetch). Its single-word answer decides, or for the prep a busy line (busy, the leaf, a
@@ -46,8 +50,8 @@
 
   The scripts for step 7 and for the spec cleanup are returned by the four Get-*Script functions
   below, each the shared lanes-directory guard ($script:LanesGuard) followed by a single-quoted
-  one-liner of its own. Nothing variable is spliced into one: the lanes directory and the repo
-  directory (launcher literals), the issue number, hash, commit, base name, worktree leaf, spec
+  one-liner of its own. Nothing variable is spliced into one: the lanes directory (lanes.dir, read in
+  step 6) and the repo directory (a launcher literal), the issue number, hash, commit, base name, worktree leaf, spec
   issue list and launch seconds go in as positional arguments, each validated here first. None
   holds & | ^ % ! or a double quote, nor does any other docker argument (Resolve-Tool may resolve
   a docker.cmd, which runs through cmd.exe).
@@ -76,8 +80,8 @@
   As wow-driver.ps1: the clone the container opens.
 
 .PARAMETER Reference
-  As wow-driver.ps1: a different full clone that no container opens. It supplies the base commit and
-  models.coder or models.architect.
+  As wow-driver.ps1: a different full clone that no container opens. It supplies the base commit, the
+  lanes directory (lanes.dir) and models.coder or models.architect.
 
 .PARAMETER WowHome
   As wow-driver.ps1. Default: $env:WOW_HOME, else $HOME/.config/glunk-identity.
@@ -100,8 +104,9 @@
 
 .PARAMETER SpecSweep
   Sweep mode: a switch, exclusive with -Issue, -Hash and -Spec. Lists the spec worktrees, records and
-  running spec sessions under /tmp/lanes and changes nothing. Refuses, listing nothing, when /tmp/lanes
-  is a link, not a directory, or not owned by the container user.
+  running spec sessions under the lanes directory; kills and removes nothing and starts no session, but
+  fetches in the Reference. Refuses, listing nothing, when the lanes directory is a link, not a directory,
+  or not owned by the container user.
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
@@ -151,6 +156,8 @@ $script:LaunchUsage = 'usage: wow-lane.ps1 -Clone <path> -Reference <path> (-Iss
 # set -f does not stop a case pattern from matching: the unquoted values in the case words and patterns
 # are safe only because the launcher validates each one (digits, lowercase hex, a plain ref name) first,
 # or, for text read in the container, because the script matches its shape first (or uses it only as a case word).
+# The lanes directory is one of those validated values: it comes from the Reference's .ai/project.yml, so Get-ReferenceLanesDir
+# matches its shape (an absolute path of A-Za-z0-9._/-) before anything uses it.
 
 # The lanes-directory check every script starts with: it binds L to the first positional and sets lw to ok (a real directory the user owns),
 # unsafe (a link, a dangling one included, or anything else that exists) or missing. Each script keeps its own answer for each; the tests pin the order.
@@ -176,11 +183,12 @@ function Get-SpecSweepScript {
   $script:LanesGuard + 'seen=,; any=0; dg() { if test $# = 2; then :; else dok=0; return 0; fi; dv=$1; dok=1; while test ${#dv} -gt 0; do case $dv in [$2]*) dv=${dv#?};; *) dok=0; dv=;; esac; done; }; pf() { g=; q=$1; dg $q 0-9; if test $dok = 0; then return 0; fi; if test -O /proc/$q; then :; else return 0; fi; c=$(cat /proc/$q/comm); case $c in claude) :;; *) return 0;; esac; y=$(readlink /proc/$q/cwd); case $y in $L/spec-*) :;; *) return 0;; esac; set -- ${y#$L/}; if test $# -gt 2; then return 0; fi; if test $# = 2; then case $2 in \(deleted\)) :;; *) return 0;; esac; fi; case $1 in spec-[a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9]) g=$1;; esac; }; rd() { ri=unknown; rs=unknown; f=$L/record-$1; if test -L $f; then return 0; fi; if test -f $f; then :; else return 0; fi; n=0; a=; b=; while read -r k u; do n=$((n+1)); a=$k; b=$u; done <$f; if test $n = 1; then :; else return 0; fi; ok=1; if test ${#b} -lt 1; then ok=0; fi; if test ${#b} -gt 10; then ok=0; fi; dg $b 0-9; if test $dok = 0; then ok=0; fi; case $b in 0*) ok=0;; esac; if test ${#a} -lt 1; then ok=0; fi; if test ${#a} -gt 99; then ok=0; fi; dg $a 0-9,; if test $dok = 0; then ok=0; fi; case $a in ,*) ok=0;; *,) ok=0;; *,,*) ok=0;; 0*) ok=0;; *,0*) ok=0;; esac; if test $ok = 1; then IFS=,; set -- $a; unset IFS; if test $# -gt 10; then ok=0; fi; while test $# -gt 0; do if test ${#1} -gt 9; then ok=0; fi; shift; done; fi; if test $ok = 1; then ri=$a; rs=$b; fi; };  sp() { d=no; if test -d $L/$1; then d=yes; fi; }; w=ok; case $lw in ok) :;; missing) :;; *) w=unsafe-dir;; esac; if test $w = ok; then set -- $(ls /proc); while test $# -gt 0; do pf $1; if test ${#g} -gt 0; then rd $g; sp $g; echo $g $1 $ri $rs $d; seen=$seen$g,; any=1; fi; shift; done; set -- $(ls $L); while test $# -gt 0; do h=; case $1 in spec-[a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9]) h=$1;; record-spec-[a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9]) h=${1#record-};; esac; if test ${#h} -gt 0; then case $seen in *,$h,*) h=;; esac; fi; if test ${#h} -gt 0; then e=0; if test -d $L/$h; then e=1; fi; if test -e $L/record-$h; then e=1; fi; if test -L $L/record-$h; then e=1; fi; if test $e = 1; then rd $h; sp $h; echo $h - $ri $rs $d; seen=$seen$h,; any=1; fi; fi; shift; done; fi; if test $w = unsafe-dir; then echo unsafe-dir; elif test $any = 0; then echo none; fi'
 }
 
-# First-message templates: only @N@, @HASH@ and @LIST@ are filled, each from a validated value.
-$script:LaneMessage = 'Lane for issue #@N@. In one Bash call, run: T=$(mktemp -d); cp /tmp/lanes/@N@-prompt.md $T/p.md; sha256sum $T/p.md; echo $T/p.md. Stop unless that call printed the hash @HASH@. If it did, read only that copy and follow it.'
+# First-message templates: only @LANES@, @N@, @HASH@ and @LIST@ are filled, each from a validated value.
+$script:LaneMessage = 'Lane for issue #@N@. In one Bash call, run: T=$(mktemp -d); cp @LANES@/@N@-prompt.md $T/p.md; sha256sum $T/p.md; echo $T/p.md. Stop unless that call printed the hash @HASH@. If it did, read only that copy and follow it.'
 $script:SpecMessage = 'Run /way-of-working:spec-task for each of these issues, one at a time, in this order: @LIST@. Build nothing, and start no build for any of them.'
 
-$script:LanesDir = '/tmp/lanes'
+# The lanes directory is lanes.dir of the Reference's project file at the base commit, set in step 6; the repo directory is a literal.
+$script:LanesDir = $null
 $script:RepoDir = '/workspace'
 
 function Test-IssueNumber([string]$Value) { $null -ne $Value -and $Value -cmatch '\A[1-9][0-9]{0,8}\z' }
@@ -240,6 +248,29 @@ function Invoke-SpecSweep([string]$Docker, [string]$Id, [string]$LanesDir) {
     $rows += , [pscustomobject]@{ Leaf = $Matches[1]; Pid = $Matches[2]; Issues = $Matches[3]; Seconds = $Matches[4]; Present = ($Matches[5] -ceq 'yes') }
   }
   , $rows
+}
+
+# Test-LanesDirShape: an absolute path of A-Za-z0-9._/-, no //, no . or .. component, no trailing slash
+# (lane.sh's lanes_shape_ok).
+function Test-LanesDirShape([string]$Value) {
+  if ($null -eq $Value -or $Value -cnotmatch '\A(/[A-Za-z0-9._-]+)+\z') { return $false }
+  foreach ($part in $Value.Split('/')) { if ($part -ceq '.' -or $part -ceq '..') { return $false } }
+  $true
+}
+
+# Get-ReferenceLanesDir: lanes.dir from .ai/project.yml at that commit. Refuses unless lanes is a map and its dir a
+# string of the shape above; the value is returned only after that match.
+function Get-ReferenceLanesDir([string]$Git, [string]$Yq, [string]$Reference, [string]$Commit) {
+  $blob = Invoke-Tool $Git @('-C', $Reference, 'cat-file', 'blob', "$($Commit):.ai/project.yml")
+  if ($blob.Code -ne 0) { Stop-Launch "cannot read .ai/project.yml at $Commit in the Reference clone" }
+  $kind = Invoke-Tool $Yq @('-r', 'explode(.) | (.lanes | tag) as $t | if $t == "!!map" then (.lanes.dir | tag) else "absent" end') -Stdin $blob.Out
+  if ($kind.Code -ne 0) { Stop-Launch 'yq could not read lanes.dir' }
+  if ([Text.Encoding]::UTF8.GetString($kind.Out).Trim() -cne '!!str') { Stop-Launch "the Reference's .ai/project.yml at $Commit declares no lanes.dir (lanes must be a map with a string dir)" }
+  $r = Invoke-Tool $Yq @('-r', 'explode(.) | .lanes.dir') -Stdin $blob.Out
+  if ($r.Code -ne 0) { Stop-Launch 'yq could not read lanes.dir' }
+  $dir = [Text.Encoding]::UTF8.GetString($r.Out).TrimEnd("`n")
+  if (-not (Test-LanesDirShape $dir)) { Stop-Launch "lanes.dir in the Reference's .ai/project.yml at $Commit is not an absolute path of A-Za-z0-9._/- with no //, no . or .. component and no trailing slash" }
+  $dir
 }
 
 try {
@@ -304,18 +335,16 @@ try {
   Test-RelayProbe $docker $id
 
   # --- commit and model --------------------------------------------------------------------------
-  $commit = $null
   $model = $null
-  if (-not $hasSweep) {
-    if ($null -eq $rec.origin) { Stop-Launch 'the driver record has no origin (written by an older launcher): stop the container once no lane runs, then rerun wow-driver.ps1' }
-    $refOrigin = Get-ReferenceOrigin $git $refP $Remote
-    if ($rec.origin -cne $refOrigin) { Stop-Launch "the driver record names $($rec.origin) but the Reference's $Remote is ${refOrigin}: a Reference of another repository was given" }
-    $commit = Get-ReferenceCommit $git $refP $Remote $Base
-    $model = Get-RoleModel $git $yq $refP $commit $(if ($hasSpec) { 'architect' } else { 'coder' })
-  }
+  if ($null -eq $rec.origin) { Stop-Launch 'the driver record has no origin (written by an older launcher): stop the container once no lane runs, then rerun wow-driver.ps1' }
+  $refOrigin = Get-ReferenceOrigin $git $refP $Remote
+  if ($rec.origin -cne $refOrigin) { Stop-Launch "the driver record names $($rec.origin) but the Reference's $Remote is ${refOrigin}: a Reference of another repository was given" }
+  $commit = Get-ReferenceCommit $git $refP $Remote $Base
+  if (-not $hasSweep) { $model = Get-RoleModel $git $yq $refP $commit $(if ($hasSpec) { 'architect' } else { 'coder' }) }
+  $script:LanesDir = Get-ReferenceLanesDir $git $yq $refP $commit
 
   if ($hasSweep) {
-    # --- sweep: read-only, no session -------------------------------------------------------------
+    # --- sweep: kills and removes nothing, no session (it fetches in the Reference above) ----------
     $rows = Invoke-SpecSweep $docker $id $script:LanesDir
     if ($rows -is [string] -and $rows -ceq 'unsafe-dir') { Stop-Launch "$($script:LanesDir) in the container is a link, not a directory, or not owned by the container user" }
     if ($null -eq $rows) { Stop-Launch 'the spec sweep in the container gave no usable answer' }
@@ -338,7 +367,7 @@ try {
       'hash-mismatch' { Stop-Launch 'the prompt file does not hash to -Hash: check the hash copied from prep, or re-run lane.sh prep' }
       default { Stop-Launch 'the lane probe in the container gave no usable answer' }
     }
-    $message = $script:LaneMessage.Replace('@N@', $Issue).Replace('@HASH@', $Hash)
+    $message = $script:LaneMessage.Replace('@LANES@', $script:LanesDir).Replace('@N@', $Issue).Replace('@HASH@', $Hash)
     $argv = @('exec', '-it', '-u', 'app', '-e', 'GIT_TERMINAL_PROMPT=0', '-w', "$($script:LanesDir)/$Issue", $id,
       '/usr/local/bin/claude', '--model', $model, $message)
     Assert-Plain $argv

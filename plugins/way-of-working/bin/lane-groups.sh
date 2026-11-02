@@ -4,7 +4,7 @@
 # (a bullet marked (append) does not count, except under .github/) and no `depends_on` from the
 # milestone's Build order holds between them. The output is display only: nothing gates on it,
 # and the driver uses it to update the milestone description's Lanes line through
-# milestone-desc.sh by hand. Nothing here writes a description, an issue or a comment.
+# milestone-desc.sh by hand; `lane.sh done` reads its groups too. Nothing here writes a description, an issue or a comment.
 #
 # Usage: lane-groups.sh <milestone> <project.yml>
 #
