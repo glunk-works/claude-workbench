@@ -694,7 +694,7 @@ edited it. **Default to the full checklist whenever unsure.**
    ```
    `$STATE` is `present` when `.ai/state.json` parsed, else `absent` (then `-` for `$SRN`, `$SRH`,
    `$NA`, `$MODEL`, and `-` for `$LCO`). `$LCO` is `last_commit` resolved by `cursor-drift.sh oid` to a full oid, `-` when it
-   is not the abbreviation of exactly one commit (what handoff wrote, never a ref or revision expression); the
+   is not the abbreviation of exactly one object, a commit (what handoff wrote, never a ref or revision expression); the
    `branch` argument is the current branch, `-` when HEAD is detached, and is read in the `decide` call itself
    so it is set whether or not `state.json` exists. `$SRN`/`$SRH` are `pointers.review_pr.number` / `.head_oid`, `-` when
    missing — an older cursor reads as no vote. `$TREE` is `clean` or `dirty` from the
