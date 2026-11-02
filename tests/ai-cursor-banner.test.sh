@@ -17,7 +17,8 @@
 # admin token is said even with no cursor.
 #
 # Also under test (issue #814): a static block that pins the hook's fixed admin token path to the
-# dev container's mount of that path, so the two cannot drift apart. It needs only POSIX sh, grep
+# dev container's mount of that path, so the two cannot drift apart; the block pins the whole
+# /run/wow mount entry. It needs only POSIX sh, grep
 # and sed, and runs before the skips below so it runs on every host, a dev container with a live
 # admin token included.
 #
@@ -57,14 +58,16 @@ else
   echo "ok - devcontainer.json has no glunk-identity mount target"
 fi
 
-wow_src="$(printf '%s\n' "$wow_line" | sed -n 's/.*\(source=[^,]*\),.*/\1/p')"
-case "$wow_src" in
-  */tokens/claude-workbench)
-    echo "ok - the /run/wow mount's source is the claude-workbench token directory" ;;
-  *)
-    echo "FAIL - the /run/wow mount's source does not end with /tokens/claude-workbench ('$wow_src')"
-    static_fail=1 ;;
-esac
+# The whole entry, not its source: a later `src=` key would get past a check on the extracted source.
+wow_entry="$(printf '%s\n' "$wow_line" | sed -e 's/^[[:space:]]*//' -e 's/,$//')"
+# shellcheck disable=SC2016 # the expected entry is literal: ${localEnv:USERPROFILE} is the devcontainer's, not the shell's
+wow_want='"source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/claude-workbench,target=/run/wow,type=bind,readonly"'
+if [ "$wow_entry" = "$wow_want" ]; then
+  echo "ok - the /run/wow mount entry is the expected claude-workbench token directory mount"
+else
+  echo "FAIL - the /run/wow mount entry is not the expected one (found: $wow_entry; expected: $wow_want)"
+  static_fail=1
+fi
 
 # The static block ends here; the skips below end the file with exit 0, so fail first.
 [ "$static_fail" = 0 ] || exit 1
