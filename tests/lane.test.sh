@@ -1,10 +1,11 @@
 #!/bin/sh
-# Fixture tests for scripts/lanes/lane.sh: prepare and clean up one coder lane (#727).
+# Fixture tests for plugins/way-of-working/bin/lane.sh: prepare, report on and clean up coder lanes (#727, #715).
 #
 # Each case builds a scratch repository with a local bare `origin` (no network) whose path
-# carries a sentinel. Its default branch commits an .ai/project.yml and a
-# plugins/way-of-working/bin/ holding stub scripts (spec-find.sh prints a canned line) plus the
-# real prune-verdict.sh. A stub `gh` and a logging `git` wrapper go first on PATH. The stub gh
+# carries a sentinel. Its default branch commits an .ai/project.yml that declares `lanes.dir`.
+# The script under test runs as a copy in a scratch plugin `bin/`, beside stub spec-find.sh
+# (prints a canned line), lane-state.sh and lane-groups.sh (print canned files) and the real
+# gh-identity.sh and prune-verdict.sh, with an agents/coder.md one level up. A stub `gh` and a logging `git` wrapper go first on PATH. The stub gh
 # holds canned RAW API JSON and applies the caller's own --jq argument with the real `jq -r`,
 # the way tests/invariants-files-filter.test.sh reads a canned page, so the script's filters are
 # what is tested. (gh's own --jq is gojq; the filters used here behave the same in both.) What
@@ -19,7 +20,8 @@
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
-script="$root_dir/scripts/lanes/lane.sh"
+script_src="$root_dir/plugins/way-of-working/bin/lane.sh"
+gi="$root_dir/plugins/way-of-working/bin/gh-identity.sh"
 pv="$root_dir/plugins/way-of-working/bin/prune-verdict.sh"
 
 for tool in git yq jq; do
@@ -100,25 +102,35 @@ nc() {
   $real_git -C "$R" config user.email t@example.invalid
   $real_git -C "$R" config commit.gpgsign false
   $real_git -C "$R" remote add origin "$O"
-  cat >"$tmp/project.yml.tpl" <<'YML'
+  cat >"$tmp/project.yml.tpl" <<YML
 repo: glunk-works/claude-workbench
 pr_base: main
 backlog:
   kind: github_issues
   repo: null
+lanes:
+  dir: $LD
 identities:
   maintainer:
     - { login: m, id: 1001 }
   dev_app:
     { login: d, id: 2001 }
 YML
-  mkdir -p "$R/.ai" "$R/plugins/way-of-working/bin" "$R/dir"
+  mkdir -p "$R/.ai" "$R/dir"
   cp "$tmp/project.yml.tpl" "$R/.ai/project.yml"
-  printf '#!/bin/sh\nout=$(cat "$FX_FIND_FILE")\nprintf "%%s\\n" "$out"\nexit "${FX_FIND_RC:-0}"\n' >"$R/plugins/way-of-working/bin/spec-find.sh"
-  printf '#!/bin/sh\necho stub\n' >"$R/plugins/way-of-working/bin/gh-identity.sh"
-  printf '#!/bin/sh\necho stub\n' >"$R/plugins/way-of-working/bin/spec-reaction.sh"
-  printf '#!/bin/sh\necho stub\n' >"$R/plugins/way-of-working/bin/declared-ids.sh"
-  cp "$pv" "$R/plugins/way-of-working/bin/prune-verdict.sh"
+  # the scratch plugin: bin/ beside the script under test, agents/coder.md one level up
+  PB="$D/plug/bin"
+  mkdir -p "$PB" "$D/plug/agents"
+  printf 'coder\n' >"$D/plug/agents/coder.md"
+  cp "$script_src" "$PB/lane.sh"
+  chmod +x "$PB/lane.sh"
+  script="$PB/lane.sh"
+  printf '#!/bin/sh\nout=$(cat "$FX_FIND_FILE")\nprintf "%%s\\n" "$out"\nexit "${FX_FIND_RC:-0}"\n' >"$PB/spec-find.sh"
+  printf '#!/bin/sh\ncat "$FX_STATE_FILE"\nexit "${FX_STATE_RC:-0}"\n' >"$PB/lane-state.sh"
+  printf '#!/bin/sh\ncat "$FX_GROUPS_FILE"\nexit "${FX_GROUPS_RC:-0}"\n' >"$PB/lane-groups.sh"
+  cp "$gi" "$PB/gh-identity.sh"
+  cp "$pv" "$PB/prune-verdict.sh"
+  chmod +x "$PB"/*.sh
   put dir/f one
   $real_git -C "$R" add -A && $real_git -C "$R" commit -q -m a
   $real_git -C "$R" push -q origin refs/heads/main:refs/heads/main
@@ -131,6 +143,10 @@ EOF
 {"number":$ISSUE,"state":"open","title":"$SENT","body":"$SENT","user":{"login":"$SENT","id":9},"milestone":{"number":$MS,"title":"$SENT"}}
 EOF
   printf '[]\n' >"$CAN/prs.json"
+  printf '{"repositories":[{"full_name":"glunk-works/claude-workbench","description":"%s"}]}\n' "$SENT" >"$CAN/reach.json"
+  printf '{"statusCheckRollup":[],"title":"%s"}\n' "$SENT" >"$CAN/prview.json"
+  printf '[]\n' >"$CAN/state.json"
+  printf 'group\tnone\n' >"$CAN/groups.txt"
   printf '%s\n' "$FOUND" >"$CAN/find.txt"
   # the logging git wrapper, the stub gh and a stub ln
   cat >"$FB/git" <<'FAKE_GIT'
@@ -157,6 +173,8 @@ for a in "$@"; do
 done
 case "$1 $2" in
   "repo view") [ "${FX_FAIL:-}" != repoview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/repo.json ;;
+  "pr view") [ "${FX_FAIL:-}" != prview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prview.json ;;
+  "api --hostname") [ "${FX_FAIL:-}" != reach ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/reach.json ;;
   "pr list") [ "${FX_FAIL:-}" != prlist ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prs.json ;;
   api\ repos/*/issues/*) [ "${FX_FAIL:-}" != issue ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/issue.json ;;
   *) echo "stub gh: unexpected: $*" >&2; exit 1 ;;
@@ -177,15 +195,17 @@ FAKE_LN
   FX_REAL_LN=$real_ln
   FX_CANNED=$CAN
   FX_FIND_FILE=$CAN/find.txt
+  FX_STATE_FILE=$CAN/state.json
+  FX_GROUPS_FILE=$CAN/groups.txt
   FX_SENT=$SENT FX_ORIGIN=$O
   export FX_SENT FX_ORIGIN
-  FX_FIND_RC=0 FX_GIT_FAIL= FX_PRE_SH= FX_PRE= FX_PRE_ON= FX_FAIL= FX_LN_FAIL=
-  export FX_PRE_SH FX_LOG FX_GHLOG FX_REAL_GIT FX_REAL_LN FX_CANNED FX_FIND_FILE FX_FIND_RC FX_GIT_FAIL FX_PRE FX_PRE_ON FX_FAIL FX_LN_FAIL
+  FX_FIND_RC=0 FX_GIT_FAIL= FX_PRE_SH= FX_PRE= FX_PRE_ON= FX_FAIL= FX_LN_FAIL= FX_STATE_RC=0 FX_GROUPS_RC=0
+  export FX_PRE_SH FX_LOG FX_GHLOG FX_REAL_GIT FX_REAL_LN FX_CANNED FX_FIND_FILE FX_FIND_RC FX_GIT_FAIL FX_PRE FX_PRE_ON FX_FAIL FX_LN_FAIL FX_STATE_FILE FX_STATE_RC FX_GROUPS_FILE FX_GROUPS_RC
 }
 
 run_lane() {
   rc=0
-  (cd "$CWD" && WOW_LANES_DIR="$LD" PATH="$FB:$PATH" "$script" "$@") >"$D/out" 2>"$D/err" || rc=$?
+  (cd "$CWD" && PATH="$FB:$PATH" "$script" "$@") >"$D/out" 2>"$D/err" || rc=$?
   out=$(cat "$D/out")
   err=$(cat "$D/err")
   cat "$D/out" "$D/err" >>"$tmp/allout"
@@ -223,8 +243,15 @@ prep_ok() { # a normal successful prep in the current case
   assert_eq "prep ok: exit" 0 "$rc"
 }
 
+# setld: point the committed project file's lanes.dir at a new directory (and LD with it).
+setld() { # <dir>
+  LD=$1
+  setyml ".lanes.dir = \"$1\""
+}
+
 # ---- the script is executable in the index -------------------------------------------------
-assert_eq "lane.sh is committed as 100755" 100755 "$($real_git -C "$root_dir" ls-files -s scripts/lanes/lane.sh | awk '{print $1}')"
+assert_eq "lane.sh is committed as 100755" 100755 "$($real_git -C "$root_dir" ls-files -s plugins/way-of-working/bin/lane.sh | awk '{print $1}')"
+assert_eq "scripts/lanes/lane.sh no longer exists" no "$([ -e "$root_dir/scripts/lanes/lane.sh" ] && echo yes || echo no)"
 
 # ---- arguments: exit 2, no output, no git or gh call ---------------------------------------
 nc
@@ -252,6 +279,8 @@ argcase "no mode"
 argcase "bad mode" frob 1
 argcase "prep arg count" prep $ISSUE $MS $BR
 argcase "done arg count" done 1 2
+argcase "status arg count" status 1
+argcase "status with a stray empty argument" status ''
 for v in main feat/ sprint/1-x feat/A feat/a.b style/x feat/-a feat/a/b ''; do
   argcase "BRANCH [$v]" prep $ISSUE $MS "$v" $CR
 done
@@ -260,14 +289,37 @@ for v in '' bogus architect,architect architect, ,architect architect,,docs-cons
   argcase "CRITICS [$v]" prep $ISSUE $MS $BR "$v"
 done
 argcase "CRITICS newline" prep $ISSUE $MS $BR "$(nl architect architect)"
-LD_SAVE=$LD
-for v in rel/x '/a/$(id)' / /a/ /a//b /a/./b /a/../b /a/.. '/a b' ''; do
-  LD=$v
-  argcase "WOW_LANES_DIR [$v]" prep $PREP
-done
-LD=$(nl /a /b)
-argcase "WOW_LANES_DIR newline" prep $PREP
-LD=$LD_SAVE
+
+# a slash-less $0 and a missing sibling: a usage error, nothing on stdout, no git or gh call
+sibcase() { # <desc> <setup>
+  nc
+  $2
+  : >"$FX_LOG"
+  : >"$FX_GHLOG"
+  rc=0
+  (cd "$CWD" && PATH="$FB:$PATH" sh "$script" status) >"$D/out" 2>"$D/err" || rc=$?
+  assert_eq "$1: exit" 2 "$rc"
+  assert_eq "$1: stdout" "" "$(cat "$D/out")"
+  assert_empty_file "$1: git log" "$FX_LOG"
+  assert_empty_file "$1: gh log" "$FX_GHLOG"
+}
+s_none() { :; }
+s_nosib_find() { rm "$PB/spec-find.sh"; }
+s_nosib_gi() { rm "$PB/gh-identity.sh"; }
+s_nosib_pv() { rm "$PB/prune-verdict.sh"; }
+s_nosib_ls() { rm "$PB/lane-state.sh"; }
+s_nosib_lg() { rm "$PB/lane-groups.sh"; }
+nc
+rc=0
+(cd "$PB" && PATH="$FB:$PATH" sh lane.sh status) >"$D/out" 2>"$D/err" || rc=$?
+assert_eq "a slash-less \$0: exit" 2 "$rc"
+assert_eq "a slash-less \$0: stdout" "" "$(cat "$D/out")"
+assert_empty_file "a slash-less \$0: git log" "$FX_LOG"
+sibcase "a missing spec-find.sh" s_nosib_find
+sibcase "a missing gh-identity.sh" s_nosib_gi
+sibcase "a missing prune-verdict.sh" s_nosib_pv
+sibcase "a missing lane-state.sh" s_nosib_ls
+sibcase "a missing lane-groups.sh" s_nosib_lg
 
 # ---- the main-worktree check ---------------------------------------------------------------
 nc
@@ -297,9 +349,6 @@ nc
 FX_GIT_FAIL=" fetch "
 stop_case "failed fetch" 1 unreadable prep $PREP
 nc
-FX_GIT_FAIL=" archive "
-stop_case "failed git archive" 1 unreadable prep $PREP
-nc
 setyml '.pr_base = "-x"'
 stop_case "bad pr_base" 1 unreadable prep $PREP
 nc
@@ -311,26 +360,31 @@ stop_case "bad backlog.repo" 1 unreadable prep $PREP
 nc
 setyml '.backlog.repo = "a/.."'
 stop_case "backlog.repo with a .. part" 1 unreadable prep $PREP
+setyml 'del(.lanes)'
+stop_case "no-lanes: lanes absent" 1 no-lanes prep $PREP
 nc
-$real_git -C "$R" rm -q -r plugins/way-of-working/bin
-mkdir -p "$R/elsewhere" "$R/plugins/way-of-working"
-printf 'x\n' >"$R/elsewhere/spec-find.sh"
-ln -s ../../elsewhere "$R/plugins/way-of-working/bin"
-bump
-stop_case "committed bin/ is a symbolic link" 1 unreadable prep $PREP
+setyml '.lanes = null'
+stop_case "no-lanes: lanes null" 1 no-lanes prep $PREP
 nc
-$real_git -C "$R" rm -q plugins/way-of-working/bin/spec-find.sh
-ln -s gh-identity.sh "$R/plugins/way-of-working/bin/spec-find.sh"
-bump
-stop_case "committed spec-find.sh is a symbolic link" 1 unreadable prep $PREP
+setyml '.lanes = "x"'
+stop_case "no-lanes: lanes not a map" 1 no-lanes prep $PREP
 nc
-$real_git -C "$R" rm -q plugins/way-of-working/bin/spec-reaction.sh
-bump
-stop_case "a required script is missing" 1 unreadable prep $PREP
+setyml '.lanes.dir = 5'
+stop_case "no-lanes: dir not a string" 1 no-lanes prep $PREP
+for v in rel/x '/a/$(id)' / /a/ /a//b /a/./b /a/../b /a/.. '/a b'; do
+  nc
+  setyml ".lanes.dir = \"$v\""
+  stop_case "no-lanes: dir [$v]" 1 no-lanes prep $PREP
+done
 nc
-$real_git -C "$R" rm -q plugins/way-of-working/bin/declared-ids.sh
-bump
-stop_case "a required script is missing (declared-ids.sh)" 1 unreadable prep $PREP
+setyml 'del(.lanes)'
+stop_case "no-lanes: status" 1 no-lanes status
+nc
+setyml 'del(.lanes)'
+stop_case "no-lanes: done" 1 no-lanes done $ISSUE
+nc
+setyml '.lanes = null'
+stop_case "no-lanes: lanes null (done)" 1 no-lanes done $ISSUE
 nc
 setyml '.repo = "other/repo"'
 stop_case "repo-mismatch" 1 repo-mismatch prep $PREP
@@ -372,13 +426,49 @@ assert_eq "not-main from a main worktree under LANES: exit" 1 "$rc"
 # ---- the trust root ------------------------------------------------------------------------
 nc
 printf 'none\n' >"$CAN/find.txt"
+mkdir -p "$R/plugins/way-of-working/bin" "$R/bin"
 printf '#!/bin/sh\necho "found 9 2026-10-18T00:00:00Z"\n' >"$R/plugins/way-of-working/bin/spec-find.sh"
-mkdir -p "$R/bin"
 printf '#!/bin/sh\ntouch "%s/gh-ran"\n' "$D" >"$R/bin/gh"
 chmod +x "$R/bin/gh" "$R/plugins/way-of-working/bin/spec-find.sh"
 stop_case "trust root: the working tree's spec-find.sh is not used" 1 "finder: none" prep $PREP
 # The script never puts a checkout directory on PATH, so this only guards against it starting to.
 assert_eq "trust root: a working-tree bin/gh is not run" no "$([ -e "$D/gh-ran" ] && echo yes || echo no)"
+
+# ---- the installed-plugin rule ------------------------------------------------------------
+nc
+mkdir -p "$R/pb"
+cp "$PB"/*.sh "$R/pb/"
+mkdir -p "$R/agents"
+printf 'coder\n' >"$R/agents/coder.md"
+script="$R/pb/lane.sh"
+stop_case "a copy run from inside the main worktree" 1 unreadable status
+nc
+mkdir -p "$LD/9/pb" "$LD/9/agents"
+cp "$PB"/*.sh "$LD/9/pb/"
+script="$LD/9/pb/lane.sh"
+stop_case "a copy run from inside the lanes directory" 1 unreadable status
+
+# ---- the token's reach ---------------------------------------------------------------------
+nc
+printf '{"repositories":[{"full_name":"glunk-works/other"}]}\n' >"$CAN/reach.json"
+stop_case "reach: origin's repository not listed" 1 unreached prep $PREP
+nc
+printf '{"repositories":[]}\n' >"$CAN/reach.json"
+stop_case "reach: an empty installation list" 1 unreadable prep $PREP
+nc
+FX_FAIL=reach
+stop_case "reach: a failed installation call" 1 unreadable prep $PREP
+nc
+printf '{"repositories":[{"full_name":"a b"}]}\n' >"$CAN/reach.json"
+stop_case "reach: a malformed record" 1 unreadable prep $PREP
+nc
+prep_ok
+assert_has "reach: the call names the host" "$FX_GHLOG" "api --hostname github.com --paginate installation/repositories --jq "
+nc
+printf '{"repositories":[{"full_name":"glunk-works/other"}]}\n' >"$CAN/reach.json"
+run_lane done $ISSUE
+assert_eq "reach: done adds no probe" no-lane "$out"
+assert_eq "reach: done made no installation call" 0 "$(grep -c installation "$FX_GHLOG" || :)"
 
 # ---- the milestone step names the M passed to prep -----------------------------------------
 nc
@@ -413,10 +503,10 @@ assert_eq "prep: LANES is mode 700" 700 "$(stat -c %a "$LD")"
 assert_eq "prep: no group or world access to the prompt" 0 "$(($(printf '0%s' "$(stat -c %a "$prompt")") & 077))"
 assert_eq "prep: no temp name left in LANES" "$ISSUE
 $ISSUE-prompt.md" "$(ls -A "$LD")"
-sed -e "s#@LANES@#$LD#g" >"$D/golden" <<'GOLDEN'
+sed -e "s#@LANES@#$LD#g" -e "s#@BIN@#$PB#g" -e "s#@CODER@#$D/plug/agents/coder.md#g" -e "s#@TOPLEVEL@#$R#g" >"$D/golden" <<'GOLDEN'
 # Lane prompt: glunk-works/claude-workbench#727
 
-You are a **lane**. For this one task you act as the `coder` defined in `plugins/way-of-working/agents/coder.md` in this worktree. The driver session that ran `lane.sh prep` is your spawner.
+You are a **lane**. For this one task you act as the `coder` defined in `@CODER@`. The driver session that ran `lane.sh prep` is your spawner.
 
 ## Task
 
@@ -427,16 +517,16 @@ You are a **lane**. For this one task you act as the `coder` defined in `plugins
 
 ## PATH: on every Bash call that runs a plugin script
 
-A Bash tool call does not keep exports from earlier calls. So every Bash call that runs a plugin `bin/` script (`spec-find.sh`, `spec-comment.sh`, `spec-fresh.sh`, `gh-identity.sh`, `spec-reaction.sh` and the rest) starts with this line, which also checks that the worktree's scripts, not the installed plugin's older ones, are the ones found:
+A Bash tool call does not keep exports from earlier calls. So every Bash call that runs a plugin `bin/` script (`spec-find.sh`, `spec-comment.sh`, `spec-fresh.sh`, `gh-identity.sh`, `spec-reaction.sh` and the rest) starts with this line, which also checks that the installed plugin's scripts are the ones found:
 
-    export PATH='@LANES@/727/plugins/way-of-working/bin':"$PATH" && [ "$(command -v spec-find.sh)" = @LANES@/727/plugins/way-of-working/bin/spec-find.sh ] || { echo "PATH check failed"; exit 1; }
+    export PATH='@BIN@':"$PATH" && [ "$(command -v spec-find.sh)" = @BIN@/spec-find.sh ] || { echo "PATH check failed"; exit 1; }
 
 If that check fails, stop and report.
 
 ## Order of work
 
 1. Build the task per `coder.md`.
-2. Run every `gates.green` entry in `.ai/project.yml`, then `bash scripts/test-all.sh` in its own Bash call with the tool's maximum timeout (600000 ms); if that call times out, stop and report.
+2. Run every `gates.green` entry in `.ai/project.yml`, each from its `cwd` (the repo root when absent) in its own Bash call with the tool's maximum timeout (600000 ms); if one times out, stop and report.
 3. Run `/way-of-working:critic-gate` with no names on its invocation line. The driver's critics are `architect,security-critic`, given here as names this session holds: when critic-gate selects its critics by rule it unions them with its set and asks nothing; when it proposes, show both lists to the human in the pick-list, as before. That list is not the explicit-names shortcut, which only names the human types count for.
 4. Commit and open the PR with `/way-of-working:ship`. This is the explicit instruction to commit and push that `coder.md` asks for.
 5. Set this PR's milestone, only when ship's author check passed and ship reported the PR URL; `P` is the number at the end of that URL. In one Bash call, capture each value into a variable, check it is non-empty and chain with `&&`: require `P` to be digits with no leading zero; require `gh api repos/glunk-works/claude-workbench/pulls/$P --jq .head.ref` to print what `git branch --show-current` prints; require `gh api repos/glunk-works/claude-workbench/milestones/19 --jq .state` to print `open`; then run `gh api -X PATCH repos/glunk-works/claude-workbench/issues/$P -F milestone=19 --jq .milestone.number`, setting no other field. The milestone is set only when that last call prints `19`. Any other outcome (a `P` that is not digits, a branch mismatch, a closed milestone, a failed read, a PATCH that failed or the session refused, another number printed) is no further write. Report the outcome in your final message either way, and never retry with another value or another command.
@@ -445,14 +535,12 @@ If that check fails, stop and report.
 
 - Never run `/way-of-working:resume`, `/way-of-working:handoff`, `/way-of-working:plan-sprint` or `/way-of-working:archive-sprint`. Never write anything under `.ai/`.
 - Never merge, approve or force-push.
-- Work only in `@LANES@/727`, never in `/workspace`'s working tree.
+- Work only in `@LANES@/727`, never in `@TOPLEVEL@`'s working tree.
 - A session that read the issue body or drafted the spec never builds the issue.
-- Every PR needs a code-owner approval, and approving a PR with auto-merge armed merges it.
 
 ## Identity
 
 - Do not prefix commands with `GH_TOKEN`.
-- Commits are unsigned (`WB-D25`).
 GOLDEN
 if cmp -s "$D/golden" "$prompt"; then
   echo "ok - prep: the prompt matches the golden file byte for byte"
@@ -461,7 +549,18 @@ else
   diff "$D/golden" "$prompt" >&2 || :
   fail=1
 fi
-assert_has "prep: the PATH line has a literal \$PATH" "$prompt" "/plugins/way-of-working/bin':\"\$PATH\" && [ \"\$(command -v spec-find.sh)\" = "
+assert_has "prep: the PATH line has a literal \$PATH" "$prompt" "/bin':\"\$PATH\" && [ \"\$(command -v spec-find.sh)\" = "
+assert_has "prep: the prompt names the scratch bin" "$prompt" "export PATH='$PB':"
+assert_has "prep: the prompt names the scratch coder definition" "$prompt" "defined in \`$D/plug/agents/coder.md\`"
+assert_has "prep: the prompt names the main worktree" "$prompt" "never in \`$R\`'s working tree"
+for bad in "plugins/way-of-working/" "scripts/test-all.sh" "/workspace" "WB-D" "code-owner"; do
+  if grep -F -- "$bad" "$prompt" >/dev/null; then
+    echo "FAIL - the prompt names [$bad]" >&2
+    fail=1
+  else
+    echo "ok - the prompt does not name [$bad]"
+  fi
+done
 if grep -F "$SENT" "$prompt" >/dev/null; then
   echo "FAIL - the sentinel is in the prompt" >&2
   fail=1
@@ -548,17 +647,17 @@ nc
 : >"$LD"
 stop_case "LANES is a regular file" 1 unsafe-dir prep $PREP
 nc
-LD="$D/nope/lanes"
+setld "$D/nope/lanes"
 stop_case "LANES has a missing parent" 1 unsafe-dir prep $PREP
 nc
 mkdir "$D/q'q" "$D/q'q/lanes"
 ln -s "$D/q'q" "$D/linkp"
-LD="$D/linkp/lanes"
+setld "$D/linkp/lanes"
 stop_case "a parent link to a directory whose name has a quote (LANES exists)" 1 unsafe-dir prep $PREP
 nc
 mkdir "$D/q'q"
 ln -s "$D/q'q" "$D/linkp"
-LD="$D/linkp/lanes"
+setld "$D/linkp/lanes"
 run_lane prep $PREP
 assert_eq "a parent link to a directory whose name has a quote (LANES new): stdout" unsafe-dir "$out"
 assert_eq "a parent link to a quoted directory: nothing created" "" "$(ls -A "$D/q'q")"
@@ -674,9 +773,10 @@ EOF
 lane_ready
 run_lane done $ISSUE
 assert_eq "done: exit" 0 "$rc"
-assert_eq "done: the three lines" "removed-worktree $LD/$ISSUE
+assert_eq "done: the lines" "removed-worktree $LD/$ISSUE
 deleted-branch $BR
-removed-prompt $LD/$ISSUE-prompt.md" "$out"
+removed-prompt $LD/$ISSUE-prompt.md
+next none" "$out"
 assert_eq "done: the worktree is gone" no "$([ -e "$LD/$ISSUE" ] && echo yes || echo no)"
 assert_eq "done: the branch is gone" gone "$($real_git -C "$R" rev-parse --verify -q "refs/heads/$BR" || echo gone)"
 assert_eq "done: every branch.X.* key is gone" "" "$($real_git -C "$R" config --get-regexp '^branch\.feat/x\.' || :)"
@@ -693,7 +793,8 @@ rm -f "$LD/$ISSUE-prompt.md"
 run_lane done $ISSUE
 assert_eq "done: no prompt file" "removed-worktree $LD/$ISSUE
 deleted-branch $BR
-no-prompt" "$out"
+no-prompt
+next none" "$out"
 
 lane_ready
 $real_git -C "$R" worktree add -q -f "$D/second" "$BR"
@@ -769,6 +870,137 @@ stop_case "done: not-map removes nothing" 1 not-map done $ISSUE
 lane_ready
 setyml '.repo = "other/repo"'
 stop_case "done: repo-mismatch removes nothing" 1 repo-mismatch done $ISSUE
+
+# ---- done, the next lines ------------------------------------------------------------------
+TAB=$(printf '\t')
+groups_two() {
+  printf '800\tfound\tp/a\t-\t-\n801\tfound\tp/b\t#800\t-\n802\tfound\tp/c\t-\t-\ngroup\t1\t#800 #802\ngroup\t2\t#801\n' >"$CAN/groups.txt"
+}
+lane_ready
+mkdir "$LD/800"
+groups_two
+run_lane done $ISSUE
+assert_eq "done next: a live lane and an issue sharing its path are dropped" "removed-worktree $LD/$ISSUE
+deleted-branch $BR
+removed-prompt $LD/$ISSUE-prompt.md
+next 1 #802" "$out"
+assert_eq "done next: exit" 0 "$rc"
+lane_ready
+printf '800\tfound\tp/a\t-\t-\ngroup\t1\t#800\n' >"$CAN/groups.txt"
+mkdir "$LD/800"
+run_lane done $ISSUE
+assert_eq "done next: every issue dropped is next none" "next none" "$(printf '%s\n' "$out" | tail -n 1)"
+lane_ready
+canon '.milestone = null'
+groups_two
+run_lane done $ISSUE
+assert_eq "done next: no milestone is next none" "next none" "$(printf '%s\n' "$out" | tail -n 1)"
+assert_eq "done next: no milestone: exit" 0 "$rc"
+lane_ready
+FX_FAIL=issue
+run_lane done $ISSUE
+assert_eq "done next: a failed milestone read" "next unreadable" "$(printf '%s\n' "$out" | tail -n 1)"
+assert_eq "done next: a failed milestone read: exit" 0 "$rc"
+FX_FAIL=
+for bad in 'unreadable' 'garbage line' '800\tfound\tp/a\t-\t-' 'group\t1\t#800 evil' ''; do
+  lane_ready
+  printf "$bad\n" >"$CAN/groups.txt"
+  run_lane done $ISSUE
+  assert_eq "done next: lane-groups printing [$bad]" "next unreadable" "$(printf '%s\n' "$out" | tail -n 1)"
+  assert_eq "done next: lane-groups printing [$bad]: exit" 0 "$rc"
+  assert_eq "done next: lane-groups printing [$bad]: the lane is still removed" no "$([ -e "$LD/$ISSUE" ] && echo yes || echo no)"
+done
+lane_ready
+FX_GROUPS_RC=2
+: >"$CAN/groups.txt"
+export FX_GROUPS_RC
+run_lane done $ISSUE
+assert_eq "done next: lane-groups exiting 2 with nothing" "next unreadable" "$(printf '%s\n' "$out" | tail -n 1)"
+assert_eq "done next: lane-groups exiting 2: exit" 0 "$rc"
+FX_GROUPS_RC=0
+export FX_GROUPS_RC
+
+# ---- status --------------------------------------------------------------------------------
+nc
+stop_case "status: no lanes directory" 0 none status
+nc
+mkdir -m 700 "$LD"
+stop_case "status: an empty lanes directory" 0 none status
+state3() {
+  cat >"$CAN/state.json" <<EOF
+[{"issue":10,"branch":"feat/a","worktree":"$LD/10","spec":{"id":5,"updated_at":"2026-10-18T00:00:00Z"},"pr":{"number":21,"state":"OPEN"},"note":"$SENT"},{"issue":11,"branch":"fix/b","worktree":"$LD/11","spec":"none","pr":null},{"issue":12,"branch":"docs/c","worktree":"$LD/12","spec":"unreacted","pr":{"number":22,"state":"MERGED"}},{"issue":13,"branch":"chore/d","worktree":"$LD/13","spec":"found","pr":"ambiguous"}]
+EOF
+}
+nc
+mkdir -m 700 "$LD"
+state3
+before=$(snap)
+run_lane status
+assert_eq "status: exit" 0 "$rc"
+assert_eq "status: the rows" "glunk-works/claude-workbench${TAB}glunk-works/claude-workbench#10${TAB}feat/a${TAB}#21 OPEN${TAB}none${TAB}found
+glunk-works/claude-workbench${TAB}glunk-works/claude-workbench#11${TAB}fix/b${TAB}-${TAB}-${TAB}none
+glunk-works/claude-workbench${TAB}glunk-works/claude-workbench#12${TAB}docs/c${TAB}#22 MERGED${TAB}-${TAB}unreacted
+glunk-works/claude-workbench${TAB}glunk-works/claude-workbench#13${TAB}chore/d${TAB}ambiguous${TAB}-${TAB}found" "$out"
+assert_eq "status: writes nothing" "$before" "$(snap)"
+assert_has "status: only the open PR's checks are read" "$FX_GHLOG" "pr view 21 --repo glunk-works/claude-workbench --json statusCheckRollup --jq "
+assert_eq "status: one pr view" 1 "$(grep -c '^pr view' "$FX_GHLOG")"
+nc
+state3
+backlog_nc() { :; }
+setyml '.backlog.repo = "glunk-works/backlog"'
+mkdir -m 700 "$LD"
+run_lane status
+assert_eq "status: the backlog repo and number in the task column" "glunk-works/claude-workbench${TAB}glunk-works/backlog#10" "$(printf '%s\n' "$out" | awk -F'\t' 'NR==1 {print $1 "\t" $2}')"
+check_case() { # <desc> <want> <rollup JSON array>
+  nc
+  mkdir -m 700 "$LD"
+  state3
+  printf '{"statusCheckRollup":%s,"title":"%s"}\n' "$3" "$SENT" >"$CAN/prview.json"
+  run_lane status
+  assert_eq "status checks: $1" "$2" "$(printf '%s\n' "$out" | awk -F'\t' 'NR==1 {print $5}')"
+}
+check_case "an empty rollup" none '[]'
+check_case "all success" pass '[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SUCCESS"},{"__typename":"StatusContext","state":"SUCCESS"},{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SKIPPED"},{"__typename":"CheckRun","status":"COMPLETED","conclusion":"NEUTRAL"}]'
+check_case "a failed run" fail '[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"FAILURE"},{"__typename":"CheckRun","status":"IN_PROGRESS","conclusion":""}]'
+check_case "a cancelled run" fail '[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"CANCELLED"}]'
+check_case "a failed status context" fail '[{"__typename":"StatusContext","state":"FAILURE"}]'
+check_case "an error status context" fail '[{"__typename":"StatusContext","state":"ERROR"}]'
+check_case "a run in progress" pending '[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SUCCESS"},{"__typename":"CheckRun","status":"IN_PROGRESS","conclusion":""}]'
+check_case "a queued run" pending '[{"__typename":"CheckRun","status":"QUEUED","conclusion":""}]'
+check_case "a pending status context" pending '[{"__typename":"StatusContext","state":"PENDING"}]'
+check_case "an expected status context" pending '[{"__typename":"StatusContext","state":"EXPECTED"}]'
+nc
+mkdir -m 700 "$LD"
+state3
+FX_FAIL=prview
+run_lane status
+assert_eq "status: a failed pr view is unreadable for that row only" "unreadable" "$(printf '%s\n' "$out" | awk -F'\t' 'NR==1 {print $5}')"
+assert_eq "status: a failed pr view: the other rows print" 4 "$(printf '%s\n' "$out" | awk 'END {print NR}')"
+assert_eq "status: a failed pr view: exit" 0 "$rc"
+nc
+mkdir -m 700 "$LD"
+printf 'unreadable\n' >"$CAN/state.json"
+stop_case "status: lane-state.sh printing unreadable" 1 unreadable status
+nc
+mkdir -m 700 "$LD"
+FX_STATE_RC=2
+: >"$CAN/state.json"
+export FX_STATE_RC
+stop_case "status: lane-state.sh exiting 2" 1 unreadable status
+FX_STATE_RC=0
+export FX_STATE_RC
+nc
+mkdir -m 700 "$LD"
+printf '[{"issue":10,"branch":"bad branch","worktree":"x","spec":"none","pr":null}]\n' >"$CAN/state.json"
+stop_case "status: a branch outside the shape" 1 unreadable status
+nc
+mkdir "$D/real"
+ln -s "$D/real" "$LD"
+stop_case "status: LANES is a symbolic link" 1 unsafe-dir status
+nc
+$real_git -C "$R" worktree add -q "$D/other" -b other
+CWD="$D/other"
+stop_case "status: not-main from a linked worktree" 1 not-main status
 
 # ---- the sentinel --------------------------------------------------------------------------
 if grep -F "$SENT" "$tmp/allout" >/dev/null; then

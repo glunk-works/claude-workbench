@@ -209,7 +209,7 @@ ruleset.required_checks list -
 # (`optlanemap`): silent when absent, `null` or a map when present (a scalar or a list is
 # `invalid`). Only a map makes `lanes.dir` required, and it must be an absolute path of
 # `A-Za-z0-9._/-` with no `//`, no `.` or `..` component and no trailing `/` -- the rule
-# scripts/lanes/lane.sh holds for its lanes directory.
+# bin/lane.sh holds for its lanes directory.
 LANES_TOP='
 lanes optlanemap -
 '

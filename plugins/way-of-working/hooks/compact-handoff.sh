@@ -9,7 +9,7 @@
 #   post  prints one fixed line on stdout; on the pinned claude, exit 0 shows stdout to the user.
 #
 # It prints nothing, exit 0, unless the session directory has a .ai/project.yml and is the MAIN
-# worktree (the absolute --git-dir equals the absolute --git-common-dir, scripts/lanes/lane.sh's
+# worktree (the absolute --git-dir equals the absolute --git-common-dir, bin/lane.sh's
 # `not-main` test, run here with GIT_DIR, GIT_WORK_TREE and GIT_COMMON_DIR unset). Lane and spec
 # worktrees are linked worktrees and stay silent: lanes never run handoff. A bad argument, or any
 # internal error, is also silence with exit 0. It NEVER exits 2: a blocked automatic compaction

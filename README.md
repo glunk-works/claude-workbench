@@ -6,7 +6,7 @@ holding `way-of-working`: a portable Claude Code session-handoff protocol
 plus `/way-of-working:retro`, `/way-of-working:plan-sprint` for triaging the backlog into
 milestones under `github_milestones` planning, `/way-of-working:spec-task` for drafting a
 task's spec comment (it critic-gates the draft, then posts as the dev App or holds the comment for a human, and stops),
-`/way-of-working:architect-review` for a repo
+`/way-of-working:lanes` for preparing, reporting on and cleaning up coder lanes, `/way-of-working:architect-review` for a repo
 that wires a fresh-session review gate, and `/way-of-working:park-sprint` /
 `/way-of-working:unpark-sprint` for
 setting a sprint aside mid-flight), four general-purpose review/implementation agents (`architect`, `coder`,
@@ -60,13 +60,13 @@ own `.ai/project.yml` per `reference/project-schema.md`.
 plugins/way-of-working/
   .claude-plugin/plugin.json
   skills/     resume/ handoff/ critic-gate/ ship/ pr-checks/ archive-sprint/ retro/
-              park-sprint/ unpark-sprint/ plan-sprint/ spec-task/ architect-review/
+              park-sprint/ unpark-sprint/ plan-sprint/ spec-task/ architect-review/ lanes/
   agents/     architect.md coder.md security-critic.md docs-consistency.md transcript-reader.md
   bin/        cursor-drift.sh entry-anchor.sh review-gate-state.sh plan-anchor.sh
               spawn-model.sh review-base-anchor.sh review-sandbox.sh review-outbox.sh
               milestone-close-line.sh plan-gather.sh milestone-desc.sh schema-complete.sh
               cursor-sync-pr.sh blocked-state.sh prune-verdict.sh review-step.sh critic-section.sh
-              plan-depends.sh driver-lock.sh auto-merge-arm.sh app-push.sh api-commit.sh stall-merge.sh gh-identity.sh review-token.sh token-check.sh hitl-gate-closed.sh spec-reaction.sh spec-comment.sh spec-find.sh spec-answer.sh spec-shape.sh blocking-criteria.sh spec-issue.sh spec-post.sh spec-fresh.sh draft-identity.sh declared-ids.sh lane-state.sh lane-groups.sh leak-screen.sh critic-select.sh
+              plan-depends.sh driver-lock.sh auto-merge-arm.sh app-push.sh api-commit.sh stall-merge.sh gh-identity.sh review-token.sh token-check.sh hitl-gate-closed.sh spec-reaction.sh spec-comment.sh spec-find.sh spec-answer.sh spec-shape.sh blocking-criteria.sh spec-issue.sh spec-post.sh spec-fresh.sh draft-identity.sh declared-ids.sh lane-state.sh lane-groups.sh lane.sh leak-screen.sh critic-select.sh
               — executables, added to the Bash
               tool's PATH
   hooks/      hooks.json + ai-cursor-banner.sh (SessionStart) + compact-handoff.sh (PreCompact/PostCompact, automatic compaction only) + reach-gate.sh (UserPromptSubmit)

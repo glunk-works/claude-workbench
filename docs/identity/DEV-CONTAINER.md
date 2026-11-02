@@ -177,35 +177,50 @@ writable under the read-only root and the worktree's `.git` file points at a pat
 container can follow. A host worktree beside the checkout cannot be used: the container sees
 only `/workspace`, and its `.git` file names a host path.
 
-- **Prepare the lane** (driver, in `/workspace`, the main worktree):
+- **Prepare, report on and clean up lanes** (driver, in `/workspace`, the main worktree) through
+  `/way-of-working:lanes`, which calls the plugin's `bin/lane.sh` in three modes: `prep`, `status`
+  and `done`. `bin/lane.sh` runs only from the installed plugin, never as a working-tree copy by
+  path, because it finds its siblings beside itself; no lane is prepped until a release carrying it
+  is installed. Prepare a lane with:
   ```sh
-  scripts/lanes/lane.sh prep N M BRANCH CRITICS
+  lane.sh prep N M BRANCH CRITICS
   ```
   `M` is the milestone the driver expects the task to be on, `BRANCH` is `TYPE/SLUG` and
-  `CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`. The script
-  is in `scripts/`, not the plugin (`WB-D23`). It reads the project file and the plugin's
-  `bin/` from the default branch's committed copy, finds the approved spec with `spec-find.sh`,
+  `CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`. It reads the
+  project file from the default branch's committed copy (the lanes directory is its `lanes.dir`) and
+  its sibling scripts from the installed plugin, needs an installation token that reaches the
+  repository, finds the approved spec with `spec-find.sh`,
   checks the task is open, not a pull request and on milestone `M`, cuts the worktree from
   `origin/<pr_base>` with `--no-track` (so nothing pushes to `main` by accident), and writes
-  `/tmp/lanes/N-prompt.md` outside the worktree. The prompt names the task and milestone (the
-  container clone has no `.ai/state.json`, so `coder.md`'s checks need them named), the spec pin
-  (`PIN_ID`, `PIN_UP`), the mode, the critics, the lane rules and a `PATH` line that puts the
-  worktree's scripts first while the installed plugin is behind `main`. It never holds issue or
+  `N-prompt.md` in the lanes directory outside the worktree. The prompt names the task and milestone (the
+  container clone has no `.ai/state.json`, so `coder.md`'s checks need them named), the installed
+  plugin's `agents/coder.md`, the spec pin (`PIN_ID`, `PIN_UP`), the mode, the critics, the lane rules
+  and a `PATH` line that puts the installed plugin's `bin/` first. It never holds issue or
   comment text. It prints `worktree=`, `branch=`, `found=`, `milestone=`, `prompt=` and
   `prompt-sha256=`. If a step from the base fetch on fails it undoes what it did, as far as it
-  can, and prints `failed`. `prep` stops with one word instead: `not-main`, `unsafe-dir`, `unreadable`,
-  `repo-mismatch`, `not-map`, `finder: WORD`, `bad-issue` or `exists`. To clear an `exists`
+  can, and prints `failed`. `prep` stops with one word instead: `not-main`, `no-lanes`, `unsafe-dir`, `unreadable`,
+  `repo-mismatch`, `unreached`, `not-map`, `finder: WORD`, `bad-issue` or `exists`. To clear an `exists`
   caused by a stale name, run `git branch -dr origin/BRANCH` for a lingering remote-tracking
   ref, or `git config --remove-section branch.BRANCH` for leftover config, or pick another
-  branch name. `WOW_LANES_DIR` overrides `/tmp/lanes` for the tests only.
+  branch name.
   After ship, the lane sets its PR's milestone to `M` when `M` is still open, and reports
   the outcome; with a separate backlog repository it sets none. When the lane's PR is reported to
   the driver, the driver confirms the milestone and gives the maintainer the one-line `gh api -X
   PATCH` command only when it is missing and the backlog is the repo.
   The `PATH` line is written by the script and its text is checked by the fixture. A Bash tool
   call does not keep exports, so the lane prefixes the line, and checks that `command -v
-  spec-find.sh` finds the worktree's copy, on every call that runs a plugin script. No lane has
-  run it that way yet.
+  spec-find.sh` finds the installed plugin's copy, on every call that runs a plugin script. No lane
+  has run it that way yet.
+- **Report on the lanes**: `lane.sh status` prints one tab-separated row per lane, ordered by issue:
+  the repository, `<backlog repo>#N`, the branch, the PR (`#P STATE`, `-` for none, `ambiguous`), a display-only
+  checks word and the spec (`found` or the finder's word), or `none`. It removes and edits nothing, but fetches the default branch, as every mode does. Two code
+  repositories sharing a backlog can each hold a lane `N`, which is why the repository and the
+  backlog number are both printed. `/way-of-working:pr-checks` stays the merge verdict.
+- **Another repo on the same host.** The same installed `wow-lane.ps1` starts a lane for another
+  repository, given that repository's `-Clone` and `-Reference`. The command carries the hash that
+  `prep` printed in that repository's container, that repository's issue, and the model from that
+  repository's `models.coder`. A lane belongs to its container, so `prep`, `status` and `done` run in
+  the container of the repository the lane is for.
 - **Start the lane** (#762) from the host, in its own terminal, from `pwsh` 7.2+, as the installed
   copy beside the driver launcher:
   ```powershell
@@ -215,15 +230,17 @@ only `/workspace`, and its `.git` file names a host path.
   `-Reference`, `-WowHome` and `-Base`, and `-Remote` names the remote in the Reference only. Before
   any interactive `docker exec` it checks the installed copy (the MANIFEST), the arguments, that
   the clone has exactly one container, running, and the Reference none, that the driver
-  record names that container and the clone, and the relay probe; for `-Issue` and `-Spec` it refuses a
+  record names that container and the clone, and the relay probe; for all three modes it refuses a
   record with no origin and one whose origin differs from the Reference's, then reads the model
-  (`models.coder`) from the Reference, then checks in the container, as `app`, that the lanes
-  directory is safe, `/tmp/lanes/N` is a worktree, `/tmp/lanes/N-prompt.md` is a regular file and
+  (`models.coder`, not for `-SpecSweep`) and the lanes directory (`lanes.dir`) from the Reference at
+  `-Base`, refusing all three modes when `lanes` is not declared or its `dir` is bad (the directory
+  can differ from what `lane.sh` reads when `-Base` is not the default branch), then checks in the
+  container, as `app`, that the lanes directory is safe, `<lanes.dir>/N` is a worktree, `<lanes.dir>/N-prompt.md` is a regular file and
   its sha256 is `HASH`. It needs the driver's start of day to have recorded the container, and it
   never writes the record. It then enters the container with `docker exec -it -u app -e
-  GIT_TERMINAL_PROMPT=0 -w /tmp/lanes/N`, into `/usr/local/bin/claude --model <models.coder>`, and sends the lane
+  GIT_TERMINAL_PROMPT=0 -w <lanes.dir>/N`, into `/usr/local/bin/claude --model <models.coder>`, and sends the lane
   this first message:
-  > Lane for issue #N. In one Bash call, run: T=$(mktemp -d); cp /tmp/lanes/N-prompt.md $T/p.md;
+  > Lane for issue #N. In one Bash call, run: T=$(mktemp -d); cp <lanes.dir>/N-prompt.md $T/p.md;
   > sha256sum $T/p.md; echo $T/p.md. Stop unless that call printed the hash HASH. If it did, read only that copy and
   > follow it.
 
@@ -236,7 +253,7 @@ only `/workspace`, and its `.git` file names a host path.
   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Spec N[,N...]
   ```
   Up to ten issue numbers, in order. It makes a detached worktree at the Reference's base commit
-  under `/tmp/lanes/spec-XXXXXX` (refusing if the container clone's `origin/<Base>`
+  under `<lanes.dir>/spec-XXXXXX` (refusing if the container clone's `origin/<Base>`
   is another commit than the Reference's), starts a session there on `models.architect` at `--effort high`, and asks it to
   run `/way-of-working:spec-task` for each issue in turn and build nothing. When the session exits it
   removes the worktree, without `--force`, only if it is still that detached worktree at that
@@ -254,17 +271,19 @@ only `/workspace`, and its `.git` file names a host path.
   as `unknown` and refuses every `-Spec` run until the maintainer stops it. This is an accident
   guard: two runs started close together can both pass it. `lane.sh done` neither sees nor
   removes a spec worktree.
-- **List spec sessions** (#891), read-only:
+- **List spec sessions** (#891):
   ```powershell
   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -SpecSweep
   ```
   It lists every spec worktree directory, spec record and running spec-session process under
-  `/tmp/lanes`, one line per running session and per leaf with none, with the issues and the launch time from the record (`unknown`
+  the lanes directory, one line per running session and per leaf with none, with the issues and the launch time from the record (`unknown`
   without a readable one) and the process id (`no process` for a kept directory or an orphan
-  record; a directory that is gone is marked so). It kills, removes and edits nothing: stopping a stray
-  session, and removing its worktree and then its record, are done by hand.
-  The sweep refuses, listing nothing, when `/tmp/lanes` in the container is a link, not a directory, or
-  not owned by the container user, as the lane and spec modes do; a missing `/tmp/lanes` is not refused.
+  record; a directory that is gone is marked so). It kills and removes nothing and starts no session, but it fetches in the Reference, as the other
+  modes do: stopping a stray session, and removing its worktree and then its record, are done by hand.
+  It runs the same origin check as the lane and spec modes, so it refuses a driver record with no
+  origin or another repository's, and needs the Reference to fetch. The sweep refuses, listing
+  nothing, when the lanes directory in the container is a link, not a directory, or
+  not owned by the container user, as the lane and spec modes do; a missing lanes directory is not refused.
 - **Driver handoff points** (#729). The driver runs `/way-of-working:handoff` after each lane PR
   merges and its `lane.sh done N` has run, after each batch of spec sessions, and whenever the
   status line shows the context running high, rather than only when it runs low.
@@ -277,7 +296,7 @@ only `/workspace`, and its `.git` file names a host path.
   `/compact` runs neither. The status line marks no threshold: the value is still open. Lane state
   reads `lanes: { dir: /tmp/lanes }` in `.ai/project.yml` (#793; kept by the maintainer or driver,
   since lanes never write under `.ai/`), and `bin/lane-state.sh` lets handoff record the live lanes and
-  resume report them.
+  resume report them, and `lane.sh status` reads it with `lane-state.sh` too.
 - **Identity.** Every session, driver or lane, acts as the dev App through the container's `gh`
   shim and git credential helper. Do not prefix commands with `GH_TOKEN`. Suites run natively
   (no WSL), and commits are unsigned (`WB-D25`), so no `timeout 90` around signing.
@@ -291,9 +310,8 @@ only `/workspace`, and its `.git` file names a host path.
   higher, about 90 ms per call. The other uutils tools' share was not measured. Run the suite
   alone, in its own Bash call, with the tool timeout at least 52 s (twice the 26 s). On a container whose
   `timeout --version` names uutils, the bound is about 1550 s: run the suite in the background, or
-  stop and ask the maintainer. `scripts/test-all.sh` starts this suite with its pool, and the lane
-  prompt runs the runner in one Bash call at the tool's 600 s maximum and stops and reports if that
-  call times out. If `command -v timeout` prints `/usr/bin/timeout`, the container
+  stop and ask the maintainer. `scripts/test-all.sh` starts this suite with its pool; run it in one
+  Bash call at the tool's 600 s maximum and stop and report if that call times out. If `command -v timeout` prints `/usr/bin/timeout`, the container
   predates #741 and the maintainer recreates it, on the host: after every lane, every spec session and the driver
   session have exited, `docker stop` the container, then run the driver launcher (start of day), or use
   the hand recreate command in *Opening it*, then runs *The check after a rebuild* in
@@ -312,7 +330,7 @@ only `/workspace`, and its `.git` file names a host path.
   - A session that drafted a spec, or read an issue's body, never builds that issue.
   - Every PR needs a code-owner approval; approving one with auto-merge armed merges it.
 - **Cleanup** after the lane's PR merges (driver, in `/workspace`, and only after the lane
-  session has exited): `scripts/lanes/lane.sh done N`. It removes the worktree, deletes the branch
+  session has exited): `lane.sh done N`, through `/way-of-working:lanes`. It removes the worktree, deletes the branch
   and removes the prompt file, but only if a same-repository PR from that branch merged into
   the base and `prune-verdict.sh` reads `delete`; the branch is deleted with `git update-ref -d`
   against the judged tip, never `git branch -D`.
@@ -320,7 +338,10 @@ only `/workspace`, and its `.git` file names a host path.
     you may run `git worktree remove` and keep the branch.
   - On `missing`, run `git worktree prune --dry-run -v` first, since `git worktree prune`
     prunes every stale entry, other lanes' and kept spec worktrees included.
-  - `not-main`, `unsafe-dir`, `unreadable`, `repo-mismatch`, `not-map`, `no-lane`,
+  - After its success lines `done` prints `next` lines: the groups `lane-groups.sh` computes for the
+    task's milestone, less issues with a lane here and issues sharing a path with one, or `next none`
+    or `next unreadable`. They never change its exit status.
+  - `not-main`, `no-lanes`, `unsafe-dir`, `unreadable`, `repo-mismatch`, `not-map`, `no-lane`,
     `not-merged`, `ambiguous` and `kept X unreadable` remove nothing, and so does
     `kept X checked-out` unless the second checkout appears just before the worktree is removed.
     `dirty` leaves the worktree and branch. An `unreadable` after the worktree was removed (the

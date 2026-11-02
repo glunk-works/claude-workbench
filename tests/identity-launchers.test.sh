@@ -16,7 +16,7 @@
 #   refusals        .devcontainer/ mismatch, label-only or Reference containers, bad up results, bad re-list
 #   attach          record + running container + clean probe: no compare, no devcontainer, no git on the Clone
 #   origin          the Reference's origin repository against the four-field record: start of day, attach,
-#                   wow-lane -Issue/-Spec refuse another origin; a three-field record is replaced at start and
+#                   wow-lane -Issue/-Spec/-SpecSweep refuse another origin; a three-field record is replaced at start and
 #                   refused on attach and in the lane; url shapes that refuse without echoing the url
 #   attach refuses  mismatched/missing/malformed record, another clone, dirty probe, two containers,
 #                   restarting/paused, a failed docker ps, a missing tool
@@ -27,7 +27,7 @@
 #                   `exec -u app ... /bin/sh -c <script> sh <args>` with the real /bin/sh against a scratch
 #                   lanes directory and a scratch container clone), both happy paths, base-moved and kept
 #                   worktrees, the busy check (a fake running session: an executable named claude whose
-#                   working directory is a spec leaf), the spec record, the read-only -SpecSweep mode
+#                   working directory is a spec leaf), the spec record, the -SpecSweep mode (it kills and removes nothing, but fetches in the Reference)
 #                   (the busy-check and sweep fixtures are skipped loudly under MSYS), the shared lanes-directory guard
 #                   (an owner override in the stub docker makes `test -O` false on the lanes path, a dangling
 #                   lanes link and a missing lanes directory are fixtures), and the static shape of the guard, the four scripts and both message
@@ -139,7 +139,7 @@ case "$1" in
         n=$#
         while [ "$n" -gt 0 ]; do
           a=$1; shift
-          case $a in /tmp/lanes) a=$STUB_LANES ;; /workspace) a=$STUB_REPO ;; esac
+          case $a in /tmp/lanes | /srv/wow-lanes) a=$STUB_LANES ;; /workspace) a=$STUB_REPO ;; esac
           set -- "$@" "$a"; n=$((n - 1))
         done
         exec /bin/sh -c "$script" sh "$@" ;;
@@ -180,7 +180,7 @@ mkdir -p "$seed/.devcontainer/sub" "$seed/.ai"
 printf 'FROM scratch\n# CANARY-DEVC\n' >"$seed/.devcontainer/Dockerfile"
 printf '{"remoteUser": "app"}\n' >"$seed/.devcontainer/devcontainer.json"
 printf 'echo hi\n' >"$seed/.devcontainer/sub/x.sh"
-printf 'models:\n  architect: opus\n  coder: sonnet\ncanary: CANARY-YML\n' >"$seed/.ai/project.yml"
+printf 'models:\n  architect: opus\n  coder: sonnet\ncanary: CANARY-YML\nlanes:\n  dir: /tmp/lanes\n' >"$seed/.ai/project.yml"
 $G -C "$seed" add -A; $G -C "$seed" commit -q -m one
 c1=$($real_git -C "$seed" rev-parse HEAD)
 printf 'FROM scratch\n# CANARY-DEVC\n# second\n' >"$seed/.devcontainer/Dockerfile"
@@ -953,7 +953,7 @@ else
     fake_stop
   else bad "the fake running session never read as claude"; fake_stop; fi
 
-  # -SpecSweep: read-only, one non-interactive exec, no session
+  # -SpecSweep: kills and removes nothing, one non-interactive exec, no session
   spec_setup; mkdir "$lanes/spec-aaa111" "$lanes/spec-bbb222" "$lanes/spec-ddd444" "$lanes/spec-xyz" "$lanes/spec-ABC123" "$lanes/spec-eee55"
   printf '%s\n' '7,9 1700000000' >"$lanes/record-spec-aaa111"
   printf '%s\n' '5 1700000100' >"$lanes/record-spec-ccc333"
@@ -1023,7 +1023,7 @@ fi
 sec_misc() {
 # --- model -------------------------------------------------------------------------------------
 push_yml() { # push_yml <architect value>
-  printf 'models:\n  architect: %s\n  coder: sonnet\ncanary: CANARY-YML\n' "$1" >"$seed/.ai/project.yml"
+  printf 'models:\n  architect: %s\n  coder: sonnet\ncanary: CANARY-YML\nlanes:\n  dir: /tmp/lanes\n' "$1" >"$seed/.ai/project.yml"
   $G -C "$seed" commit -q -am "model $1"; $real_git -C "$seed" push -q origin main
   c2=$($real_git -C "$seed" rev-parse HEAD)
 }
@@ -1037,7 +1037,7 @@ check "model: a valid value reaches argv as the script's literal" test "$(non_ps
 push_yml 'opus; rm -rf'
 reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
 check "model: an injected value refuses and reaches no argv" test "$rc" -eq 1 -a "$(calls | grep -c 'rm -rf')" -eq 0
-printf 'models:\n  coder: sonnet\n' >"$seed/.ai/project.yml"; $G -C "$seed" commit -q -am nomodel; $real_git -C "$seed" push -q origin main
+printf 'models:\n  coder: sonnet\nlanes:\n  dir: /tmp/lanes\n' >"$seed/.ai/project.yml"; $G -C "$seed" commit -q -am nomodel; $real_git -C "$seed" push -q origin main
 reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
 check "model: a missing models.architect refuses" test "$rc" -eq 1
 
@@ -1210,22 +1210,54 @@ check "attach refuses (a three-field record): says to rerun at start of day" err
 running1; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
 check "attach with the same origin still attaches" test "$rc" -eq 7
 
-# wow-lane: -Issue and -Spec refuse another origin and a three-field record; -SpecSweep lists with either
+# wow-lane: -Issue, -Spec and -SpecSweep refuse another origin and a three-field record
 LANE_CONTAINER_STAGE=1
-for mode in issue spec; do
+sweep_url_free() { check "$1: no url in the output" sh -c "! grep -q -e github.com -e Widgets '$tmp/err' '$tmp/out'"; }
+for mode in issue spec sweep; do
   lane_setup; write_record "$ID1" "$c2" "$(json_clone)" other/repo; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
-  [ "$mode" = issue ] && run_lane -Issue 5 -Hash "$PH" || run_lane -Spec 7
+  case $mode in issue) run_lane -Issue 5 -Hash "$PH" ;; spec) run_lane -Spec 7 ;; sweep) run_lane -SpecSweep ;; esac
   lane_refuses "$mode, another origin"; check "wow-lane refuses ($mode, another origin): before the fetch" no_fetch
+  [ "$mode" != sweep ] || sweep_url_free "wow-lane refuses (sweep, another origin)"
   lane_setup; write_record3 "$ID1" "$c2" "$(json_clone)"; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
-  [ "$mode" = issue ] && run_lane -Issue 5 -Hash "$PH" || run_lane -Spec 7
+  case $mode in issue) run_lane -Issue 5 -Hash "$PH" ;; spec) run_lane -Spec 7 ;; sweep) run_lane -SpecSweep ;; esac
   lane_refuses "$mode, a three-field record"; check "wow-lane refuses ($mode, a three-field record): before the fetch" no_fetch
+  [ "$mode" != sweep ] || sweep_url_free "wow-lane refuses (sweep, a three-field record)"
 done
 if [ -z "$msys" ]; then
-  lane_setup; write_record3 "$ID1" "$c2" "$(json_clone)"; run_lane -SpecSweep
-  check "wow-lane -SpecSweep lists with a three-field record" test "$rc" -eq 0
-  lane_setup; write_record "$ID1" "$c2" "$(json_clone)" other/repo; run_lane -SpecSweep
-  check "wow-lane -SpecSweep lists with another origin" test "$rc" -eq 0
+  lane_setup; run_lane -SpecSweep
+  check "wow-lane -SpecSweep still lists with a valid four-field record" test "$rc" -eq 0
+  check "wow-lane -SpecSweep with a four-field record: says there are no spec sessions" test "$(cat "$tmp/out")" = 'no spec sessions'
 fi
+
+# the lanes directory comes from the Reference's lanes.dir at the base commit
+push_lanes() { # push_lanes <lanes text, or - for none>
+  { printf 'models:\n  architect: opus\n  coder: sonnet\ncanary: CANARY-YML\n'; [ "$1" = - ] || printf '%s\n' "$1"; } >"$seed/.ai/project.yml"
+  $G -C "$seed" commit -q -am lanes; $real_git -C "$seed" push -q origin main
+}
+c2_before_lanes=$c2
+for mode in issue spec sweep; do
+  for v in '-' 'lanes: null' 'lanes: x' 'lanes: { dir: 5 }' 'lanes: { dir: rel/x }' 'lanes: { dir: /a//b }' 'lanes: { dir: /a/ }' 'lanes: { dir: /a/../b }' 'lanes: { dir: /a/./b }' 'lanes: { dir: /a b }' 'lanes: { dir: / }'; do
+    push_lanes "$v"; lane_setup
+    case $mode in issue) run_lane -Issue 5 -Hash "$PH" ;; spec) run_lane -Spec 7 ;; sweep) run_lane -SpecSweep ;; esac
+    lane_refuses "$mode, lanes [$v]"
+    check "wow-lane refuses ($mode, lanes [$v]): names lanes.dir" err_has 'lanes.dir'
+    check "wow-lane refuses ($mode, lanes [$v]): no spec worktree prep ran" sh -c "! ls '$lanes' | grep -q '^spec-'"
+  done
+done
+if [ -z "$msys" ]; then
+  push_lanes 'lanes: { dir: /srv/wow-lanes }'
+  lane_setup; run_lane -Issue 5 -Hash "$PH"
+  check "wow-lane lanes.dir (lane): exits with the session's code" test "$rc" -eq 7
+  check "wow-lane lanes.dir (lane): -w and the message name the Reference's directory" sh -c "it_line() { grep ' -it ' '$stubdir/calls.log'; }; it_line | grep -q -e '-w /srv/wow-lanes/5 ' && it_line | grep -q -e 'cp /srv/wow-lanes/5-prompt.md'"
+  check "wow-lane lanes.dir (lane): /tmp/lanes is in no argv" sh -c "! grep -q '/tmp/lanes' '$stubdir/calls.log'"
+  lane_setup; rm -rf "$lanes/5" "$lanes/5-prompt.md"; $real_git -C "$crepo" worktree prune; run_lane -Spec 7
+  check "wow-lane lanes.dir (spec): the session's -w is a spec leaf under the Reference's directory" sh -c "grep ' -it ' '$stubdir/calls.log' | grep -q -e '-w /srv/wow-lanes/spec-'"
+  lane_setup; mkdir "$lanes/spec-bbb222"; run_lane -SpecSweep
+  check "wow-lane lanes.dir (sweep): exits 0" test "$rc" -eq 0
+  check "wow-lane lanes.dir (sweep): lists the leaf under the Reference's directory" out_has '^/srv/wow-lanes/spec-bbb222; no process; issues unknown; started unknown$'
+fi
+# put the Reference's base back where it was, for the checks that follow
+$real_git -C "$seed" reset -q --hard "$c2_before_lanes"; $real_git -C "$seed" push -q -f origin main
 LANE_CONTAINER_STAGE=
 
 # the Reference's url: shapes that refuse without echoing it, and one with a user name that is accepted

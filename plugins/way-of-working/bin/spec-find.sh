@@ -2,7 +2,7 @@
 # Which comment on a task issue is its approved spec? One implementation of the selection
 # WB-D29's binding rules for marker readers set out, so the readers do not each carry it in
 # prose (#662). Its callers: /way-of-working:resume, the coder agent,
-# scripts/lanes/lane.sh, bin/lane-state.sh, bin/lane-groups.sh, /way-of-working:architect-review and
+# bin/lane.sh, bin/lane-state.sh, bin/lane-groups.sh, /way-of-working:architect-review and
 # /way-of-working:spec-task (the `answer` mode, #790); each runs it in the Bash call that uses its result.
 #
 # Usage: spec-find.sh find <issue> <project.yml>
