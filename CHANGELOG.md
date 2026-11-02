@@ -21,6 +21,8 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-11-02
+
 ### Changed
 
 - `plugins/way-of-working/reference/cutover.md`: the review container accepts another plain settings key in place of `claude-workbench` for the marketplace, and now refuses a settings file with more than one key whose source is the marketplace repository (#1224).
