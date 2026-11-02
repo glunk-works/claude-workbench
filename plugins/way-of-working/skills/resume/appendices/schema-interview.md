@@ -66,12 +66,15 @@ runs `git status --short` itself (the step it used to cite comes later).
        its own question: `maintainer` (`list`, non-empty `{login, id}` pairs) and `dev_app`, `reviewer_app`,
        `loop_app` (each `nullable`, a `{login, id}` pair). **No suggested options** for any of them: a
        login or id offered here is a trust decision taken. Once those four have been asked (not on a `null`
-       answer, and not when `identities` is declined), the interview prints the following line, up to and
-       including "…requires signed commits.", as written and repeats it in the pick-up summary:
-       `rulesets` and `identities.dev_app.commit_route` are not
-       asked here: hand-add `rulesets` (the checks ruleset and the approval ruleset, `reference/project-schema.md`
-       § `rulesets`), without which resume reads no bypass actors, and add `commit_route: api` to a
-       non-null `dev_app` if the default branch requires signed commits. `rulesets` is never asked: the legacy
+       answer, and not when `identities` is declined), the interview prints the following line as written
+       and repeats it in the pick-up summary:
+
+       > `rulesets` and `identities.dev_app.commit_route` are not
+       > asked here: hand-add `rulesets` (the checks ruleset and the approval ruleset, `reference/project-schema.md`
+       > § `rulesets`), without which resume reads no bypass actors, and add `commit_route: api` to a
+       > non-null `dev_app` if the default branch requires signed commits.
+
+       `rulesets` is never asked: the legacy
        `ruleset.*` keys are always asked, whether or not it is present (`reference/project-schema.md` § `rulesets`).
        `lanes` is never asked either, `lanes.dir` included: a `missing lanes.dir value` finding is not offered, is
        reported like an `invalid` one and needs a hand edit (`reference/project-schema.md` § `lanes`).
