@@ -41,7 +41,7 @@
 #   bad-shape           spec-shape.sh check did not say `ok`, run with the default branch's committed project
 #                       file as its third argument (#1155): a draft with an unmarked bullet for a file declared
 #                       under `append_only` stops here, and so does a malformed `append_only` on the default
-#                       branch, which has the final say when the pinned commit's copy differs
+#                       branch
 #   no-critic-line      the draft does not carry a well-formed critic line for its mode (#629): see
 #                       the grammar below
 #   has-marker          a line of the draft begins with either marker prefix (`spec-task:` or `spec-task-escalated:`)

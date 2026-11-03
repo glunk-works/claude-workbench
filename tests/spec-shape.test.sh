@@ -228,6 +228,7 @@ else
   pcheck "two-document file is unreadable" unreadable "$f" "$(printf 'append_only: [CHANGELOG.md]\n---\nappend_only: [x]\n' >"$tmp/2d.yml"; echo "$tmp/2d.yml")"
   pcheck "unparsable project file is unreadable" unreadable "$f" "$(printf 'append_only: [\n' >"$tmp/bad.yml"; echo "$tmp/bad.yml")"
   pcheck "missing project file is unreadable" unreadable "$f" "$tmp/nope.yml"
+  pcheck "empty project file is unreadable" unreadable "$f" "$(: >"$tmp/empty.yml"; echo "$tmp/empty.yml")"
 fi
 
 # Usage errors exit non-zero.

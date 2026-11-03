@@ -29,7 +29,7 @@
 #   unreadable                  -- (project-file cases below apply only to an otherwise `ok` draft) the file does not exist, is not a regular file, is empty, or
 #                                  cannot be read; with a project file, also when its `append_only` is
 #                                  not null, absent or a list whose every entry is a path (the entry
-#                                  rule schema-complete.sh applies), when the project file is missing,
+#                                  rule schema-complete.sh applies), when the project file is missing, empty (zero-byte),
 #                                  unparsable or holds more than one document, or when yq fails
 #
 # Required headings, in order, each a level-3 line (`### Goal`) -- the first line of a draft is
@@ -112,7 +112,7 @@ fi
 
 # The project file: `append_only` must be one value, null or a list, and every entry a path.
 p="$3"
-if [ ! -f "$p" ] || [ ! -r "$p" ]; then
+if [ ! -f "$p" ] || [ ! -r "$p" ] || [ ! -s "$p" ]; then
   echo unreadable
   exit 0
 fi
