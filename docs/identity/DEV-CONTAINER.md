@@ -356,11 +356,12 @@ only `/workspace`, and its `.git` file names a host path.
   - On `missing`, run `git worktree prune --dry-run -v` first, since `git worktree prune`
     prunes every stale entry, other lanes' and kept spec worktrees included.
   - After its success lines `done` prints `next` lines: the groups `lane-groups.sh` computes for the
-    task's milestone, less issues with a directory under the lanes directory and issues whose `shared`
-    field names one, or `next none` or `next unreadable`. A live lane (a directory under the lanes
-    directory, not a check for a worktree) is checked for path overlap only when its issue is an open
-    issue on the finished task's milestone with spec paths `lane-groups.sh` could read. They never
-    change its exit status.
+    task's milestone, less the issues of live lanes and issues whose `shared` field names one, or
+    `next none` or `next unreadable`. A live lane is a lane worktree `lane-state.sh` lists (not a
+    directory), and stays live until its own `done`, merged or not. It is checked for path overlap
+    whatever its issue's milestone, but only when `lane-groups.sh` could read its spec paths. A
+    `lane-state.sh list` that fails or prints `unreadable` makes the result `next unreadable`. The
+    lines never change its exit status.
   - `not-main`, `no-lanes`, `unsafe-dir`, `unreadable`, `repo-mismatch`, `backlog-case`, `not-map`, `no-lane`,
     `not-merged`, `ambiguous` and `kept X unreadable` remove nothing, and so does
     `kept X checked-out` unless the second checkout appears just before the worktree is removed.

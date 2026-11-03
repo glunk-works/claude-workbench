@@ -37,6 +37,7 @@ the GitHub release notes.
 - The resume schema interview prints one line after a map answer for `identities`, telling the human to hand-add `rulesets` and, where the default branch requires signed commits, `commit_route: api` (`#1161`).
 - `/way-of-working:handoff` no longer writes `schema_version` into `.ai/state.json`; no reader ever checked it, a cursor that still has it reads the same, and no migration is needed (`#1143`).
 - `lane.sh prep` takes an optional comma list of folded issues, checks each like the task, and the lane prompt tells the lane its PR closes them too (`#1153`).
+- The `next` lines of `lane.sh done` now drop a candidate that shares a path with any live lane, whatever its milestone, and a live lane is a lane worktree `lane-state.sh` lists, not a directory; this lifts the limit the `#1244` line documents (`#1328`).
 
 ### Added
 

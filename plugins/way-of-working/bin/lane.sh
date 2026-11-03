@@ -72,11 +72,12 @@
 # for none, `ambiguous`), checks (`-` unless the PR is open, else fail, pending, pass, none or
 # unreadable; a display summary only, /way-of-working:pr-checks is the merge verdict), spec
 # (`found` or the finder's word); `none` for no lanes or no lanes directory.
-# done's `next <group> #a #b` lines come from lane-groups.sh, minus issues with a directory of
-# their number under the lanes directory and issues whose `shared` field names one; `next none`
-# or `next unreadable` otherwise. A live lane (a directory under the lanes directory, not a check
-# for a worktree) is checked for path overlap only when its issue is an open issue on the finished
-# task's milestone with spec paths lane-groups.sh could read. They never change its exit status.
+# done's `next <group> #a #b` lines come from lane-groups.sh, minus the issues of live lanes and
+# the issues whose `shared` field names one; `next none` or `next unreadable` otherwise. A live
+# lane is a lane worktree lane-state.sh lists (not a directory), and stays live until its own
+# `done`, merged or not. It is checked for path overlap whatever its issue's milestone, but only
+# when lane-groups.sh could read its spec paths. A lane-state.sh list that fails or prints
+# `unreadable` makes the result `next unreadable`. The lines never change done's exit status.
 #
 # GitHub host. The script unsets GH_HOST and GH_ENTERPRISE_TOKEN once at the top. Each gh call
 # names its host or repository explicitly (--hostname github.com, --repo, a repos/ path);
@@ -714,11 +715,12 @@ lane_status() {
 
 # ---- done -----------------------------------------------------------------------------------
 
-# done_next: what the freed lane can take, from lane-groups.sh's groups minus issues with a directory
-# of their number under the lanes directory and issues whose `shared` field names one. A live lane
-# (a directory, not a check for a worktree) is checked for path overlap only when its issue is an
-# open issue on the finished task's milestone with spec paths lane-groups.sh could read. Display
-# only: it never changes the exit status.
+# done_next: what the freed lane can take, from lane-groups.sh's groups minus the issues of live
+# lanes and the issues whose `shared` field names one. A live lane is a lane worktree lane-state.sh
+# lists (not a directory), and stays live until its own `done`, merged or not. Its issue number goes
+# to lane-groups.sh, so it is checked for path overlap whatever its milestone, but only when
+# lane-groups.sh could read its spec paths. A lane-state.sh list that fails or prints `unreadable`
+# makes the result `next unreadable`. Display only: it never changes the exit status.
 done_next() {
   dn_ms=$(gh api "repos/$BACKLOG/issues/$N" --jq '(.milestone.number // 0) | tostring' 2>/dev/null) || dn_ms=
   case "$dn_ms" in
@@ -728,16 +730,30 @@ done_next() {
     echo "next unreadable"
     return 0
   fi
+  dn_st=$(sh "$BIN/lane-state.sh" list "$LANES" "$DEFFILE" 2>/dev/null) || dn_st=unreadable
+  case "$dn_st" in
+    '[]') dn_nums= ;;
+    '['*']')
+      printf '%s\n' "$dn_st" >"$TMP/live.json"
+      dn_nums=$(yq -p=json -r '.[] | (.issue | tostring)' "$TMP/live.json" 2>/dev/null) || dn_nums=bad
+      ;;
+    *) dn_nums=bad ;;
+  esac
+  dn_live=,
+  for dn_i in $dn_nums; do
+    if ! num_ok "$dn_i"; then
+      echo "next unreadable"
+      return 0
+    fi
+    dn_live="$dn_live$dn_i,"
+  done
   dn_rc=0
-  (cd "$TOPLEVEL" && sh "$BIN/lane-groups.sh" "$dn_ms" "$DEFFILE" >"$TMP/groups.tsv" 2>/dev/null) || dn_rc=$?
+  # shellcheck disable=SC2086
+  (cd "$TOPLEVEL" && sh "$BIN/lane-groups.sh" "$dn_ms" "$DEFFILE" $dn_nums >"$TMP/groups.tsv" 2>/dev/null) || dn_rc=$?
   if [ "$dn_rc" -ne 0 ]; then
     echo "next unreadable"
     return 0
   fi
-  dn_live=,
-  for dn_i in $(awk -F'\t' 'NF==5 && $1 ~ /^[1-9][0-9]*$/ {print $1}' "$TMP/groups.tsv"); do
-    if [ -d "$LANES/$dn_i" ]; then dn_live="$dn_live$dn_i,"; fi
-  done
   dn_out=$(awk -F'\t' -v live="$dn_live" '
     function isl(n) { return index(live, "," n ",") > 0 }
     NF==5 && $1 ~ /^[1-9][0-9]*$/ {

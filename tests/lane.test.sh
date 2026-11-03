@@ -4,7 +4,7 @@
 # Each case builds a scratch repository with a local bare `origin` (no network) whose path
 # carries a sentinel. Its default branch commits an .ai/project.yml that declares `lanes.dir`.
 # The script under test runs as a copy in a scratch plugin `bin/`, beside stub spec-find.sh
-# (prints a canned line), lane-state.sh and lane-groups.sh (print canned files) and the real
+# (prints a canned line), lane-state.sh and lane-groups.sh (print canned files; the latter also records its arguments) and the real
 # gh-identity.sh and prune-verdict.sh, with an agents/coder.md one level up. A stub `gh` and a logging `git` wrapper go first on PATH. The stub gh
 # holds canned RAW API JSON and applies the caller's own --jq argument with the real `jq -r`,
 # the way tests/invariants-files-filter.test.sh reads a canned page, so the script's filters are
@@ -127,7 +127,7 @@ YML
   script="$PB/lane.sh"
   printf '#!/bin/sh\nout=$(cat "$FX_FIND_FILE")\nprintf "%%s\\n" "$out"\nexit "${FX_FIND_RC:-0}"\n' >"$PB/spec-find.sh"
   printf '#!/bin/sh\ncat "$FX_STATE_FILE"\nexit "${FX_STATE_RC:-0}"\n' >"$PB/lane-state.sh"
-  printf '#!/bin/sh\ncat "$FX_GROUPS_FILE"\nexit "${FX_GROUPS_RC:-0}"\n' >"$PB/lane-groups.sh"
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" >"$FX_CANNED/groups.args"\ncat "$FX_GROUPS_FILE"\nexit "${FX_GROUPS_RC:-0}"\n' >"$PB/lane-groups.sh"
   cp "$gi" "$PB/gh-identity.sh"
   cp "$pv" "$PB/prune-verdict.sh"
   chmod +x "$PB"/*.sh
@@ -960,8 +960,9 @@ TAB=$(printf '\t')
 groups_two() {
   printf '800\tfound\tp/a\t-\t-\n801\tfound\tp/b\t#800\t-\n802\tfound\tp/c\t-\t-\ngroup\t1\t#800 #802\ngroup\t2\t#801\n' >"$CAN/groups.txt"
 }
+live_800() { printf '[{"issue":800,"branch":"feat/x-800","worktree":"%s/800","spec":"none","pr":null}]\n' "$LD" >"$CAN/state.json"; }
 lane_ready
-mkdir "$LD/800"
+live_800
 groups_two
 run_lane done $ISSUE
 assert_eq "done next: a live lane and an issue sharing its path are dropped" "removed-worktree $LD/$ISSUE
@@ -971,7 +972,7 @@ next 1 #802" "$out"
 assert_eq "done next: exit" 0 "$rc"
 lane_ready
 printf '800\tfound\tp/a\t-\t-\ngroup\t1\t#800\n' >"$CAN/groups.txt"
-mkdir "$LD/800"
+live_800
 run_lane done $ISSUE
 assert_eq "done next: every issue dropped is next none" "next none" "$(printf '%s\n' "$out" | tail -n 1)"
 lane_ready
@@ -1008,6 +1009,49 @@ assert_eq "done next: lane-groups exiting 2 with nothing" "next unreadable" "$(p
 assert_eq "done next: lane-groups exiting 2: exit" 0 "$rc"
 FX_GROUPS_RC=0
 export FX_GROUPS_RC
+
+# a live lane on another milestone: lane-state.sh lists it, lane-groups.sh gets it as an argument
+lane_ready
+printf '[{"issue":900,"branch":"feat/y-900","worktree":"%s/900","spec":"none","pr":null}]\n' "$LD" >"$CAN/state.json"
+printf '800\tfound\tp/a\t#900\t-\n801\tfound\tp/b\t-\t-\ngroup\t1\t#800 #801\n' >"$CAN/groups.txt"
+run_lane done $ISSUE
+assert_eq "done next: a row sharing a path with a live lane on another milestone is dropped" "next 1 #801" "$(printf '%s\n' "$out" | tail -n 1)"
+assert_eq "done next: another milestone: exit" 0 "$rc"
+assert_eq "done next: lane-groups gets the milestone first and the live issue from the third argument" "19 900" "$(sed -e 's/^\([0-9]*\) [^ ]* /\1 /' "$CAN/groups.args")"
+lane_ready
+printf '[{"issue":800,"branch":"feat/x-800","worktree":"%s/800","spec":"none","pr":null},{"issue":900,"branch":"feat/y-900","worktree":"%s/900","spec":"none","pr":null}]\n' "$LD" "$LD" >"$CAN/state.json"
+groups_two
+run_lane done $ISSUE
+assert_eq "done next: two live lanes reach lane-groups as two arguments" "19 800 900" "$(sed -e 's/^\([0-9]*\) [^ ]* /\1 /' "$CAN/groups.args")"
+# a directory lane-state.sh does not list is not a live lane
+lane_ready
+mkdir "$LD/800"
+groups_two
+run_lane done $ISSUE
+assert_eq "done next: an unlisted directory is not dropped" "next 1 #800 #802
+next 2 #801" "$(printf '%s\n' "$out" | tail -n 2)"
+assert_eq "done next: an unlisted directory: no live argument" "19" "$(sed -e 's/^\([0-9]*\) .*/\1/' "$CAN/groups.args")"
+for bad in 'unreadable' '[{"issue":"0800","branch":"feat/x-800","worktree":"w","spec":"none","pr":null}]' '[{"branch":"feat/x"}]' '{"issue":800}'; do
+  lane_ready
+  printf '%s\n' "$bad" >"$CAN/state.json"
+  groups_two
+  run_lane done $ISSUE
+  assert_eq "done next: lane-state printing [$bad]" "next unreadable" "$(printf '%s\n' "$out" | tail -n 1)"
+  assert_eq "done next: lane-state printing [$bad]: exit" 0 "$rc"
+  assert_eq "done next: lane-state printing [$bad]: the lane is still removed" no "$([ -e "$LD/$ISSUE" ] && echo yes || echo no)"
+done
+lane_ready
+printf '[]\n' >"$CAN/state.json"
+FX_STATE_RC=1
+export FX_STATE_RC
+groups_two
+run_lane done $ISSUE
+assert_eq "done next: lane-state exiting non-zero" "next unreadable" "$(printf '%s\n' "$out" | tail -n 1)"
+assert_eq "done next: lane-state exiting non-zero: exit" 0 "$rc"
+assert_eq "done next: lane-state exiting non-zero: the lane is still removed" no "$([ -e "$LD/$ISSUE" ] && echo yes || echo no)"
+FX_STATE_RC=0
+export FX_STATE_RC
+printf '[]\n' >"$CAN/state.json"
 
 # ---- status --------------------------------------------------------------------------------
 nc
