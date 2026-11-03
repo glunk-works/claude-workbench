@@ -21,6 +21,12 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-11-03
+
+**⚠️ Migration** — `/way-of-working:resume`'s, `/way-of-working:handoff`'s and `/way-of-working:archive-sprint`'s `plan-anchor.sh verify` now read `unreadable` (and wait) on a missing `orchestration` or a missing or empty `orchestration.loop_identity`, and handoff's and archive-sprint's also on a missing or malformed `identities`, App entry or maintainer list, where they used to omit the flag. Run `schema-complete.sh check .ai/project.yml` and fix any finding before bumping (`#1221`).
+
+**⚠️ Migration** — `lane.sh` stops with `backlog-case` in every mode when `backlog.repo` names the origin repository in different letter case. Set it to the origin's exact `nameWithOwner`, or `null`, before bumping (`#1023`).
+
 **⚠️ Migration** — once the new host tools are installed, `wow-driver.ps1` (start of day and attach) and `wow-lane.ps1` (`-Issue`, `-Spec`, `-SpecSweep`) refuse a host `yq` older than v4.54.1 or one whose version cannot be read, so upgrade the host's `yq` first (`#1256`).
 
 ### Changed
