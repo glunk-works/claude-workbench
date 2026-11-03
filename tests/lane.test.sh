@@ -176,7 +176,10 @@ case "$1 $2" in
   "pr view") [ "${FX_FAIL:-}" != prview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prview.json ;;
   "api --hostname") [ "${FX_FAIL:-}" != reach ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/reach.json ;;
   "pr list") [ "${FX_FAIL:-}" != prlist ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prs.json ;;
-  api\ repos/*/issues/*) [ "${FX_FAIL:-}" != issue ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/issue.json ;;
+  api\ repos/*/issues/*)
+    [ "${FX_FAIL:-}" != issue ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }
+    f=$FX_CANNED/issue.json
+    [ ! -f "$FX_CANNED/issue-${2##*/}.json" ] || f=$FX_CANNED/issue-${2##*/}.json ;;
   *) echo "stub gh: unexpected: $*" >&2; exit 1 ;;
 esac
 exec jq -r "$filt" "$f"
@@ -278,6 +281,12 @@ argcase "done N newline" done "$(nl 7 8)"
 argcase "no mode"
 argcase "bad mode" frob 1
 argcase "prep arg count" prep $ISSUE $MS $BR
+argcase "prep with a sixth argument" prep $ISSUE $MS $BR $CR 728 extra
+for v in '' 0 012 abc 728, ,728 728,,730 728,728 727 728,727 727,728 '728 730' 728.730; do
+  argcase "ALSO [$v]" prep $ISSUE $MS $BR $CR "$v"
+done
+argcase "ALSO newline" prep $ISSUE $MS $BR $CR "$(nl 728 730)"
+argcase "ALSO newline after a comma" prep $ISSUE $MS $BR $CR "728,$(nl 7 8)"
 argcase "done arg count" done 1 2
 argcase "status arg count" status 1
 argcase "status with a stray empty argument" status ''
@@ -542,6 +551,8 @@ If that check fails, stop and report.
 
 - Do not prefix commands with `GH_TOKEN`.
 GOLDEN
+gold_D=$D
+cp "$D/golden" "$tmp/golden.noalso"
 if cmp -s "$D/golden" "$prompt"; then
   echo "ok - prep: the prompt matches the golden file byte for byte"
 else
@@ -688,6 +699,69 @@ issue_case "with another number" bad-issue '.number = 728'
 nc
 FX_FAIL=issue
 stop_case "issue read failed" 1 unreadable prep $PREP
+
+# ---- prep, the folded issues (ALSO) --------------------------------------------------------
+# also_mk: a canned answer for folded issue <n> of its own, open and on the milestone.
+also_mk() { # <n>
+  printf '{"number":%s,"state":"open","title":"%s","body":"%s","user":{"login":"%s","id":9},"milestone":{"number":%s,"title":"%s"}}\n' "$1" "$SENT" "$SENT" "$SENT" "$MS" "$SENT" >"$CAN/issue-$1.json"
+}
+also_canon() { # <n> <jq expression>
+  "$real_jq" "$2" "$CAN/issue-$1.json" >"$CAN/issue-$1.new" && mv "$CAN/issue-$1.new" "$CAN/issue-$1.json"
+}
+also_case() { # <desc> <word> <n> <jq expression>
+  nc
+  also_mk 728
+  also_mk 730
+  also_canon "$3" "$4"
+  stop_case "ALSO $1" 1 "$2" prep $PREP 728,730
+}
+also_case "closed" bad-issue 730 '.state = "closed"'
+also_case "a pull request" bad-issue 728 '. + {pull_request: {url: "x"}}'
+also_case "on another milestone" bad-issue 730 '.milestone.number = 3'
+also_case "with no milestone" bad-issue 728 '.milestone = null'
+also_case "with another number" bad-issue 730 '.number = 729'
+nc
+also_mk 728
+printf 'not json\n' >"$CAN/issue-730.json"
+stop_case "ALSO unreadable read (not JSON)" 1 unreadable prep $PREP 728,730
+nc
+also_mk 728
+stop_case "ALSO with no canned answer of its own (the task's number)" 1 bad-issue prep $PREP 728,730
+
+# success: the closes line, the same six output lines, once per milestone step
+nc
+also_mk 728
+also_mk 730
+run_lane prep $PREP 728,730
+assert_eq "ALSO: exit" 0 "$rc"
+prompt="$LD/$ISSUE-prompt.md"
+want=$(printf 'worktree=%s\nbranch=%s\nfound=5001 2026-10-18T00:00:00Z\nmilestone=%s\nprompt=%s\nprompt-sha256=%s' "$LD/$ISSUE" "$BR" "$MS" "$prompt" "$(sha256sum "$prompt" | awk '{print $1}')")
+assert_eq "ALSO: the six output lines" "$want" "$out"
+assert_has "ALSO: the task issue is read" "$FX_GHLOG" "api repos/glunk-works/claude-workbench/issues/$ISSUE --jq "
+assert_has "ALSO: 728 is read" "$FX_GHLOG" "api repos/glunk-works/claude-workbench/issues/728 --jq "
+assert_has "ALSO: 730 is read" "$FX_GHLOG" "api repos/glunk-works/claude-workbench/issues/730 --jq "
+# the golden is the no-ALSO prompt of the case above with the one line added after step 4
+line='   The PR body closes each of these issues: Closes glunk-works/claude-workbench#727, Closes glunk-works/claude-workbench#728, Closes glunk-works/claude-workbench#730.'
+sed "s#$gold_D/#$D/#g" "$tmp/golden.noalso" | awk -v l="$line" '{print} /^4\. Commit and open the PR/ {print l}' >"$D/golden2"
+grep -F -- "$line" "$D/golden2" >/dev/null && echo "ok - ALSO: the golden carries the closes line"
+if cmp -s "$D/golden2" "$prompt"; then
+  echo "ok - ALSO: the prompt matches the golden file byte for byte"
+else
+  echo "FAIL - ALSO: the prompt differs from the golden file" >&2
+  diff "$D/golden2" "$prompt" >&2 || :
+  fail=1
+fi
+nc
+setyml '.backlog.repo = "glunk-works/backlog"'
+also_mk 728
+run_lane prep $PREP 728
+assert_eq "ALSO, separate backlog: exit" 0 "$rc"
+prompt="$LD/$ISSUE-prompt.md"
+assert_has "ALSO, separate backlog: the closes line names the backlog repo" "$prompt" "   The PR body closes each of these issues: Closes glunk-works/backlog#727, Closes glunk-works/backlog#728."
+assert_has "ALSO, separate backlog: step 5 is the no-milestone step" "$prompt" "5. Make no milestone write: milestone \`$MS\` is in the backlog repository"
+assert_eq "ALSO, separate backlog: the closes line sits between steps 4 and 5" "4. Commit and open the PR
+   The PR body closes each of these issues: Closes glunk-works/backlog#727, Closes glunk-works/backlog#728.
+5. Make no milestone write" "$(grep -E '^(4\. Commit and open the PR|   The PR body closes|5\. )' "$prompt" | cut -c1-120 | sed -e 's/^\(4\. Commit and open the PR\).*/\1/' -e 's/^\(5\. Make no milestone write\).*/\1/')"
 
 # ---- prep, rollback ------------------------------------------------------------------------
 nc

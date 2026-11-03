@@ -396,7 +396,7 @@ edits to the description and cannot be mistaken for the human's approval.
 - **`/way-of-working:pr-checks`** — report a PR's required checks and an explicit
   merge-ready verdict **without merging**; decodes the skipped/blocked/conflict traps.
 - **`/way-of-working:lanes`** — start, report on and clean up coder lanes in a repo's own
-  container: `start N M BRANCH CRITICS` preps a worktree and a prompt file and prints the host
+  container: `start N M BRANCH CRITICS [ALSO]` preps a worktree and a prompt file and prints the host
   command, `status` prints one table of the lanes, `clean up N` removes a merged lane and says what
   the freed lane can take. Each is one call to `bin/lane.sh`, which reads `lanes.dir`. It never
   drafts specs, starts a session, merges or approves.
