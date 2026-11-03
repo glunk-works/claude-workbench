@@ -56,6 +56,7 @@
 #     tests/statusline-context.test.sh needs `jq`; tests/compact-handoff.test.sh needs `git`
 #     (and `jq` for its registration cases).
 #   - tests/review-image.test.sh needs `jq` and `yq`.
+#   - tests/ruleset-drift.test.sh needs `jq` and `yq` (and GNU `sed -i`) and skips the whole suite without them.
 #   - tests/review-verdict.test.sh needs `jq`.
 #   - tests/plan-gather.test.sh needs `yq` for its `authors` section and skips that section loudly
 #     without it.

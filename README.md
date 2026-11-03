@@ -62,7 +62,7 @@ plugins/way-of-working/
   skills/     resume/ handoff/ critic-gate/ ship/ pr-checks/ archive-sprint/ retro/
               park-sprint/ unpark-sprint/ plan-sprint/ spec-task/ architect-review/ lanes/
   agents/     architect.md coder.md security-critic.md docs-consistency.md transcript-reader.md
-  bin/        cursor-drift.sh entry-anchor.sh review-gate-state.sh plan-anchor.sh
+  bin/        cursor-drift.sh ruleset-drift.sh entry-anchor.sh review-gate-state.sh plan-anchor.sh
               spawn-model.sh review-base-anchor.sh review-sandbox.sh review-outbox.sh
               milestone-close-line.sh plan-gather.sh milestone-desc.sh schema-complete.sh
               cursor-sync-pr.sh blocked-state.sh prune-verdict.sh review-step.sh critic-section.sh

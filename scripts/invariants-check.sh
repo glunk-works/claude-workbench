@@ -128,7 +128,7 @@ if [ -n "$splice_hits" ]; then
   report "a config value is spliced into a jq --arg argument" \
     "$splice_hits" \
     "Read the value into a variable and bind it:" \
-    "  bind it as resume's ruleset check does: read it into a variable, then jq --arg n \"\$VAR\" ..."
+    "  bind it as ruleset-drift.sh does: read it into a variable, then jq --arg n \"\$VAR\" ..."
 fi
 fi
 
@@ -146,21 +146,19 @@ if [ -n "$RESUME" ]; then
   # quietly reports the same "nothing to see" as a gate that passed. Caught by running
   # the deliberate regression below rather than by reading the code.
   reach=$(grep -n 'gh api repos/{repo} --jq .permissions' "$RESUME" | head -1 | cut -d: -f1 || true)
-  # The ruleset call is written `gh api --paginate repos/{repo}/rules/branches/...`, so
-  # flags sit between `gh api` and the path and the pattern must tolerate any number of
-  # them. The first version required `gh api repos/...` adjacent and never matched the
-  # real call, leaving the ordering half of this check a silent no-op (#162). The `gh api`
-  # prefix stays so a line that merely names the path (an echo, a sentence) is not taken
-  # for the call. Known looseness: any words between `gh api` and the path are accepted,
-  # and a quoted path or a tab after `gh api` does not match -- that fails loudly below.
-  ruleset=$(grep -nE 'gh api( +[^ ]+)* +repos/\{repo\}/rules/branches' "$RESUME" | head -1 | cut -d: -f1 || true)
+  # The ruleset call is the line whose first word, after leading spaces, is `ruleset-drift.sh`
+  # (the script holds the `gh api` reads now). A backtick mention in prose starts with a
+  # backtick or a word, so it is not taken for the call. The first anchor, written for the
+  # inline `gh api --paginate ...rules/branches` call, never matched until it tolerated flags
+  # (#162); this one is a plain line-start match, and a reworded call fails loudly below.
+  ruleset=$(grep -nE '^ *ruleset-drift\.sh( |$)' "$RESUME" | head -1 | cut -d: -f1 || true)
   if [ -z "$reach" ]; then
     report "/resume has no repo-reach preflight" \
       "  expected: gh api repos/{repo} --jq .permissions" \
       "Without it, a 404 from the ruleset call cannot be told from 'wrong identity'."
   elif [ -z "$ruleset" ]; then
     report "/resume's ruleset call could not be found" \
-      "  expected: gh api [flags] repos/{repo}/rules/branches/..." \
+      "  expected: a line starting with ruleset-drift.sh {repo} {pr_base} ..." \
       "The ordering check can't run without it -- a silent pass here is worse than a" \
       "loud one. If the call was reworded, update this anchor to match, deliberately."
   elif [ "$reach" -gt "$ruleset" ]; then
