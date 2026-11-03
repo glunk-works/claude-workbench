@@ -44,6 +44,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- The spec-task shape step reads `append_only` from the default branch's committed `.ai/project.yml`, as `spec-post.sh` does, instead of the pinned commit's copy, so a draft no longer passes the shape check and then stops `bad-shape` at post; `spec-shape.sh check` answers `unreadable` for an empty project file (`#1309`).
 - resume's ruleset-drift check runs from `bin/ruleset-drift.sh`, so its regex no longer passes through a Windows host shell tool's quoting, which was reported to read a healthy repo as `inconclusive` (`#1211`).
 - `lane.sh done` prints `next none`, not `next unreadable`, when `lane-groups.sh` finds no ready issue (`#1292`).
 - `project-schema.md` attributes the exact first-line and third-line review match to the gate workflow in the plugin's source repository (`WB-D37`) and names the fifth-line `Review verdict:` read (`WB-D38`) (`#1186`, `#1187`).
