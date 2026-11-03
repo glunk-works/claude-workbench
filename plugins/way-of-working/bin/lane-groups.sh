@@ -6,11 +6,13 @@
 # and the driver uses it to update the milestone description's Lanes line through
 # milestone-desc.sh by hand; `lane.sh done` reads its groups too. Nothing here writes a description, an issue or a comment.
 #
-# Usage: lane-groups.sh <milestone> <project.yml>
+# Usage: lane-groups.sh <milestone> <project.yml> [<live issue>...]
 #
 #   <milestone>    the milestone number, digits with no leading zero
 #   <project.yml>  the DEFAULT branch's committed copy (the callers' $DEF_YML_FILE), never the
 #                  working tree's, which a branch under review can edit
+#   <live issue>   a live lane's issue number, digits with no leading zero; any number of them,
+#                  a repeat counting once (`lane.sh done` passes its live lanes' issues)
 #
 # Run it from inside a checkout of the repository: each `spec-fresh.sh check` it runs fetches the
 # base into that checkout. The caller's GIT_DIR, GIT_WORK_TREE and GIT_COMMON_DIR are cleared.
@@ -35,6 +37,13 @@
 # otherwise that row's paths are unknown. Comment text never reaches stdout: the only text taken
 # from a comment is a path from an approved spec, after that rule.
 #
+# A live issue given that is not an open issue on the milestone gets its spec paths read exactly as
+# a milestone row's are (the same finder, comment fetch, `spec-fresh.sh check` and `paths`, the same
+# path rule; a state other than `found` or `stale` gives unknown paths). Such a row only fills the
+# `shared` field of the milestone rows: it is never printed, never in a group, never counted as
+# open for the waits and never makes another row's paths unknown. A live issue that is already open
+# on the milestone adds nothing, since it has a row. With no live issues the output is unchanged.
+#
 # Two issues share a path when a path of one equals a path of the other, or either begins with
 # the other followed by a slash.
 #
@@ -51,20 +60,22 @@
 #   <number> TAB <state> TAB <paths> TAB <shared> TAB <waits>
 #   state   found, stale, moved, unreadable, or the finder's other first word
 #   paths   space-separated; `-` when none outside (append) bullets (.github/ ones count); `?` unknown
-#   shared  open issues it shares a path with (`#a,#b`), `-`, or `?` for a row with unknown paths
+#   shared  open issues and live issues given it shares a path with, ascending (`#a,#b`), `-`, or `?`
+#           for a row with unknown paths
 #   waits   `#a,#b`, `-` or `order-unreadable`
 # then one line per group: `group` TAB <group number from 1> TAB `#a #b`; or the single line
 # `group none`. An issue is ready when its state is `found`, its paths are known and its waits
 # field is `-`. Ready issues are taken in build-order position, then the unlisted ones ascending by
 # number, and each goes into the first group none of whose issues it shares a path with. A stale
-# spec is listed with its paths and is in no group. Live lanes are not consulted.
+# spec is listed with its paths and is in no group. Groups ignore live lanes: the live issues given
+# only fill `shared`.
 # A config read, the milestone listing, the description fetch or the final pass that builds the
 # rows and groups failing prints only `unreadable` (exit 0), as does a listed number with a
 # leading zero. That pass writes to a file under the script's own temp directory, printed only
 # when it exits 0, so no partial row reaches stdout; a `cat` that fails while printing it is not
 # covered.
 #
-# Exits 2, printing nothing to stdout, for a usage error: the wrong count, a bad milestone number,
+# Exits 2, printing nothing to stdout, for a usage error: fewer than two arguments, a bad milestone number or live issue,
 # an unreadable <project.yml>, a slash-less $0, or a spec-find.sh, spec-fresh.sh or plan-depends.sh
 # not beside this script. It runs only those SIBLING copies, found through $0 as lane-state.sh
 # finds its finder: a slash-less $0 would resolve to the current directory, where a branch under
@@ -82,16 +93,27 @@ export LC_ALL
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
 
 usage() {
-  echo "usage: lane-groups.sh <milestone> <project.yml>" >&2
+  echo "usage: lane-groups.sh <milestone> <project.yml> [<live issue>...]" >&2
   exit 2
 }
 
-[ "$#" -eq 2 ] || usage
+[ "$#" -ge 2 ] || usage
 ms=$1
 yml=$2
 case "$ms" in
   '' | 0* | *[!0-9]*) usage ;;
 esac
+shift 2
+live=
+for a in "$@"; do
+  case "$a" in
+    '' | 0* | *[!0-9]*) usage ;;
+  esac
+  case " $live " in
+    *" $a "*) ;;
+    *) live="$live${live:+ }$a" ;;
+  esac
+done
 if [ ! -f "$yml" ] || ! yq -o=yaml '.' "$yml" >/dev/null 2>&1 </dev/null; then
   echo "lane-groups.sh: unreadable project.yml" >&2
   exit 2
@@ -181,9 +203,10 @@ if o=$("$pd" order "$tmp/desc" 2>/dev/null </dev/null); then
   esac
 fi
 
-# --- one row per open issue ----------------------------------------------------------------
-: >"$tmp/rows"
-while IFS= read -r n || [ -n "$n" ]; do
+# --- one row per issue ---------------------------------------------------------------------
+# row_of <issue> prints that issue's row: number, state, paths, wait kind, wait list.
+row_of() {
+  n=$1
   state=unreadable
   paths='?'
   have=0
@@ -256,8 +279,23 @@ while IFS= read -r n || [ -n "$n" ]; do
       esac
     fi
   fi
-  printf '%s\t%s\t%s\t%s\t%s\n' "$n" "$state" "$paths" "$wkind" "$wlist" >>"$tmp/rows"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$n" "$state" "$paths" "$wkind" "$wlist"
+}
+
+: >"$tmp/rows"
+while IFS= read -r n || [ -n "$n" ]; do
+  row_of "$n" >>"$tmp/rows"
 done <"$tmp/nums"
+
+# the live issues given that are not on the milestone: rows read only to fill `shared`
+: >"$tmp/xrows"
+for n in $live; do
+  onms=0
+  while IFS= read -r m || [ -n "$m" ]; do
+    [ "$m" = "$n" ] && onms=1
+  done <"$tmp/nums"
+  [ "$onms" -eq 1 ] || row_of "$n" >>"$tmp/xrows"
+done
 
 # --- shared paths, waits and groups ----------------------------------------------------------
 if ! LG_ORDER="$order_list" LG_ORDER_OK="$order_ok" awk -F '\t' '
@@ -279,17 +317,29 @@ if ! LG_ORDER="$order_list" LG_ORDER_OK="$order_ok" awk -F '\t' '
     for (i = 1; i <= no; i++) pos[ord[i]] = i
     ok = ENVIRON["LG_ORDER_OK"] + 0
   }
+  X { xn++; xnum[xn] = $1; xpa[xn] = $3; next }
   { n++; num[n] = $1; st[n] = $2; pa[n] = $3; kind[n] = $4; wl[n] = $5; open[$1] = 1 }
   END {
     for (i = 1; i <= n; i++) {
       known = (pa[i] != "?")
       sh = "?"
       if (known) {
-        sh = ""
+        ns = 0
         for (j = 1; j <= n; j++) {
           if (j == i || pa[j] == "?") continue
-          if (pa[i] != "-" && pa[j] != "-" && overlap(pa[i], pa[j])) sh = sh (sh == "" ? "" : ",") "#" num[j]
+          if (pa[i] != "-" && pa[j] != "-" && overlap(pa[i], pa[j])) hit[++ns] = num[j] + 0
         }
+        for (j = 1; j <= xn; j++) {
+          if (xpa[j] == "?") continue
+          if (pa[i] != "-" && xpa[j] != "-" && overlap(pa[i], xpa[j])) hit[++ns] = xnum[j] + 0
+        }
+        for (a = 2; a <= ns; a++) {
+          v = hit[a]
+          for (b = a - 1; b >= 1 && hit[b] > v; b--) hit[b + 1] = hit[b]
+          hit[b + 1] = v
+        }
+        sh = ""
+        for (a = 1; a <= ns; a++) sh = sh (a > 1 ? "," : "") "#" hit[a]
         if (sh == "") sh = "-"
       }
       shared[i] = sh
@@ -334,7 +384,7 @@ if ! LG_ORDER="$order_list" LG_ORDER_OK="$order_ok" awk -F '\t' '
       printf "group\t%d\t%s\n", g, s
     }
   }
-' "$tmp/rows" >"$tmp/out" 2>/dev/null; then
+' "$tmp/rows" X=1 "$tmp/xrows" >"$tmp/out" 2>/dev/null; then
   out unreadable
 fi
 cat "$tmp/out"

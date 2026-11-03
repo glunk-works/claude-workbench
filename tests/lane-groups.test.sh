@@ -4,7 +4,7 @@
 # Runs a COPY of the real script beside a stub spec-find.sh, a real copy of plan-depends.sh and a
 # WRAPPER spec-fresh.sh (the script finds its siblings through $0): the wrapper answers `check`
 # from a canned file and delegates every other mode to a real copy of spec-fresh.sh, so the
-# `paths` mode under test is the real one. The last section runs the real `check` through the script
+# `paths` mode under test is the real one. The scratch-repository section runs the real `check` through the script
 # against a scratch repository with a local bare origin. A stub `gh` on PATH
 # serves canned milestone listings, descriptions and comment JSON and applies the caller's own
 # --jq with jq, so the pull-request filter and the description projection under test are the real
@@ -136,7 +136,7 @@ echo "# usage"
 reset; list 5 1
 assert_eq "no arguments: exit 2" "2" "$(run_rc)"
 assert_eq "one argument: exit 2" "2" "$(run_rc 5)"
-assert_eq "three arguments: exit 2" "2" "$(run_rc 5 "$yml" extra)"
+assert_eq "a third argument that is a malformed live issue: exit 2" "2" "$(run_rc 5 "$yml" extra)"
 assert_eq "milestone 0: exit 2" "2" "$(run_rc 0 "$yml")"
 assert_eq "milestone 012: exit 2" "2" "$(run_rc 012 "$yml")"
 assert_eq "milestone abc: exit 2" "2" "$(run_rc abc "$yml")"
@@ -394,5 +394,43 @@ else
   SHA=$orig_sha
 fi
 
+
+echo "# live issues"
+
+reset; list 5 800 801
+printf '**Build order:**\n1. #800: a. [depends_on: none]\n2. #801: b. [depends_on: none]\n' | desc 5
+spec 800 801 '- `p/a`'
+spec 801 802 '- `p/b`'
+base="$(run 5 "$yml")"
+spec 900 901 '- `p/a`'
+want="$(row 800 found p/a '#900' -)$nl$(row 801 found p/b - -)${nl}group${tab}1${tab}#800 #801"
+assert_eq "a live issue off the milestone sharing a path: named in shared, no row, in no group" "$want" "$(run 5 "$yml" 900)"
+assert_eq "a live issue that is a milestone row: identical to the run without it" "$base" "$(run 5 "$yml" 800)"
+assert_eq "a repeated live issue counts once" "$(run 5 "$yml" 900)" "$(run 5 "$yml" 900 900)"
+spec 900 901 '- `CHANGELOG.md` **(append)**
+- `p/c`'
+assert_eq "a live issue sharing nothing: output unchanged" "$base" "$(run 5 "$yml" 900)"
+spec 900 901 '- `p/a` **(append)**'
+assert_eq "a live issue with only an append bullet on the path: shares nothing" "$base" "$(run 5 "$yml" 900)"
+printf 'none\n' >"$stubs/finder.900"
+assert_eq "a live issue with unknown paths: shares nothing" "$base" "$(run 5 "$yml" 900)"
+spec 900 901 '- `p/a`'
+spec 901 903 '- `p/b`'
+want="$(row 800 found p/a '#900' -)$nl$(row 801 found p/b '#901' -)${nl}group${tab}1${tab}#800 #801"
+assert_eq "two live issues, one per row, ascending" "$want" "$(run 5 "$yml" 901 900)"
+assert_eq "a live issue with a leading zero: exit 2" "2" "$(run_rc 5 "$yml" 0900)"
+assert_eq "a live issue with a leading zero prints nothing" "" "$(run 5 "$yml" 900 0900)"
+assert_eq "a live issue that is not digits: exit 2" "2" "$(run_rc 5 "$yml" 9x)"
+
+
+spec 900 901 '- `p/a`'
+printf 'stale 1\n' >"$stubs/fresh.900"
+printf 'found 901 %s\n' "$TS" >"$stubs/finder.900"
+want="$(row 800 found p/a '#900' -)$nl$(row 801 found p/b - -)${nl}group${tab}1${tab}#800 #801"
+assert_eq "a live issue with a stale spec still names its paths in shared" "$want" "$(run 5 "$yml" 900)"
+rm -f "$stubs/fresh.900"
+printf '**Build order:**\n1. #800: a. [depends_on: none]\n2. #801: b. [depends_on: #900]\n' | desc 5
+nosh() { cut -f1,2,5; }
+assert_eq "a live issue off the milestone changes no waits or groups" "$(run 5 "$yml" | nosh)" "$(run 5 "$yml" 900 | nosh)"
 
 [ "$fail" -eq 0 ]
