@@ -205,7 +205,7 @@ only `/workspace`, and its `.git` file names a host path.
   comment text. It prints `worktree=`, `branch=`, `found=`, `milestone=`, `prompt=` and
   `prompt-sha256=`. If a step from the base fetch on fails it undoes what it did, as far as it
   can, and prints `failed`. `prep` stops with one word instead: `not-main`, `no-lanes`, `unsafe-dir`, `unreadable`,
-  `repo-mismatch`, `unreached`, `not-map`, `finder: WORD`, `bad-issue` or `exists`. To clear an `exists`
+  `repo-mismatch`, `backlog-case`, `unreached`, `not-map`, `finder: WORD`, `bad-issue` or `exists`. To clear an `exists`
   caused by a stale name, run `git branch -dr origin/BRANCH` for a lingering remote-tracking
   ref, or `git config --remove-section branch.BRANCH` for leftover config, or pick another
   branch name.
@@ -358,7 +358,7 @@ only `/workspace`, and its `.git` file names a host path.
   - After its success lines `done` prints `next` lines: the groups `lane-groups.sh` computes for the
     task's milestone, less issues with a lane here and issues sharing a path with one, or `next none`
     or `next unreadable`. They never change its exit status.
-  - `not-main`, `no-lanes`, `unsafe-dir`, `unreadable`, `repo-mismatch`, `not-map`, `no-lane`,
+  - `not-main`, `no-lanes`, `unsafe-dir`, `unreadable`, `repo-mismatch`, `backlog-case`, `not-map`, `no-lane`,
     `not-merged`, `ambiguous` and `kept X unreadable` remove nothing, and so does
     `kept X checked-out` unless the second checkout appears just before the worktree is removed.
     `dirty` leaves the worktree and branch. An `unreadable` after the worktree was removed (the

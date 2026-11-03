@@ -27,7 +27,7 @@ given, is the comma list of issues folded into `N`, each checked open and on `M`
 tells the lane its PR closes too.
 
 1. Run `lane.sh prep N M BRANCH CRITICS [ALSO]`. A stop word it prints (`not-main`, `no-lanes`,
-   `unsafe-dir`, `unreadable`, `repo-mismatch`, `unreached`, `not-map`, `finder: WORD`,
+   `unsafe-dir`, `unreadable`, `repo-mismatch`, `backlog-case`, `unreached`, `not-map`, `finder: WORD`,
    `bad-issue`, `exists`, `failed`) is the answer: print it and stop.
 2. On success it prints `worktree=`, `branch=`, `found=`, `milestone=`, `prompt=` and
    `prompt-sha256=`. Print them, then the host command with `N` and the hash filled in, and the two
