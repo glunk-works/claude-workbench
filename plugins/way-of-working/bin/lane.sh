@@ -38,6 +38,8 @@
 #                    existence probes, the verdict inputs), or this script sits inside the main
 #                    worktree or the lanes directory instead of the installed plugin
 #   repo-mismatch    the default branch's .repo is not the origin's nameWithOwner
+#   backlog-case     every mode: the default branch's backlog.repo names the origin's repository in
+#                    different letter case; set it to the origin's nameWithOwner, or null
 #   unreached        prep: the installation token's repositories do not list origin's repository
 #   not-map          `identities` is not a map; lanes rely on the finder
 #   exists           prep: the worktree path, prompt file, branch or branch config is taken
@@ -340,6 +342,11 @@ read_default() {
   BACKLOG=$(yq -r 'explode(.) | (.backlog.repo // .repo)' "$DEFFILE" 2>/dev/null) || stop unreadable
   ref_shape_ok "$BASE" || stop unreadable
   repo_shape_ok "$BACKLOG" || stop unreadable
+  if [ "$BACKLOG" != "$NAME" ]; then
+    rd_bl=$(printf '%s' "$BACKLOG" | tr 'A-Z' 'a-z') || stop unreadable
+    rd_nm=$(printf '%s' "$NAME" | tr 'A-Z' 'a-z') || stop unreadable
+    [ "$rd_bl" != "$rd_nm" ] || stop backlog-case
+  fi
 }
 
 # probe_branch_config: 0 when branch.X.* keys exist, 1 when none, 2 on any other exit.

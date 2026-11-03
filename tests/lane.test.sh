@@ -398,6 +398,12 @@ nc
 setyml '.repo = "other/repo"'
 stop_case "repo-mismatch" 1 repo-mismatch prep $PREP
 nc
+setyml '.backlog.repo = "Glunk-Works/Claude-Workbench"'
+stop_case "backlog-case: prep" 1 backlog-case prep $PREP
+nc
+setyml '.backlog.repo = "Glunk-Works/Claude-Workbench"'
+stop_case "backlog-case: status" 1 backlog-case status
+nc
 setyml '.identities = null'
 stop_case "not-map under identities: null" 1 not-map prep $PREP
 nc
@@ -945,6 +951,9 @@ stop_case "done: not-map removes nothing" 1 not-map done $ISSUE
 lane_ready
 setyml '.repo = "other/repo"'
 stop_case "done: repo-mismatch removes nothing" 1 repo-mismatch done $ISSUE
+lane_ready
+setyml '.backlog.repo = "Glunk-Works/Claude-Workbench"'
+stop_case "done: backlog-case removes nothing" 1 backlog-case done $ISSUE
 
 # ---- done, the next lines ------------------------------------------------------------------
 TAB=$(printf '\t')
