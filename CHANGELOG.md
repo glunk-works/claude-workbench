@@ -41,6 +41,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- resume's ruleset-drift check runs from `bin/ruleset-drift.sh`, so its regex no longer passes through a Windows host shell tool's quoting, which was reported to read a healthy repo as `inconclusive` (`#1211`).
 - `project-schema.md` attributes the exact first-line and third-line review match to the gate workflow in the plugin's source repository (`WB-D37`) and names the fifth-line `Review verdict:` read (`WB-D38`) (`#1186`, `#1187`).
 
 ## [0.29.0] — 2026-11-02
