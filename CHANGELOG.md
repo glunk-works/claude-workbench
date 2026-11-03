@@ -37,6 +37,7 @@ the GitHub release notes.
 
 ### Added
 
+- `spec-shape.sh check` takes an optional project file and answers `no-append <path>[,<path>...]` for a *Files touched* bullet of a file the new optional `append_only` key lists that lacks the exact `**(append)**` marker, so `spec-task` drafts no longer make later changelog merges read `stale`; `spec-post.sh` stops `bad-shape` on one, and `schema-complete.sh` validates the key (`#1155`).
 - `scripts/invariants-check.sh` check 27 fails when a directory under a plugin's `skills/` is not named as `/PLUGIN:SKILL` in both the plugin.json description and the marketplace entry's description (`#1249`).
 
 ### Fixed

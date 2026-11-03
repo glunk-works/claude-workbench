@@ -4,7 +4,7 @@
 # /way-of-working:spec-task posts or holds its draft only when this predicate says `ok`: the required
 # sections, in order, each with a non-empty body.
 #
-# Permitted toolset: POSIX sh.
+# Permitted toolset: POSIX sh (+ yq for the project-file cases, which skip without it).
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -167,8 +167,71 @@ else
   assert_eq "nothing in the file was run" none none
 fi
 
+# Project-file form (#1155): `append_only` in a project file makes an unmarked bullet for a declared file `no-append`.
+# bullets_draft <name> <bullet>... : a full draft whose Files touched section holds the given lines.
+bullets_draft() {
+  f="$tmp/$1"
+  shift
+  printf '%s\n\n### Goal\n\nbody\n\n### Files touched\n\n' '## Spec — #1155: a title' >"$f"
+  for b in "$@"; do printf '%s\n' "$b" >>"$f"; done
+  printf '\n### Done when\n\nx\n\n### Tests\n\nx\n\n### Out of scope\n\nx\n\n### Restated from the issue body\n\nx\n' >>"$f"
+  echo "$f"
+}
+pcheck() { # <desc> <expected> <draft> <project-file>
+  assert_eq "$1" "$2" "$("$script" check "$3" "$4")"
+}
+if ! command -v yq >/dev/null 2>&1; then
+  echo "skip - project-file cases need yq"
+else
+  proj() { # <name> <yaml text>
+    printf '%s\n' "$2" >"$tmp/$1.yml"
+    echo "$tmp/$1.yml"
+  }
+  m='- `CHANGELOG.md` **(append)** one entry'
+  um='- `CHANGELOG.md` (append) one entry'
+  decl=$(proj decl 'append_only: [CHANGELOG.md]')
+  pcheck "undeclared key: unmarked bullet is ok" ok "$(bullets_draft b1 "$um")" "$(proj nokey 'repo: a/b')"
+  pcheck "null key: unmarked bullet is ok" ok "$(bullets_draft b2 "$um")" "$(proj nullkey 'append_only: null')"
+  pcheck "empty list: unmarked bullet is ok" ok "$(bullets_draft b3 "$um")" "$(proj emptykey 'append_only: []')"
+  pcheck "declared, exact marker is ok" ok "$(bullets_draft b4 "$m")" "$decl"
+  pcheck "declared, trailing slash on the bullet path matches" "no-append CHANGELOG.md" "$(bullets_draft b5 '- `CHANGELOG.md/` (append)')" "$decl"
+  pcheck "declared, trailing slash with the marker is ok" ok "$(bullets_draft b5b '- `CHANGELOG.md/` **(append)**')" "$decl"
+  pcheck "declared, unbolded (append)" "no-append CHANGELOG.md" "$(bullets_draft b6 "$um")" "$decl"
+  pcheck "declared, no marker" "no-append CHANGELOG.md" "$(bullets_draft b7 '- `CHANGELOG.md` one entry')" "$decl"
+  pcheck "declared, word before the marker" "no-append CHANGELOG.md" "$(bullets_draft b8 '- `CHANGELOG.md` the **(append)**')" "$decl"
+  pcheck "declared, no space before the marker" "no-append CHANGELOG.md" "$(bullets_draft b9 '- `CHANGELOG.md`**(append)**')" "$decl"
+  pcheck "declared, two spaces before the marker" "no-append CHANGELOG.md" "$(bullets_draft b10 '- `CHANGELOG.md`  **(append)**')" "$decl"
+  pcheck "undeclared path with no marker is ok" ok "$(bullets_draft b11 '- `README.md` x')" "$decl"
+  pcheck "declared path in a sub-bullet is ok" ok "$(bullets_draft b12 '- `README.md` x' '  - `CHANGELOG.md` y')" "$decl"
+  f=$(bullets_draft b13 '- `README.md` x')
+  printf '\n- `CHANGELOG.md` outside\n' >>"$f"
+  pcheck "declared path outside Files touched is ok" ok "$f" "$decl"
+  two=$(proj two 'append_only: [b.md, a.md]')
+  pcheck "two offenders named in draft order" "no-append a.md,b.md" "$(bullets_draft b14 '- `a.md` x' '- `b.md` y')" "$two"
+  pcheck "same file twice is named once" "no-append a.md" "$(bullets_draft b15 '- `a.md` x' '- `a.md` y')" "$two"
+  f=$(bullets_draft b16 "$um")
+  printf 'spec-task: x\n' >>"$f"
+  pcheck "has-marker wins over no-append" has-marker "$f" "$decl"
+  f=$(bullets_draft b17 "$um")
+  sed 's/^### Tests$/### Testsx/' "$f" >"$f.x"
+  pcheck "missing wins over no-append" "missing Tests" "$f.x" "$decl"
+  f=$(bullets_draft b18 "$um")
+  pcheck "scalar is unreadable" unreadable "$f" "$(proj sc 'append_only: CHANGELOG.md')"
+  pcheck "map is unreadable" unreadable "$f" "$(proj mp 'append_only: {a: b}')"
+  pcheck "alias container is unreadable" unreadable "$f" "$(printf 'x: &x [CHANGELOG.md]\nappend_only: *x\n' >"$tmp/al.yml"; echo "$tmp/al.yml")"
+  pcheck "dot-dot segment is unreadable" unreadable "$f" "$(proj dd 'append_only: [a/../b]')"
+  pcheck "trailing slash entry is unreadable" unreadable "$f" "$(proj ts 'append_only: [docs/]')"
+  pcheck ".github entry is unreadable" unreadable "$f" "$(proj gh 'append_only: [.github]')"
+  pcheck "under .github/ entry is unreadable" unreadable "$f" "$(proj gh2 'append_only: [.github/x.yml]')"
+  pcheck "non-string entry is unreadable" unreadable "$f" "$(proj ns 'append_only: [1]')"
+  pcheck "entry holding a newline is unreadable" unreadable "$f" "$(proj nl 'append_only: ["a\nb"]')"
+  pcheck "two-document file is unreadable" unreadable "$f" "$(printf 'append_only: [CHANGELOG.md]\n---\nappend_only: [x]\n' >"$tmp/2d.yml"; echo "$tmp/2d.yml")"
+  pcheck "unparsable project file is unreadable" unreadable "$f" "$(printf 'append_only: [\n' >"$tmp/bad.yml"; echo "$tmp/bad.yml")"
+  pcheck "missing project file is unreadable" unreadable "$f" "$tmp/nope.yml"
+fi
+
 # Usage errors exit non-zero.
-for args in "" "check" "check a b" "other $tmp/full" "$tmp/full"; do
+for args in "" "check" "check a b c" "other $tmp/full" "$tmp/full"; do
   # shellcheck disable=SC2086
   if "$script" $args >/dev/null 2>&1; then
     assert_eq "usage error [$args] exits non-zero" nonzero zero

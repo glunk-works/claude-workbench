@@ -769,6 +769,22 @@ o="$(newdir)"
 post "$dcl/draft.md" "$o"
 stop_is bad-shape
 
+desc="stop: the real spec-shape.sh refuses an unmarked bullet for a path the default branch declares append-only, as bad-shape"
+if command -v yq >/dev/null 2>&1; then
+  { cat "$tmp/map.yml"; printf 'append_only: [CHANGELOG.md]\n'; } >"$tmp/appendonly.yml"
+  setyml "$tmp/appendonly.yml"
+  dcl="$(newdir)"
+  mkdraft "$dcl/ok.md"
+  sed 's|^One file\.$|- `CHANGELOG.md` (append) one entry|' "$dcl/ok.md" >"$dcl/draft.md"
+  o="$(newdir)"
+  post "$dcl/draft.md" "$o"
+  stop_is bad-shape
+  assert_eq "$desc (out-dir empty)" "" "$(ls -A "$o")"
+  setyml "$tmp/map.yml"
+else
+  echo "skip - $desc needs yq"
+fi
+
 tok='abcdefghijklmnopqrstuvwxyz0123'
 for case_ in \
   'drive|C:/x' \

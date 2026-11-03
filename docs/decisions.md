@@ -2305,6 +2305,8 @@ take effect. Full reasoning and the task breakdown that implements them:
     - **Drafting by any identity other than the declared dev App,** the maintainer's included. Their
       session keeps today's wait line and never reads the issue body.
     - **A schema key listing files to ignore.** The **(append)** marker is the one carve-out.
+      *Narrowed by `#1155`: a declared file is still skipped only through its marker, which
+      `spec-shape.sh` now makes mandatory in `spec-task` drafts.*
   - **Accepted residuals.**
     1. An auto-started dev-App session reads `#N`'s body, which any Issues-write account can edit,
        so a prompt injection there acts with the dev App's permissions.
@@ -2351,8 +2353,13 @@ take effect. Full reasoning and the task breakdown that implements them:
        and not `escalated`, so a maintainer who removes the stale spec's reaction first sees
        `unreacted` for the stale spec, not the escalation; redrafting is still blocked, by that
        `unreacted` wait.*
-    10. Shared files that are not marked **(append)** make a spec stale whenever another PR touching
-        them merges.
+    10. *Narrowed by `#1155`: in a draft `spec-task` posts or holds, a file the repo declares under
+        `append_only` is refused unmarked (`spec-shape.sh` `no-append`, and `spec-post.sh` stops
+        `bad-shape`), so it no longer makes such a spec stale. The cost is that a declared file is
+        never freshness-checked, even when a spec edits it. A hand-written spec and an undeclared
+        shared file are unchanged. `append_only` is a third optional schema key, an exception to
+        `WB-D17` that is safe because an undeclared one leaves today's behaviour.* Shared files that
+        are not marked **(append)** make a spec stale whenever another PR touching them merges.
     11. A path cited outside *Files touched* is not checked.
     12. `/way-of-working:architect-review` can still load a spec the builder refused as stale (see
         `WB-D30` residual 5).
