@@ -613,14 +613,14 @@ sec_golden() {
 # =========================================================================================
 new_case
 set_yml '.backlog.repo = "o/backlog"'
-set_findings '[{"title":"Missing test for x","body":"Detail with a ```` run of four backticks.","type":"bug","area":"area/x"},{"title":"Second","body":"plain","type":"docs"}]'
+set_findings '[{"title":"Missing test for x","body":"Detail with a ```` run of four backticks.","type":"bug","area":"area/x"},{"title":"Second with a ``` run","body":"plain","type":"docs"}]'
 mkdir -p "$home/review-tokens/r"; printf 'untouched\n' >"$home/review-tokens/r/reviewer-token"
 printf 'x\n' >"$STUB/wait.sleep.unused"; printf '3\n' >"$STUB/wait.sleep"
 run o/r 7
 assert_eq "golden: exit 0" 0 "$rc"
 [ "$rc" = 0 ] || { sed 's/^/  stderr: /' "$tmp/err" >&2; tail -20 "$home"/review-logs/*.log >&2; }
 assert_eq "golden: one review POST" 1 "$(n_posts)"
-assert_eq "golden: two issue POSTs" 2 "$(n_issues)"
+assert_eq "golden: one issue POST" 1 "$(n_issues)"
 assert_eq "golden: the POST body is the outbox body with the pass verdict line after the attestation, a blank line, the footer" \
   "$HDRTXT
 
@@ -764,18 +764,29 @@ check "golden: both networks removed" has "$STUB/events" "docker-net-rm wow-revi
 check "golden: both volumes removed" has "$STUB/events" "docker-vol-rm -f wow-review-work-"
 check "golden: the lock was released during the wait" has "$STUB/wait.notes" lock-gone
 # the footer, filing
-assert_eq "golden: the first issue request" \
-  "Non-blocking finding from the automated architect review of o/r#7 at $SHA: https://github.com/o/r/pull/7#pullrequestreview-555. Written by the review session; not yet read by a human.
+assert_eq "golden: the issue title" "triage the non-blocking findings from the review of o/r#7 at $(printf '%.12s' "$SHA")" "$(jq -r .title <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "golden: the issue request has exactly title, body and labels" 'body,labels,title' "$(jq -r 'keys | join(",")' <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "golden: the issue body, a fenced item per finding" \
+  "Non-blocking findings from the automated architect review of o/r#7 at $SHA: https://github.com/o/r/pull/7#pullrequestreview-555. Written by the review session; not yet read by a human.
 
-\`\`\`\`\`
-Detail with a \`\`\`\` run of four backticks.
-\`\`\`\`\`" "$(jq -r .body <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
-assert_eq "golden: labels kept only where the stub answers (area/x is not there, type/bug is)" '["type/bug"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+- [ ] Finding 1
+
+  \`\`\`\`\`
+  Missing test for x
+  
+  Detail with a \`\`\`\` run of four backticks.
+  \`\`\`\`\`
+
+- [ ] Finding 2
+
+  \`\`\`\`
+  Second with a \`\`\` run
+  
+  plain
+  \`\`\`\`" "$(jq -r .body <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "golden: labels kept only where the stub answers (area/x is not there)" '["type/bug","type/docs"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
 check "golden: area/x was read as area%2Fx" has "$STUB/gh.calls" 'labels/area%2Fx'
-assert_eq "golden: the second issue has a three-backtick fence" '```' "$(jq -r .body <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | tail -1 | awk -F'|' '{print $8}')" | tail -1)"
-assert_eq "golden: the second issue's labels" '["type/docs"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | tail -1 | awk -F'|' '{print $8}')")"
-assert_eq "golden: the filed ledger lines" "0 101
-1 102" "$(cat "$(entry_dir)/filed")"
+assert_eq "golden: the filed ledger is the one issue number" "101" "$(cat "$(entry_dir)/filed")"
 check "golden: the outcome is recorded" test "$(cat "$(entry_dir)/outcome")" = "0 reviewed"
 check "golden: no write call used a field flag" test ! -s "$STUB/gh.bad"
 
@@ -786,11 +797,18 @@ set_findings '[{"title":"a","body":"b","type":"bug"},{"title":"c","body":"d","ty
 printf '3\n' >"$STUB/wait.sleep"
 run o/r 7
 assert_eq "types: exit 0" 0 "$rc"
-n=0
-for t in bug feature chore docs; do
-  n=$((n + 1))
-  assert_eq "types: the $t finding's labels" "[\"type/$t\"]" "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | sed -n "${n}p" | awk -F'|' '{print $8}')")"
-done
+assert_eq "types: one issue" 1 "$(n_issues)"
+assert_eq "types: the four type labels in array order" '["type/bug","type/feature","type/chore","type/docs"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+
+# findings repeating a type or area ask for each label once
+new_case
+set_yml '.backlog.repo = "o/backlog"'
+set_findings '[{"title":"a","body":"b","type":"bug"},{"title":"c","body":"d","type":"bug"}]'
+printf '3\n' >"$STUB/wait.sleep"
+run o/r 7
+assert_eq "dedup: one issue" 1 "$(n_issues)"
+assert_eq "dedup: the repeated label is sent once" '["type/bug"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "dedup: the repeated label is read once" 1 "$(grep -c 'labels/type%2Fbug' "$STUB/gh.calls")"
 
 # a backlog that answers only the bare name gets no type label
 new_case
@@ -1436,6 +1454,7 @@ findings_case "two JSON documents" findings-shape '[{"title":"a","body":"b","typ
 new_case; set_findings '[]'
 run o/r 7
 assert_eq "an empty findings array: the footer" "Host: no findings to file" "$(post_body | tail -1)"
+assert_eq "an empty findings array: no issue created" 0 "$(n_issues)"
 new_case
 run o/r 7
 assert_eq "no findings file: the footer" "Host: no findings to file" "$(post_body | tail -1)"
@@ -1452,15 +1471,15 @@ new_case; set_findings '[{"title":"T","body":"b","type":"bug"}]'
 sed -i 's|github.com/o/r/pull/7|github.com/O/R/pull/7|' "$STUB/gh/post_review"
 run o/r 7
 assert_eq "an html_url differing only in case still files" 1 "$(n_issues)"
-new_case; set_findings '[{"title":"T","body":"b","type":"bug"}]'; mkdir -p "$(entry_dir)"; printf '0 77\n' >"$(entry_dir)/filed"
+new_case; set_findings '[{"title":"T","body":"b","type":"bug"}]'; mkdir -p "$(entry_dir)"; printf '77\n' >"$(entry_dir)/filed"
 run o/r 7 --rerun
 assert_eq "--rerun with a filed line: the review posts" 0 "$rc"
 assert_eq "--rerun with a filed line: the footer" "Host: findings not filed (already-filed)" "$(post_body | tail -1)"
 assert_eq "--rerun with a filed line: nothing filed" 0 "$(n_issues)"
-new_case; set_findings '[{"title":"T","body":"b","type":"bug"},{"title":"U","body":"b","type":"bug"}]'; printf '2\n' >"$STUB/gh/issue_fail_at"
+new_case; set_findings '[{"title":"T","body":"b","type":"bug"},{"title":"U","body":"b","type":"bug"}]'; printf '1\n' >"$STUB/gh/issue_fail_at"
 run o/r 7
-assert_eq "a failed create stops the rest, the exit stays 0" 0 "$rc"
-assert_eq "a failed create: only one file line" "0 101" "$(cat "$(entry_dir)/filed")"
+assert_eq "a failed create files nothing, the exit stays 0" 0 "$rc"
+assert_eq "a failed create: the ledger is empty or absent" "" "$(cat "$(entry_dir)/filed" 2>/dev/null)"
 :
 }
 

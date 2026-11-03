@@ -6,7 +6,7 @@
 # In order: mint the read-only session token; start the review container (the image #634 built)
 # with the Claude credential held only by an inject.py sidecar; wait for the session under a time
 # bound; read the outbox through outbox-read and act on it mechanically. It posts the review, or a
-# fixed failure signal, with a host-minted post token, and files at most five findings with a
+# fixed failure signal, with a host-minted post token, and files at most five findings as one issue with a
 # host-minted filing token. The session writes the outbox and its text is shaped by the PR it
 # reviews, so every label the launcher acts on is checked here on the host first.
 #
@@ -75,9 +75,11 @@
 # Residuals:
 #  - A misleading pass can post. The checks are mechanical, not a judgement of the review's
 #    content; the maintainer's code-owner approval still stops a bad merge.
-#  - Junk issues: at most five per head, with fixed-template, fenced, mention-free and
+#  - Junk issues: at most one per head (but see the next bullet), with fixed-template, fenced, mention-free and
 #    secret-free bodies.
-#  - Timeline events: an owner/repo#N reference or a URL in the review body or a finding title
+#  - A create that succeeds but whose number read fails leaves the ledger empty, so --rerun
+#    would file a duplicate.
+#  - Timeline events: an owner/repo#N reference or a URL in the review body
 #    still adds a timeline event to that issue or PR.
 #  - What the session can send out. The proxy bounds the host, not the recipient: a session given
 #    a credential in the PR text can send anything it read to any account on github.com or
@@ -1156,29 +1158,31 @@ EOF
   filing_tok=$TOK
   # The read token may have been replaced by the gate poll: read it again.
   RTOK=$(tc token "$HDIR/read-token") && [ -n "$RTOK" ] || { say "cannot read the read token; nothing filed"; return 0; }
-  idx=0
-  while [ "$idx" -lt "$NFIND" ]; do
-    # Labels: kept only where the repository answers a read of the label (the read token).
-    labels='[]'
-    for lab in $(jq -r --argjson i "$idx" '.[$i] | "type/" + .type, (.area // empty)' <"$HDIR/ob-findings" | tr -d '\r'); do
-      enc=$(printf '%s' "$lab" | jq -Rr '@uri' | tr -d '\r')
-      TOK=$RTOK
-      if gh_api "repos/$BREPO/labels/$enc" >/dev/null 2>&1; then labels=$(printf '%s' "$labels" | jq -c --arg l "$lab" '. + [$l]' | tr -d '\r'); fi
-    done
-    TOK=$filing_tok
-    jq -c --argjson i "$idx" --argjson labels "$labels" --arg opening "Non-blocking finding from the automated architect review of $repo#$num at $pin: $rurl. Written by the review session; not yet read by a human." '
-      .[$i] as $f
-      | ([$f.body | scan("`+") | length] | max // 0) as $run
+  # One issue for the whole review. Labels: the union of every finding's, in first-seen order,
+  # each kept only where the repository answers a read of the label (the read token).
+  labels='[]'
+  for lab in $(jq -r '[.[] | "type/" + .type, (.area // empty)] | reduce .[] as $l ([]; if index($l) then . else . + [$l] end) | .[]' <"$HDIR/ob-findings" | tr -d '\r'); do
+    enc=$(printf '%s' "$lab" | jq -Rr '@uri' | tr -d '\r')
+    TOK=$RTOK
+    if gh_api "repos/$BREPO/labels/$enc" >/dev/null 2>&1; then labels=$(printf '%s' "$labels" | jq -c --arg l "$lab" '. + [$l]' | tr -d '\r'); fi
+  done
+  TOK=$filing_tok
+  short=$(printf '%.12s' "$pin")
+  jq -c --argjson labels "$labels" --arg title "triage the non-blocking findings from the review of $repo#$num at $short" --arg opening "Non-blocking findings from the automated architect review of $repo#$num at $pin: $rurl. Written by the review session; not yet read by a human." '
+    def item($k; $f):
+      ([($f.title + $f.body) | scan("`+") | length] | max // 0) as $run
       | ([$run + 1, 3] | max) as $n
       | ([range($n)] | map("`") | join("")) as $fence
-      | {title: $f.title, body: ($opening + "\n\n" + $fence + "\n" + $f.body + "\n" + $fence), labels: $labels}' \
-      <"$HDIR/ob-findings" >"$HDIR/issue-$idx.json" || { say "cannot build issue request $idx"; return 0; }
-    created=$(gh_api -X POST "repos/$BREPO/issues" --input "$(hp "$HDIR/issue-$idx.json")" --jq .number | tr -d '\r') \
-      || { say "creating finding $idx failed; the rest are not filed"; return 0; }
-    case $created in ''|*[!0-9]*) say "the created issue number is not digits; stopping"; return 0 ;; esac
-    printf '%s %s\n' "$idx" "$created" >>"$ENTRY/filed"
-    idx=$((idx + 1))
-  done
+      | ($fence + "\n" + $f.title + "\n\n" + $f.body + "\n" + $fence | split("\n") | map("  " + .) | join("\n")) as $block
+      | "\n\n- [ ] Finding \($k)\n\n" + $block;
+    . as $all
+    | {title: $title, body: ($opening + ([range($all | length)] | map(item(. + 1; $all[.])) | join(""))), labels: $labels}' \
+    <"$HDIR/ob-findings" >"$HDIR/issue.json" || { say "cannot build the issue request"; return 0; }
+  out=$(gh_api -X POST "repos/$BREPO/issues" --input "$(hp "$HDIR/issue.json")" --jq .number) \
+    || { say "creating the findings issue failed; it may not have been filed"; return 0; }
+  created=$(printf '%s' "$out" | tr -d '\r')
+  case $created in ''|*[!0-9]*) say "the created issue number is not digits; stopping"; return 0 ;; esac
+  printf '%s\n' "$created" >>"$ENTRY/filed"
   rm -f "$HDIR/filing-token"
   return 0
 }

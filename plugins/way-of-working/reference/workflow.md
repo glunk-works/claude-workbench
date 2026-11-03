@@ -278,7 +278,7 @@ every non-blocking finding as a backlog item. Under an `identities` map no sessi
 host the skill prints the launcher command and stops; the host launcher (`wow-review`) starts a
 review container that runs the skill, which directs no local execution, and writes its outbox; the launcher
 posts as the declared reviewer App, polls the gate (logged only) and files at most five of the
-outbox's findings, only into a `github_issues` backlog owned by the PR repository's owner.
+outbox's findings as one issue, only into a `github_issues` backlog owned by the PR repository's owner.
 `skills/architect-review/SKILL.md` owns the steps and stops of each mode. The posted review is a
 timestamped, threadable event distinct from the PR *description*: an audit record that survives
 edits to the description and cannot be mistaken for the human's approval.
