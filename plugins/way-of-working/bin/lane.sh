@@ -684,7 +684,7 @@ done_next() {
       }
       next
     }
-    $0 == "group\tnone" { seen = 1; next }
+    $0 == "group none" { seen = 1; next }
     NF==3 && $1 == "group" && $2 ~ /^[1-9][0-9]*$/ && $3 ~ /^#[0-9]+( #[0-9]+)*$/ {
       seen = 1
       m = split($3, g, " "); line = ""

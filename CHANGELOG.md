@@ -41,6 +41,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- `lane.sh done` prints `next none`, not `next unreadable`, when `lane-groups.sh` finds no ready issue (`#1292`).
 - `project-schema.md` attributes the exact first-line and third-line review match to the gate workflow in the plugin's source repository (`WB-D37`) and names the fifth-line `Review verdict:` read (`WB-D38`) (`#1186`, `#1187`).
 
 ## [0.29.0] — 2026-11-02
