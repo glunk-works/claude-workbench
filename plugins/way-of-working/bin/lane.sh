@@ -72,9 +72,11 @@
 # for none, `ambiguous`), checks (`-` unless the PR is open, else fail, pending, pass, none or
 # unreadable; a display summary only, /way-of-working:pr-checks is the merge verdict), spec
 # (`found` or the finder's word); `none` for no lanes or no lanes directory.
-# done's `next <group> #a #b` lines come from lane-groups.sh, minus issues with a lane here or
-# sharing a path with one; `next none` or `next unreadable` otherwise. They never change its
-# exit status.
+# done's `next <group> #a #b` lines come from lane-groups.sh, minus issues with a directory of
+# their number under the lanes directory and issues whose `shared` field names one; `next none`
+# or `next unreadable` otherwise. A live lane (a directory under the lanes directory, not a check
+# for a worktree) is checked for path overlap only when its issue is an open issue on the finished
+# task's milestone with spec paths lane-groups.sh could read. They never change its exit status.
 #
 # GitHub host. The script unsets GH_HOST and GH_ENTERPRISE_TOKEN once at the top. Each gh call
 # names its host or repository explicitly (--hostname github.com, --repo, a repos/ path);
@@ -712,8 +714,11 @@ lane_status() {
 
 # ---- done -----------------------------------------------------------------------------------
 
-# done_next: what the freed lane can take, from lane-groups.sh's groups minus issues with a worktree
-# here and issues sharing a path with one. Display only: it never changes the exit status.
+# done_next: what the freed lane can take, from lane-groups.sh's groups minus issues with a directory
+# of their number under the lanes directory and issues whose `shared` field names one. A live lane
+# (a directory, not a check for a worktree) is checked for path overlap only when its issue is an
+# open issue on the finished task's milestone with spec paths lane-groups.sh could read. Display
+# only: it never changes the exit status.
 done_next() {
   dn_ms=$(gh api "repos/$BACKLOG/issues/$N" --jq '(.milestone.number // 0) | tostring' 2>/dev/null) || dn_ms=
   case "$dn_ms" in
