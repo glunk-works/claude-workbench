@@ -222,8 +222,7 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
    - Extract `<baseline anchor>` from the *previous* cursor: `jq -c .pointers.plan_anchor
      .ai/state.json` — **compact, on one line**, never pretty-printed `jq .`;
      `plan-anchor.sh`'s parser only matches a key and its value on the same line.
-   - Run `plan-anchor.sh verify --plan [--loop-identity <login>] {backlog.repo} <old pointer> <baseline anchor>` (the flag per
-     `reference/project-schema.md` § `orchestration`, *Passing it to `plan-anchor.sh verify`*) before
+   - Run `plan-anchor.sh verify --plan [<flags>] {backlog.repo} <old pointer> <baseline anchor>` (`<flags>` are the lines of `plan-anchor-flags.sh "$T/def.yml"`, collected into the positional parameters and passed as `"$@"`, all in the same Bash call as the block that `reference/project-schema.md` § `orchestration`, *Passing it to `plan-anchor.sh verify`*, gives, which writes `$T/def.yml`; a helper refusal is `unreadable`) before
      overwriting it, and branch on its **exact** printed word — not on an inferred cause,
      which the word alone cannot always distinguish (a `drift` here can mean the milestone
      closed or the anchor names another milestone; that distinction doesn't change the

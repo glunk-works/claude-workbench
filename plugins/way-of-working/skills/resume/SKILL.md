@@ -158,12 +158,21 @@ edited it. **Default to the full checklist whenever unsure.**
        decides to wait early is exactly the one this exists for. Run `plan-anchor.sh verify`
        with the flags and the default-branch reads the Auto-start rule's *plan verified*
        condition and *The maintainer's reaction* paragraph specify — the fetch, the
-       `git show`, all four flag decisions and `verify` in **one** Bash call, `<anchor>` bound as
+       `git show`, the helper call and `verify` in **one** Bash call, `<anchor>` bound as
        `ANCHOR=$(jq -c .pointers.plan_anchor .ai/state.json)` and quoted, never pasted — and
        keep the printed word for the pick-up summary, whether the session then auto-starts or
-       waits (on an open gate, say). A flag read that fails, or the reach check or either read above failing,
+       waits (on an open gate, say). A failed helper call, or the reach check or either read above failing,
        means `verify` did not run: report `Plan anchor: unreadable (<which read>)`, never a
        missing flag and never an omitted line.
+
+       **The identity flags (`#1221`).** In that same Bash call, after the fetch and the `git show`
+       (the latter written to `$DEF_YML_FILE`), and with `T=$(mktemp -d)` made in that call, run `plan-anchor-flags.sh
+       "$DEF_YML_FILE" >"$T/flags.txt"`, then collect the file's lines into the positional parameters
+       (`set --`, then `while IFS= read -r a; do set -- "$@" "$a"; done <"$T/flags.txt"`, reading
+       the file by redirect, never through a pipeline) and pass `"$@"` to `verify` in place of the
+       identity flags (`--loop-identity`, `--maintainer-ids`, `--dev-app-id`, `--declared-app-ids`); the helper, the loop and `verify` are one `&&` chain, as `reference/project-schema.md` § `orchestration`, *Passing it to `plan-anchor.sh verify`*, shows.
+       A non-zero exit from the helper means `verify` did not run: report `Plan anchor: unreadable
+       (flags)`, and wait.
 
        **Which mode:** full mode when the anchor's `task_issue` is non-null. When it is `null`
        (which always waits — no task token can match; a `--plan` word never satisfies the
@@ -783,11 +792,9 @@ edited it. **Default to the full checklist whenever unsure.**
      ```bash
      plan-anchor.sh verify [--loop-identity <login>] [--maintainer-ids <id,id,...>] [--dev-app-id <id>] [--declared-app-ids <id,id,...>] [--spec-comment "$CID" "$CUP"] {backlog.repo} <pointers.sprint_plan> <anchor>
      ```
-     (full mode, `reference/project-schema.md` § `planning`; `--maintainer-ids` per *The
-     maintainer's reaction* below, **`unreacted` waits**; `--loop-identity` is passed when
-     the default branch's `orchestration.loop_identity` is non-null, read as that section's
-     *Passing it to `plan-anchor.sh verify`* paragraph says, and an unreadable read waits;
-     `<anchor>` is
+     (full mode, `reference/project-schema.md` § `planning`; the identity flags come from
+     `plan-anchor-flags.sh`, per *The maintainer's reaction* below, and a refusal from it waits;
+     **`unreacted` waits**; `<anchor>` is
      `pointers.plan_anchor` extracted **compact, on one line** — e.g. `jq -c
      .pointers.plan_anchor .ai/state.json` — never pretty-printed, since the parser only
      matches a value on the same line as its key) printed `match` — **`untrusted` waits**, like
@@ -877,16 +884,13 @@ edited it. **Default to the full checklist whenever unsure.**
 
      **The maintainer's reaction (`WB-D24`, `#383`).** A trusted author's comment is not an
      approval. Under a map (`.identities | tag` is `!!map`), `plan-anchor.sh verify` also needs
-     `--maintainer-ids <id,id,...>`, the numeric `id` of every `identities.maintainer` entry from
-     the same default-branch copy (`$DEF_YML_FILE`, read in the **same** Bash call as the fetch,
-     never `.ai/project.yml` in the working tree, which a PR can edit to add its own id),
-     decided from that same file, in that same call: `yq -r 'has("identities"), (.identities | tag)' "$DEF_YML_FILE"` prints exactly the two lines `true` then `!!null`
-     (legacy) → omit the flag; `!!map` → pass it; anything else, a missing key or an unreadable file
-     **waits** — the flag is never omitted by default, and never decided from the author check, which
-     runs later (at the body fetch). Extract the ids with a type check, `yq -r '.identities.maintainer | explode(.) | map(.id) |
-     join(",")' "$DEF_YML_FILE"` after confirming every entry's `id` is `!!int` (`yq -r
-     '[.identities.maintainer | explode(.) | .[].id | tag] | unique | join(",")'` prints `!!int`); an unreadable
-     file, an empty list, a string or missing `id` waits, never omits the flag. **Under a map the
+     `--maintainer-ids <id,id,...>`, the numeric `id` of every `identities.maintainer` entry, which
+     `plan-anchor-flags.sh` prints from the same default-branch copy (`$DEF_YML_FILE`, read in the
+     **same** Bash call as the fetch, never `.ai/project.yml` in the working tree, which a PR can edit to
+     add its own id). The helper always prints it under a map and omits it under `legacy`; an
+     unreadable file, an empty list, a string or missing `id` makes it refuse, which **waits** — the
+     flag is never omitted by default, and never decided from the author check, which runs later (at the
+     body fetch). **Under a map the
      spec comment is the one the finder prints (`--spec-comment "$CID" "$CUP"`); the anchor's
      own `spec_comment` is `null` and never fetched** (an anchor from an older handoff may
      still carry one: ignored). `verify` prints `untrusted` unless a declared maintainer or the declared dev App (by numeric id) wrote that comment, and `match` only if a declared maintainer
@@ -898,27 +902,18 @@ edited it. **Default to the full checklist whenever unsure.**
      `#N` checks pass, whatever well-formed `spec_comment` the anchor holds. Under `legacy` with a non-null
      `plan_anchor.spec_comment` the anchored comment is the spec. An edit to the
      comment after the reaction makes the reaction stale, and a comment alone never counts.
-     **The dev App (`#660`).** Only under a map (under `legacy` `--maintainer-ids`,
-     `--dev-app-id` and `--declared-app-ids` are omitted and no App key is read), in the same Bash call, from the same default-branch `$DEF_YML_FILE`
-     that yields `--maintainer-ids`, read the dev App with the selector the *Derive the review
-     step from GitHub* block already uses (`explode(.)`, a map, an `!!int` `id` above 0, an
-     `!!str` `login`), confirmed by `gh-identity.sh role` printing `dev_app` for that login and
-     id. Passing that gives `--dev-app-id <id>`. `.identities | has("dev_app")` true with a
-     `null` value omits the flag. An absent key, a malformed entry or a `role` refusal
-     **waits**, never omitting the flag by default. The dev App may author the spec comment but
+     **The dev App (`#660`).** Under a map the helper also prints `--dev-app-id <id>`, the dev
+     App's id as `gh-identity.sh role` confirms it; a `null` `dev_app` omits the flag, and a missing key, a
+     malformed entry or a `role` refusal makes the helper refuse, which **waits**. The dev App may author the spec comment but
      never approves it: its own reaction does not count, and a dev-App spec comment is `unreacted`
      until a declared maintainer reacts after its last edit.
-     **Every declared App (`#708`).** In the same call and from the same `$DEF_YML_FILE`, read
-     `reviewer_app` and `loop_app` with the selector already used for `dev_app`, each confirmed
-     by `gh-identity.sh role` printing its own key for that login and id. Pass
-     `--declared-app-ids <id,id,...>` with the id of every non-null entry of the three, the dev
-     App's included, so `verify` refuses an App id that is also on the maintainer list. All three
-     present with a null value omits the flag. A missing key, a malformed entry or a `role`
-     refusal **waits**, never omitting the flag by default. Under a colliding config the `role`
-     read itself refuses (exit 2: the id declared more than once, or declared under another
-     login), so resume waits before `verify` runs and reports it by the existing rule as
-     `Plan anchor: unreadable (<which read>)`, never the flag's word.
-     Under `legacy` (`identities: null`) the flags are omitted and nothing changes.
+     **Every declared App (`#708`).** The helper also prints `--declared-app-ids <id,id,...>`
+     with the id of every non-null entry of `dev_app`, `reviewer_app` and `loop_app`, so `verify`
+     refuses an App id that is also on the maintainer list; all three present with a null value omits
+     it. Under a colliding config its `role` read refuses (exit 2: the id declared more than once, or
+     declared under another login), so resume waits before `verify` runs and reports it as `Plan
+     anchor: unreadable (flags)`, never the flag's word.
+     Under `legacy` (`identities: null`) the helper prints at most `--loop-identity`, and nothing else changes.
 
    Otherwise **state the pick-up point and wait** (except the *drafting branch* below). In particular: always wait on
    `planning` (the planning pass is one question at a time — that dialogue *is* the
@@ -1002,7 +997,7 @@ edited it. **Default to the full checklist whenever unsure.**
    > reaction covers the found spec comment, not `#N`'s body, which an agent with issue
    > write could edit after the maintainer reacted. Decide the mode **before the fetch, in
    > the fetch's own Bash call**, from that call's `$DEF_YML_FILE` (the default branch's copy,
-   > as the *Author trust* paragraph reads it) with the reaction flag's predicate, `yq -r
+   > as the *Author trust* paragraph reads it) with `yq -r
    > 'has("identities"), (.identities | tag)'`: `true` then `!!null` is `legacy` (the body is
    > read as before); `true` then `!!map` is a map; anything else, or an unreadable file,
    > **stops before any fetch**, never the unprojected default. Under a map the one fetch is
