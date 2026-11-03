@@ -7,7 +7,7 @@
       "source": {
         "source": "github",
         "repo": "glunk-works/claude-workbench",
-        "ref": "v0.29.0"
+        "ref": "v0.30.0"
       }
     }
   },
