@@ -25,6 +25,7 @@ the GitHub release notes.
 
 ### Changed
 
+- `wow-review` files one issue per review, with each finding from the findings file as its own checklist item, instead of one issue per finding; this applies once the host tools are reinstalled. The architect-review skill keeps a finding that the PR's own body, title or a commit subject is wrong or stale out of the findings file, in the review body only (`#1154`).
 - `/way-of-working:handoff` checks for the sprint's roadmap entry before writing any `next_action` that names archive-sprint, not only before `done`, and when it is missing and the cursor makes the edit its own PR, offers to open that PR after the cursor-sync PR (`#1222`).
 - `reference/workflow.md`'s sprint diagram now shows who files review findings in each identity mode; its procedure paragraph has the pinned-run qualifier back and says "owned by" the PR repository's owner; and the architect-review skill names both ways the launcher starts (`#1192`, `#1194`, `#1195`).
 - The project status line appends `handoff` at 60% or more of context used (`#792`).

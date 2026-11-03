@@ -472,7 +472,7 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
    `/way-of-working:pr-checks` language: READY, STALE-RED, NOT READY, or PENDING.
 
 9. **File every non-blocking finding, one item each,** per `{backlog}`. Skipped in container
-   mode: there the top five go to the outbox and the launcher files them. For
+   mode: there the top five go to the outbox and the launcher files them as one issue. For
    `github_issues`: `gh issue create`, quoting its reproduction, labeled per
    `reference/conventions.md`; `{backlog.repo}` set: reach first —
    `gh api repos/{backlog.repo} --jq .permissions && gh issue create --repo {backlog.repo} …`.
@@ -594,7 +594,9 @@ header, a blank line, the attestation), then:
      (`bug`, `feature`, `chore` or `docs`), and optionally `area` (`area/` and lowercase
      letters, digits or hyphens), none holding a mention or a token-shaped string. On a
      refusal retry once, then write none. Every finding stays in the body as well, since
-     filing can be refused.
+     filing can be refused. A finding that the PR's own body, title or a commit subject is
+     wrong or stale goes in the body only, never in the findings file, and takes none of the
+     five places (the file holds the top five of the rest).
   4. The head re-read: `gh pr view <N> --repo {repo} --json headRefOid -q .headRefOid` must
      equal `$WOW_REVIEW_SHA`, else `stopped head-moved` and no review outcome.
   5. `review-outbox.sh outcome review "$WOW_REVIEW_PR" "$WOW_REVIEW_SHA"`, last.
