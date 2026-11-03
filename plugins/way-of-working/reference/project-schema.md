@@ -805,21 +805,24 @@ own `human_only_paths`. `schema-complete.sh`'s verdict on the working tree is re
 auto-start input and says nothing about that copy; a dispatch must check the trusted one.
 
 **Passing it to `plan-anchor.sh verify`** (`/way-of-working:resume`, `/way-of-working:handoff`,
-`/way-of-working:archive-sprint`). A caller reads `orchestration.loop_identity` from that same
-default-branch copy and passes `--loop-identity <login>` **only when it is non-null**; a
-`null` (or `orchestration: null`) omits the flag. The read is the caller's own, so a caller
-that **cannot** make it (a failed fetch or `yq` read, a missing `origin`, an unresolvable default
-branch) has no verdict it may act on: it treats that exactly as `unreadable` — it waits or
-stages, never proceeds. It never reads the working tree's own copy for this, which on a task's
-branch is the task's to edit.
+`/way-of-working:archive-sprint`). The three callers get all their identity flags, this one included,
+from `bin/plan-anchor-flags.sh` (`#1221`), which reads `orchestration.loop_identity` from the default
+branch's copy and prints `--loop-identity <login>` **only when it is non-null**; a `null` (or
+`orchestration: null`) omits the flag. A missing key, an empty value or one that is not a login refuses.
+The fetch and the `git show` are the caller's own, so a caller that **cannot** make them (a failed
+fetch, a missing `origin`, an unresolvable default branch), or whose helper call refuses (exit 2), has
+no verdict it may act on: it treats that exactly as `unreadable` — it waits or stages, never proceeds.
+It never reads the working tree's own copy for this, which on a task's branch is the task's to edit.
 ```bash
 TOPLEVEL=$(git rev-parse --show-toplevel) &&
 U=$(git -C "$TOPLEVEL" remote get-url origin) &&
 D=$(gh repo view "$U" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') && [ -n "$D" ] &&
 git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
-YML=$(git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml") &&
-LOOP=$(printf '%s' "$YML" | yq -r '.orchestration.loop_identity // ""')
-# a failed step above is unreadable, never an empty $LOOP; empty: no flag, else --loop-identity "$LOOP"
+T=$(mktemp -d) && git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml" >"$T/def.yml" &&
+plan-anchor-flags.sh "$T/def.yml" >"$T/flags.txt" &&
+set -- && while IFS= read -r a; do set -- "$@" "$a"; done <"$T/flags.txt" &&
+plan-anchor.sh verify "$@" <the rest of verify's arguments>
+# one && chain: a failed step above (a helper refusal included) is unreadable, never "no flags", and verify does not run
 ```
 `plan-anchor.sh verify` prints `untrusted` when the milestone's creator, the task issue's
 author, or the spec comment's author (the anchored one in a legacy repo, the `--spec-comment` one under a map; the last two in full mode only) is that
@@ -829,8 +832,8 @@ login (with `--maintainer-ids` it also prints it for a spec comment neither a de
 **What `complete` does and does not establish.** It means every key is present and well-formed
 for its kind, not that the allowlist names real agents, the ruleset exists, or the paths are
 the right ones; those are the preflight's reads. Until the driver ships, no skill reads these
-keys, except `loop_identity` (`#235`: `plan-anchor.sh`'s callers and `review-sandbox.sh trust`
-read it, as above; `#295`: `/way-of-working:resume`'s review-step derivation does too). They are recorded now so each repo's answer is reviewed in its own PR; "a key documented
+keys, except `loop_identity` (`#235`: `bin/plan-anchor-flags.sh` (for `plan-anchor.sh`'s callers) and
+`review-sandbox.sh trust` read it, as above; `#295`: `/way-of-working:resume`'s review-step derivation does too). They are recorded now so each repo's answer is reviewed in its own PR; "a key documented
 but unread" (§ *Adding a key*) is therefore a stated, temporary state for this block, not an
 oversight.
 
@@ -900,10 +903,10 @@ account including the dev App, which `author` never trusts — and `legacy` when
 agent's, which points at it), `architect-review`'s map branch, `bin/spec-issue.sh` and `bin/spec-post.sh` (an `agent` author passes there only with a declared maintainer's fresh approving reaction on the issue, `spec-reaction.sh`; under a map neither script passes any author while a declared App's id is on `identities.maintainer`, an App entry is not well formed or not canonical decimal, or the maintainer list carries an entry that is not well formed or not canonical decimal, `#759`, `#1096`), all through `task-author`. `scripts/loop/preflight.sh github-dispatch`
 (`--identities`) is the one task-issue reader that is its own implementation of the rule rather than a call
 to `gh-identity.sh`: it mirrors `task-author` for the task issue, passing a dev or reviewer App author, and its fixtures hold it to that table; its reaction rule is `bin/spec-reaction.sh`. The one reader that still uses `author` is `bin/review-sandbox.sh trust`. `plan-sprint` shows a task issue's author with `task-author`, through `bin/plan-gather.sh authors`, for display only (`#710`): nothing it does depends on the word. Outside `token-check.sh` (below) and `scripts/identity/review/entrypoint.sh` (which requires `reviewer_app` to be a map, `#634`, checking it with its own `yq` read), `reviewer_app` and `loop_app` are read only to
-refuse them (as authors, and by `classify` as the acting identity), to catch a duplicate id, and, with `dev_app`, to refuse a config that lists a declared App's id on `identities.maintainer` (`spec-find.sh`, `spec-answer.sh`, `spec-comment.sh`, `plan-anchor.sh verify --declared-app-ids`, whose ids `resume` reads and passes, and the loop preflight, `#708`; and `spec-issue.sh` and `spec-post.sh`, for a maintainer or App author of the task issue, before the issue's reactions are read, `#759`).
+refuse them (as authors, and by `classify` as the acting identity), to catch a duplicate id, and, with `dev_app`, to refuse a config that lists a declared App's id on `identities.maintainer` (`spec-find.sh`, `spec-answer.sh`, `spec-comment.sh`, `plan-anchor.sh verify --declared-app-ids`, whose ids `bin/plan-anchor-flags.sh` reads and `resume`, `handoff` and `archive-sprint` pass, and the loop preflight, `#708`; and `spec-issue.sh` and `spec-post.sh`, for a maintainer or App author of the task issue, before the issue's reactions are read, `#759`).
 `plan-anchor.sh verify --maintainer-ids` (`#383`, `#497`; `architect-review` reads the same ids for `bin/spec-reaction.sh`, `#613`) takes the maintainers' numeric ids, for the reaction and the spec comment's author (and, with `--dev-app-id <id>`, the dev App's id as a second accepted author, never an approver and never also a maintainer; and, with `--declared-app-ids <id,id,...>`, the id of every declared App, none of which may be a maintainer, `#708`), from the
-caller, which reads them from the default branch's copy: `resume` passes them under a map and
-omits the flags under `null`. `bin/token-check.sh verify` (`#436`) is a separate use of `role`: a consumer of a minted token runs it before
+caller, which gets them from `bin/plan-anchor-flags.sh` on the default branch's copy: `resume`, `handoff` and `archive-sprint` pass them under a map and
+omit the flags under `null`. `bin/token-check.sh verify` (`#436`) is a separate use of `role`: a consumer of a minted token runs it before
 acting, and for a `dev_app`, `reviewer_app` or `loop_app` role it requires the token's actor and
 matches it against that declared entry through `gh-identity.sh role`; the actor must come from a GitHub
 response obtained with the token (measured in `#380`: the `user` of an issue or PR it created, so only after a first write; or, before any write, GraphQL `viewer { login databaseId }`, measured in `#476`). Under a map the host launcher `wow-review` posts as `reviewer_app` (`#635`). The session in the review container acts with a read-only token of that App and posts nothing itself (`#636`), and `/way-of-working:architect-review` on a host posts nothing under a map. Nothing yet acts as `loop_app`, which is the same stated, temporary state as `orchestration`'s.

@@ -501,10 +501,9 @@ If any precondition fails, STOP and report why — do not archive.
    a sprint archives, by design (`reference/project-schema.md` § `planning`), so gating this
    close on full verify would make the close dead code.
    ```bash
-   plan-anchor.sh verify --plan [--loop-identity <login>] {backlog.repo} <pointers.sprint_plan> <pointers.plan_anchor, as jq -c>
+   plan-anchor.sh verify --plan [<flags>] {backlog.repo} <pointers.sprint_plan> <pointers.plan_anchor, as jq -c>
    ```
-   (`--loop-identity` per `reference/project-schema.md` § `orchestration`, *Passing it to
-   `plan-anchor.sh verify`*; a read of it that cannot be made is `unreadable` here.)
+   (`<flags>` are the lines of `plan-anchor-flags.sh "$T/def.yml"`, collected into the positional parameters and passed as `"$@"`, all in the same Bash call as the block that `reference/project-schema.md` § `orchestration`, *Passing it to `plan-anchor.sh verify`*, gives, which writes `$T/def.yml`; a helper refusal is `unreadable`)
    **No usable baseline** covers two cases, per the approved spec (issue #128's "Build
    notes" comment, point 1):
    - `pointers.plan_anchor` is `null` — never anchored: a blank-seeded next sprint (this
