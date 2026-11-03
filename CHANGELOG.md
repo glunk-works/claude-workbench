@@ -36,6 +36,7 @@ the GitHub release notes.
 - The same cross-check also warns once, with a count, when `review-poll.json` has entries it cannot read as `owner/name`, instead of skipping them silently (`#1265`).
 - The resume schema interview prints one line after a map answer for `identities`, telling the human to hand-add `rulesets` and, where the default branch requires signed commits, `commit_route: api` (`#1161`).
 - `/way-of-working:handoff` no longer writes `schema_version` into `.ai/state.json`; no reader ever checked it, a cursor that still has it reads the same, and no migration is needed (`#1143`).
+- `lane.sh prep` takes an optional comma list of folded issues, checks each like the task, and the lane prompt tells the lane its PR closes them too (`#1153`).
 
 ### Added
 

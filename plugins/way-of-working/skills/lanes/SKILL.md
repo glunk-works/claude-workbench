@@ -19,12 +19,14 @@ project file itself; a repo with no `lanes` declared stops on the script's `no-l
 it by name on `PATH`, never as a copy by path. If `lane.sh` is not found, the installed plugin
 predates it: say so and stop.
 
-## start `N M BRANCH CRITICS`
+## start `N M BRANCH CRITICS [ALSO]`
 
 `N` is the task issue, `M` the milestone the driver expects it on, `BRANCH` is `TYPE/SLUG` and
-`CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`.
+`CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`. `ALSO`, when
+given, is the comma list of issues folded into `N`, each checked open and on `M`, which the prompt
+tells the lane its PR closes too.
 
-1. Run `lane.sh prep N M BRANCH CRITICS`. A stop word it prints (`not-main`, `no-lanes`,
+1. Run `lane.sh prep N M BRANCH CRITICS [ALSO]`. A stop word it prints (`not-main`, `no-lanes`,
    `unsafe-dir`, `unreadable`, `repo-mismatch`, `unreached`, `not-map`, `finder: WORD`,
    `bad-issue`, `exists`, `failed`) is the answer: print it and stop.
 2. On success it prints `worktree=`, `branch=`, `found=`, `milestone=`, `prompt=` and
@@ -33,7 +35,8 @@ predates it: say so and stop.
    ```powershell
    pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Issue N -Hash <prompt-sha256>
    ```
-3. Say that the spec pin, the mode and the critics are in the prompt file.
+3. Say that the spec pin, the mode and the critics (and, when `ALSO` is given, the closes line) are in
+   the prompt file.
 
 ## status
 

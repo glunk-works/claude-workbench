@@ -187,10 +187,12 @@ only `/workspace`, and its `.git` file names a host path.
   path, because it finds its siblings beside itself; no lane is prepped until a release carrying it
   is installed. Prepare a lane with:
   ```sh
-  lane.sh prep N M BRANCH CRITICS
+  lane.sh prep N M BRANCH CRITICS [ALSO]
   ```
   `M` is the milestone the driver expects the task to be on, `BRANCH` is `TYPE/SLUG` and
-  `CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`. It reads the
+  `CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`. `ALSO`, when
+  given, is a comma list of issues folded into `N`: each is checked open, not a pull request and on `M`, like the task, and the
+  prompt names them as issues the PR also closes. It reads the
   project file from the default branch's committed copy (the lanes directory is its `lanes.dir`) and
   its sibling scripts from the installed plugin, needs an installation token that reaches the
   repository, finds the approved spec with `spec-find.sh`,
@@ -198,7 +200,7 @@ only `/workspace`, and its `.git` file names a host path.
   `origin/<pr_base>` with `--no-track` (so nothing pushes to `main` by accident), and writes
   `N-prompt.md` in the lanes directory outside the worktree. The prompt names the task and milestone (the
   container clone has no `.ai/state.json`, so `coder.md`'s checks need them named), the installed
-  plugin's `agents/coder.md`, the spec pin (`PIN_ID`, `PIN_UP`), the mode, the critics, the lane rules
+  plugin's `agents/coder.md`, the spec pin (`PIN_ID`, `PIN_UP`), the mode, the critics, the closes line when `ALSO` is given, the lane rules
   and a `PATH` line that puts the installed plugin's `bin/` first. It never holds issue or
   comment text. It prints `worktree=`, `branch=`, `found=`, `milestone=`, `prompt=` and
   `prompt-sha256=`. If a step from the base fetch on fails it undoes what it did, as far as it

@@ -6,7 +6,7 @@
 # beside it through $0.
 #
 # Usage:
-#   lane.sh prep N M BRANCH CRITICS
+#   lane.sh prep N M BRANCH CRITICS [ALSO]
 #   lane.sh status
 #   lane.sh done N
 #
@@ -16,6 +16,9 @@
 #   BRANCH   TYPE/SLUG: TYPE a commit type of reference/conventions.md, SLUG one or more of
 #            a-z, 0-9 and `-`, starting with a letter or digit
 #   CRITICS  a comma list of architect, security-critic, docs-consistency; no repeats
+#   ALSO     optional: a comma list of the issue numbers folded into N, each digits with no
+#            leading zero, none empty, none repeated, none equal to N; each is checked like N
+#            and the prompt tells the lane its PR closes them too
 #
 # The lanes directory is `lanes.dir` of the default branch's committed .ai/project.yml
 # (project-schema.md, `lanes`): an absolute path of A-Za-z0-9._/-, with no `//`, no `.` or
@@ -40,7 +43,8 @@
 #   exists           prep: the worktree path, prompt file, branch or branch config is taken
 #   finder: WORD     prep: the finder printed WORD (none, unreacted, escalated, ambiguous,
 #                    moved or unreadable) instead of `found`
-#   bad-issue        prep: the task is closed, a pull request, off milestone M, or not N
+#   bad-issue        prep: the task or a folded (ALSO) issue is closed, a pull request, off
+#                    milestone M, or not the number asked for
 #   failed           prep: a step from the base fetch on (or a signal from the lanes
 #                    directory step on) failed and what this run did was
 #                    undone as far as it could be; done: the branch config probe or removal,
@@ -115,7 +119,7 @@ trap '[ -z "$TMP" ] || rm -rf "$TMP"' EXIT
 trap 'exit 1' INT TERM HUP
 
 usage() {
-  echo "usage: lane.sh prep N M BRANCH CRITICS | lane.sh status | lane.sh done N" >&2
+  echo "usage: lane.sh prep N M BRANCH CRITICS [ALSO] | lane.sh status | lane.sh done N" >&2
   exit 2
 }
 
@@ -178,6 +182,25 @@ critics_ok() {
   return 0
 }
 
+also_ok() { # a comma list of issue numbers: no empty item, no repeat, none equal to N
+  case "$1" in
+    *[!0-9,]*) return 1 ;;
+  esac
+  a_list="$1,"
+  a_seen=,
+  while [ -n "$a_list" ]; do
+    a_item=${a_list%%,*}
+    a_list=${a_list#*,}
+    num_ok "$a_item" || return 1
+    [ "$a_item" != "$N" ] || return 1
+    case "$a_seen" in
+      *,"$a_item",*) return 1 ;;
+    esac
+    a_seen="$a_seen$a_item,"
+  done
+  return 0
+}
+
 lanes_shape_ok() { # an absolute path of A-Za-z0-9._/-, no //, no . or .. component, no trailing /
   case "$1" in
     /*) ;;
@@ -216,12 +239,17 @@ repo_shape_ok() { # owner/name, no . or .. part
 MODE=$1
 case "$MODE" in
   prep)
-    [ "$#" -eq 5 ] || usage
+    [ "$#" -eq 5 ] || [ "$#" -eq 6 ] || usage
     N=$2
     M=$3
     BRANCH=$4
     CRITICS=$5
+    ALSO=
     num_ok "$N" && num_ok "$M" && branch_ok "$BRANCH" && critics_ok "$CRITICS" || usage
+    if [ "$#" -eq 6 ]; then
+      ALSO=$6
+      also_ok "$ALSO" || usage
+    fi
     ;;
   status)
     [ "$#" -eq 1 ] || usage
@@ -410,7 +438,8 @@ emit_prompt_sed() {
 
 # The prompt is three quoted heredocs, each through the same sed expressions, the fifth step chosen
 # in between: the chosen text is sed's input like the rest of the template, never a replacement
-# string. Every part must succeed (the caller's `||` turns set -e off), so a failed early part
+# string. The closes line (ALSO given) is printed, never a sed replacement string, since `#` is
+# sed's delimiter. Every part must succeed (the caller's `||` turns set -e off), so a failed early part
 # cannot leave a truncated prompt that reads as success.
 emit_prompt() {
   emit_prompt_sed <<'PROMPT' || return 1
@@ -440,6 +469,15 @@ If that check fails, stop and report.
 3. Run `/way-of-working:critic-gate` with no names on its invocation line. The driver's critics are `@CRITICS@`, given here as names this session holds: when critic-gate selects its critics by rule it unions them with its set and asks nothing; when it proposes, show both lists to the human in the pick-list, as before. That list is not the explicit-names shortcut, which only names the human types count for.
 4. Commit and open the PR with `/way-of-working:ship`. This is the explicit instruction to commit and push that `coder.md` asks for.
 PROMPT
+  if [ -n "$ALSO" ]; then
+    ep_list="Closes $BACKLOG#$N"
+    ep_rest="$ALSO,"
+    while [ -n "$ep_rest" ]; do
+      ep_list="$ep_list, Closes $BACKLOG#${ep_rest%%,*}"
+      ep_rest=${ep_rest#*,}
+    done
+    printf '   The PR body closes each of these issues: %s.\n' "$ep_list" || return 1
+  fi
   if [ "$BACKLOG" = "$NAME" ]; then
     emit_prompt_sed <<'MILESTONEWRITE' || return 1
 5. Set this PR's milestone, only when ship's author check passed and ship reported the PR URL; `P` is the number at the end of that URL. In one Bash call, capture each value into a variable, check it is non-empty and chain with `&&`: require `P` to be digits with no leading zero; require `gh api repos/@BACKLOG@/pulls/$P --jq .head.ref` to print what `git branch --show-current` prints; require `gh api repos/@BACKLOG@/milestones/@M@ --jq .state` to print `open`; then run `gh api -X PATCH repos/@BACKLOG@/issues/$P -F milestone=@M@ --jq .milestone.number`, setting no other field. The milestone is set only when that last call prints `@M@`. Any other outcome (a `P` that is not digits, a branch mismatch, a closed milestone, a failed read, a PATCH that failed or the session refused, another number printed) is no further write. Report the outcome in your final message either way, and never retry with another value or another command.
@@ -538,6 +576,20 @@ prep() {
   is_pr=$(cut -f3 "$TMP/issue.tsv")
   is_ms=$(cut -f4 "$TMP/issue.tsv")
   [ "$is_n" = "$N" ] && [ "$is_state" = open ] && [ "$is_pr" = 0 ] && [ "$is_ms" = "$M" ] || stop bad-issue
+  # 6b. the folded issues, read and checked like the task
+  if [ -n "$ALSO" ]; then
+    al_rest="$ALSO,"
+    while [ -n "$al_rest" ]; do
+      al_n=${al_rest%%,*}
+      al_rest=${al_rest#*,}
+      gh api "repos/$BACKLOG/issues/$al_n" \
+        --jq '[(.number|tostring), .state, (if has("pull_request") then "1" else "0" end), ((.milestone.number // 0)|tostring)] | @tsv' \
+        >"$TMP/also.tsv" 2>/dev/null || stop unreadable
+      awk -F'\t' 'NR>1 {bad=1} NF!=4 {bad=1} END {exit (bad || NR!=1)}' "$TMP/also.tsv" || stop unreadable
+      [ "$(cut -f1 "$TMP/also.tsv")" = "$al_n" ] && [ "$(cut -f2 "$TMP/also.tsv")" = open ] \
+        && [ "$(cut -f3 "$TMP/also.tsv")" = 0 ] && [ "$(cut -f4 "$TMP/also.tsv")" = "$M" ] || stop bad-issue
+    done
+  fi
   # 7. the worktree
   # From here on a signal undoes what this run did, then stops.
   exec 3>&1
