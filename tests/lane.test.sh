@@ -146,7 +146,7 @@ EOF
   printf '{"repositories":[{"full_name":"glunk-works/claude-workbench","description":"%s"}]}\n' "$SENT" >"$CAN/reach.json"
   printf '{"statusCheckRollup":[],"title":"%s"}\n' "$SENT" >"$CAN/prview.json"
   printf '[]\n' >"$CAN/state.json"
-  printf 'group\tnone\n' >"$CAN/groups.txt"
+  printf 'group none\n' >"$CAN/groups.txt"
   printf '%s\n' "$FOUND" >"$CAN/find.txt"
   # the logging git wrapper, the stub gh and a stub ln
   cat >"$FB/git" <<'FAKE_GIT'
@@ -891,6 +891,11 @@ mkdir "$LD/800"
 run_lane done $ISSUE
 assert_eq "done next: every issue dropped is next none" "next none" "$(printf '%s\n' "$out" | tail -n 1)"
 lane_ready
+printf '800\tstale\tp/a\t-\t-\ngroup none\n' >"$CAN/groups.txt"
+run_lane done $ISSUE
+assert_eq "done next: a stale row then group none is next none" "next none" "$(printf '%s\n' "$out" | tail -n 1)"
+assert_eq "done next: a stale row then group none: exit" 0 "$rc"
+lane_ready
 canon '.milestone = null'
 groups_two
 run_lane done $ISSUE
@@ -902,7 +907,7 @@ run_lane done $ISSUE
 assert_eq "done next: a failed milestone read" "next unreadable" "$(printf '%s\n' "$out" | tail -n 1)"
 assert_eq "done next: a failed milestone read: exit" 0 "$rc"
 FX_FAIL=
-for bad in 'unreadable' 'garbage line' '800\tfound\tp/a\t-\t-' 'group\t1\t#800 evil' ''; do
+for bad in 'unreadable' 'garbage line' '800\tfound\tp/a\t-\t-' 'group\t1\t#800 evil' 'group\tnone' ''; do
   lane_ready
   printf "$bad\n" >"$CAN/groups.txt"
   run_lane done $ISSUE
