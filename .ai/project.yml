@@ -122,3 +122,8 @@ identities:
 # records the live lanes and resume reports them.
 lanes:
   dir: /tmp/lanes
+
+# #1155: every spec only appends to CHANGELOG.md, so spec-task must mark its Files touched
+# bullet with the exact **(append)** form spec-fresh.sh skips; spec-post.sh refuses one without.
+append_only:
+  - CHANGELOG.md
