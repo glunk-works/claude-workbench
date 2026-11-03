@@ -25,6 +25,7 @@ the GitHub release notes.
 
 ### Changed
 
+- `/way-of-working:handoff` checks for the sprint's roadmap entry before writing any `next_action` that names archive-sprint, not only before `done`, and when it is missing and the cursor makes the edit its own PR, offers to open that PR after the cursor-sync PR (`#1222`).
 - `reference/workflow.md`'s sprint diagram now shows who files review findings in each identity mode; its procedure paragraph has the pinned-run qualifier back and says "owned by" the PR repository's owner; and the architect-review skill names both ways the launcher starts (`#1192`, `#1194`, `#1195`).
 - The project status line appends `handoff` at 60% or more of context used (`#792`).
 - The host launchers check `yq --version` right after resolving `yq`, before any docker or git call, and refuse one below v4.54.1, or one whose version cannot be read, up front; `wow-lane.ps1` used to stop later with `yq could not read lanes.dir` (`#1256`).
