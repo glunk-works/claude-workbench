@@ -2583,7 +2583,7 @@ take effect. Full reasoning and the task breakdown that implements them:
        comment carries no critic line and no reader checks for one, the maintainer being the approver.
   - **Not built.** Reading a maintainer's answer from the escalated comment's thread and continuing from it (it
     reads comments, a trust-boundary change of its own; *built by `WB-D39`*), and a second-opinion round on a spec.
-  - **Slack: open, and nothing writes to it.** Three questions stay open: which identity posts; whether a
+  - **Slack: open, and nothing writes to it.** *Amended by `WB-D44`: answered, notify-only through the GitHub Slack app's subscription filtered on `status/needs-human`; still nothing in this plugin writes to Slack.* Three questions stay open: which identity posts; whether a
     Slack reply can carry a decision or only notifies; how a reply is authenticated as the maintainer's, so it
     is never a weaker approval path than a GitHub reaction. Nothing in this plugin writes to Slack until a
     later entry answers all three.
@@ -2737,6 +2737,14 @@ take effect. Full reasoning and the task breakdown that implements them:
   - **The trust root moves.** It was a `git archive` extraction of the default branch's `plugins/way-of-working/bin`. It is now the installed plugin's own `bin/`, beside the script, which is same-user-writable on the home volume; the script header says so. A change reaches a lane only through a human merge and a release.
   - **Loop reach.** `bin/` is outside `orchestration.human_only_paths` while `scripts/` is inside, so the loop may now edit `lane.sh`, under the critic floor and the human merge.
   - **Merge limit.** This repo's pin is a release without `bin/lane.sh`, so no lane is prepped from the merge until the release carrying it is installed.
+
+- **WB-D44 (`#791`) — an escalated spec notifies the maintainer through the GitHub Slack app; Slack carries no decision.** Amends `WB-D35`'s *Slack* bullet. Builds on `#746`.
+  - **The decision.** Notify-only, decided by the maintainer on 2026-10-26. The maintainer sets up, by hand, a GitHub Slack app subscription to this repo's issues filtered on `status/needs-human`. No workflow, no webhook, no secret and no Slack credential exists in any Claude context or in this repo, and nothing in this plugin writes to Slack.
+  - **Which identity posts.** The GitHub Slack app, under the subscription the maintainer made. Not the dev App, the reviewer App, the loop identity or a new Slack-only identity. Its credential lives in neither the host broker nor any container.
+  - **Notify or decide.** Notify only. Every decision stays a GitHub reaction or comment by a declared maintainer, read by the existing readers; nothing in this plugin reads Slack.
+  - **Authentication.** No Slack message is read, so none is authenticated. A GitHub write made from Slack through a linked GitHub account is a GitHub write by that account, read like any other, and the reaction by a declared maintainer matched on numeric id stays the only approval.
+  - **Accepted residual.** An escalation that adds no label to the issue sends no notice, whatever the cause, an issue already carrying the label included.
+  - **Unverified.** Which issue events the subscription notifies on, a label added to an open issue included, and whether a linked account can react from Slack; the maintainer confirms both after setting it up.
 
 ## Status
 
