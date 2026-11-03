@@ -2,18 +2,12 @@
 # Fixture tests for scripts/invariants-check.sh's check 3: the reach check precedes the
 # ruleset call in /resume.
 #
-# The check's ordering half was a silent no-op for its whole life: it looked for the
-# ruleset call as `gh api repos/{repo}/rules/branches`, but every real call is written
-# `gh api --paginate repos/{repo}/rules/branches/...`, so the pattern never matched, the
-# `[ -n "$ruleset" ]` guard swallowed the empty result, and a wrong ordering could not
-# fail. No fixture would have gone red against that bug, because the real file's order is
-# already right -- a test that only feeds the real tree is a control that yields the same
-# answer with or without the fix. So each case here mutates a COPY of the real /resume
-# skill into a wrong order (or removes the call) and asserts the check fires. Run against
-# the pre-#162 script, the `paginate`, `twoflags`, `missing` and `not_a_call` cases fail;
-# `noflag` passes there too (the old pattern matched it) and stays as a guard against a
-# later fix over-tightening the pattern. The real-tree case is a deliberate control.
-# See issue #162.
+# The ruleset call is the line whose first word is `ruleset-drift.sh` (the script holds the
+# `gh api` reads; #1211). Its earlier anchor, a `gh api ... rules/branches` pattern, never
+# matched for its first life (#162), so a wrong ordering could not fail. A test that only feeds
+# the real tree is a control that yields the same answer with or without the check, so each
+# case here mutates a COPY of the real /resume skill into a wrong order (or removes the call)
+# and asserts the check fires. The real-tree case is a deliberate control.
 #
 # Only check 3's own messages are asserted, never the script's overall exit: every case but
 # the control runs just that check (`--only 3`), and the control runs them all.
@@ -87,49 +81,35 @@ assert_silent "real tree: reach precedes the ruleset call" "$d" "$ORDER_MSG"
 assert_silent "real tree: the ruleset call is found" "$d" "$MISSING_MSG"
 sel="--only 3"
 
-# --- the actual form: `gh api --paginate repos/...` (the #162 defect) ----------
-d="$(tree paginate)"
-grep -q 'gh api --paginate repos/{repo}/rules/branches' "$(resume_in "$d")" || {
-  echo "FAIL - fixture premise: the real /resume no longer writes the --paginate form" >&2
+CALL_RE='^ *ruleset-drift\.sh '
+
+# --- wrong order: the script call above the reach call -------------------------
+d="$(tree order)"
+grep -qE "$CALL_RE" "$(resume_in "$d")" || {
+  echo "FAIL - fixture premise: the real /resume no longer calls ruleset-drift.sh on its own line" >&2
   fail=1
 }
 reorder "$(resume_in "$d")"
-assert_fires "wrong order fires against the real --paginate form" "$d" "$ORDER_MSG"
+assert_fires "wrong order fires against the real script call" "$d" "$ORDER_MSG"
 
-# Rewrite the ruleset call in a copy's resume skill, and fail the suite if the rewrite did
-# not land -- a sed that silently changes nothing would let a case pass vacuously.
-# $2 must not contain `|`, `&` or a backslash: it is spliced into a sed replacement.
-subst() { # subst <dir> <replacement-for-"gh api --paginate repos/{repo}/rules/branches">
-  r="$(resume_in "$1")"
-  sed "s|gh api --paginate repos/{repo}/rules/branches|$2|" "$r" >"$1/r.new" && mv "$1/r.new" "$r"
-  if grep -qF -- "gh api --paginate repos/{repo}/rules/branches" "$r" || ! grep -qF -- "$2" "$r"; then
-    echo "FAIL - fixture premise: the substitution [$2] did not apply" >&2
-    fail=1
-  fi
-}
+# --- the call reworded or removed must be loud, not silent -----------------------
+d="$(tree reworded)"
+r="$(resume_in "$d")"
+sed 's|^\( *\)ruleset-drift\.sh |\1ruleset-drift-x.sh |' "$r" >"$d/r.new" && mv "$d/r.new" "$r"
+grep -qE "$CALL_RE" "$r" && { echo "FAIL - fixture premise: the rewording did not apply" >&2; fail=1; }
+assert_fires "a reworded script call is reported, not silently passed" "$d" "$MISSING_MSG"
 
-# --- flag placement: no flag, and more than one flag -------------------------
-d="$(tree noflag)"
-subst "$d" 'gh api repos/{repo}/rules/branches'
-reorder "$(resume_in "$d")"
-assert_fires "wrong order fires with no flag between gh api and the path" "$d" "$ORDER_MSG"
+d="$(tree removed)"
+r="$(resume_in "$d")"
+grep -vE "$CALL_RE" "$r" >"$d/r.new" && mv "$d/r.new" "$r"
+assert_fires "a removed script call is reported, not silently passed" "$d" "$MISSING_MSG"
 
-d="$(tree twoflags)"
-subst "$d" 'gh api --paginate --jq . repos/{repo}/rules/branches'
-reorder "$(resume_in "$d")"
-assert_fires "wrong order fires with two flags before the path" "$d" "$ORDER_MSG"
-
-# --- the pattern drifting again must be loud, not silent ---------------------
-d="$(tree missing)"
-subst "$d" 'gh api --paginate repos/{repo}/rulesets/x'
-assert_fires "a reworded ruleset call is reported, not silently passed" "$d" "$MISSING_MSG"
-
-# --- a line that merely names the path is not the ruleset call ---------------
-# The `gh api` prefix is what stops this echo line being taken for the call; without it
-# the pattern would match here and the missing-call report would not fire.
-d="$(tree not_a_call)"
-subst "$d" 'echo repos/{repo}/rules/branches'
-assert_fires "a non-call line naming the path is not mistaken for the call" "$d" "$MISSING_MSG"
+# --- a backtick mention of the script in prose is not the call --------------------
+d="$(tree prose)"
+r="$(resume_in "$d")"
+grep -vE "$CALL_RE" "$r" >"$d/r.new" && mv "$d/r.new" "$r"
+printf '\n`ruleset-drift.sh` is mentioned in prose here.\n' >>"$r"
+assert_fires "a prose mention naming the script is not mistaken for the call" "$d" "$MISSING_MSG"
 
 [ ! -e "$tmp/usage-exit" ] || { echo "FAIL - the checker exited 2 (usage) in at least one case" >&2; fail=1; }
 

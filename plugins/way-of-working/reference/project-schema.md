@@ -36,7 +36,7 @@ failure the skill exists to prevent.
 Same rule for an individual key: a key that is absent is not a key that is `null`. `null` is
 a decision ("this repo has no review CI gate"); **absent is an unanswered question, always —
 no key has a default any more** (`WB-D17`, `#142`, reversing `#127`'s Optional-key clause).
-(`rulesets` and `lanes`, the two optional keys, and the optional sub-key
+(`rulesets`, `lanes` and `append_only`, the three optional keys, and the optional sub-key
 `identities.dev_app.commit_route` are the stated exceptions: an absent one is simply not declared and is never asked, and
 each one's section says so.)
 `/way-of-working:resume` is the one place a missing key is asked for, once per session, at
@@ -157,6 +157,10 @@ identities: null                 # null means this repo has not cut over to App 
 # ── parallel lanes (optional) ────────────────────────────────────────────────
 lanes: null                      # null means this repo runs no lanes. Optional: an undeclared
                                  # key is never asked. A map { dir } declares them — see below.
+
+# ── append-only files (optional) ─────────────────────────────────────────────
+append_only: null                # null means no file is held to the append marker rule. Optional:
+                                 # an undeclared key is never asked. A list of paths — see below.
 ```
 
 ---
@@ -950,6 +954,25 @@ line and compares them with the recorded ones. `bin/lane.sh` (`/way-of-working:l
 line never blocks or enables one. (A declared but malformed `lanes` is `incomplete` like any key and holds auto-start as one does, and
 the interview never asks for it: an `invalid lanes…` or `missing lanes.dir` finding is fixed by hand, or by removing the key.)
 
+### `append_only`
+
+`append_only` (`#1155`) is **optional**, like `lanes`: it is either `null` or a list of repo-relative
+file paths. An undeclared `append_only` is simply not declared and is never asked. `null` and an empty
+list both hold no file to the rule. A file listed here is one every spec only appends to, and a spec
+drafted by `/way-of-working:spec-task` must then mark its *Files touched* bullet for that file with a
+space and `**(append)**` right after the closing backtick, the one form `spec-fresh.sh` skips.
+`spec-shape.sh check` (given the project file as its third argument) answers `no-append <path>[,<path>...]`
+for a bullet without that exact marker, and `spec-post.sh` stops `bad-shape` on it, reading the list from
+the default branch's committed copy. `bin/schema-complete.sh` validates the key: `null` or a list whose
+every entry is a path of letters, digits, `.`, `_`, `-` and `/`, starting with a letter, digit, `.` or `_`,
+with no empty, `.` or `..` segment and no trailing `/`, else one `invalid append_only` finding.
+Only `spec-shape.sh` acts on it.
+
+The key adds no skip of its own: skipping still needs the marker. Every bullet for a declared file then
+carries the marker and is skipped by the freshness check, so a repo declares only a file every spec only
+appends to, never a workflow file or a file the loop protects. A `.github` path (`.github` itself or
+anything under `.github/`) is refused, because `spec-fresh.sh` never skips one.
+
 ---
 
 ## Worked example — a second repo, to show the seams move
@@ -1042,6 +1065,8 @@ identities:
 
 lanes:
   dir: /tmp/lanes                 # worktrees at dir/<N>, one per task issue N
+
+append_only: null                 # optional, never asked; no file is held to the append marker rule
 ```
 
 The two configurations differ in every value and in the *shapes* (`backlog.kind`, and

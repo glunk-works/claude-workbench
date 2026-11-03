@@ -49,12 +49,14 @@
 #     tests/invariants-required-checks.test.sh (the checker's check 26 needs it).
 #   - `yq` also, for part of a suite: tests/token-check.test.sh (its actor cases),
 #     tests/gh-identity.test.sh (its classify cases) and tests/app-push.test.sh (its commit_route
-#     reader cases) skip those cases without it; tests/spec-comment.test.sh and
+#     reader cases) skip those cases without it, as does tests/spec-shape.test.sh (its project-file
+#     cases); tests/spec-comment.test.sh and
 #     tests/review-sandbox.test.sh skip the whole suite.
 #   - tests/lane.test.sh and tests/lane-state.test.sh need `git`, `yq` and `jq`;
 #     tests/statusline-context.test.sh needs `jq`; tests/compact-handoff.test.sh needs `git`
 #     (and `jq` for its registration cases).
 #   - tests/review-image.test.sh needs `jq` and `yq`.
+#   - tests/ruleset-drift.test.sh needs `jq` and `yq` (and GNU `sed -i`) and skips the whole suite without them.
 #   - tests/review-verdict.test.sh needs `jq`.
 #   - tests/plan-gather.test.sh needs `yq` for its `authors` section and skips that section loudly
 #     without it.

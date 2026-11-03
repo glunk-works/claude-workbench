@@ -26,6 +26,7 @@ the GitHub release notes.
 ### Changed
 
 - `wow-review` files one issue per review, with each finding from the findings file as its own checklist item, instead of one issue per finding; this applies once the host tools are reinstalled. The architect-review skill keeps a finding that the PR's own body, title or a commit subject is wrong or stale out of the findings file, in the review body only (`#1154`).
+- `/way-of-working:handoff` checks for the sprint's roadmap entry before writing any `next_action` that names archive-sprint, not only before `done`, and when it is missing and the cursor makes the edit its own PR, offers to open that PR after the cursor-sync PR (`#1222`).
 - `reference/workflow.md`'s sprint diagram now shows who files review findings in each identity mode; its procedure paragraph has the pinned-run qualifier back and says "owned by" the PR repository's owner; and the architect-review skill names both ways the launcher starts (`#1192`, `#1194`, `#1195`).
 - The project status line appends `handoff` at 60% or more of context used (`#792`).
 - The host launchers check `yq --version` right after resolving `yq`, before any docker or git call, and refuse one below v4.54.1, or one whose version cannot be read, up front; `wow-lane.ps1` used to stop later with `yq could not read lanes.dir` (`#1256`).
@@ -38,10 +39,13 @@ the GitHub release notes.
 
 ### Added
 
+- `spec-shape.sh check` takes an optional project file and answers `no-append <path>[,<path>...]` for a *Files touched* bullet of a file the new optional `append_only` key lists that lacks the exact `**(append)**` marker, so `spec-task` drafts no longer make later changelog merges read `stale`; `spec-post.sh` stops `bad-shape` on one, and `schema-complete.sh` validates the key (`#1155`).
 - `scripts/invariants-check.sh` check 27 fails when a directory under a plugin's `skills/` is not named as `/PLUGIN:SKILL` in both the plugin.json description and the marketplace entry's description (`#1249`).
 
 ### Fixed
 
+- resume's ruleset-drift check runs from `bin/ruleset-drift.sh`, so its regex no longer passes through a Windows host shell tool's quoting, which was reported to read a healthy repo as `inconclusive` (`#1211`).
+- `lane.sh done` prints `next none`, not `next unreadable`, when `lane-groups.sh` finds no ready issue (`#1292`).
 - `project-schema.md` attributes the exact first-line and third-line review match to the gate workflow in the plugin's source repository (`WB-D37`) and names the fifth-line `Review verdict:` read (`WB-D38`) (`#1186`, `#1187`).
 
 ## [0.29.0] — 2026-11-02

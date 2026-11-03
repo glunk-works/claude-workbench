@@ -125,6 +125,7 @@ ruleset.required_checks
 rulesets if-present
 lanes if-present
 lanes.dir if-map
+append_only if-present
 review.ci_gate
 review.ci_gate.check if-map
 review.ci_gate.header if-map
@@ -141,7 +142,7 @@ identities.maintainer if-map
 identities.dev_app if-map
 identities.reviewer_app if-map
 identities.loop_app if-map"
-assert_eq "keys: the exact required path set, conditionals suffixed if-map, optional rulesets and lanes if-present" \
+assert_eq "keys: the exact required path set, conditionals suffixed if-map, optional rulesets, lanes and append_only if-present" \
   "$expected_keys" "$("$script" keys)"
 
 echo "# check -- the complete fixture"
@@ -781,6 +782,51 @@ lanes_fixture 'lanes: [a]' "$tmp/ln_seq.yml"
 assert_eq "lanes: a list is invalid" \
   'incomplete
 invalid lanes ["a"]' "$(run_check "$tmp/ln_seq.yml")"
+
+echo "# check -- append_only (#1155): the third optional key; null or a list of paths"
+
+ao_fixture() { { cat "$base"; printf '%s\n' "$1"; } >"$2"; }
+
+for v in 'append_only: null' 'append_only: []' 'append_only: [CHANGELOG.md, docs/log.md]'; do
+  ao_fixture "$v" "$tmp/ao_ok.yml"
+  assert_eq "$v is complete" "complete" "$(run_check "$tmp/ao_ok.yml")"
+done
+
+ao_fixture 'append_only: CHANGELOG.md' "$tmp/ao.yml"
+assert_eq "append_only: a scalar is invalid" \
+  'incomplete
+invalid append_only "CHANGELOG.md"' "$(run_check "$tmp/ao.yml")"
+
+ao_fixture 'x: &x [CHANGELOG.md]
+append_only: *x' "$tmp/ao.yml"
+out=$(run_check "$tmp/ao.yml")
+assert_eq "append_only: an aliased container is invalid" "incomplete|invalid append_only" \
+  "$(printf '%s\n' "$out" | sed -n '1p;2p' | cut -d' ' -f1,2 | paste -sd'|')"
+
+ao_fixture 'append_only: [a/../b]' "$tmp/ao.yml"
+assert_eq "append_only: a .. segment is invalid" \
+  'incomplete
+invalid append_only ["a/../b"]' "$(run_check "$tmp/ao.yml")"
+
+ao_fixture 'append_only: [docs/]' "$tmp/ao.yml"
+assert_eq "append_only: a trailing slash is invalid" \
+  'incomplete
+invalid append_only ["docs/"]' "$(run_check "$tmp/ao.yml")"
+
+ao_fixture 'append_only: ["a\nb"]' "$tmp/ao.yml"
+assert_eq "append_only: an entry holding a newline is invalid" \
+  'incomplete
+invalid append_only ["a\nb"]' "$(run_check "$tmp/ao.yml")"
+
+ao_fixture 'append_only: [.github]' "$tmp/ao.yml"
+assert_eq "append_only: .github is invalid" \
+  'incomplete
+invalid append_only [".github"]' "$(run_check "$tmp/ao.yml")"
+
+ao_fixture 'append_only: [CHANGELOG.md, .github/x.yml]' "$tmp/ao.yml"
+assert_eq "append_only: an entry under .github/ is invalid, with the whole value" \
+  'incomplete
+invalid append_only ["CHANGELOG.md",".github/x.yml"]' "$(run_check "$tmp/ao.yml")"
 
 echo "# check -- ruleset.name (#451): bound as a value, so only an empty or control-character name is rejected"
 

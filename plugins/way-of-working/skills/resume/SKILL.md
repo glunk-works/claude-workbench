@@ -401,92 +401,43 @@ edited it. **Default to the full checklist whenever unsure.**
    > and `gh auth switch` with no argument prints success for a no-op. Ask the **repo** what this
    > token can do; never parse that output.
 
-   Then the ruleset itself. `rules/branches/{branch}` carries each applying ruleset's **id**,
-   never its name, so the first call is load-bearing — a name check without it would pass against
-   any ruleset. Bind `{ruleset.name}` as a value, never as shell text: `yq` hands it to a
-   variable, and `jq --arg` takes it from there on captured output (never interpolated into a
-   quoted argument or a filter string — a name carrying `'` would close the quote; `gh api --jq`
-   takes one plain string). Let `jq` itself pick the first match — never `| head -1`, which would
-   exit 0 even when `jq` fails:
+   Then the ruleset itself, one call after the reach check, run by bare name from the same
+   `bin/` `PATH` as `cursor-drift.sh`:
    ```bash
-   RSN=$(yq -o=json -I=0 '.ruleset.name' .ai/project.yml </dev/null | jq -er 'strings | select(test("^[^\\p{Cc}]+\\z"))') &&
-   L=$(gh api --paginate repos/{repo}/rulesets) &&
-   RID=$(printf '%s' "$L" | jq -r --arg n "$RSN" \
-     'first(.[] | select(.name==$n) | .id) // empty') &&
-   { [ -z "$RID" ] || {
-       B=$(gh api --paginate repos/{repo}/rules/branches/{pr_base}) &&
-       printf '%s' "$B" | jq --argjson id "$RID" '[.[] | select(.ruleset_id==$id)]'
-     }; }
+   ruleset-drift.sh {repo} {pr_base} .ai/project.yml
    ```
-   A failed `gh api` call breaks the chain before `$RID` or `$B` is set — that is
-   "inconclusive", never "weakened or missing". Empty `$RID` after a successful call, or an empty
-   filtered array: no ruleset named `{ruleset.name}` applies to `{pr_base}` — *that* is "weakened
-   or missing". Otherwise confirm the filtered array carries **every** rule type in
-   `{ruleset.rule_types}` and — if `required_status_checks` is one of them — that its contexts
-   cover **every** name in `{ruleset.required_checks}`. Report in the pick-up summary, **at most
-   one line**:
-   - Healthy → e.g. `Ruleset check: healthy ({N} rule types, {M} required checks).`
-   - Weakened or missing → impossible to miss; name exactly what is absent.
-   - Either `gh api` call failed, `jq` failed or is missing, or `.ai/project.yml` did not supply
-     the expected shape → **inconclusive**, never healthy, and say **which** — an unreachable
-     identity and a failed lookup are different reports.
+   The script reads `rules/branches/{pr_base}` (which carries each applying ruleset's **id**,
+   never its name, so a name check without it would pass against any ruleset), then the
+   rulesets themselves, and prints one line per ruleset entry; its header is the contract,
+   including how values are bound and refused. It checks the single `{ruleset.name}` form, or,
+   **when `.ai/project.yml` declares a `rulesets` list** (`WB-D24`, `#384`), the **union** of every
+   declared ruleset (the checks ruleset and the code-owner approval ruleset, one of them
+   possibly an organization's), where an approval ruleset with **any bypass actor** is drift.
+   Without a `rulesets` list bypass actors are not read: a repo that has not cut over still
+   carries the admin bypass on purpose. A `{repo}` or `{pr_base}` the *Ensure the schema is
+   complete* step left unanswered or reported invalid reads **inconclusive** without running the
+   script. A **non-zero exit is inconclusive**, whatever the script printed.
 
-   **When `.ai/project.yml` declares a `rulesets` list** (`WB-D24`, `#384`), the single-ruleset
-   check above is replaced by this one, run after the same reach check: the expected state is the
-   **union** of every declared ruleset (the checks ruleset and the code-owner approval ruleset, one
-   of them possibly an organization's), and an approval ruleset with **any bypass actor** is drift.
-   Without a `rulesets` list the check above stands unchanged and bypass actors are not read: a
-   repo that has not cut over still carries the admin bypass on purpose. Each entry's `source`
-   decides the API (`repo` → `repos/{repo}/rulesets`, `org` → `orgs/<owner>/rulesets`, `<owner>`
-   being the owner of `{repo}`); anything else is inconclusive, never read as `repo`. Names and
-   lists are bound as values (`jq --arg`), never spliced. Each entry is read
-   whole, by index, as one JSON object and split with `jq` — never through a `@tsv` row, whose
-   CSV-quoting can split one entry across lines and pair a name with the wrong entry's fields.
-   Each value is read with `jq -e` and refused if it is not a string or carries a control
-   character (`\z`, written `\\z` in the jq string, anchors the end of the text, where `$` also matches before a final newline), so a value `.ai/project.yml` wrote with a newline (or a missing name) reads
-   `inconclusive` instead of forging a report line or matching a ruleset called `null` — the
-   completeness check flags it too, but resume continues on an incomplete copy:
-   ```bash
-   R={repo} && OWNER=${R%%/*} &&
-   B=$(gh api --paginate "repos/$R/rules/branches/{pr_base}") &&
-   B=$(printf '%s' "$B" | jq -s 'add // []') &&
-   N=$(yq '.rulesets | length' .ai/project.yml) &&
-   case "$N" in '' | 0 | *[!0-9]*) false ;; esac &&
-   I=-1 &&
-   while I=$((I + 1)); [ "$I" -lt "$N" ]; do
-     ENT=$(yq -o=json -I=0 ".rulesets[$I]" .ai/project.yml </dev/null) &&
-     NAME=$(printf '%s' "$ENT" | jq -er '.name | strings | select(test("^[^\\p{Cc}]+\\z"))') &&
-     SRC=$(printf '%s' "$ENT" | jq -r '.source | strings') &&
-     TYPES=$(printf '%s' "$ENT" | jq -er '.rule_types | join(",") | select(test("^[^\\p{Cc}]*\\z"))') &&
-     CHECKS=$(printf '%s' "$ENT" | jq -er '(.required_checks // []) | join(",") | select(test("^[^\\p{Cc}]*\\z"))') || { echo "ruleset #$I inconclusive"; continue; }
-     case "$SRC" in repo) API="repos/$R/rulesets" ;; org) API="orgs/$OWNER/rulesets" ;; *) echo "ruleset $NAME inconclusive"; continue ;; esac
-     L=$(gh api --paginate "$API" </dev/null) || { echo "ruleset $NAME inconclusive"; continue; }
-     RID=$(printf '%s' "$L" | jq -r --arg n "$NAME" 'first(.[] | select(.name==$n) | .id) // empty') || { echo "ruleset $NAME inconclusive"; continue; }
-     [ -n "$RID" ] || { echo "ruleset $NAME missing"; continue; }
-     case "$RID" in *[!0-9]*) echo "ruleset $NAME inconclusive"; continue ;; esac
-     BYP=$(gh api "$API/$RID" --jq 'if (.bypass_actors | type) == "array" then (.bypass_actors | length) else "unknown" end' </dev/null) || { echo "ruleset $NAME inconclusive"; continue; }
-     case "$BYP" in '' | *[!0-9]*) echo "ruleset $NAME inconclusive (bypass actors not visible to this identity)"; continue ;; esac
-     MT=$(printf '%s' "$B" | jq -r --argjson id "$RID" --arg t "$TYPES" '[.[] | select(.ruleset_id==$id) | .type] as $have | ($t | split(",") | map(select(. != ""))) - $have | join(",")') || { echo "ruleset $NAME inconclusive"; continue; }
-     MC=$(printf '%s' "$B" | jq -r --argjson id "$RID" --arg c "$CHECKS" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[].context] as $have | ($c | split(",") | map(select(. != ""))) - $have | join(",")') || { echo "ruleset $NAME inconclusive"; continue; }
-     AP=$(printf '%s' "$B" | jq --argjson id "$RID" '[.[] | select(.ruleset_id==$id and .type=="pull_request")] | length') || { echo "ruleset $NAME inconclusive"; continue; }
-     printf 'ruleset %s missing_types=[%s] missing_checks=[%s] approval=%s bypass_actors=%s\n' "$NAME" "$MT" "$MC" "$AP" "$BYP"
-   done
-   ```
-   One line per entry. A failed `gh api`, `yq` or `jq` call breaks the chain or prints `inconclusive`
-   — never healthy. `missing` is "weakened or missing". A non-empty `missing_types` or
-   `missing_checks` is weakened, naming exactly what is absent. **`approval=1` (a `pull_request`
-   rule) with `bypass_actors` above `0` is drift:** name the ruleset and say the approval gate
-   has a standing bypass. Everything else is healthy. Report it in the **same single line** as above,
-   per ruleset only when something is wrong (`Ruleset check: healthy (2 rulesets, 4 rule types, 3
-   required checks).`). It is still a report, not a gate. An organization ruleset a repo-scoped
-   token cannot read is `inconclusive`, and the report says so rather than guessing. So is a
-   ruleset whose response carries no `bypass_actors` array (the key missing, or sent as `null` — which one GitHub
-   sends a caller who cannot edit the ruleset was not observed, so the check keys on the type):
-   a dev-App token reads `inconclusive`, never `0`. A run that prints no line at all for the
-   entries (a failed `yq` or `jq`) is inconclusive too. The check
-   confirms that the declared rule types, check names and (lack of) bypass actors are there; it
-   does not read the approval rule's parameters (approval count, code-owner review) or an
-   app pin, so a ruleset weakened only in those still reads healthy.
+   Read its lines. Report in the pick-up summary, **at most one line**:
+   - Healthy → e.g. `Ruleset check: healthy ({N} rule types, {M} required checks).`
+   - Weakened or missing → impossible to miss; name exactly what is absent. `missing` is
+     "weakened or missing"; a non-empty `missing_types` or `missing_checks` is weakened. **`approval=1`
+     (a `pull_request` rule) with `bypass_actors` above `0` is drift:** name the ruleset and
+     say the approval gate has a standing bypass. Everything else is healthy. Report per ruleset
+     only when something is wrong (`Ruleset check: healthy (2 rulesets, 4 rule types, 3 required
+     checks).`).
+   - Any `inconclusive` line, a script that is missing, or a run that prints no line at all →
+     **inconclusive**, never healthy, and say **which** — an unreachable identity and a failed
+     lookup are different reports. An organization ruleset a repo-scoped token cannot read is
+     `inconclusive`, and the report says so rather than guessing. So is a ruleset whose response
+     carries no `bypass_actors` array (the key missing, or sent as `null` — which one GitHub
+     sends a caller who cannot edit the ruleset was not observed, so the check keys on the type):
+     a dev-App token reads `inconclusive`, never `0`.
+
+   It is still a report, not a gate. The check confirms that the declared rule types, check
+   names and (lack of) bypass actors are there; it does not read the approval rule's parameters
+   (approval count, code-owner review) or an app pin, so a ruleset weakened only in those still
+   reads healthy.
 
    **When a migration is live, also check the default branch.** `/way-of-working:architect-review`
    accepts a non-default PR base only because the **default branch's own** `.ai/project.yml`

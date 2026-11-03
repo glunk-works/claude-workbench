@@ -38,7 +38,10 @@
 #   bad-backlog         `backlog.repo` (null or absent means the origin's repository) is not owner/name
 #   bad-base            `pr_base` is empty, begins with `-` or holds an unusual character
 #   bad-sha             <sha> is not a commit on the tip of origin/<base> or behind it
-#   bad-shape           spec-shape.sh check did not say `ok`
+#   bad-shape           spec-shape.sh check did not say `ok`, run with the default branch's committed project
+#                       file as its third argument (#1155): a draft with an unmarked bullet for a file declared
+#                       under `append_only` stops here, and so does a malformed `append_only` on the default
+#                       branch, which has the final say when the pinned commit's copy differs
 #   no-critic-line      the draft does not carry a well-formed critic line for its mode (#629): see
 #                       the grammar below
 #   has-marker          a line of the draft begins with either marker prefix (`spec-task:` or `spec-task-escalated:`)
@@ -333,7 +336,7 @@ git -C "$gtop" cat-file -e "$sha^{commit}" >/dev/null 2>&1 || stop bad-sha
 git -C "$gtop" merge-base --is-ancestor "$sha" "refs/remotes/origin/$base" >/dev/null 2>&1 || stop bad-sha
 
 # the content, on the copy
-sh "$shape" check "$tmp/draft.md" >"$tmp/shape" 2>/dev/null || stop bad-shape
+sh "$shape" check "$tmp/draft.md" "$tmp/def.yml" >"$tmp/shape" 2>/dev/null || stop bad-shape
 [ "$(rd "$tmp/shape")" = ok ] || stop bad-shape
 
 # The critic line (#629): exactly one line begins `Critic gate:`, before the first `### Goal`

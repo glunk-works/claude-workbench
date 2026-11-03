@@ -36,8 +36,8 @@ the common case, not "no repo." Resolve it once here, and every call below that 
    report which command failed, same as any other unreadable check in this skill.
 
    The entry is normally merged before the close (in the last work PR, or its own small PR): `/way-of-working:handoff`
-   refuses to write `done` before it is merged (its *Determine the new cursor* step,
-   `#209`), so a miss here is the exception, not the expected path.
+   refuses to write `done` before it is merged, and also checks for it before writing a
+   `next_action` that names this skill (its *Determine the new cursor* step, `#209`, `#1222`), so a miss here is the exception, not the expected path.
 
    If missing, fix it — but never on whatever branch the session happens to be standing on.
    This precondition runs *before* the *Compact the deep record* step's own branch-cut

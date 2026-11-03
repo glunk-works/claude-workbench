@@ -1,0 +1,270 @@
+#!/bin/sh
+# Fixture tests for plugins/way-of-working/bin/ruleset-drift.sh (#1211).
+#
+# Runs a COPY of the real script with a stub `gh` first on PATH. The stub maps each endpoint
+# to a canned JSON file under $STUBS (the endpoint with / replaced by _), applies the caller's
+# own --jq filter with jq, fails when the file is absent or `<name>.rc` exists, and logs the
+# endpoints it was called with. The branch-rules read is paged by `<name>.1`, `<name>.2` files.
+#
+# Permitted toolset: POSIX sh plus sed -i, jq and yq (mikefarah v4); the suite skips, loudly, without jq or yq.
+set -eu
+
+root_dir="$(cd "$(dirname "$0")/.." && pwd)"
+script_src="$root_dir/plugins/way-of-working/bin/ruleset-drift.sh"
+
+for tool in jq yq; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "skip - ruleset-drift.sh fixtures: no $tool on PATH" >&2
+    exit 0
+  fi
+done
+
+tmp="$(cd "$(mktemp -d)" && pwd -P)"
+trap 'rm -rf "$tmp"' EXIT
+
+fail=0
+assert_eq() {
+  if [ "$2" = "$3" ]; then echo "ok - $1"; else
+    echo "FAIL - $1: expected [$2], got [$3]" >&2; fail=1
+  fi
+}
+
+STUBS="$tmp/stubs"; export STUBS
+mkdir -p "$STUBS" "$tmp/bin" "$tmp/ghbin"
+cp "$script_src" "$tmp/bin/ruleset-drift.sh"
+chmod 755 "$tmp/bin/ruleset-drift.sh"
+
+cat >"$tmp/ghbin/gh" <<'STUB'
+#!/bin/sh
+# gh api [--paginate] <endpoint> [--jq F]
+shift
+[ "${1:-}" != --paginate ] || shift
+ep=$1; shift
+printf '%s\n' "$ep" >>"$STUBS/gh.log"
+k=$(printf '%s' "$ep" | tr / _)
+[ ! -f "$STUBS/$k.rc" ] || exit 1
+if [ -f "$STUBS/$k.1" ]; then
+  i=1; while [ -f "$STUBS/$k.$i" ]; do cat "$STUBS/$k.$i"; i=$((i + 1)); done
+  exit 0
+fi
+[ -f "$STUBS/$k" ] || exit 1
+if [ "${1:-}" = --jq ]; then jq -r "$2" <"$STUBS/$k"; else cat "$STUBS/$k"; fi
+STUB
+chmod 755 "$tmp/ghbin/gh"
+
+# A PATH with the real tools but no gh/jq/yq as asked: symlink each wanted tool into a dir.
+mkpath() { # mkpath <dir> <tool>...
+  d=$1; shift; mkdir -p "$d"
+  for t in "$@"; do ln -sf "$(command -v "$t")" "$d/$t"; done
+  for t in sh cat tr printf; do
+    p=$(command -v "$t" 2>/dev/null || true); case "$p" in /*) ln -sf "$p" "$d/$t" ;; esac
+  done
+}
+mkpath "$tmp/p-nogh" jq yq
+mkpath "$tmp/p-nojq" yq; ln -sf "$tmp/ghbin/gh" "$tmp/p-nojq/gh"
+mkpath "$tmp/p-noyq" jq; ln -sf "$tmp/ghbin/gh" "$tmp/p-noyq/gh"
+
+reset() { rm -f "$STUBS"/* ; }
+SHELL_BIN=$(command -v sh)
+run() { # run <repo> <base> <yml> -> stdout
+  PATH="$tmp/ghbin:$PATH" "$tmp/bin/ruleset-drift.sh" "$@" 2>/dev/null </dev/null || echo "exit=$?"
+}
+run_path() { # run_path <path> <repo> <base> <yml>
+  _p=$1; shift
+  PATH="$_p" "$SHELL_BIN" "$tmp/bin/ruleset-drift.sh" "$@" 2>/dev/null </dev/null || echo "exit=$?"
+}
+
+R=o/r; BASE=main
+EP_B="repos_o_r_rules_branches_main"; EP_L="repos_o_r_rulesets"
+
+# Branch rules: ruleset 1 = checks (pull_request none), ruleset 2 = approval.
+rules_json() {
+  cat <<'J'
+[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint"},{"context":"test"}]}},
+ {"type":"deletion","ruleset_id":1},
+ {"type":"pull_request","ruleset_id":2}]
+J
+}
+list_json() { echo '[{"id":1,"name":"checks"},{"id":2,"name":"approval"}]'; }
+
+yml="$tmp/p.yml"
+list_yml() {
+  cat >"$yml" <<'Y'
+rulesets:
+  - name: checks
+    source: repo
+    rule_types: [required_status_checks, deletion]
+    required_checks: [lint, test]
+  - name: approval
+    source: repo
+    rule_types: [pull_request]
+Y
+}
+single_yml() { # single_yml <types-flow> [<checks-flow or ->]
+  { echo "ruleset:"; echo "  name: checks"; echo "  rule_types: $1"
+    [ "${2:--}" = - ] || echo "  required_checks: $2"; } >"$yml"
+}
+setup_ok() {
+  reset; rules_json >"$STUBS/$EP_B"; list_json >"$STUBS/$EP_L"
+  echo '{"bypass_actors":[]}' >"$STUBS/repos_o_r_rulesets_1"
+  echo '{"bypass_actors":[]}' >"$STUBS/repos_o_r_rulesets_2"
+}
+
+# --- usage ---------------------------------------------------------------------------------
+out=$("$tmp/bin/ruleset-drift.sh" a b 2>/dev/null) && rc=0 || rc=$?
+assert_eq "a wrong argument count exits 2" "2" "$rc"
+
+# --- list form -----------------------------------------------------------------------------
+setup_ok; list_yml
+assert_eq "list form healthy" \
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml; echo '[{"id":2,"name":"approval"}]' >"$STUBS/$EP_L"
+assert_eq "list form missing" "ruleset checks missing
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml
+echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint"}]}},{"type":"pull_request","ruleset_id":2}]' >"$STUBS/$EP_B"
+assert_eq "list form weakened names the absent type and check" \
+"ruleset checks missing_types=[deletion] missing_checks=[test] approval=0 bypass_actors=0
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml; echo '{"bypass_actors":[{"actor_id":1}]}' >"$STUBS/repos_o_r_rulesets_2"
+assert_eq "list form drift: one bypass actor" \
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=1" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_2"
+assert_eq "list form bypass actors not visible" \
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0
+ruleset approval inconclusive (bypass actors not visible to this identity)" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml; touch "$STUBS/$EP_L.rc"
+assert_eq "list form: a failed rulesets-list read" "ruleset checks inconclusive
+ruleset approval inconclusive" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml; sed -i 's/source: repo/source: team/' "$yml"
+assert_eq "list form: a source other than repo or org" "ruleset checks inconclusive
+ruleset approval inconclusive" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml; sed -i 's/source: repo/source: org/' "$yml"
+echo '[{"id":1,"name":"checks"},{"id":2,"name":"approval"}]' >"$STUBS/orgs_o_rulesets"
+echo '{"bypass_actors":[]}' >"$STUBS/orgs_o_rulesets_1"; echo '{"bypass_actors":[]}' >"$STUBS/orgs_o_rulesets_2"
+run $R $BASE $yml >/dev/null
+assert_eq "list form: an org entry reads the org endpoint" "2" "$(grep -c '^orgs/o/rulesets$' "$STUBS/gh.log")"
+assert_eq "list form: an org entry never reads the repo endpoint" "0" "$(grep -c '^repos/o/r/rulesets$' "$STUBS/gh.log" || true)"
+
+setup_ok; list_yml
+printf '%s\n' 'rulesets:' '  - name: "a\nb"' '    source: repo' '    rule_types: [deletion]' >"$yml"
+assert_eq "list form: a newline inside a name" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
+
+# The trailing newline is the only input that tells \z from $.
+setup_ok
+printf '%s\n' 'rulesets:' '  - name: "checks\n"' '    source: repo' '    rule_types: [deletion]' >"$yml"
+assert_eq "list form: a name ending in a newline" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: ["deletion\n"]' >"$yml"
+assert_eq "list form: a rule type ending in a newline" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [deletion]' '    required_checks: ["lint\n"]' >"$yml"
+assert_eq "list form: a check ending in a newline" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml; echo '[{"id":1.5,"name":"checks"},{"id":2,"name":"approval"}]' >"$STUBS/$EP_L"
+echo '{"bypass_actors":[]}' >"$STUBS/repos_o_r_rulesets_1.5"
+assert_eq "list form: a non-numeric ruleset id" "ruleset checks inconclusive
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0" "$(run $R $BASE $yml)"
+
+# A backslash in a name is no control character; echo in some shells would make it a new line.
+setup_ok
+printf '%s\n' 'rulesets:' "  - name: 'x\\nruleset forged missing_types=[]\\c'" '    source: team' '    rule_types: [deletion]' >"$yml"
+assert_eq "list form: a backslash in a name stays on one line" \
+  'ruleset x\nruleset forged missing_types=[]\c inconclusive' "$(run $R $BASE $yml)"
+
+# --- pre-name inconclusive -----------------------------------------------------------------
+setup_ok; list_yml
+assert_eq "a failed branch-rules read, list form" "inconclusive branch-rules" \
+  "$(touch "$STUBS/$EP_B.rc"; run $R $BASE $yml)"
+setup_ok; single_yml '[deletion]'
+assert_eq "a failed branch-rules read, single form" "inconclusive branch-rules" \
+  "$(touch "$STUBS/$EP_B.rc"; run $R $BASE $yml)"
+
+setup_ok; list_yml
+assert_eq "a refused repo: leading slash" "inconclusive bad-repo" "$(run /x $BASE $yml)"
+assert_eq "a refused repo: no slash" "inconclusive bad-repo" "$(run x $BASE $yml)"
+assert_eq "a refused repo: three segments" "inconclusive bad-repo" "$(run a/b/c $BASE $yml)"
+assert_eq "a refused repo: trailing slash" "inconclusive bad-repo" "$(run a/ $BASE $yml)"
+assert_eq "a refused repo: leading dash" "inconclusive bad-repo" "$(run -a/b $BASE $yml)"
+assert_eq "a refused repo: a space" "inconclusive bad-repo" "$(run 'a/b c' $BASE $yml)"
+assert_eq "a refused repo: dot owner" "inconclusive bad-repo" "$(run ./r $BASE $yml)"
+assert_eq "a refused repo: dot-dot owner" "inconclusive bad-repo" "$(run ../r $BASE $yml)"
+assert_eq "a refused repo: dot name" "inconclusive bad-repo" "$(run o/. $BASE $yml)"
+assert_eq "a refused repo: dot-dot name" "inconclusive bad-repo" "$(run o/.. $BASE $yml)"
+assert_eq "a name that merely starts with dots is not a dot segment" "inconclusive branch-rules" \
+  "$(run o/..r $BASE $yml)"
+assert_eq "a refused base: empty" "inconclusive bad-base" "$(run $R '' $yml)"
+assert_eq "a refused base: leading dash" "inconclusive bad-base" "$(run $R -x $yml)"
+for b in . .. ../x x/.. a/../b ./x a/. a/./b a//b a/ /a; do
+  assert_eq "a refused base: $b" "inconclusive bad-base" "$(run $R "$b" $yml)"
+done
+assert_eq "a refused base: a space" "inconclusive bad-base" "$(run $R 'a b' $yml)"
+
+setup_ok; printf 'rulesets: []\n' >"$yml"
+assert_eq "an empty rulesets list" "inconclusive bad-rulesets" "$(run $R $BASE $yml)"
+printf 'rulesets: checks\n' >"$yml"
+assert_eq "a scalar rulesets" "inconclusive bad-rulesets" "$(run $R $BASE $yml)"
+printf 'rulesets: {a: b}\n' >"$yml"
+assert_eq "a map rulesets" "inconclusive bad-rulesets" "$(run $R $BASE $yml)"
+
+setup_ok
+assert_eq "an unreadable project file" "inconclusive unreadable" "$(run $R $BASE "$tmp/absent.yml")"
+
+# --- missing tools -------------------------------------------------------------------------
+setup_ok; list_yml
+assert_eq "no gh" "inconclusive no-gh" "$(run_path "$tmp/p-nogh" $R $BASE $yml)"
+assert_eq "no jq" "inconclusive no-jq" "$(run_path "$tmp/p-nojq" $R $BASE $yml)"
+assert_eq "no yq" "inconclusive no-yq" "$(run_path "$tmp/p-noyq" $R $BASE $yml)"
+
+# --- single form ---------------------------------------------------------------------------
+setup_ok; single_yml '[required_status_checks, deletion]' '[lint, test]'
+assert_eq "single form healthy" "ruleset checks missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
+
+# branch rules split over two pages
+setup_ok; single_yml '[required_status_checks, deletion]' '[lint, test]'
+echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint"},{"context":"test"}]}}]' >"$STUBS/$EP_B.1"
+echo '[{"type":"deletion","ruleset_id":1}]' >"$STUBS/$EP_B.2"
+assert_eq "single form healthy with the branch rules over two pages" \
+  "ruleset checks missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
+
+setup_ok; single_yml '[deletion]'; echo '[{"id":9,"name":"other"}]' >"$STUBS/$EP_L"
+assert_eq "single form: no such name" "ruleset checks missing" "$(run $R $BASE $yml)"
+setup_ok; single_yml '[deletion]'; echo '[{"type":"deletion","ruleset_id":2}]' >"$STUBS/$EP_B"
+assert_eq "single form: its rules do not apply to the base" "ruleset checks missing" "$(run $R $BASE $yml)"
+
+setup_ok; single_yml '[required_status_checks, deletion, non_fast_forward]' '[lint, e2e]'
+assert_eq "single form weakened" "ruleset checks missing_types=[non_fast_forward] missing_checks=[e2e]" "$(run $R $BASE $yml)"
+
+setup_ok; single_yml '[required_status_checks]'
+assert_eq "single form: required_status_checks declared with no required_checks" \
+  "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+setup_ok; single_yml '[deletion]'
+assert_eq "single form: no required_checks needed without that type" \
+  "ruleset checks missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
+
+setup_ok; single_yml '[deletion]'; touch "$STUBS/$EP_L.rc"
+assert_eq "single form: a failed rulesets-list read" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+setup_ok; single_yml '[deletion]'; echo '[{"id":1.5,"name":"checks"}]' >"$STUBS/$EP_L"
+assert_eq "single form: a non-numeric ruleset id" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+
+setup_ok; printf '%s\n' 'ruleset:' '  name: "a\nb"' '  rule_types: [deletion]' >"$yml"
+assert_eq "single form: a newline inside the name" "inconclusive bad-name" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  name: "checks\n"' '  rule_types: [deletion]' >"$yml"
+assert_eq "single form: a name ending in a newline" "inconclusive bad-name" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  rule_types: [deletion]' >"$yml"
+assert_eq "single form: no name" "inconclusive bad-name" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: ["deletion\n"]' >"$yml"
+assert_eq "single form: a rule type ending in a newline" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: ["del\netion"]' >"$yml"
+assert_eq "single form: a newline inside a rule type" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [required_status_checks]' '  required_checks: ["lint\n"]' >"$yml"
+assert_eq "single form: a check ending in a newline" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+
+exit "$fail"

@@ -61,7 +61,7 @@ call and the report lines.
    — absent fails in the same safe direction null already did (the `gh api` rules call below
    still correctly does not fire); only the **report** gains the ability to say which one
    actually happened, instead of folding both into "no migration is live."
-   This is a **different** reach than the `gh api` calls in `SKILL.md`'s ruleset check — local `git` access to
+   This is a **different** reach than the `gh api` calls in `bin/ruleset-drift.sh` — local `git` access to
    `origin`, plus `gh repo view` against whatever `origin` names, not a GitHub-token
    permissions check on `{repo}` — so it is not "the same reach check reused"; say so if it
    fails rather than folding it into the `gh api` reach story in `SKILL.md`. A redirected `origin` in
@@ -70,7 +70,7 @@ call and the report lines.
    `$MB_ERR` is set explicitly at each stage that can fail — never inferred from the bare
    success/failure of whichever command happened to run last — which is what separates "the
    chain broke" from "yq legitimately answered empty", the same distinction the primary
-   check's own `$RID` empty-after-success case draws. **A `{repo}` mismatch gets its own value,
+   check's (`bin/ruleset-drift.sh`) empty-id-after-success case draws. **A `{repo}` mismatch gets its own value,
    `MB_ERR=repo-mismatch`, rather than the bare `1` a network/git/yq failure sets** — the one
    failure here that may mean the local copy was tampered with, not merely unreachable, and
    worth naming as such in the report rather than folding into the same generic
@@ -81,7 +81,7 @@ call and the report lines.
 
    Only when `$MB` is non-empty **and the read block did not fail**, ask for the default branch's
    own rules — one read-only call, same GitHub-token reach as `rules/branches/{pr_base}`
-   in `SKILL.md` — and thread the same failure tracking through it, since a `gh api` or `yq` failure
+   in `bin/ruleset-drift.sh` — and thread the same failure tracking through it, since a `gh api` or `yq` failure
    here must read the same as one in the read block, never as "no migration":
    ```bash
    if [ -n "$MB_ERR" ]; then
@@ -103,7 +103,7 @@ call and the report lines.
    under-reporting the true requirement is the safe direction (a false alarm, never false
    comfort), but `max` reports the actual answer instead of a coin flip that merely fails
    safe.
-   `$CHECK` is bound with `jq --arg`, the same as `{ruleset.name}` in `SKILL.md`'s ruleset check — never interpolated
+   `$CHECK` is bound with `jq --arg`, the same as `{ruleset.name}` in `bin/ruleset-drift.sh` — never interpolated
    into the filter string, and never the literal `{review.ci_gate.check}` token spliced in
    directly, since (per the read-block paragraphs earlier in this file) its value came from a variable, not a
    compile-time schema constant. **The report below must key off `$CHECK`/`$HAS_CHECK` for the
@@ -113,7 +113,7 @@ call and the report lines.
    make the report silently take the "no ci_gate configured" case even when the trusted
    default-branch copy requires one and this check found it missing.**
 
-   This runs **independently** of the ruleset lookup in `SKILL.md` — it does not depend on `$RID` or `$B`, and,
+   This runs **independently** of the ruleset lookup in `bin/ruleset-drift.sh` — it does not depend on its `$RID` or `$B`, and,
    **once the reach check has passed**, fires whenever `$MB` is non-empty regardless of
    whether that lookup came back healthy, weakened, or inconclusive. (If the reach check
    itself failed, this whole *Check the branch-protection ruleset for drift* step already
@@ -135,7 +135,7 @@ call and the report lines.
    but no actual review, and this check cannot see a ruleset's bypass actors (an "always"
    admin/role/app bypass on an otherwise-correct rule) at all. Report `$APPROVALS` alongside
    `pull_request` rather than treating the bare presence of the rule type as the whole answer.
-   Like the ruleset lookup in `SKILL.md`, this one also sees **rulesets only** — classic (non-ruleset) branch
+   Like the ruleset lookup in `bin/ruleset-drift.sh`, this one also sees **rulesets only** — classic (non-ruleset) branch
    protection on the default branch would read as "does NOT require pull_request," which is
    the safe direction (a false alarm, not false comfort) but still worth naming so a reader
    knows which kind of gap they're looking at.

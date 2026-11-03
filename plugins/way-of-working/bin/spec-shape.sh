@@ -5,7 +5,7 @@
 # reacts, and the readers find it under a map (WB-D30; in a legacy repo /way-of-working:handoff anchors it). The drafter is a model writing prose, so the
 # shape is checked here, not trusted, and the skill posts only on `ok`.
 #
-# Usage: spec-shape.sh check <file>
+# Usage: spec-shape.sh check <file> [<project-file>]
 # Prints exactly one of, and exits 0 (the caller decides policy):
 #   ok                          -- every required section heading is present, in order, every
 #                                  section has at least one non-blank line (`nothing` counts: it
@@ -19,8 +19,18 @@
 #                               -- the headings (comma-joined, in the required order) that are
 #                                  absent, first appear before an earlier required heading, or
 #                                  have an empty body
-#   unreadable                  -- the file does not exist, is not a regular file, is empty, or
-#                                  cannot be read
+#   no-append <path>[,<path>...]
+#                               -- only with a project file, after `has-marker` and `missing` (both
+#                                  win): the declared `append_only` paths (comma-joined, each once, in
+#                                  the order of their first offending bullet) that have a Files touched
+#                                  bullet whose closing backtick is not followed by exactly a space and
+#                                  `**(append)**`, the only form spec-fresh.sh skips; fix each bullet to
+#                                  read - `path` **(append)** ...
+#   unreadable                  -- (project-file cases below apply only to an otherwise `ok` draft) the file does not exist, is not a regular file, is empty, or
+#                                  cannot be read; with a project file, also when its `append_only` is
+#                                  not null, absent or a list whose every entry is a path (the entry
+#                                  rule schema-complete.sh applies), when the project file is missing,
+#                                  unparsable or holds more than one document, or when yq fails
 #
 # Required headings, in order, each a level-3 line (`### Goal`) -- the first line of a draft is
 # free-form (a title line) except that it, like every line, never begins with a marker prefix
@@ -36,14 +46,21 @@
 # next heading or the end of the file. Fenced code blocks are not understood: a `#` line inside
 # one reads as a heading.
 #
-# Exit 2 on a usage error only. The file is data: it is only read, never evaluated or passed
-# to another command.
+# `append_only` (project-schema.md) lists repo-relative files every spec only appends to. With no
+# project file, or the key null, absent or an empty list, no file is held to the rule and the result
+# is as without the argument. An entry is a path as a Files touched bullet writes it (letters,
+# digits, `.`, `_`, `-` and `/`, starting with a letter, digit, `.` or `_`, no empty, `.` or `..`
+# segment), with no trailing `/`, and neither `.github` nor under `.github/`, which spec-fresh.sh
+# never skips.
 #
-# Permitted toolset: POSIX sh + awk.
+# Exit 2 on a usage error only. The draft is data: it is only read, never evaluated or passed
+# to another command. The project file is read only by yq, never evaluated.
+#
+# Permitted toolset: POSIX sh + awk (+ yq, project-file form only).
 set -eu
 
-if [ "$#" -ne 2 ] || [ "$1" != check ]; then
-  echo "usage: spec-shape.sh check <file>" >&2
+if { [ "$#" -ne 2 ] && [ "$#" -ne 3 ]; } || [ "$1" != check ]; then
+  echo "usage: spec-shape.sh check <file> [<project-file>]" >&2
   exit 2
 fi
 
@@ -53,7 +70,7 @@ if [ ! -f "$f" ] || [ ! -r "$f" ] || [ ! -s "$f" ]; then
   exit 0
 fi
 
-awk '
+base=$(awk '
   BEGIN {
     n = split("Goal|Files touched|Done when|Tests|Out of scope|Restated from the issue body", want, "|")
     for (i = 1; i <= n; i++) idx[want[i]] = i
@@ -86,4 +103,61 @@ awk '
     }
     if (out == "") print "ok"; else print "missing " out
   }
+' <"$f")
+
+if [ "$base" != ok ] || [ "$#" -ne 3 ]; then
+  echo "$base"
+  exit 0
+fi
+
+# The project file: `append_only` must be one value, null or a list, and every entry a path.
+p="$3"
+if [ ! -f "$p" ] || [ ! -r "$p" ]; then
+  echo unreadable
+  exit 0
+fi
+entry_ok='(select(tag == "!!str") | (test("^[A-Za-z0-9._][A-Za-z0-9._/-]*$") and (test("//") | not) and (test("/$") | not) and (test("(^|/)[.][.]?(/|$)") | not) and (. != ".github") and (test("^[.]github/") | not))) // false'
+kind=$(yq '.append_only | tag' "$p" 2>/dev/null) || { echo unreadable; exit 0; }
+case "$kind" in
+  '!!null') echo ok; exit 0 ;;
+  '!!seq') ;;
+  *) echo unreadable; exit 0 ;;
+esac
+good=$(yq ".append_only | explode(.) | [.[] | ($entry_ok)] | all" "$p" 2>/dev/null) || { echo unreadable; exit 0; }
+if [ "$good" != true ]; then
+  echo unreadable
+  exit 0
+fi
+APPEND_ENTRIES=$(yq -r '.append_only | explode(.) | .[]' "$p" 2>/dev/null) || { echo unreadable; exit 0; }
+if [ -z "$APPEND_ENTRIES" ]; then
+  echo ok
+  exit 0
+fi
+export APPEND_ENTRIES
+
+awk '
+  BEGIN {
+    n = split(ENVIRON["APPEND_ENTRIES"], ent, "\n")
+    for (i = 1; i <= n; i++) declared[ent[i]] = 1
+  }
+  {
+    line = $0
+    sub(/\r$/, "", line)
+    if (line ~ /^#+ /) {
+      sec = (line ~ /^### Files touched[ \t]*$/ && !done)
+      if (sec) done = 1
+      next
+    }
+    if (!sec || line !~ /^- `/) next
+    s = substr(line, 4)
+    k = index(s, "`")
+    if (k == 0) next
+    path = substr(s, 1, k - 1)
+    rest = substr(s, k + 1)
+    if (substr(path, length(path), 1) == "/") path = substr(path, 1, length(path) - 1)
+    if (!(path in declared) || index(rest, " **(append)**") == 1 || (path in named)) next
+    named[path] = 1
+    out = out (out == "" ? "" : ",") path
+  }
+  END { if (out == "") print "ok"; else print "no-append " out }
 ' <"$f"

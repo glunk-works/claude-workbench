@@ -45,6 +45,8 @@ literal. Then, in the *Fetch and check* step, the repo, the backlog repo, the ba
 `identities` are **re-read from the default branch's committed copy** and those values are the
 ones used from there on: the working tree's copy is editable by the branch you are on, and would
 otherwise choose which repository's issue gets read and which tree the draft is checked against.
+The *Write the draft and check its shape* step copies the pinned commit's `.ai/project.yml` for `spec-shape.sh`,
+which reads `append_only` from it; this skill reads no value of that key itself.
 
 ## Run it on the right model, at the right time
 
@@ -233,7 +235,7 @@ the draft* step) and relays its findings to the drafter.
      such a character as its code point (U+200B) instead. Only the first
      backtick span of each top-level bullet is checked for freshness, so a bullet names one
      file, and its path uses only letters, digits, `.`, `_`, `-` and `/`, starts with a letter, digit, `.` or `_`, and has no empty, `.` or `..` segment (so no `./` prefix). A bullet whose change only adds an entry (a changelog line, a list line) may carry
-     **(append)** right after the closing backtick, which the freshness check skips. Never mark
+     a space and **(append)** right after the closing backtick, which the freshness check skips; a file the project declares under `append_only` must carry it. Never mark
      a workflow file or a file the loop protects this way.
    - `### Done when` — checkable conditions, each runnable or observable.
    - `### Tests` — the new fixtures, and the existing suites that must still pass.
@@ -298,10 +300,17 @@ the draft* step) and relays its findings to the drafter.
 
 6. **Write the draft and check its shape.** One Bash call makes two fresh directories and prints
    each in a form the Write tool and the shell resolve alike (`pwd -W` under MSYS or MINGW,
-   `cygpath -m` under CYGWIN, else `pwd -P`). The first holds `draft.md`; the second stays empty
-   for `spec-post.sh`:
+   `cygpath -m` under CYGWIN, else `pwd -P`). The first holds `draft.md` and the pinned commit's
+   `.ai/project.yml` as `project.yml`; the second stays empty for `spec-post.sh`. It binds `SHA` by value
+   from the pin step's printed line and applies the guards the *Critic-gate the draft* step's read uses
+   (hex check, 40 characters, `git -C` at the top level). It prints the directory line only after the
+   project file read succeeded, and a failed read prints `stopped: no project file` instead of `stopped: no
+   directories`, removing both directories either way:
    ```bash
-   D= O= DD= OO= &&
+   D= O= DD= OO= E=dirs SHA=<printed value> &&
+   case "$SHA" in ''|*[!0-9a-f]*) false ;; esac &&
+   [ "${#SHA}" -eq 40 ] &&
+   TOPLEVEL=$(git rev-parse --show-toplevel) && [ -n "$TOPLEVEL" ] &&
    D=$(mktemp -d) && [ -n "$D" ] && [ -d "$D" ] &&
    O=$(mktemp -d) && [ -n "$O" ] && [ -d "$O" ] &&
    case "$(uname -s)" in
@@ -310,21 +319,23 @@ the draft* step) and relays its findings to the drafter.
      *) DD=$(cd -P "$D" && pwd -P) && OO=$(cd -P "$O" && pwd -P) ;;
    esac &&
    [ -n "$DD" ] && [ -n "$OO" ] &&
+   E=project && git -C "$TOPLEVEL" show "$SHA:.ai/project.yml" >"$D/project.yml" && [ -s "$D/project.yml" ] &&
    printf 'DRAFTDIR=%s OUTDIR=%s\n' "$DD" "$OO" ||
-   { echo "stopped: no directories" >&2; if [ -n "$D" ] && [ -d "$D" ]; then rm -rf "$D"; fi; if [ -n "$O" ] && [ -d "$O" ]; then rm -rf "$O"; fi; false; }
+   { if [ "$E" = project ]; then echo "stopped: no project file" >&2; else echo "stopped: no directories" >&2; fi; if [ -n "$D" ] && [ -d "$D" ]; then rm -rf "$D"; fi; if [ -n "$O" ] && [ -d "$O" ]; then rm -rf "$O"; fi; false; }
    ```
    Write the draft to `<DRAFTDIR>/draft.md` **with the Write tool**, not a heredoc. It may contain
    backslashes and braces, and no delimiter rule applies. Then check it, binding `DD` by value
    from the printed line:
    ```bash
    DD='<printed draft dir>' &&
-   S=$(spec-shape.sh check "$DD/draft.md"); echo "SHAPE=$S"
+   S=$(spec-shape.sh check "$DD/draft.md" "$DD/project.yml"); echo "SHAPE=$S"
    ```
-   `spec-shape.sh` prints `ok`, `missing <section>[,<section>…]`, `has-marker` or `unreadable`. On `missing`, fix
+   `spec-shape.sh` prints `ok`, `missing <section>[,<section>…]`, `has-marker`, `no-append <path>[,<path>…]` or `unreadable`. On `no-append`, put a space and
+   `**(append)**` right after the closing backtick of every offending bullet for each named path and check once more, under the same one-fix rule as `missing` and `has-marker` (a second failure of any of the three kinds stops). On `missing`, fix
    those sections in the file and check once more; a second failure stops, naming the sections,
    and both directories are removed. On `has-marker`, reword each line that begins with
    `spec-task:` or `spec-task-escalated:` and check once more, under the same one-fix rule; a
-   second failure of either kind (a `missing` after a `has-marker` fix, or the reverse, included)
+   second failure of any of the three kinds (a `missing` after a `has-marker` fix, or the reverse, included)
    stops, naming what the second check printed, and both directories are removed. `unreadable`, or anything else (an empty `SHAPE=` means
    `spec-shape.sh` is not on `PATH`), stops the same way.
 
@@ -362,7 +373,7 @@ the draft* step) and relays its findings to the drafter.
      provenance:` line when there is one);
    - on an escalation end (cap reached or not converging), add the `### Open findings` section
      after `### Restated from the issue body`;
-   - run `spec-shape.sh check` and `spec-fresh.sh shape` again on the final file, with the same
+   - run `spec-shape.sh check` (passing the same `"$DD/project.yml"` as its third argument) and `spec-fresh.sh shape` again on the final file, with the same
      one-fix rule as the *Write the draft and check its shape* step.
 
 8. **Post or hold.** Only when the gate has ended and both shape checks said `ok` on the final

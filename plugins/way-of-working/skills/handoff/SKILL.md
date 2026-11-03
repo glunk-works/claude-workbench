@@ -98,12 +98,16 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
      done` PR. Where the roadmap's convention allows it (a squash merge cannot name its own
      hash), the entry belongs in the sprint's **last work PR** — the release or closing one — so it
      merges with the sprint: name it in that task's scope when the sprint is planned. Otherwise it is
-     its own small PR, queued by this cursor instead of discovered at the close. Before writing `done`, check
+     its own small PR, queued by this cursor instead of discovered at the close. Before writing `done`,
+     and before writing any `next_action` that contains the literal `/way-of-working:archive-sprint`,
+     whatever the `sprint_status` (`#1222`), check
      `git fetch origin {pr_base} -q && git show origin/{pr_base}:{roadmap}` (a failed fetch or
      `git show` is "could not look", never "missing"). If the entry is absent, the cursor is
-     **not** `done` and its `next_action` is not `/way-of-working:archive-sprint`: make it the
-     roadmap edit — folded into the open last PR, or its own `docs: mark <sprint> done in
-     {roadmap}` PR — and say so.
+     **not** `done`, and: a `next_action` whose own step was `/way-of-working:archive-sprint` becomes
+     the roadmap edit — folded into the open last PR, or its own `docs: mark <sprint> done in
+     {roadmap}` PR — and says so; a `next_action` with another step keeps that step and its leading
+     token and names the roadmap edit ahead of archive-sprint. If the check could not look, write no
+     `next_action` that makes archive-sprint the unconditional next step.
    - `assigned_model` / `assigned_persona` for the **next** session, per `{models}` (see
      `reference/workflow.md`) — always one of the session roles there (`architect`/`coder`);
      `second_opinion` is never a session role and is never written into either field
@@ -588,8 +592,27 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
      read side: `last_commit` means *the commit whose work this cursor describes*, and a
      squash merge mints a different SHA than the local branch tip anyway, so no value
      written here could match what `/way-of-working:resume` later reads.
+   - **Offer the roadmap PR (`#1222`), after the cursor-sync PR is open.** Only when this run's
+     cursor named the roadmap edit as its own PR (the *Determine the new cursor* step's `#209`
+     paragraph), the sprint's last work is already on `origin/{pr_base}`, and the bullets above
+     surfaced no other dirty file. The *Never merge it* bullet's
+     "Report the PR URL and stop" is read as: do nothing more *to the cursor-sync PR* (no merge, no
+     further commit), and report its URL; it does not forbid this offer, which follows it and
+     opens a different PR.
+     Ask the human whether to open the roadmap PR now, saying that it marks the sprint done, so
+     they merge it only once the cursor's own step is done. On yes, run
+     `/way-of-working:archive-sprint` precondition 3's chain, citing it and not copying it;
+     that skill's "STOP per the rule below" and "re-run `/way-of-working:archive-sprint`" sentences
+     do not apply; its push-retry and failure rules do. Handoff still ends on
+     `docs/sync-cursor-<slug>`: in place of each checkout of `{pr_base}` the chain makes after its
+     commit, and after any stop that leaves the session on `{pr_base}`, check out
+     `docs/sync-cursor-<slug>`. A stop that leaves the edit staged, or the tree dirty, stays where
+     precondition 3 leaves it. The entry records the commit hash the roadmap's own convention names
+     for the sprint's last work, which is already merged, never the roadmap PR's own merge commit,
+     which a squash merge cannot name. Report a stop the way precondition 3 does and go on to the *Report*
+     step. A no-op handoff skips this step, so it never makes the offer.
 
-6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (the *Check the QA-critic pass ran* step), say so here. If the `lanes` write printed `lanes: unreadable`, say the lane state could not be read. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/way-of-working:resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
+6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (the *Check the QA-critic pass ran* step), say so here. If the `lanes` write printed `lanes: unreadable`, say the lane state could not be read. If the roadmap-PR offer ran, name the roadmap PR's URL, say the committed `next_action` was written before it opened (and still names archive-sprint, if it does, which waits on that PR's merge) and that merging it makes the next `/way-of-working:resume` read drift and wait; or, if its chain stopped, the stop, `git branch --show-current`, and, in App mode after a failed push, that the commit waits on `docs/<sprint>-status` and the push is retried from this session, never by hand. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/way-of-working:resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
 
    ```
    Next session:

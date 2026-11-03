@@ -2305,6 +2305,8 @@ take effect. Full reasoning and the task breakdown that implements them:
     - **Drafting by any identity other than the declared dev App,** the maintainer's included. Their
       session keeps today's wait line and never reads the issue body.
     - **A schema key listing files to ignore.** The **(append)** marker is the one carve-out.
+      *Narrowed by `#1155`: a declared file is still skipped only through its marker, which
+      `spec-shape.sh` now makes mandatory in `spec-task` drafts.*
   - **Accepted residuals.**
     1. An auto-started dev-App session reads `#N`'s body, which any Issues-write account can edit,
        so a prompt injection there acts with the dev App's permissions.
@@ -2351,8 +2353,13 @@ take effect. Full reasoning and the task breakdown that implements them:
        and not `escalated`, so a maintainer who removes the stale spec's reaction first sees
        `unreacted` for the stale spec, not the escalation; redrafting is still blocked, by that
        `unreacted` wait.*
-    10. Shared files that are not marked **(append)** make a spec stale whenever another PR touching
-        them merges.
+    10. *Narrowed by `#1155`: in a draft `spec-task` posts or holds, a file the repo declares under
+        `append_only` is refused unmarked (`spec-shape.sh` `no-append`, and `spec-post.sh` stops
+        `bad-shape`), so it no longer makes such a spec stale. The cost is that a declared file is
+        never freshness-checked, even when a spec edits it. A hand-written spec and an undeclared
+        shared file are unchanged. `append_only` is a third optional schema key, an exception to
+        `WB-D17` that is safe because an undeclared one leaves today's behaviour.* Shared files that
+        are not marked **(append)** make a spec stale whenever another PR touching them merges.
     11. A path cited outside *Files touched* is not checked.
     12. `/way-of-working:architect-review` can still load a spec the builder refused as stale (see
         `WB-D30` residual 5).
@@ -2583,7 +2590,7 @@ take effect. Full reasoning and the task breakdown that implements them:
        comment carries no critic line and no reader checks for one, the maintainer being the approver.
   - **Not built.** Reading a maintainer's answer from the escalated comment's thread and continuing from it (it
     reads comments, a trust-boundary change of its own; *built by `WB-D39`*), and a second-opinion round on a spec.
-  - **Slack: open, and nothing writes to it.** Three questions stay open: which identity posts; whether a
+  - **Slack: open, and nothing writes to it.** *Amended by `WB-D44`: answered, notify-only through the GitHub Slack app's subscription filtered on `status/needs-human`; still nothing in this plugin writes to Slack.* Three questions stay open: which identity posts; whether a
     Slack reply can carry a decision or only notifies; how a reply is authenticated as the maintainer's, so it
     is never a weaker approval path than a GitHub reaction. Nothing in this plugin writes to Slack until a
     later entry answers all three.
@@ -2737,6 +2744,14 @@ take effect. Full reasoning and the task breakdown that implements them:
   - **The trust root moves.** It was a `git archive` extraction of the default branch's `plugins/way-of-working/bin`. It is now the installed plugin's own `bin/`, beside the script, which is same-user-writable on the home volume; the script header says so. A change reaches a lane only through a human merge and a release.
   - **Loop reach.** `bin/` is outside `orchestration.human_only_paths` while `scripts/` is inside, so the loop may now edit `lane.sh`, under the critic floor and the human merge.
   - **Merge limit.** This repo's pin is a release without `bin/lane.sh`, so no lane is prepped from the merge until the release carrying it is installed.
+
+- **WB-D44 (`#791`) — an escalated spec notifies the maintainer through the GitHub Slack app; Slack carries no decision.** Amends `WB-D35`'s *Slack* bullet. Builds on `#746`.
+  - **The decision.** Notify-only, decided by the maintainer on 2026-10-26. The maintainer sets up, by hand, a GitHub Slack app subscription to this repo's issues filtered on `status/needs-human`. No workflow, no webhook, no secret and no Slack credential exists in any Claude context or in this repo, and nothing in this plugin writes to Slack.
+  - **Which identity posts.** The GitHub Slack app, under the subscription the maintainer made. Not the dev App, the reviewer App, the loop identity or a new Slack-only identity. Its credential lives in neither the host broker nor any container.
+  - **Notify or decide.** Notify only. Every decision stays a GitHub reaction or comment by a declared maintainer, read by the existing readers; nothing in this plugin reads Slack.
+  - **Authentication.** No Slack message is read, so none is authenticated. A GitHub write made from Slack through a linked GitHub account is a GitHub write by that account, read like any other, and the reaction by a declared maintainer matched on numeric id stays the only approval.
+  - **Accepted residual.** An escalation that adds no label to the issue sends no notice, whatever the cause, an issue already carrying the label included.
+  - **Unverified.** Which issue events the subscription notifies on, a label added to an open issue included, and whether a linked account can react from Slack; the maintainer confirms both after setting it up.
 
 ## Status
 
