@@ -209,8 +209,18 @@ only `/workspace`, and its `.git` file names a host path.
   branch name.
   After ship, the lane sets its PR's milestone to `M` when `M` is still open, and reports
   the outcome; with a separate backlog repository it sets none. When the lane's PR is reported to
-  the driver, the driver confirms the milestone and gives the maintainer the one-line `gh api -X
-  PATCH` command only when it is missing and the backlog is the repo.
+  the driver, the driver confirms the milestone. `P` is the PR number `lane.sh status` prints for
+  the lane (found by branch, not taken from the lane's report), `M` the milestone number the driver
+  passed to `prep`, and `OWNER/REPO` the repository the `repo` key of the project file names. The
+  confirm read is `gh api repos/OWNER/REPO/pulls/P --jq '.milestone.number // 0'`: it prints `M`
+  when the lane's write took, `0` when the PR has no milestone, and fails for a number that is not a
+  pull request. Only when it prints `0`, milestone `M` is still open (`gh api
+  repos/OWNER/REPO/milestones/M --jq .state` prints `open`) and the backlog is the repo, the driver
+  gives the maintainer this one line, the endpoint and form the lane prompt's write uses (`-F`, so
+  the milestone goes as a number), setting no other field:
+  `gh api -X PATCH repos/OWNER/REPO/issues/P -F milestone=M --jq .milestone.number`. The driver
+  then runs the confirm read again; the write took only when it prints `M`. With a separate backlog
+  repository no milestone is set.
   The `PATH` line is written by the script and its text is checked by the fixture. A Bash tool
   call does not keep exports, so the lane prefixes the line, and checks that `command -v
   spec-find.sh` finds the installed plugin's copy, on every call that runs a plugin script. No lane
