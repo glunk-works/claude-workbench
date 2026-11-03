@@ -1035,7 +1035,6 @@ assert_has "status: only the open PR's checks are read" "$FX_GHLOG" "pr view 21 
 assert_eq "status: one pr view" 1 "$(grep -c '^pr view' "$FX_GHLOG")"
 nc
 state3
-backlog_nc() { :; }
 setyml '.backlog.repo = "glunk-works/backlog"'
 mkdir -m 700 "$LD"
 run_lane status
