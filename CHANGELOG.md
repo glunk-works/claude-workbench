@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- The host broker accepts an `owner/name` entry in `broker.json` and writes its dev token to both `tokens/<name>` and `tokens/<owner>/<name>`, and `install-host-tools.ps1` creates both directories; each name half must now match the ASCII-only rule case-sensitively (so a name with U+212A is refused, and the review sweeps leave such a directory in place). The broker also refuses, with exit 2 under `-Once` (the looping broker logs it) and no minting for any repo, two entries with the same name half in any case (a repeated entry included) and an owner half equal to another entry's name, so check an existing `broker.json` for repeats before reinstalling (`#1276`).
+
 ## [0.30.0] — 2026-11-03
 
 **⚠️ Migration** — `/way-of-working:resume`'s, `/way-of-working:handoff`'s and `/way-of-working:archive-sprint`'s `plan-anchor.sh verify` now read `unreadable` (and wait) on a missing `orchestration` or a missing or empty `orchestration.loop_identity`, and handoff's and archive-sprint's also on a missing or malformed `identities`, App entry or maintainer list, where they used to omit the flag. Run `schema-complete.sh check .ai/project.yml` and fix any finding before bumping (`#1221`).

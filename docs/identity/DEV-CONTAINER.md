@@ -19,6 +19,9 @@ that serves the host's git credential (see Hazards that remain).
   under the host's `glunk-identity` directory is mounted. The mount source names the GitHub repo
   (`claude-workbench`), not the checkout folder, so a clone folder with another name still mounts
   the right directory; it must exist, which `install-host-tools.ps1` ensures for each repo in `broker.json`.
+  For an `owner/name` entry in `broker.json` the broker also writes the same token to
+  `tokens/<owner>/<repo>/dev-token`, the owner-qualified directory of the shared template (`WB-D42`, `#1276`).
+  This repo's container keeps mounting `tokens/claude-workbench` until `#1226` changes the mount.
   the `dev-token` script reads the `dev-token` file there, and the plugin's SessionStart banner reads `admin-token` there
   (`/run/wow/admin-token`, the fixed path it looks at); `wow-admin` writes the admin token into the same
   host directory (when `WOW_HOME` is the default directory, as *Opening it* already requires). The change

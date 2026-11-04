@@ -31,10 +31,13 @@
        swaps it in for $WowHome\bin. Besides the host scripts that is bin\review, the review image's
        build context (#634): the Dockerfile plus exactly the files it copies, flat. The old bin is kept as bin.old until the swap succeeds and is
        put back if it fails; a leftover bin.old with no bin is restored on the next run.
-    5. Creates $WowHome\tokens\<repo> for each repo in broker.json (a container mount whose source
-       is missing fails to start). A bad broker.json is a warning here, not a failed install. It then
+    5. Creates $WowHome\tokens\<repo> for each repo in broker.json, and for an "owner/name" entry
+       also tokens\<owner>\<repo> (a container mount whose source is missing fails to start; the
+       broker writes both while the old layout is kept, #1276). An entry failing the broker's per-half name rule is skipped (the broker alone refuses a shared name half or an owner equal to another entry's name). A bad
+       broker.json is a warning here, not a failed install. It then
        cross-checks, when broker.json names at least one valid repo, broker.json, review-poll.json and
-       the tokens\ directories by bare repo name (case-insensitive, owner ignored) and warns, one fixed
+       the tokens\ directories by bare repo name (the bare half of an owner/name entry; case-insensitive, owner
+       ignored; a tokens\ directory that is the owner half of an entry is not warned about) and warns, one fixed
        line per mismatch (an absent review-poll.json is not compared; an unreadable one gets one fixed line), about a poll entry with
        no broker.json entry, a broker.json entry with no poll entry, and a tokens\ directory with no
        broker.json entry. It also warns once, with a count and no entry text, when review-poll.json
@@ -220,24 +223,32 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
 
     $cfg = Join-Path $WowHome 'broker.json'
     $brokerNames = @()
+    $ownerDirs = @{}
     if (Test-Path -LiteralPath $cfg -PathType Leaf) {
       try {
         $found = @()
         foreach ($r in @((Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json).repos)) {
-          if ($r -is [string] -and $r -match '\A[A-Za-z0-9._-]+\z' -and $r -notmatch '\A[-.]' -and $r -notmatch '\.\z') {
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $WowHome "tokens/$r")
-            $found += $r
+          if ($r -isnot [string]) { continue }
+          $parts = $r.Split('/')
+          if ($parts.Count -gt 2) { continue }
+          $halves = @($parts | Where-Object { $_ -cmatch '\A[A-Za-z0-9._-]+\z' -and $_ -cnotmatch '\A[-.]' -and $_ -cnotmatch '\.\z' })
+          if ($halves.Count -ne $parts.Count) { continue }
+          $null = New-Item -ItemType Directory -Force -Path (Join-Path $WowHome "tokens/$($parts[-1])")
+          if ($parts.Count -eq 2) {
+            $null = New-Item -ItemType Directory -Force -Path (Join-Path $WowHome "tokens/$($parts[0])/$($parts[1])")
+            $ownerDirs[$parts[0].ToLowerInvariant()] = $true
           }
+          $found += $parts[-1]
         }
         $brokerNames = $found
       } catch { Write-Warning "broker.json unreadable ($($_.Exception.Message)); tokens/<repo> not created" }
     }
 
-    # Cross-check of the three host repo lists: broker.json (bare names), review-poll.json (owner/name) and tokens/.
+    # Cross-check of the three host repo lists: broker.json (the bare half of each entry), review-poll.json (owner/name) and tokens/.
     # It only warns, with fixed text that holds no exception message; the owner half is ignored, names compare case-insensitively.
     if ($brokerNames.Count -gt 0) {
       try {
-        $okName = { param($n) $n -is [string] -and $n -match '\A[A-Za-z0-9._-]+\z' -and $n -notmatch '\A[-.]' -and $n -notmatch '\.\z' }
+        $okName = { param($n) $n -is [string] -and $n -cmatch '\A[A-Za-z0-9._-]+\z' -and $n -cnotmatch '\A[-.]' -and $n -cnotmatch '\.\z' }
         $brokerSet = [ordered]@{}
         foreach ($n in $brokerNames) { if (-not $brokerSet.Contains($n.ToLowerInvariant())) { $brokerSet[$n.ToLowerInvariant()] = $n } }
         $pollSet = $null
@@ -278,7 +289,8 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
         if (Test-Path -LiteralPath $tokDir -PathType Container) {
           foreach ($d in @(Get-ChildItem -LiteralPath $tokDir -Directory -Force | Sort-Object Name)) {
             if ($d.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
-            if ((& $okName $d.Name) -and -not $brokerSet.Contains($d.Name.ToLowerInvariant())) { Write-Warning "tokens/$($d.Name) has no broker.json entry" }
+            $dk = $d.Name.ToLowerInvariant()
+            if ((& $okName $d.Name) -and -not $brokerSet.Contains($dk) -and -not $ownerDirs.ContainsKey($dk)) { Write-Warning "tokens/$($d.Name) has no broker.json entry" }
           }
         }
       } catch { Write-Warning 'the cross-check of broker.json, review-poll.json and tokens/ could not run' }

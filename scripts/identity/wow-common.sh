@@ -10,6 +10,8 @@
 #   tokens/<repo>/         the only directory of secrets a repo's container mounts, read-only: admin-token
 #                          (wow-admin) and dev-token (broker.ps1), each the token then its
 #                          expires_at. Admin and dev credentials only.
+#   tokens/<owner>/<repo>/ dev-token only, written by the broker for an "owner/name" entry in broker.json
+#                          beside tokens/<repo>/ (#1276); the owner-qualified layout, mounted the same way.
 #   dev.pem, broker.json   broker.ps1 config: the dev App's unencrypted key (name by convention), and
 #                          {"repos": [...]}, the repos it keeps a dev token for. Also broker.lock,
 #                          broker.log and staging/<repo>/, none mounted anywhere.
@@ -39,8 +41,9 @@
 #                          written only to the injector sidecar's stdin.
 #   review-logs/           review run logs; may hold secrets and private contents the session read, swept by the
 #                          broker by age.
-# Invariant: no path under $WOW_HOME is container-writable. tokens/<repo>/ is mounted only into a
-# dev container, and review-sessions/<id>/ only into a review container, each read-only.
+# Invariant: no path under $WOW_HOME is container-writable. tokens/<repo>/ and tokens/<owner>/<repo>/ are
+# mounted only into a dev container (tokens/<owner>/ is never another repo's mount source), and
+# review-sessions/<id>/ only into a review container, each read-only.
 # claude-credential is never mounted into any container and reaches only the injector's stdin.
 # What these commands write: tokens/ and review-tokens/ directories, a per-repo .lock directory
 # and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed),

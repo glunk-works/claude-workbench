@@ -8,9 +8,20 @@
 .DESCRIPTION
   Runs on the host, where the App keys live; no key is ever copied into a container.
 
-  Dev tokens. For every repo named in $WowHome\broker.json ({"repos": ["name", ...]}) the broker
-  keeps $WowHome\tokens\<repo>\dev-token current: the token on one line, its expires_at on the
-  next, the format token-check.sh and the container's gh shim read. A token is minted when the
+  Dev tokens. For every repo named in $WowHome\broker.json ({"repos": ["name", "owner/name", ...]})
+  the broker keeps $WowHome\tokens\<repo>\dev-token current: the token on one line, its expires_at on the
+  next, the format token-check.sh and the container's gh shim read. An "owner/name" entry also
+  gets the same token at $WowHome\tokens\<owner>\<repo>\dev-token, the owner-qualified layout of
+  the shared dev-container template (WB-D42, #1276); the old tokens\<repo> copy is kept until it is retired
+  after #1226, so a container still mounting it keeps working. Each half of an entry is a
+  repository name (ASCII letters, digits, dot, underscore, hyphen; not starting with a dot or
+  hyphen, not ending in a dot), and the owner half is a label: it is not checked against the dev
+  installation, which is the one org this home serves. Two entries with the same name half (any
+  case) are a configuration error too, since they would share tokens\<repo>. An entry whose owner half equals another
+  entry's name (any case) is a configuration error, since tokens\<owner> would then be that
+  repo's old-layout mount source. The mint asks for the bare name. An "owner/name" entry is current
+  only when both copies are, so a missing or stale one triggers a mint that refreshes both. A bare
+  entry writes only tokens\<repo>. A token is minted when the
   file is missing, malformed, expired, or has 30 minutes or less left (-RefreshMinutes). Dev
   tokens live an hour, so that is a new token every ~30 minutes, and it is a property of the
   file, not of a timer: a token that expired while the machine slept is replaced on the first
@@ -19,8 +30,9 @@
   it can run unattended, like review.pem) and the dev App's permissions only.
 
   Atomic write. mint.sh writes to $WowHome\staging\<repo>\, the broker checks the result is
-  token-shaped and still live, then publishes it with [IO.File]::Move(src, dst, overwrite) on the
-  same volume, so a reader sees the old token or the new one, never a partial file. A failed mint
+  token-shaped and still live, then publishes it (each copy from its own staged file) with
+  [IO.File]::Move(src, dst, overwrite) on the same volume, so a reader sees the old token or the
+  new one, never a partial file. No staged file is left behind. A failed mint
   leaves the old token in place (it stays valid until it expires) and is retried after
   -RetrySeconds. Docker Desktop may hold a token file open and make the move fail with a sharing
   violation; that is logged and retried, not an error to chase.
@@ -47,7 +59,7 @@
   or printed; $WowHome\broker.log carries timestamps, repo names and mint.sh's error line.
 
 .PARAMETER Once
-  One pass over every repo, then exit: 0 all current, 1 a mint failed, 2 bad configuration.
+  One pass over every repo, then exit: 0 all current, 1 a mint or a publish failed, 2 bad configuration.
   Without it the broker loops every -PollSeconds until stopped.
 
 .PARAMETER ReviewSessionMinutes
@@ -102,8 +114,9 @@ function Write-Log([string]$msg) {
   } catch { } # a log that cannot be written must not stop the broker
 }
 
+# -cmatch: a case-insensitive [A-Za-z] also takes U+212A (the Kelvin sign) for k.
 function Test-RepoName([string]$n) {
-  $n -match '\A[A-Za-z0-9._-]+\z' -and $n -notmatch '\A[-.]' -and $n -notmatch '\.\z'
+  $n -cmatch '\A[A-Za-z0-9._-]+\z' -and $n -cnotmatch '\A[-.]' -and $n -cnotmatch '\.\z'
 }
 
 # Read-Token <file>: @{ Expires = [DateTimeOffset] } for a token-shaped file, else $null. The shape is
@@ -145,47 +158,72 @@ function Invoke-Sh([string[]]$shArgs) {
   @{ Code = $code; Text = $text }
 }
 
-function Update-DevToken([string]$repo) {
-  $dst = Join-Path $WowHome "tokens/$repo/dev-token"
-  $cur = Read-Token $dst
+# Update-DevToken <entry>: entry is @{ Label; Name; Owner }, Owner $null for a bare name. Keeps tokens/<Name>/dev-token
+# and, for an owner/name entry, tokens/<Owner>/<Name>/dev-token current from one mint.
+function Update-DevToken($entry) {
+  $label = $entry.Label
+  $repo = $entry.Name
+  $dsts = @(Join-Path $WowHome "tokens/$repo/dev-token")
+  if ($entry.Owner) { $dsts += Join-Path $WowHome "tokens/$($entry.Owner)/$repo/dev-token" }
   $now = [DateTimeOffset]::UtcNow
-  if ($cur -and ($cur.Expires - $now).TotalMinutes -gt $RefreshMinutes) { return $true }
+  $allCurrent = $true
+  foreach ($d in $dsts) {
+    $cur = Read-Token $d
+    if (-not $cur -or ($cur.Expires - $now).TotalMinutes -le $RefreshMinutes) { $allCurrent = $false }
+  }
+  if ($allCurrent) { return $true }
 
   $cid = Get-AppField 'dev' 'client_id'
   $iid = Get-AppField 'dev' 'installation_id'
   $keyName = Get-AppField 'dev' 'key'
   if (-not $cid -or -not $iid -or -not $keyName -or $keyName -match '^[-.]') {
-    Write-Log "dev $repo`: dev client_id / installation_id / key missing or unusable in apps.json"
+    Write-Log "dev $label`: dev client_id / installation_id / key missing or unusable in apps.json"
     return $false
   }
   $key = Join-Path $WowHome $keyName
   if (-not (Test-Path -LiteralPath $key -PathType Leaf)) {
-    Write-Log "dev $repo`: dev key file $keyName not found"
+    Write-Log "dev $label`: dev key file $keyName not found"
     return $false
   }
 
   $stageDir = Join-Path $WowHome "staging/$repo"
-  $null = New-Item -ItemType Directory -Force -Path $stageDir, (Split-Path $dst)
+  $null = New-Item -ItemType Directory -Force -Path $stageDir
   $stage = Join-Path $stageDir 'dev-token'
-  Remove-Item -LiteralPath $stage -Force -ErrorAction SilentlyContinue
+  $stages = @($stage)
+  if ($entry.Owner) { $stages += Join-Path $stageDir 'dev-token.owner' }
+  foreach ($f in $stages) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
 
-  $r = Invoke-Sh @((ToSh (Join-Path $ScriptsDir 'mint.sh')),
-    '--client-id', $cid, '--installation-id', $iid, '--key', (ToSh $key),
-    '--repos', $repo, '--perms', $devPerms, '--out', (ToSh $stage))
-  if ($r.Code -ne 0) {
-    Remove-Item -LiteralPath $stage -Force -ErrorAction SilentlyContinue
-    Write-Log "dev $repo`: mint failed (exit $($r.Code)): $($r.Text)"
-    return $false
+  try {
+    $r = Invoke-Sh @((ToSh (Join-Path $ScriptsDir 'mint.sh')),
+      '--client-id', $cid, '--installation-id', $iid, '--key', (ToSh $key),
+      '--repos', $repo, '--perms', $devPerms, '--out', (ToSh $stage))
+    if ($r.Code -ne 0) {
+      Write-Log "dev $label`: mint failed (exit $($r.Code)): $($r.Text)"
+      return $false
+    }
+    $new = Read-Token $stage
+    if (-not $new -or ($new.Expires - [DateTimeOffset]::UtcNow).TotalMinutes -le 0) {
+      Write-Log "dev $label`: minted file is not a live token; keeping the old one"
+      return $false
+    }
+    if ($entry.Owner) { Copy-Item -LiteralPath $stage -Destination $stages[1] -Force }
+    # Each copy is published on its own: one that cannot be written is logged and fails the pass, the other still lands.
+    $published = $true
+    for ($i = 0; $i -lt $dsts.Count; $i++) {
+      try {
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path $dsts[$i])
+        [IO.File]::Move($stages[$i], $dsts[$i], $true)
+      } catch {
+        $published = $false
+        Write-Log "dev $label`: could not publish tokens/$(if ($i -eq 0) { $repo } else { "$($entry.Owner)/$repo" })/dev-token: $($_.Exception.Message)"
+      }
+    }
+    if (-not $published) { return $false }
+    Write-Log "dev $label`: token rotated, expires $($new.Expires.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+    $true
+  } finally {
+    foreach ($f in $stages) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
   }
-  $new = Read-Token $stage
-  if (-not $new -or ($new.Expires - [DateTimeOffset]::UtcNow).TotalMinutes -le 0) {
-    Remove-Item -LiteralPath $stage -Force -ErrorAction SilentlyContinue
-    Write-Log "dev $repo`: minted file is not a live token; keeping the old one"
-    return $false
-  }
-  [IO.File]::Move($stage, $dst, $true)
-  Write-Log "dev $repo`: token rotated, expires $($new.Expires.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
-  $true
 }
 
 
@@ -269,10 +307,32 @@ function Get-Repos {
   $j = Get-Content -LiteralPath $f -Raw | ConvertFrom-Json
   $repos = @($j.repos)
   if ($repos.Count -eq 0) { throw 'broker.json names no repos' }
+  $entries = @()
   foreach ($r in $repos) {
-    if ($r -isnot [string] -or -not (Test-RepoName $r)) { throw "broker.json: bad repository name '$r'" }
+    if ($r -isnot [string]) { throw "broker.json: bad repository name '$r'" }
+    $parts = $r.Split('/')
+    if ($parts.Count -gt 2) { throw "broker.json: bad repository name '$r'" }
+    foreach ($p in $parts) { if (-not (Test-RepoName $p)) { throw "broker.json: bad repository name '$r'" } }
+    $entries += @{ Label = $r; Name = $parts[-1]; Owner = $(if ($parts.Count -eq 2) { $parts[0] } else { $null }) }
   }
-  $repos
+  # Two entries with one name half (any case) would share tokens/<name> and mint for the same repo under two owners.
+  for ($i = 0; $i -lt $entries.Count; $i++) {
+    for ($k = $i + 1; $k -lt $entries.Count; $k++) {
+      if ($entries[$k].Name -ieq $entries[$i].Name) {
+        throw "broker.json: '$($entries[$i].Label)' and '$($entries[$k].Label)' have the same repository name"
+      }
+    }
+  }
+  # tokens/<owner>/ must never be some repo's old-layout mount source (tokens/<name>), where it would hold another repo's token.
+  for ($i = 0; $i -lt $entries.Count; $i++) {
+    if (-not $entries[$i].Owner) { continue }
+    for ($k = 0; $k -lt $entries.Count; $k++) {
+      if ($k -ne $i -and $entries[$k].Name -ieq $entries[$i].Owner) {
+        throw "broker.json: the owner of '$($entries[$i].Label)' is the name of another entry, '$($entries[$k].Label)'"
+      }
+    }
+  }
+  $entries
 }
 
 # --- start up ------------------------------------------------------------------------------
@@ -315,7 +375,7 @@ try {
   while ($true) {
     $failed = $false
     try {
-      $repos = Get-Repos
+      $repos = @(Get-Repos)
     } catch {
       if ($Once) { Write-Log "config: $($_.Exception.Message)"; Write-Error $_.Exception.Message -ErrorAction Continue; $exit = 2; break }
       if (-not $retryAt['*'] -or [DateTime]::UtcNow -ge $retryAt['*']) {
@@ -325,11 +385,12 @@ try {
       $repos = @()
     }
     foreach ($repo in $repos) {
+      $key = $repo.Label
       # Each step is its own try: a throw (a held file, a swapped directory) is logged, never fatal.
-      if (-not ($retryAt[$repo] -and [DateTime]::UtcNow -lt $retryAt[$repo] -and -not $Once)) {
+      if (-not ($retryAt[$key] -and [DateTime]::UtcNow -lt $retryAt[$key] -and -not $Once)) {
         # a failed dev mint waits out the retry gap
-        try { $ok = Update-DevToken $repo } catch { Write-Log "dev $repo`: $($_.Exception.Message)"; $ok = $false }
-        if (-not $ok) { $retryAt[$repo] = [DateTime]::UtcNow.AddSeconds($RetrySeconds); $failed = $true }
+        try { $ok = Update-DevToken $repo } catch { Write-Log "dev $key`: $($_.Exception.Message)"; $ok = $false }
+        if (-not $ok) { $retryAt[$key] = [DateTime]::UtcNow.AddSeconds($RetrySeconds); $failed = $true }
       }
     }
     try { Expire-ReviewTokens } catch { Write-Log "review: $($_.Exception.Message)" }
