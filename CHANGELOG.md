@@ -21,9 +21,7 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-### Changed
-
-- The host broker accepts an `owner/name` entry in `broker.json` and writes its dev token to both `tokens/<name>` and `tokens/<owner>/<name>`, and `install-host-tools.ps1` creates both directories; each name half must now match the ASCII-only rule case-sensitively (so a name with U+212A is refused, and the review sweeps leave such a directory in place). The broker also refuses, with exit 2 under `-Once` (the looping broker logs it) and no minting for any repo, two entries with the same name half in any case (a repeated entry included) and an owner half equal to another entry's name, so check an existing `broker.json` for repeats before reinstalling (`#1276`).
+**⚠️ Migration** — the host broker now accepts `owner/name` entries in `broker.json`, and refuses a whole `broker.json` that holds two entries with the same name half, a repeated entry or a case-variant duplicate included, or an owner half equal to another entry's name: it exits 2 under `-Once`, and the looping broker logs it and stops every mint. Before reinstalling, check `broker.json` for repeated or case-duplicate entries. Then reinstall the host tools and restart the broker. To get `tokens/<owner>/<repo>`, change an entry to `owner/name` form; it then writes both `tokens/<repo>` and `tokens/<owner>/<repo>` until the old layout is retired. Each name half must now match the ASCII-only rule case-sensitively, so a name with U+212A is refused and the review sweeps leave such a directory in place (`#1276`).
 
 ## [0.30.0] — 2026-11-03
 

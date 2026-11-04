@@ -42,7 +42,7 @@
 #   review-logs/           review run logs; may hold secrets and private contents the session read, swept by the
 #                          broker by age.
 # Invariant: no path under $WOW_HOME is container-writable. tokens/<repo>/ and tokens/<owner>/<repo>/ are
-# mounted only into a dev container (tokens/<owner>/ is never another repo's mount source), and
+# mounted only into a dev container (for the repos listed in broker.json, tokens/<owner>/ is never another repo's mount source), and
 # review-sessions/<id>/ only into a review container, each read-only.
 # claude-credential is never mounted into any container and reaches only the injector's stdin.
 # What these commands write: tokens/ and review-tokens/ directories, a per-repo .lock directory
