@@ -41,6 +41,7 @@ code_paths:
   - scripts/
   - .github/workflows/
   - .claude-plugin/
+  - .devcontainer/
 
 # ── the local green gate ─────────────────────────────────────────────────────
 gates:
