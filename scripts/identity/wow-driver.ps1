@@ -10,8 +10,13 @@
   devcontainer.local_folder label names it (docker ps -a, every state).
 
   Start of day (no container, or one stopped container), in order:
-    1. compares the clone's .devcontainer/ with the committed copy at <Remote>/<Base>, read from the
-       Reference clone, a different clone: same files, same bytes, no link anywhere;
+    1. compares the clone's .devcontainer/ with the committed copy, same files, same bytes, no link
+       anywhere. The Reference clone names the commit (<Remote>/<Base>), but the copy is read through the
+       host gh from the API, and only after GitHub's compare API reports that commit identical with or
+       behind <Base> of the Reference's origin repository, so a commit that exists only in the Reference
+       or in a fork never passes (an older commit on <Base> still does: a downgrade, and the binding is
+       only as strong as <Base>'s protection against the dev App). The committed tree must hold
+       .devcontainer/devcontainer.json, which the devcontainer CLI reads before a root .devcontainer.json;
     2. recreates the container: devcontainer up --skip-post-attach --remove-existing-container;
     3. checks that exactly the container up reported is running;
     4. records its id, the commit compared against, the clone's path and the Reference's origin
@@ -37,6 +42,12 @@
   (WB-D33). The docker exec literals are that file's remoteUser (app) and remoteEnv
   (GIT_TERMINAL_PROMPT=0); tests/identity-launchers.test.sh holds the two equal.
 
+  After the argument checks (the sh run that converts an MSYS-form -WowHome aside, which runs before
+  -WowHome is known) every external process this launcher starts runs with -WowHome as its working
+  directory, never the directory it was started from, so none starts with the Clone or the Reference as
+  its working directory; -WowHome may therefore not be, or sit inside, -Reference. git still enters the
+  Reference through -C, as before.
+
   Exit codes: 2 for a bad or missing argument (a usage line on stderr, before any external call, except the
   sh run that converts an MSYS-form -WowHome);
   1 for every refusal (a one-line reason on stderr); otherwise the session's own exit code.
@@ -56,7 +67,7 @@
 
 .PARAMETER Reference
   A different full clone that no container opens (for example the one install-host-tools.ps1 installs
-  from): its .git a directory, not a file. It supplies the committed .devcontainer/ and models.architect.
+  from): its .git a directory, not a file. It supplies the commit, the origin repository and models.architect.
   Its <Remote> must have exactly one github.com url, and its repository must match the driver
   record's origin when there is one.
 
@@ -117,17 +128,20 @@ try {
   if ((Test-PathInside $cloneP $refP) -or (Test-PathInside $refP $cloneP)) { Stop-BadArgument '-Clone and -Reference may not be, or contain, one another' }
   $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain
   if ((Test-PathInside $cloneP $wowP) -or (Test-PathInside $wowP $cloneP)) { Stop-BadArgument '-Clone may not be, contain or sit inside -WowHome' }
+  if (Test-PathInside $refP $wowP) { Stop-BadArgument '-WowHome may not be, or sit inside, -Reference' }
   if (-not (Test-RefName $Remote)) { Stop-BadArgument '-Remote is not a plain ref name' }
   if (-not (Test-RefName $Base)) { Stop-BadArgument '-Base is not a plain ref name' }
   $leaf = [IO.Path]::GetFileName($cloneP)
   $refLeaf = [IO.Path]::GetFileName($refP)
   if ($leaf -ieq $refLeaf) { Stop-BadArgument '-Clone and -Reference may not share a folder name: they would share the <leaf>-tmp volume' }
+  $script:LaunchWorkDir = $wowP
 
   # --- installed from bin under the final WowHome -------------------------------------------------
   $binWant = Join-Path $wowP 'bin'
   if ((Format-PathKey (Get-FinalPath $PSScriptRoot)) -ne (Format-PathKey $binWant)) { & $notInstalled }
 
   $git = Resolve-Tool 'git'
+  $gh = Resolve-Tool 'gh'
   $docker = Resolve-Tool 'docker'
   $devcontainer = Resolve-Tool 'devcontainer'
   $yq = Resolve-Tool 'yq'
@@ -168,8 +182,9 @@ try {
   $model = Get-RoleModel $git $yq $refP $commit 'architect'
 
   if ($mode -eq 'start') {
-    # 1. compare
-    Test-DevTree $git $refP $cloneP $commit
+    # 1. the commit is on <Base> of the origin, then compare the committed copy, both through the API
+    $rootTree = Assert-CommitOnBase $gh $refOrigin $Base $commit
+    Test-DevTree $gh $refOrigin $rootTree $cloneP
     # 2. recreate
     $up = Invoke-Tool $devcontainer @('up', '--skip-post-attach', '--remove-existing-container', '--workspace-folder', $cloneP) -InheritStderr
     if ($up.Code -ne 0) { Stop-Launch "devcontainer up failed (exit $($up.Code))" }
