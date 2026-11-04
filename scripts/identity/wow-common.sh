@@ -10,8 +10,8 @@
 #   tokens/<repo>/         the only directory of secrets a repo's container mounts, read-only: admin-token
 #                          (wow-admin) and dev-token (broker.ps1), each the token then its
 #                          expires_at. Admin and dev credentials only.
-#   tokens/<owner>/<repo>/ dev-token only, written by the broker for an "owner/name" entry in broker.json
-#                          beside tokens/<repo>/ (#1276); the owner-qualified layout, mounted the same way.
+#   tokens/<owner>/<repo>/ admin-token (wow-admin) and dev-token (broker.ps1), written for an "owner/name" entry in
+#                          broker.json beside tokens/<repo>/ (#1276, #1340); the owner-qualified layout, mounted the same way.
 #   dev.pem, broker.json   broker.ps1 config: the dev App's unencrypted key (name by convention), and
 #                          {"repos": [...]}, the repos it keeps a dev token for. Also broker.lock,
 #                          broker.log and staging/<repo>/, none mounted anywhere.
@@ -46,7 +46,8 @@
 # review-sessions/<id>/ only into a review container, each read-only.
 # claude-credential is never mounted into any container and reaches only the injector's stdin.
 # What these commands write: tokens/ and review-tokens/ directories, a per-repo .lock directory
-# and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed),
+# and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed; for an
+# "owner/name" entry in broker.json also under tokens/<owner>/<repo>/, with the tokens/<repo>/ copy staged as a .mint.* file and renamed),
 # reviewer-token (default review-tokens/<repo>/, or the path --out names), the session and filing
 # tokens (wow-review-mint --read / --file, written only to the path --out names), and the .mint.* file
 # mint.sh stages beside any token it writes. wow-review (the launcher) also writes its own review-sessions/,
