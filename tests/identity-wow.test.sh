@@ -17,6 +17,12 @@
 #                    second repo to the same request, either flag order); --file sends issues write;
 #                    both are strict (one extra permission, or a missing repo, exits 1 with no token
 #                    file); every usage rule exits 2 before curl with a message naming it
+#   broker.json      a bare-name entry writes only the bare file; an owner/name entry writes the same
+#                    two lines to tokens/<owner>/<repo>/ too (one curl call), and either copy alone
+#                    being live refuses a second mint; revoke sends one DELETE per distinct token and
+#                    removes each copy on its own answer; a dangling bare symlink or a failed second
+#                    write refuses/leaves a state --revoke clears; each malformed broker.json shape
+#                    makes mint and revoke exit 1 before curl, with nothing written (#1340)
 #   secrecy          neither token nor passphrase reaches stdout, stderr or argv
 #   usage / config   bad arguments exit 2 and missing config exits 1, before curl is called
 #
@@ -335,6 +341,165 @@ for args in "" "a b" ".." "repo1 --out" "repo1 --bogus"; do
   assert_eq "review usage curl uncalled [$args]" 0 "$(calls)"
 done
 assert_eq "usage curl uncalled" 0 "$(calls)"
+
+# --- broker.json: the owner-qualified second copy (#1340)
+TOKEN2=ghs_ZyXwVu9876543210ZyXwVu9876543210ZyXwVu
+# newhome <name> [broker.json text]: a throwaway $WOW_HOME with the same apps.json and keys
+newhome() {
+  h="$tmp/h-$1"
+  mkdir "$h"
+  cp "$home/apps.json" "$home/admin.enc.pem" "$home/review.pem" "$h/"
+  if [ $# -ge 2 ]; then printf '%s' "$2" >"$h/broker.json"; fi
+  printf '%s' "$h"
+}
+mint_in() { WOW_HOME="$1" WOW_TTY="$tmp/tty-good" run sh "$admin" repo1; }
+revoke_in() { WOW_HOME="$1" run sh "$admin" repo1 --revoke; }
+only_admin() { assert_eq "$1" admin-token "$(ls -A "$2")"; }
+
+# a bare-name entry: today's layout, no other directory under tokens/
+h=$(newhome bare '{"repos": ["repo1"]}')
+mint_in "$h"
+assert_eq "bare entry mint rc" 0 "$rc"
+assert_eq "bare entry token" "$TOKEN" "$(sed -n 1p "$h/tokens/repo1/admin-token")"
+assert_eq "bare entry tokens/ holds only repo1" repo1 "$(ls -A "$h/tokens")"
+
+# an owner/name entry: one curl call, the same two lines in both directories
+h=$(newhome own '{"repos": ["acme/repo1", "acme/other"]}')
+mint_in "$h"
+assert_eq "owner mint rc" 0 "$rc"
+assert_eq "owner mint one curl call" 1 "$(calls)"
+assert_eq "owner mint one repo requested" '["repo1"]' "$(sent | jq -c .repositories)"
+assert_eq "owner mint copies identical" "$(cat "$h/tokens/acme/repo1/admin-token")" "$(cat "$h/tokens/repo1/admin-token")"
+assert_eq "owner mint token line" "$TOKEN" "$(sed -n 1p "$h/tokens/acme/repo1/admin-token")"
+assert_eq "owner mint expiry line" "$EXPIRES" "$(sed -n 2p "$h/tokens/repo1/admin-token")"
+assert_eq "owner mint output names the owner file" 1 "$(printf '%s' "$out" | grep -c "$h/tokens/acme/repo1/admin-token" || true)"
+assert_eq "owner mint output names the bare file" 1 "$(printf '%s' "$out" | grep -c "$h/tokens/repo1/admin-token" || true)"
+assert_eq "owner mint no token in output" 0 "$(printf '%s' "$out" | grep -c "$TOKEN" || true)"
+assert_eq "owner mint no passphrase in output" 0 "$(printf '%s' "$out" | grep -c 'correct-horse' || true)"
+assert_eq "owner mint no token in argv" 0 "$(grep -c "$TOKEN" "$tmp/stub/argv" || true)"
+only_admin "owner mint owner dir holds only admin-token" "$h/tokens/acme/repo1"
+only_admin "owner mint bare dir holds only admin-token" "$h/tokens/repo1"
+
+# a live token in either copy alone refuses a second mint
+mint_in "$h"
+assert_eq "both live rc" 1 "$rc"
+assert_eq "both live curl uncalled" 0 "$(calls)"
+rm -f "$h/tokens/repo1/admin-token"
+mint_in "$h"
+assert_eq "owner copy alone live rc" 1 "$rc"
+assert_eq "owner copy alone live curl uncalled" 0 "$(calls)"
+printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
+rm -f "$h/tokens/acme/repo1/admin-token"
+mint_in "$h"
+assert_eq "bare copy alone live rc" 1 "$rc"
+assert_eq "bare copy alone live curl uncalled" 0 "$(calls)"
+
+# revoke of identical copies: one DELETE, both removed (204 and 401)
+for st in 204 401; do
+  printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
+  printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/acme/repo1/admin-token"
+  STUB_BODY= STUB_STATUS=$st revoke_in "$h"
+  assert_eq "revoke identical $st rc" 0 "$rc"
+  assert_eq "revoke identical $st one DELETE" 1 "$(calls)"
+  [ ! -e "$h/tokens/repo1/admin-token" ] && [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke identical $st" "a copy was kept"
+done
+
+# differing copies: two DELETEs; a 500 keeps the copies and exits 1
+printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
+printf '%s\n%s\n' "$TOKEN2" "$EXPIRES" >"$h/tokens/acme/repo1/admin-token"
+STUB_BODY= STUB_STATUS=500 revoke_in "$h"
+assert_eq "revoke differing 500 rc" 1 "$rc"
+[ -e "$h/tokens/repo1/admin-token" ] && [ -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke differing 500" "a copy was removed"
+STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+assert_eq "revoke differing rc" 0 "$rc"
+assert_eq "revoke differing two DELETEs" 2 "$(calls)"
+[ ! -e "$h/tokens/repo1/admin-token" ] && [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke differing" "a copy was kept"
+
+# a bare-only copy is removed
+printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
+STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+assert_eq "revoke bare-only rc" 0 "$rc"
+assert_eq "revoke bare-only one DELETE" 1 "$(calls)"
+[ ! -e "$h/tokens/repo1/admin-token" ] && ok || bad "revoke bare-only" "copy kept"
+
+# a malformed copy stops revoke before curl and keeps every file
+printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
+printf 'junk\n' >"$h/tokens/acme/repo1/admin-token"
+STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+assert_eq "revoke malformed copy rc" 1 "$rc"
+assert_eq "revoke malformed copy curl uncalled" 0 "$(calls)"
+[ -e "$h/tokens/repo1/admin-token" ] && [ -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke malformed copy" "a file was removed"
+
+# revoke with nothing on file creates no directory
+h=$(newhome nothing '{"repos": ["acme/repo1"]}')
+revoke_in "$h"
+assert_eq "revoke nothing rc" 1 "$rc"
+[ ! -e "$h/tokens" ] && ok || bad "revoke nothing" "created tokens/"
+
+# a dangling symlink at the bare path: refused before curl, nothing written through it
+h=$(newhome link '{"repos": ["acme/repo1"]}')
+mkdir -p "$h/tokens/repo1"
+ln -s "$tmp/linktarget" "$h/tokens/repo1/admin-token"
+mint_in "$h"
+assert_eq "symlink rc" 1 "$rc"
+assert_eq "symlink curl uncalled" 0 "$(calls)"
+[ ! -e "$tmp/linktarget" ] && [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "symlink" "something was written"
+
+# the second write fails: exit 1 naming the owner file, no staged file, --revoke clears both
+mkdir "$tmp/mvbin"
+real_mv=$(command -v mv)
+cat >"$tmp/mvbin/mv" <<'STUB'
+#!/bin/sh
+for a; do last=$a; done
+[ "$last" != "$STUB_FAIL_MV" ] || exit 1
+exec "$REAL_MV" "$@"
+STUB
+chmod +x "$tmp/mvbin/mv"
+REAL_MV=$real_mv; export REAL_MV
+h=$(newhome mvfail '{"repos": ["acme/repo1"]}')
+mkdir -p "$h/tokens/repo1"
+printf '%s\n2000-01-01T00:00:00Z\n' "$TOKEN2" >"$h/tokens/repo1/admin-token"
+STUB_FAIL_MV="$h/tokens/repo1/admin-token" PATH="$tmp/mvbin:$PATH" mint_in "$h"
+assert_eq "second write fails rc" 1 "$rc"
+assert_eq "second write fails names the owner file" 1 "$(printf '%s' "$out" | grep -c "$h/tokens/acme/repo1/admin-token" || true)"
+assert_eq "second write fails names --revoke" 1 "$(printf '%s' "$out" | grep -c -e '--revoke' || true)"
+assert_eq "second write fails leaves no .mint file (bare)" 0 "$(ls -A "$h/tokens/repo1" | grep -c '^\.mint' || true)"
+assert_eq "second write fails leaves no .mint file (owner)" 0 "$(ls -A "$h/tokens/acme/repo1" | grep -c '^\.mint' || true)"
+STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+assert_eq "revoke after failed second write rc" 0 "$rc"
+assert_eq "revoke after failed second write two DELETEs" 2 "$(calls)"
+[ ! -e "$h/tokens/repo1/admin-token" ] && [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke after failed second write" "a copy was kept"
+
+# every malformed broker.json refuses mint and revoke before curl: nothing written, no lock left
+badcase() {
+  name=$1 text=$2
+  h=$(newhome "bad-$name" "$text")
+  mint_in "$h"
+  assert_eq "broker.json $name: mint rc" 1 "$rc"
+  assert_eq "broker.json $name: mint curl uncalled" 0 "$(calls)"
+  assert_eq "broker.json $name: mint names broker.json" 1 "$(printf '%s' "$out" | grep -c 'broker.json' || true)"
+  revoke_in "$h"
+  assert_eq "broker.json $name: revoke rc" 1 "$rc"
+  assert_eq "broker.json $name: revoke curl uncalled" 0 "$(calls)"
+  [ ! -e "$h/tokens" ] && ok || bad "broker.json $name" "created tokens/"
+  # with a token on file, revoke must refuse on broker.json itself, not on "nothing on file"
+  mkdir -p "$h/tokens/repo1"
+  printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
+  STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+  assert_eq "broker.json $name: revoke with a token rc" 1 "$rc"
+  assert_eq "broker.json $name: revoke with a token curl uncalled" 0 "$(calls)"
+  assert_eq "broker.json $name: revoke with a token names broker.json" 1 "$(printf '%s' "$out" | grep -c 'broker.json' || true)"
+  [ -e "$h/tokens/repo1/admin-token" ] && ok || bad "broker.json $name" "revoke removed the token"
+}
+badcase notjson 'not json'
+badcase emptyrepos '{"repos": []}'
+badcase nonstring '{"repos": ["repo1", 5]}'
+badcase twoslashes '{"repos": ["a/b/repo1"]}'
+badcase dotstart '{"repos": [".acme/repo1"]}'
+badcase trailingnewline '{"repos": ["acme/repo1\n"]}'
+badcase casevariant '{"repos": ["acme/repo1", "acme/REPO1"]}'
+badcase twovalues '{"repos": ["acme/repo1"]} {"repos": []}'
+badcase ownerisname '{"repos": ["repo1", "repo1/other"]}'
 
 empty="$tmp/empty"
 mkdir "$empty"

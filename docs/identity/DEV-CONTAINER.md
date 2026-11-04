@@ -24,7 +24,9 @@ that serves the host's git credential (see Hazards that remain).
   This repo's container keeps mounting `tokens/claude-workbench` until `#1226` changes the mount.
   the `dev-token` script reads the `dev-token` file there, and the plugin's SessionStart banner reads `admin-token` there
   (`/run/wow/admin-token`, the fixed path it looks at); `wow-admin` writes the admin token into the same
-  host directory (when `WOW_HOME` is the default directory, as *Opening it* already requires). The change
+  host directory (when `WOW_HOME` is the default directory, as *Opening it* already requires); for an `owner/name`
+  entry in `broker.json` it writes both `tokens/<repo>/admin-token` and `tokens/<owner>/<repo>/admin-token`, as the
+  broker does with the dev token (`#1340`). The change
   takes effect when the driver launcher's start-of-day path recreates the container.
 - `/usr/local/libexec/dev-token` reads the file **on every call** and refuses (in plain mode: exit 2, no stdout)
   unless it holds a `ghs_` installation token with 5 minutes or more left on the container's

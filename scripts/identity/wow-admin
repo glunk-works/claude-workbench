@@ -10,16 +10,23 @@
 # an argument or an environment variable), unlocks the admin key into a private .unlock.*
 # directory under $WOW_HOME for the length of one mint.sh call, and writes the token and its
 # expires_at to $WOW_HOME/tokens/<repo>/admin-token -- the directory that repo's container mounts
-# read-only. The token is scoped to <repo> and to --perms (default: administration, contents and
+# read-only. When $WOW_HOME/broker.json holds an "owner/name" entry whose name half is exactly
+# <repo>, the same two lines are also written to tokens/<owner>/<repo>/admin-token, as the broker
+# does with the dev token (#1276, #1340); with no broker.json, no such entry or a bare-name entry
+# only the first file is written. A broker.json that breaks the broker's own rules (not JSON, empty
+# or non-string repos, more than one slash, a half failing the name rule, two name halves equal
+# ignoring case, an owner equal to another entry's name) is refused by mint and revoke alike before
+# anything else runs; reading it needs jq. The token is scoped to <repo> and to --perms (default: administration, contents and
 # pull_requests, all write). It refuses a key file that is not passphrase-encrypted (the
 # passphrase would guard nothing), refuses to run beside another wow-admin for the same repo, and
 # refuses while a live (or unreadable) token is on file: an overwritten token could no longer be
 # revoked, so --revoke it first (or delete a malformed file by hand). An expired token is simply
-# replaced.
+# replaced. The live-token check looks at both copies.
 #
-# --revoke: under the same per-repo lock, DELETE /installation/token with the token on file, then
-# remove the file. HTTP 401 means the token was already expired or revoked; the file goes and the
-# exit is 0. A lock left by a killed run blocks mint and revoke alike: rmdir it by hand.
+# --revoke: under the same per-repo lock, DELETE /installation/token once for each distinct token
+# on file (both copies, for an owner/name entry), then remove each copy on its own token's answer.
+# HTTP 401 means the token was already expired or revoked; the copy goes and the exit is 0. Any
+# other status keeps that token's copies and the exit is 1. A lock left by a killed run blocks mint and revoke alike: rmdir it by hand.
 #
 # $WOW_TTY names the terminal to read (default /dev/tty); the fixtures point it at a file, and
 # only then is a terminal that cannot hide echo accepted. It can only supply a passphrase the
@@ -51,11 +58,14 @@ check_repo "$repo"
 tokdir=$wow_home/tokens/$repo
 tokfile=$tokdir/admin-token
 lock=$tokdir/.lock
+owner= ownfile=
 tty=${WOW_TTY:-/dev/tty}
 tmpd=
 restore=
 locked=
+staged=
 cleanup() {
+  [ -z "$staged" ] || rm -f -- "$staged" || true
   [ -z "$restore" ] || stty echo <"$tty" 2>/dev/null || true
   [ -z "$tmpd" ] || rm -rf -- "$tmpd" || true
   [ -z "$locked" ] || rmdir -- "$lock" 2>/dev/null || true
@@ -69,30 +79,109 @@ take_lock() {
   locked=1
 }
 
-if [ -n "$revoke" ]; then
-  command -v curl >/dev/null 2>&1 || die "curl not on PATH"
-  [ -r "$tokfile" ] || die "no readable admin token on file for $repo"
-  take_lock
-  token=$(sed -n 1p "$tokfile") || die "cannot read $tokfile"
-  case "$token" in ghs_*) tok_body=${token#ghs_} ;; *) tok_body= ;; esac
-  case "$tok_body" in *[!A-Za-z0-9._-]*) tok_body= ;; esac
-  [ "${#tok_body}" -ge 36 ] || die "$tokfile does not hold a token; delete it by hand"
+# broker.json (when present) is checked by the broker's own rules before anything is locked,
+# unlocked or sent; the owner of the entry whose name half is exactly <repo> picks the second copy.
+if [ -e "$wow_home/broker.json" ] || [ -L "$wow_home/broker.json" ]; then
+  command -v jq >/dev/null 2>&1 || die "jq not on PATH"
+  bj=$(jq -rs --arg repo "$repo" '
+    def good: type == "string" and test("\\A[A-Za-z0-9._-]+\\z") and (test("\\A[-.]") | not) and (test("\\.\\z") | not);
+    if length != 1 then "bad" else .[0] | if type != "object" or (.repos | type) != "array" or (.repos | length) == 0 then "bad"
+    elif (.repos | map(type == "string") | all | not) then "bad"
+    else
+      (.repos | map(split("/"))) as $p
+      | if ($p | map(length < 1 or length > 2) | any) then "bad"
+        elif ($p | map(all(.[]; good)) | all | not) then "bad"
+        else
+          ($p | map({n: .[-1], o: (if length == 2 then .[0] else null end)})) as $e
+          | ($e | map(.n | ascii_downcase)) as $ns
+          | if ($ns | length) != ($ns | unique | length) then "bad"
+            elif ([range(0; $e | length) as $i | select($e[$i].o != null)
+                   | range(0; $e | length) as $k | select($k != $i and $ns[$k] == ($e[$i].o | ascii_downcase))] | length) > 0 then "bad"
+            else "ok\t" + ([$e[] | select(.n == $repo) | .o // ""] | first // "")
+            end
+        end
+    end end' "$wow_home/broker.json" 2>/dev/null) || bj=bad
+  case "$bj" in
+    ok|ok"	"*) owner=${bj#ok}; owner=${owner#"	"} ;;
+    *) die "$wow_home/broker.json is not a valid broker config; fix it and run wow-admin again" ;;
+  esac
+fi
+if [ -n "$owner" ]; then
+  owndir=$wow_home/tokens/$owner/$repo
+  ownfile=$owndir/admin-token
+fi
+
+# The bare path must not be a directory or a symlink: mv would replace a link, and a live token
+# could be written where it cannot be revoked. Same rule as mint.sh makes on its own --out.
+bare_ok() {
+  [ ! -d "$tokfile" ] && [ ! -L "$tokfile" ] || die "$tokfile is a directory or a symlink; remove it by hand"
+}
+
+# tok_of <file>: the token on its first line, only if token-shaped; else die.
+tok_of() {
+  t=$(sed -n 1p "$1") || die "cannot read $1"
+  case "$t" in ghs_*) b=${t#ghs_} ;; *) b= ;; esac
+  case "$b" in *[!A-Za-z0-9._-]*) b= ;; esac
+  [ "${#b}" -ge 36 ] || die "$1 does not hold a token; delete it by hand"
+  printf '%s\n' "$t"
+}
+
+# delete_token <token>: DELETE /installation/token; sets $code. Returns 1 if curl itself failed.
+delete_token() {
   reply=$(
     {
       printf 'url = "https://api.github.com/installation/token"\n'
       printf 'request = "DELETE"\n'
-      printf 'header = "Authorization: Bearer %s"\n' "$token"
+      printf 'header = "Authorization: Bearer %s"\n' "$1"
       printf 'header = "Accept: application/vnd.github+json"\n'
       printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
     } | curl -q -sS --max-time 30 -K - -w '\n%{http_code}'
-  ) || die "curl failed"
+  ) || return 1
   code=${reply##*
 }
-  case "$code" in
-    204) rm -f -- "$tokfile"; echo "revoked the admin token for $repo" ;;
-    401) rm -f -- "$tokfile"; echo "the admin token for $repo was already expired or revoked" ;;
-    *) die "GitHub answered HTTP $code; the token file is kept" ;;
-  esac
+}
+
+# live_check <file>: refuse while a live or unreadable token is on file; an expired one passes.
+live_check() {
+  [ ! -e "$1" ] || {
+    exp=$(sed -n 2p "$1" 2>/dev/null || true)
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    case "$exp" in
+      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) [ "$exp" \< "$now" ] || die "a live admin token for $repo is on file in $1 (expires $exp); run: wow-admin $repo --revoke" ;;
+      *) die "unreadable expiry in $1; run: wow-admin $repo --revoke, or delete the file by hand" ;;
+    esac
+  }
+}
+
+if [ -n "$revoke" ]; then
+  command -v curl >/dev/null 2>&1 || die "curl not on PATH"
+  have_bare= have_own=
+  [ ! -r "$tokfile" ] || have_bare=1
+  [ -z "$ownfile" ] || [ ! -r "$ownfile" ] || have_own=1
+  [ -n "$have_bare$have_own" ] || die "no readable admin token on file for $repo"
+  token_dir tokens "$repo" >/dev/null
+  take_lock
+  t1= t2=
+  [ -z "$have_bare" ] || t1=$(tok_of "$tokfile")
+  [ -z "$have_own" ] || t2=$(tok_of "$ownfile")
+  # one DELETE per distinct token; each copy goes on its own token's 204 or 401
+  failed=
+  settle() {
+    case "$code" in
+      204) rm -f -- "$@"; echo "revoked the admin token for $repo" ;;
+      401) rm -f -- "$@"; echo "the admin token for $repo was already expired or revoked" ;;
+      *) failed="GitHub answered HTTP $code; the token file is kept" ;;
+    esac
+  }
+  if [ -n "$t1" ]; then
+    delete_token "$t1" || die "curl failed"
+    if [ "$t2" = "$t1" ]; then settle "$tokfile" "$ownfile"; else settle "$tokfile"; fi
+  fi
+  if [ -n "$t2" ] && [ "$t2" != "$t1" ]; then
+    delete_token "$t2" || die "curl failed"
+    settle "$ownfile"
+  fi
+  [ -z "$failed" ] || die "$failed"
   exit 0
 fi
 
@@ -110,14 +199,12 @@ head -n 3 "$adminkey" | grep -q 'ENCRYPTED' || die "the admin key is not passphr
 token_dir tokens "$repo" >/dev/null
 take_lock
 
-[ ! -e "$tokfile" ] || {
-  exp=$(sed -n 2p "$tokfile" 2>/dev/null || true)
-  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  case "$exp" in
-    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) [ "$exp" \< "$now" ] || die "a live admin token for $repo is on file (expires $exp); run: wow-admin $repo --revoke" ;;
-    *) die "unreadable expiry in $tokfile; run: wow-admin $repo --revoke, or delete the file by hand" ;;
-  esac
-}
+live_check "$tokfile"
+if [ -n "$owner" ]; then
+  live_check "$ownfile"
+  bare_ok
+  token_dir tokens "$owner/$repo" >/dev/null
+fi
 
 printf 'Admin key passphrase: ' >&2
 if stty -echo <"$tty" 2>/dev/null; then
@@ -136,6 +223,20 @@ printf '%s\n' "$pass" | openssl pkey -in "$adminkey" -passin stdin -out "$tmpd/k
   || die "could not unlock the admin key (wrong passphrase?)"
 pass=
 
+if [ -z "$owner" ]; then
+  sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_id" --key "$tmpd/key.pem" \
+    --repos "$repo" --perms "$perms" --out "$tokfile"
+  echo "admin token for $repo written to $tokfile (read-only mount target); revoke with: wow-admin $repo --revoke"
+  exit 0
+fi
+
 sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_id" --key "$tmpd/key.pem" \
-  --repos "$repo" --perms "$perms" --out "$tokfile"
-echo "admin token for $repo written to $tokfile (read-only mount target); revoke with: wow-admin $repo --revoke"
+  --repos "$repo" --perms "$perms" --out "$ownfile"
+# the bare copy is staged in its own directory and renamed, so a mount never sees half a file
+bare_ok
+staged=$(umask 077 && mktemp -- "$tokdir/.mint.XXXXXX") || die "cannot stage $tokfile; $ownfile was written: run wow-admin $repo --revoke"
+{ sed -n 1p "$ownfile" && sed -n 2p "$ownfile"; } >"$staged" || die "cannot stage $tokfile; $ownfile was written: run wow-admin $repo --revoke"
+bare_ok
+mv -f -- "$staged" "$tokfile" || die "cannot write $tokfile; $ownfile was written: run wow-admin $repo --revoke"
+staged=
+echo "admin token for $repo written to $ownfile and $tokfile (read-only mount targets); revoke with: wow-admin $repo --revoke"

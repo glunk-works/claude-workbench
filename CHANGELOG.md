@@ -28,6 +28,7 @@ the GitHub release notes.
 ### Changed
 
 - The driver launcher reads the committed `.devcontainer/` through the API with the host `gh`, at a commit the compare API places on the origin's base branch, and requires `.devcontainer/devcontainer.json` in it; every process it starts after its argument checks runs from `-WowHome`, which may not be or sit inside `-Reference`; and `DEV-CONTAINER.md` says the launcher is the only way a container is created (`#1339`).
+- Once the host tools are reinstalled, `wow-admin` writes the admin token to both `tokens/<repo>/` and `tokens/<owner>/<repo>/` for an `owner/name` entry in `broker.json`, revokes both copies, and refuses a malformed `broker.json` (`#1340`).
 
 ## [0.30.0] — 2026-11-03
 
