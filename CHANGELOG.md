@@ -21,6 +21,12 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+**⚠️ Migration** — once the host tools are reinstalled, `wow-driver.ps1` needs `gh` on PowerShell's PATH on both paths (it refuses without it) and, for a start of day, a `gh` login that can read the origin repository.
+
+### Changed
+
+- The driver launcher reads the committed `.devcontainer/` through the API with the host `gh`, at a commit the compare API places on the origin's base branch, and requires `.devcontainer/devcontainer.json` in it; every process it starts after its argument checks runs from `-WowHome`, which may not be or sit inside `-Reference`; and `DEV-CONTAINER.md` says the launcher is the only way a container is created (`#1339`).
+
 ## [0.30.0] — 2026-11-03
 
 **⚠️ Migration** — `/way-of-working:resume`'s, `/way-of-working:handoff`'s and `/way-of-working:archive-sprint`'s `plan-anchor.sh verify` now read `unreadable` (and wait) on a missing `orchestration` or a missing or empty `orchestration.loop_identity`, and handoff's and archive-sprint's also on a missing or malformed `identities`, App entry or maintainer list, where they used to omit the flag. Run `schema-complete.sh check .ai/project.yml` and fix any finding before bumping (`#1221`).

@@ -12,9 +12,12 @@
   What is here: the argument checks and the canonical-path resolution; tool resolution and the host yq
   version check; the two process runners (every external call goes through ProcessStartInfo.ArgumentList, one element per
   argument, never a joined string); the commit and model read from the Reference clone; the in-process
-  git blob id; the Reference's origin repository (the one configured url, as lowercase owner/name,
+  git blob id; the base-branch check and the committed .devcontainer/ tree, read through the host gh from the API
+  (Get-GhJson, Assert-CommitOnBase, Get-CommittedDevTree); the Reference's origin repository (the one configured url, as lowercase owner/name,
   never echoed); the strict record read (four fields: id, commit, clone, origin; the old three-field shape reads with no origin) and the atomic
   record write; the two container listings; the relay probe. The launcher sets $script:LaunchProg and $script:LaunchUsage before calling any of it.
+  wow-driver.ps1 also sets $script:LaunchWorkDir, the working directory of every process Invoke-Tool and
+  Invoke-Session start from then on; wow-lane.ps1 never sets it.
 
   Honest limit. Everything above is an accident guard. If a container can write the Reference clone
   it can plant git config or hooks that run when git runs there; the control is a Reference clone no
@@ -211,6 +214,7 @@ function Invoke-Tool([string]$Exe, [string[]]$Arguments, [byte[]]$Stdin, [switch
   $psi = [Diagnostics.ProcessStartInfo]::new($Exe)
   foreach ($x in $Arguments) { $psi.ArgumentList.Add($x) }
   $psi.UseShellExecute = $false
+  if (Test-Path variable:script:LaunchWorkDir) { $psi.WorkingDirectory = $script:LaunchWorkDir }
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = -not $InheritStderr
   $psi.RedirectStandardInput = $null -ne $Stdin
@@ -239,6 +243,7 @@ function Invoke-Session([string]$Exe, [string[]]$Arguments) {
   $psi = [Diagnostics.ProcessStartInfo]::new($Exe)
   foreach ($x in $Arguments) { $psi.ArgumentList.Add($x) }
   $psi.UseShellExecute = $false
+  if (Test-Path variable:script:LaunchWorkDir) { $psi.WorkingDirectory = $script:LaunchWorkDir }
   $p = [Diagnostics.Process]::Start($psi)
   $p.WaitForExit()
   $p.ExitCode
@@ -246,9 +251,9 @@ function Invoke-Session([string]$Exe, [string[]]$Arguments) {
 
 # --- the Reference clone: commit, model, .devcontainer tree --------------------------------------
 
-# Get-ReferenceCommit: fetch <remote> <base> in the Reference, resolve refs/remotes/<remote>/<base> once.
+# Get-ReferenceCommit: fetch the branch <base> of <remote> in the Reference (an explicit refs/heads refspec, so a tag of the same name cannot stand in for it), resolve refs/remotes/<remote>/<base> once.
 function Get-ReferenceCommit([string]$Git, [string]$Reference, [string]$Remote, [string]$Base) {
-  $null = Get-ToolText $Git @('-C', $Reference, 'fetch', '--quiet', $Remote, $Base)
+  $null = Get-ToolText $Git @('-C', $Reference, 'fetch', '--quiet', $Remote, "+refs/heads/${Base}:refs/remotes/$Remote/$Base")
   $c = (Get-ToolText $Git @('-C', $Reference, 'rev-parse', '--verify', "refs/remotes/$Remote/$Base^{commit}")).Trim()
   if (-not (Test-Hex $c 40)) { Stop-Launch "refs/remotes/$Remote/$Base did not resolve to a commit" }
   $c
@@ -285,16 +290,74 @@ function Get-BlobId([string]$Path) {
   } finally { $fs.Dispose(); $sha.Dispose() }
 }
 
-# Get-CommittedDevTree: relative path -> blob id of every file under .devcontainer/ at the commit.
-function Get-CommittedDevTree([string]$Git, [string]$Reference, [string]$Commit) {
-  $text = Get-ToolText $Git @('-C', $Reference, 'ls-tree', '-r', '-z', $Commit, '--', '.devcontainer')
-  $tree = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal) # case-sensitive: Dockerfile and dockerfile stay two files
-  foreach ($rec in $text.Split([char]0, [StringSplitOptions]::RemoveEmptyEntries)) {
-    if ($rec -cnotmatch '\A(\d{6}) (blob|commit|tree) ([0-9a-f]{40})\t(.+)\z') { Stop-Launch 'unreadable git ls-tree record' }
-    if ($Matches[1] -cne '100644' -and $Matches[1] -cne '100755') { Stop-Launch "$($Matches[4]) is not a regular file at $Commit" }
-    $tree[$Matches[4]] = $Matches[3]
+# Get-JsonProp <object> <name>: a parsed-JSON property, or $null when the value is not an object or lacks it (StrictMode
+# would throw on a missing property, and the launcher refuses in its own words instead).
+function Get-JsonProp($Object, [string]$Name) {
+  if ($Object -isnot [pscustomobject]) { return $null }
+  $p = $Object.PSObject.Properties[$Name]
+  if ($p) { $p.Value } else { $null }
+}
+
+# Get-GhJson <gh> <api path>: one fixed GET through the host gh (no -X, -f, -F or --input), as one JSON object. A
+# nonzero exit or output that is not one JSON object refuses; neither the output nor stderr is echoed. Like every
+# launcher call it has no timeout.
+function Get-GhJson([string]$Gh, [string]$Path) {
+  $r = Invoke-Tool $Gh @('api', '--hostname', 'github.com', $Path)
+  if ($r.Code -ne 0) { Stop-Launch "gh api failed (exit $($r.Code))" }
+  try { $o = [Text.Encoding]::UTF8.GetString($r.Out) | ConvertFrom-Json -ErrorAction Stop } catch { Stop-Launch 'gh api did not print JSON' }
+  if ($o -isnot [pscustomobject]) { Stop-Launch 'gh api did not print one JSON object' }
+  $o
+}
+
+# Assert-CommitOnBase: the commit is on <Base> of the origin, by GitHub's compare API (refs/heads/<Base>...<commit>, the branch and never a
+# tag of the same name, reports the commit relative to the base). Passes only for status identical or behind with the merge base equal to the commit, which
+# pins the answer to the sha and not to a ref of the same name, and returns the commit's root tree sha. An older commit
+# on <Base> still passes (a downgrade); the binding is only as strong as <Base>'s protection against the dev App.
+function Assert-CommitOnBase([string]$Gh, [string]$Origin, [string]$Base, [string]$Commit) {
+  $c = Get-GhJson $Gh "repos/$Origin/compare/refs/heads/$Base...$Commit"
+  $status = Get-JsonProp $c 'status'
+  $mb = Get-JsonProp $c 'merge_base_commit'
+  $mbSha = Get-JsonProp $mb 'sha'
+  if ($status -isnot [string] -or ($status -cne 'identical' -and $status -cne 'behind') -or $mbSha -isnot [string] -or $mbSha -cne $Commit) {
+    $why = if ($status -is [string] -and $status -cmatch '\A[a-z]{1,16}\z') { "its compare status is $status" } else { 'its compare status is unreadable' }
+    Stop-Launch "$Commit is not on $Base of ${Origin}: $why"
   }
-  if ($tree.Count -eq 0) { Stop-Launch ".devcontainer/ has no files at $Commit" }
+  $tree = Get-JsonProp (Get-JsonProp (Get-JsonProp $mb 'commit') 'tree') 'sha'
+  if ($tree -isnot [string] -or -not (Test-Hex $tree 40)) { Stop-Launch "the compare for $Commit named no root tree" }
+  $tree
+}
+
+# Get-CommittedDevTree: relative path -> blob id of every file under .devcontainer/ at the commit whose root tree is
+# given, from two git/trees reads (the root, then the .devcontainer subtree recursively). A truncated read, a root tree
+# without exactly one .devcontainer tree entry, an entry that is not a regular file and a tree without
+# .devcontainer/devcontainer.json (the file the devcontainer CLI reads before a root .devcontainer.json) all refuse.
+function Get-CommittedDevTree([string]$Gh, [string]$Origin, [string]$RootTree) {
+  $root = Get-GhJson $Gh "repos/$Origin/git/trees/$RootTree"
+  $t = Get-JsonProp $root 'truncated'
+  if ($t -isnot [bool] -or $t) { Stop-Launch 'the commit tree read was truncated or unreadable' }
+  $dir = @(@(Get-JsonProp $root 'tree') | Where-Object { (Get-JsonProp $_ 'path') -ceq '.devcontainer' })
+  if ($dir.Count -ne 1) { Stop-Launch '.devcontainer/ is not a single directory at the commit' }
+  $dirType = Get-JsonProp $dir[0] 'type'; $dirSha = Get-JsonProp $dir[0] 'sha'
+  if ($dirType -isnot [string] -or $dirType -cne 'tree' -or $dirSha -isnot [string] -or -not (Test-Hex $dirSha 40)) { Stop-Launch '.devcontainer is not a directory at the commit' }
+  $sub = Get-GhJson $Gh "repos/$Origin/git/trees/${dirSha}?recursive=1"
+  $t = Get-JsonProp $sub 'truncated'
+  if ($t -isnot [bool] -or $t) { Stop-Launch 'the .devcontainer tree read was truncated or unreadable' }
+  $tree = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal) # case-sensitive: Dockerfile and dockerfile stay two files
+  foreach ($e in @(Get-JsonProp $sub 'tree')) {
+    $path = Get-JsonProp $e 'path'; $type = Get-JsonProp $e 'type'; $mode = Get-JsonProp $e 'mode'; $sha = Get-JsonProp $e 'sha'
+    if ($path -isnot [string] -or @($path.Split('/') | Where-Object { $_ -cnotmatch '\A[A-Za-z0-9._-]+\z' }).Count -gt 0) {
+      Stop-Launch 'an entry under .devcontainer/ at the commit has a path the launcher does not accept'
+    }
+    if ($type -is [string] -and $type -ceq 'tree') { continue }
+    if ($type -isnot [string] -or $type -cne 'blob' -or $mode -isnot [string] -or ($mode -cne '100644' -and $mode -cne '100755') -or $sha -isnot [string] -or -not (Test-Hex $sha 40)) {
+      Stop-Launch ".devcontainer/$path is not a regular file at the commit"
+    }
+    $key = ".devcontainer/$path"
+    if ($tree.ContainsKey($key)) { Stop-Launch "$key appears twice at the commit" }
+    $tree[$key] = $sha
+  }
+  if ($tree.Count -eq 0) { Stop-Launch '.devcontainer/ has no files at the commit' }
+  if (-not $tree.ContainsKey('.devcontainer/devcontainer.json')) { Stop-Launch '.devcontainer/devcontainer.json is not committed at the commit' }
   $tree
 }
 
@@ -321,8 +384,8 @@ function Get-DiskDevFiles([string]$Clone) {
 }
 
 # Test-DevTree: the clone's .devcontainer/ equals the commit's, file set and bytes. Refuses naming the first difference.
-function Test-DevTree([string]$Git, [string]$Reference, [string]$Clone, [string]$Commit) {
-  $want = Get-CommittedDevTree $Git $Reference $Commit
+function Test-DevTree([string]$Gh, [string]$Origin, [string]$RootTree, [string]$Clone) {
+  $want = Get-CommittedDevTree $Gh $Origin $RootTree
   $have = Get-DiskDevFiles $Clone
   foreach ($rel in ($want.Keys | Sort-Object -CaseSensitive)) {
     if (-not $have.ContainsKey($rel)) { Stop-Launch "$rel is missing from the clone but committed on the base" }

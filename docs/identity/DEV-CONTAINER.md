@@ -2,8 +2,8 @@
 
 WB-D24, issue #393. The container is `.devcontainer/`, from the 603-Identity/devcontainers
 template. A session in it is meant to reach GitHub only as the dev App, and is expected to when
-the container is entered through `devcontainer up`, then
-`docker exec` into the container it reports; the maintainer's live run after merge is to confirm that, and until
+the container is entered through the driver launcher (`wow-driver.ps1`, below), never a hand
+`devcontainer up`. The launcher recreates the container and then `docker exec`s into the container it reports; the maintainer's live run after merge is to confirm that, and until
 then it is unconfirmed; the other hazards below remain regardless. VS Code attach is
 unsupported (#720, `WB-D33`): even with the host setting
 `dev.containers.gitCredentialHelperConfigLocation` at `none`, an attach opens an IPC channel
@@ -70,7 +70,8 @@ that serves the host's git credential (see Hazards that remain).
   $env:WOW_HOME\bin\...` commands is not converted: either set the user-level variable in the form
   above or spell the script path in that form. `install-host-tools.ps1` refuses an MSYS-form `WowHome`.
   `yq` must be on PowerShell's `PATH`, v4.54.1 or newer; both launchers refuse an older or unidentifiable `yq`
-  before any docker call. The driver launcher runs the checks below in the safe order, so that order is
+  before any docker call. The driver launcher also needs `gh` on PowerShell's `PATH`, on both paths, and for a
+  start of day a `gh` login that can read the origin repository. The driver launcher runs the checks below in the safe order, so that order is
   the only one it offers.
   - **`-Clone`** is the clone the container opens (an absolute directory, not a link, whose leaf
     follows Docker's volume-name rule and whose whole path holds only letters, digits, space, `.`,
@@ -78,8 +79,12 @@ that serves the host's git credential (see Hazards that remain).
     **`-Reference`** is a different full clone that no container opens, with a different folder name from the clone (the two would share the `<leaf>-tmp` volume), for example the one
     `install-host-tools.ps1` installs from (its `.git` a directory, not a worktree's file); git runs
     there and never in the clone, whose `.git` config and hooks a container can write. **`-WowHome`**
-    defaults as in `install-host-tools.ps1`. `-Remote` (default `origin`) and `-Base` (default `main`)
-    name the ref in the Reference that the committed copy and the model are read from.
+    defaults as in `install-host-tools.ps1`. After its argument checks the driver launcher starts every
+    process from it, never from the directory it was started in, and refuses (exit 2) a `-WowHome` that is or
+    sits inside `-Reference`, so no process it starts has the clone or the Reference as its working directory.
+    `-Remote` (default `origin`) and `-Base` (default `main`)
+    name the ref in the Reference whose commit and model are read; `-Base` is also the branch the compare
+    checks on the origin.
   - **Which path.** The clone's containers are those on its `<leaf>-tmp` volume plus those whose
     `devcontainer.local_folder` label names it (`docker ps -a`, both listings, every state). None, or
     one stopped, is **start of day**. Exactly one, running, is **attach**. Anything else refuses and
@@ -87,9 +92,13 @@ that serves the host's git credential (see Hazards that remain).
     then rerun. A container started by hand with a bind of the clone but neither the label nor the
     `-tmp` volume is invisible to both listings. A container on the Reference's volume or labelled
     with the Reference refuses on both paths.
-  - **Start of day** compares the clone's `.devcontainer/` with the committed copy at
-    `<Remote>/<Base>` in the Reference (same files, same bytes, no link anywhere; a CRLF checkout is
-    refused as intended), recreates the container with `devcontainer up --skip-post-attach
+  - **Start of day** compares the clone's `.devcontainer/` with the committed copy (same files, same
+    bytes, no link anywhere; a CRLF checkout is refused as intended). The Reference names the commit at
+    `<Remote>/<Base>`, but the copy is read through the API with the host `gh`, and only after the compare
+    API reports that commit `identical` with or `behind` the origin's `<Base>`, so a commit that exists only
+    in the Reference or in a fork refuses. The committed tree must hold `.devcontainer/devcontainer.json`.
+    An older commit on `<Base>` still passes (a downgrade), and the binding is only as strong as `<Base>`'s
+    protection against the dev App. It then recreates the container with `devcontainer up --skip-post-attach
     --remove-existing-container`, checks that exactly the container `up` reported is running, writes
     the record, and enters it. Before the fetch it reads the Reference's `<Remote>` repository (one
     github.com url, kept as lowercase `owner/name`) and refuses when the record names this clone and
@@ -141,27 +150,16 @@ that serves the host's git credential (see Hazards that remain).
   - **A live-run check for the maintainer's first run:** `docker inspect` of the recreated container
     shows only the five mounts `devcontainer.json` declares, since the pinned base image might
     declare a `VOLUME`. This is a check for the human, not launcher code.
-- **By hand**, from PowerShell or cmd on the host (not Git Bash), and only after the compare:
+- **By hand.** The driver launcher is the only way a container is created: no hand `devcontainer up`,
+  no host VS Code Dev Containers, and no host git in a checkout a container mounts. To get a shell in the
+  recorded running container, from PowerShell or cmd on the host (not Git Bash):
   ```sh
-  devcontainer up --skip-post-attach --workspace-folder <clone>
   docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /workspace <containerId> bash -l
   ```
-  `<containerId>` is the `containerId` `up` prints. Run `/usr/local/bin/claude` instead of `bash -l`
-  to start Claude Code directly. `--skip-post-attach` keeps `up` from running `postAttachCommand`,
-  whose warning is meant for a VS Code attach. After a change to `.devcontainer/`, the hand recreate command is
-  ```sh
-  devcontainer up --skip-post-attach --workspace-folder <clone> --remove-existing-container
-  ```
-  If
-  `up` does not find a container VS Code made earlier, it makes a new one on the same named volumes.
-  Before the first `up` from the CLI, stop any container VS Code made for the clone: find it with
-  `docker ps -a --filter volume=<checkout folder>-tmp`, then `docker stop` and `docker rm` it. A
-  running one keeps its relay, `up` does not restart it, and its socket would sit on the shared
-  `-tmp` volume where the check below, which sees only its own container's processes, cannot see the
-  relay. Make that `docker ps` part of the standing check: it should list only the CLI's container
-  (the `containerId` `up` prints), and VS Code's "Reopen in Container" can make a second one later.
-  Run the channel check below after the first `up`.
-- **Do not attach VS Code** (Reopen in Container, Attach to Running Container) (#720, `WB-D33`).
+  `<containerId>` is the id the launcher prints as `started <id>` or `attaching to <id>`. Run
+  `/usr/local/bin/claude` instead of `bash -l` to start Claude Code directly. Run the channel check below
+  after the first start of day.
+- **Do not attach VS Code** (Reopen in Container, Rebuild, Attach to Running Container) (#720, `WB-D33`).
   Attach is what opens the host credential channel. There is no VS Code window inside the
   container: edit files from the container shell, and do not use the Claude Code VS Code panel
   there.
@@ -330,8 +328,7 @@ only `/workspace`, and its `.git` file names a host path.
   stop and ask the maintainer. `scripts/test-all.sh` starts this suite with its pool; run it in one
   Bash call at the tool's 600 s maximum and stop and report if that call times out. If `command -v timeout` prints `/usr/bin/timeout`, the container
   predates #741 and the maintainer recreates it, on the host: after every lane, every spec session and the driver
-  session have exited, `docker stop` the container, then run the driver launcher (start of day), or use
-  the hand recreate command in *Opening it*, then runs *The check after a rebuild* in
+  session have exited, `docker stop` the container, then run the driver launcher (start of day), and run *The check after a rebuild* in
   *GNU coreutils, not uutils*, which is also how to tell such a container. If it prints another
   path, a uutils copy in `~/.local/bin` shadows the links: the maintainer removes that copy (it
   survives a recreate, so recreating does not fix it).
@@ -385,12 +382,12 @@ in the procedure changed. The trial filed follow-ups #727, #728 and #729.
 ## Hazards that remain
 
 - **`/workspace` is read-write**, so a session can edit `.devcontainer/` (an `initializeCommand`,
-  wider mounts) and the host runs it at the next `devcontainer up`, Reopen or Rebuild. Compare
-  `.devcontainer/` with the committed blob, from a different clone, before every `up` and every
-  `devcontainer exec`. The order is: run `docker ps -a --filter volume=<checkout folder>-tmp` and
-  `docker stop` every container it lists, compare, `up`, then enter with `docker exec`. The
-  launcher's start-of-day path keeps that order: it compares, recreates, enters with `docker exec`,
-  and refuses to start a day while a container runs (it attaches instead only to the one recorded, running container). The compare only holds while no
+  wider mounts) and the host runs it at the next `devcontainer up`, Reopen or Rebuild. The launcher
+  compares `.devcontainer/` with the committed copy it reads through the API (at a commit the compare API
+  places on the origin's base branch, not from a clone a container can reach) before every `up`, and offers
+  no `devcontainer exec`. Its start-of-day order is: it lists the clone's containers and refuses to start
+  a day while one runs (it attaches instead only to the one recorded, running container), compares,
+  recreates and enters with `docker exec`. The compare only holds while no
   container that mounts the clone is running, since any of them can write the file, so a running session could
   change it between the compare and the CLI's read; that also means no second `devcontainer exec`
   shell beside a running session, since `devcontainer exec` re-reads the host file. A `docker exec`
@@ -428,7 +425,7 @@ in the procedure changed. The trial filed follow-ups #727, #728 and #729.
   return (each GitHub account, each host) as exposed and rotate it. The backstop also
   loses a race against a process already watching `/tmp`, which can read the new client and
   connect before the removal runs, or move the socket out of the glob's reach.
-  On the CLI path the test is the second and third checks plus the host-side `docker ps`. Do not
+  On the CLI path the test is the second and third checks plus the launcher's container listing. Do not
   run the masked credential test below there: when the `ls` check printed nothing no client file
   exists, so it has nothing to call and its lack of a `password=`
   line proves nothing. It is the diagnostic that established #720, kept for a maintainer
@@ -511,7 +508,7 @@ removes it. The login lives on the volume; the binary does not.
   them, and `tests/devcontainer-image.test.sh` and `tests/review-image.test.sh` hold them equal).
   Take the sha256 from that version's release `manifest.json` (the `linux-x64` entry). Then
   recreate the container: after every lane, every spec session and the driver session have exited, `docker stop` it, then
-  run the driver launcher (start of day), or use the hand recreate command in *Opening it*.
+  run the driver launcher (start of day).
 - **Clearing a stopgap install.** A copy from the native installer lives on the home volume, and
   `~/.local/bin` leads `PATH`, so it shadows the image's. Remove `~/.local/bin/claude` and
   `~/.local/share/claude`, then check with `command -v claude` (should print
@@ -554,7 +551,7 @@ removes it. The login lives on the volume; the binary does not.
   uutils-only extras (for example `hashsum`) and `/usr/sbin/gnuchroot` are not linked. The review
   image and the loop image are separate (#760).
 - **The check after a rebuild**, which comes after every lane, every spec session and the driver session have exited, `docker stop` of the
-  container, and the driver launcher (start of day) or the hand recreate command in *Opening it*:
+  container, and the driver launcher (start of day):
   `command -v timeout` prints `/usr/local/bin/timeout`, `timeout --version` names GNU coreutils on
   its first line, `date +%s%3N` prints 13 digits, and `ls ~/.local/bin` lists no coreutils name (a
   copy there, on the home volume, would shadow the links).

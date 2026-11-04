@@ -1,8 +1,10 @@
 #!/bin/sh
 # Fixture tests for scripts/identity/wow-driver.ps1, wow-lane.ps1 and wow-launch-common.ps1 (issues #728, #762).
 #
-# Stub docker and devcontainer record their argv in one calls.log and answer from canned files; a
-# recording git wrapper logs its argv and runs the real git. A scratch Reference clone (local bare
+# Stub docker, devcontainer and gh record their argv in one calls.log and answer from canned files (gh from the
+# scratch origin's real objects, shaped as the compare and git/trees API answers, then reshaped by a ghx.jq.<kind>
+# filter or replaced by ghx.raw.<kind> or ghx.exit); devcontainer and gh also log their working directory, in native
+# form, to cwd.log; a recording git wrapper logs its argv and runs the real git. A scratch Reference clone (local bare
 # origin, .devcontainer/ and .ai/project.yml committed), a scratch Clone folder holding a copy of
 # .devcontainer/, and a scratch WowHome with the three scripts and a MANIFEST in install-host-tools.ps1's
 # format are laid out per case. The stub docker answers its Nth `ps` call of each kind (volume, label)
@@ -11,10 +13,16 @@
 #   not installed   no MANIFEST (a checkout), a wrong hash for either file, a missing row, a bin outside
 #                   -WowHome: exit 1 before any stub call; a -WowHome reached through a link passes
 #   bad arguments   missing/related/linked/odd-leaf -Clone and -Reference, a .git file, a bad -Remote or
-#                   -Base, a -Clone holding -WowHome, & or % in a parent: exit 2, no stub or git call
-#   start of day    zero, exited or created container: up, re-list, record, docker exec -it, the exec's code
+#                   -Base, a -Clone holding -WowHome, a -WowHome that is or sits inside -Reference, & or % in a parent: exit 2, no stub or git call
+#   start of day    zero, exited or created container: three gh api calls (the compare, the root tree, the
+#                   .devcontainer subtree), up, re-list, record, docker exec -it, the exec's code; gh and up run
+#                   with the final -WowHome as their working directory
+#   base binding    the launcher started inside the Clone still runs gh and up from -WowHome; a behind compare passes; ahead, diverged, a missing status, another merge-base sha, non-JSON
+#                   output and a failing gh each refuse before up; so do a committed tree without
+#                   .devcontainer/devcontainer.json, a truncated read of either tree, a root tree with no
+#                   .devcontainer entry, and a symlink or submodule entry; the API reason wins over a clone mismatch
 #   refusals        .devcontainer/ mismatch, label-only or Reference containers, bad up results, bad re-list
-#   attach          record + running container + clean probe: no compare, no devcontainer, no git on the Clone
+#   attach          record + running container + clean probe: no compare, no gh, no devcontainer, no git on the Clone
 #   origin          the Reference's origin repository against the four-field record: start of day, attach,
 #                   wow-lane -Issue/-Spec/-SpecSweep refuse another origin; a three-field record is replaced at start and
 #                   refused on attach and in the lane; url shapes that refuse without echoing the url
@@ -156,6 +164,7 @@ cat >"$tmp/devcontainer.body" <<'STUB'
 #!/bin/sh
 d=$STUB_DIR
 echo "devcontainer $*" >>"$d/calls.log"
+{ pwd -W 2>/dev/null || pwd -P; } | sed 's/^/devcontainer /' >>"$d/cwd.log"
 echo "stub devcontainer: building CANARY-STDERR" >&2
 [ ! -e "$d/up.hook" ] || sh "$d/up.hook"
 if [ -e "$d/up.out" ]; then cat "$d/up.out"; else
@@ -167,8 +176,33 @@ cat >"$tmp/git.body" <<'STUB'
 echo "git $*" >>"$STUB_DIR/git.log"
 exec "$REAL_GIT" "$@"
 STUB
+cat >"$tmp/gh.body" <<'STUB'
+#!/bin/sh
+d=$STUB_DIR
+echo "gh $*" >>"$d/calls.log"
+{ pwd -W 2>/dev/null || pwd -P; } | sed 's/^/gh /' >>"$d/cwd.log"
+[ ! -e "$d/ghx.exit" ] || exit "$(cat "$d/ghx.exit")"
+for a in "$@"; do path=$a; done
+g() { "$REAL_GIT" -C "$STUB_ORIGIN" "$@"; }
+case "$path" in
+  repos/acme/widgets/compare/*) kind=compare; c=${path##*...} ;;
+  repos/acme/widgets/git/trees/*'?recursive=1') kind=sub; t=${path%'?recursive=1'}; t=${t##*/} ;;
+  repos/acme/widgets/git/trees/*) kind=root; t=${path##*/} ;;
+  *) exit 1 ;;
+esac
+if [ -e "$d/ghx.raw.$kind" ]; then cat "$d/ghx.raw.$kind"; exit 0; fi
+ents='{truncated:false,tree:[split("\n")[]|select(length>0)|split("[ \t]";null)|{mode:.[0],type:.[1],sha:.[2],path:.[3]}]}'
+case $kind in
+  compare) out=$(jq -n --arg c "$c" --arg t "$(g rev-parse "$c^{tree}")" '{status:"identical",merge_base_commit:{sha:$c,commit:{tree:{sha:$t}}}}') ;;
+  root) out=$(g ls-tree "$t" | jq -R -s "$ents") ;;
+  sub) out=$(g ls-tree -r -t "$t" | jq -R -s "$ents") ;;
+esac
+[ ! -e "$d/ghx.jq.$kind" ] || out=$(printf '%s' "$out" | jq -c -f "$d/ghx.jq.$kind")
+printf '%s\n' "$out"
+STUB
 mkstub docker "$tmp/docker.body"
 mkstub devcontainer "$tmp/devcontainer.body"
+mkstub gh "$tmp/gh.body"
 # On MSYS a .cmd git shim would lose the ^ of ^{commit} to cmd.exe, which the real git.exe never sees, so
 # the launcher runs the real git and run_with projects git's own trace2 log into git.log instead.
 [ -n "$msys" ] || mkstub git "$tmp/git.body"
@@ -189,6 +223,7 @@ printf 'FROM scratch\n# CANARY-DEVC\n# second\n' >"$seed/.devcontainer/Dockerfil
 $G -C "$seed" commit -q -am two
 $real_git -C "$seed" remote add origin "$(wp "$origin")"; $real_git -C "$seed" push -q origin main
 c2=$($real_git -C "$seed" rev-parse HEAD)
+t2=$($real_git -C "$seed" rev-parse "$c2^{tree}") dc2=$($real_git -C "$seed" rev-parse "$c2:.devcontainer")
 $real_git clone -q "$(wp "$origin")" "$ref"
 # The Reference's origin is a github.com url (the launcher records it as lowercase owner/name); its fetch still
 # reaches the local bare repo through a scoped insteadOf rewrite, which the launcher's config read never applies.
@@ -201,7 +236,7 @@ $real_git clone -q "$(wp "$origin")" "$crepo"
 $real_git init -q --bare -b main "$origin2"; $real_git -C "$seed" push -q "$(wp "$origin2")" "$c1:refs/heads/main"
 $real_git clone -q "$(wp "$origin2")" "$crepo2"
 # On MSYS git prints native paths, so the scripts must be handed the native form of the scratch directories.
-STUB_LANES=$(wp "$lanes") STUB_REPO=$(wp "$crepo"); export STUB_LANES STUB_REPO
+STUB_LANES=$(wp "$lanes") STUB_REPO=$(wp "$crepo") STUB_ORIGIN=$(wp "$origin"); export STUB_LANES STUB_REPO STUB_ORIGIN
 set_clone() { rm -rf "$clone"; mkdir -p "$clone"; cp -R "$seed/.devcontainer" "$clone/.devcontainer"; }
 set_clone
 
@@ -239,7 +274,7 @@ run_with() { # run_with <script> <args...>
 }
 run_drv() { run_with "$home/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")" "$@"; }
 reset() {
-  rm -rf "$stubdir"/calls.log "$stubdir"/git.log "$stubdir"/n.* "$stubdir"/ps.* "$stubdir"/up.* "$stubdir"/probe.* "$stubdir"/record-at-exec "$stubdir"/it.* "$stubdir"/lanes-at-exec "$stubdir"/spec-* "$stubdir"/moved-wt
+  rm -rf "$stubdir"/calls.log "$stubdir"/cwd.log "$stubdir"/ghx.* "$stubdir"/git.log "$stubdir"/n.* "$stubdir"/ps.* "$stubdir"/up.* "$stubdir"/probe.* "$stubdir"/record-at-exec "$stubdir"/it.* "$stubdir"/lanes-at-exec "$stubdir"/spec-* "$stubdir"/moved-wt
   : >"$stubdir/calls.log"; : >"$stubdir/git.log"
   rm -rf "$home/driver"; set_clone
 }
@@ -248,6 +283,13 @@ glog() { cat "$stubdir/git.log" 2>/dev/null || true; }
 none_called() { [ ! -s "$stubdir/calls.log" ] && [ ! -s "$stubdir/git.log" ]; }
 no_it() { ! calls | grep -q ' -it '; }
 no_dc() { ! calls | grep -q '^devcontainer '; }
+no_gh() { ! calls | grep -q '^gh '; }
+# cwd_all <dir> <lines>: exactly that many gh and devcontainer processes logged, each started in <dir>
+cwd_all() {
+  want=$(norm "$1"); [ "$(wc -l <"$stubdir/cwd.log" 2>/dev/null | tr -d ' ')" -eq "$2" ] || return 1
+  while IFS= read -r l; do [ "$(norm "${l#* }")" = "$want" ] || return 1; done <"$stubdir/cwd.log"
+}
+gh_line() { printf 'gh api --hostname github.com repos/acme/widgets/%s' "$1"; }
 err_has() { grep -q -- "$1" "$tmp/err"; }
 out_has() { grep -q -- "$1" "$tmp/out"; }
 write_record() { # write_record <id> <commit> <clone> [origin]: the four-field record
@@ -269,6 +311,9 @@ non_ps() { calls | grep -v '^docker ps '; }
 probe_guarded() { case "$probe_script" in *"-e '[v]scode-remote-containers-server' -e '[v]scode-server'"*) return 0 ;; esac; return 1; }
 probe_script=$(sed -n 's/^  "\(\/bin\/ls -d .*\)"$/\1/p' "$root_dir/scripts/identity/wow-launch-common.ps1")
 rec_ok_commit() { jq -e --arg c "$c2" '.commit == $c' "$home/driver/wb-driver.json" >/dev/null; }
+gh_lines() { # the three API reads of a start of day, in order
+  gh_line "compare/refs/heads/main...$c2"; echo; gh_line "git/trees/$t2"; echo; gh_line "git/trees/$dc2?recursive=1"; echo
+}
 exec_line="docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /workspace $ID1 /usr/local/bin/claude --model opus --effort medium Driver for acme/widgets."
 
 running1() { reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; }
@@ -353,6 +398,7 @@ if mklink_dir "$tmp/homelink" "$home"; then
   reset; echo "$ID1 exited" >"$stubdir/ps.vol.1"; echo "$ID1 running" >"$stubdir/ps.vol.3"
   run_with "$home/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$tmp/homelink")"
   check "not installed: a -WowHome reached through a link passes" test "$rc" -eq 7
+  check "not installed: ...and its processes run from the final path, not the link" cwd_all "$(wp "$home")" 4
   reset; run_with "$tmp/homelink/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")"
   check "not installed: a script run through the link passes the bin check" test "$rc" -ne 1 -o -s "$stubdir/calls.log"
 else skip "a directory link cannot be made here; the -WowHome link fixtures did not run"; fi
@@ -382,6 +428,9 @@ bad_arg 'a -Clone containing -WowHome' -Clone "$C" -Reference "$R" -WowHome "$(w
 mkdir -p "$tmp/wh-parent/wb-inside"
 bad_arg 'a -Clone inside -WowHome' -Clone "$(wp "$tmp/wh-parent/wb-inside")" -Reference "$R" -WowHome "$(wp "$tmp/wh-parent")"
 bad_arg 'a missing -WowHome directory' -Clone "$C" -Reference "$R" -WowHome "$(wp "$tmp/nothere")"
+mkdir -p "$ref/wow-inside"
+bad_arg 'a -WowHome inside -Reference' -Clone "$C" -Reference "$R" -WowHome "$(wp "$ref/wow-inside")"
+bad_arg 'a -WowHome equal to -Reference' -Clone "$C" -Reference "$R" -WowHome "$R"
 mkdir -p "$tmp/clones/.hidden" "$tmp/clones/_under"
 bad_arg 'a leaf starting with a dot' -Clone "$(wp "$tmp/clones/.hidden")" -Reference "$R" -WowHome "$H"
 bad_arg 'a leaf starting with an underscore' -Clone "$(wp "$tmp/clones/_under")" -Reference "$R" -WowHome "$H"
@@ -414,13 +463,15 @@ sec_start() {
 # --- start of day ------------------------------------------------------------------------------
 start_ok() { # start_ok <label>: the sequence, the record, the exec, the exit code
   check "$1: exits with the session's code" test "$rc" -eq 7
-  check "$1: devcontainer up, then the exec, and nothing else between" test "$(non_ps)" = "devcontainer up --skip-post-attach --remove-existing-container --workspace-folder $CF
+  check "$1: devcontainer up, then the exec, and nothing else between" test "$(non_ps)" = "$(gh_lines)
+devcontainer up --skip-post-attach --remove-existing-container --workspace-folder $CF
 $exec_line"
   check "$1: six ps calls, two of them after up" test "$(calls | grep -c '^docker ps ')" -eq 6
   check "$1: the last two ps calls follow up" test "$(calls | sed -n '/^devcontainer up/,$p' | grep -c '^docker ps ')" -eq 2
   check "$1: no argv holds & | ^ % ! or a double quote" no_banned
   check "$1: the record is exactly id, commit, clone and origin" rec_ok
   check "$1: the record existed when the session started" test -f "$stubdir/record-at-exec"
+  check "$1: gh and up ran from the final -WowHome" cwd_all "$(wp "$home")" 4
   check "$1: no devcontainer exec" no_dc_exec
   check "$1: nothing from the clone, the listings or up reaches an argv" no_canary
 }
@@ -441,6 +492,55 @@ reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record "$ID2" "$c1" "$(js
 run_drv
 check "start of day: an old record is replaced" rec_ok
 check "start of day: no temp file left" test "$(ls -A "$home/driver" | wc -l | tr -d ' ')" -eq 1
+
+# the base binding: gh answers the compare and the two tree reads from the origin's real objects
+gh_start() { reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; }
+gh_refuses() { # gh_refuses <label> <gh calls made>: exit 1, nothing after the API reads
+  check "base binding ($1): exits 1" test "$rc" -eq 1
+  check "base binding ($1): $2 gh call(s), no more" test "$(calls | grep -c '^gh ')" -eq "$2"
+  check "base binding ($1): no devcontainer call" no_dc
+  check "base binding ($1): no -it exec" no_it
+  check "base binding ($1): no record" test ! -e "$home/driver/wb-driver.json"
+  check "base binding ($1): nothing from the answers is echoed" sh -c "! grep -q 'CANARY\|NOTJSON' '$tmp/err'"
+}
+gh_start; echo '.status = "behind"' >"$stubdir/ghx.jq.compare"; run_drv
+check "base binding: a behind compare passes" test "$rc" -eq 7
+check "base binding: ...with the three gh calls before up" test "$(non_ps | head -3)" = "$(gh_lines)"
+for st in ahead diverged; do
+  gh_start; echo ".status = \"$st\"" >"$stubdir/ghx.jq.compare"; run_drv
+  gh_refuses "status $st" 1; check "base binding ($st): names the status" err_has "$st"
+done
+gh_start; echo 'del(.status)' >"$stubdir/ghx.jq.compare"; run_drv; gh_refuses 'a missing status' 1
+gh_start; echo '.status = 7' >"$stubdir/ghx.jq.compare"; run_drv; gh_refuses 'a non-string status' 1
+gh_start; echo '.status = "NOTJSON-STATUS"' >"$stubdir/ghx.jq.compare"; run_drv; gh_refuses 'an odd status' 1
+check "base binding (an odd status): says it was unreadable" err_has 'unreadable'
+gh_start; echo ".merge_base_commit.sha = \"$c1\"" >"$stubdir/ghx.jq.compare"; run_drv; gh_refuses 'another merge-base sha' 1
+gh_start; echo 'del(.merge_base_commit)' >"$stubdir/ghx.jq.compare"; run_drv; gh_refuses 'no merge base' 1
+gh_start; echo 'not json CANARY' >"$stubdir/ghx.raw.compare"; run_drv; gh_refuses 'non-JSON output' 1
+gh_start; echo '[1]' >"$stubdir/ghx.raw.compare"; run_drv; gh_refuses 'a JSON array' 1
+gh_start; echo 1 >"$stubdir/ghx.exit"; run_drv; gh_refuses 'a failing gh' 1
+check "base binding (a failing gh): names the exit code" err_has 'exit 1'
+gh_start; echo '.merge_base_commit.commit.tree.sha = "xyz"' >"$stubdir/ghx.jq.compare"; run_drv; gh_refuses 'a malformed root tree sha' 1
+gh_start; echo '.tree |= map(select(.path != "devcontainer.json"))' >"$stubdir/ghx.jq.sub"; run_drv
+gh_refuses 'no devcontainer.json committed' 3; check "base binding (no devcontainer.json): names the file" err_has 'devcontainer.json'
+gh_start; echo '.truncated = true' >"$stubdir/ghx.jq.root"; run_drv; gh_refuses 'a truncated root tree' 2
+gh_start; echo '.truncated = true' >"$stubdir/ghx.jq.sub"; run_drv; gh_refuses 'a truncated subtree' 3
+gh_start; echo 'del(.truncated)' >"$stubdir/ghx.jq.sub"; run_drv; gh_refuses 'a subtree with no truncated field' 3
+gh_start; echo '.tree |= map(select(.path != ".devcontainer"))' >"$stubdir/ghx.jq.root"; run_drv; gh_refuses 'no .devcontainer entry' 2
+gh_start; echo '.tree += [.tree[] | select(.path == ".devcontainer")]' >"$stubdir/ghx.jq.root"; run_drv; gh_refuses 'two .devcontainer entries' 2
+gh_start; echo '.tree |= map(if .path == ".devcontainer" then .type = "blob" else . end)' >"$stubdir/ghx.jq.root"; run_drv; gh_refuses '.devcontainer not a tree' 2
+gh_start; echo '.tree += [{mode:"120000",type:"blob",sha:"'"$dc2"'",path:"link"}]' >"$stubdir/ghx.jq.sub"; run_drv; gh_refuses 'a symlink entry' 3
+check "base binding (a symlink entry): names it" err_has 'link'
+gh_start; echo '.tree += [{mode:"160000",type:"commit",sha:"'"$dc2"'",path:"sm"}]' >"$stubdir/ghx.jq.sub"; run_drv; gh_refuses 'a submodule entry' 3
+gh_start; echo '.tree += [{mode:"100644",type:"blob",sha:"'"$dc2"'",path:"a b"}]' >"$stubdir/ghx.jq.sub"; run_drv; gh_refuses 'a path outside the disk-name rule' 3
+gh_start; echo '.tree |= map(del(.sha))' >"$stubdir/ghx.jq.sub"; run_drv; gh_refuses 'entries with no sha' 3
+# the API reason wins over a clone mismatch
+gh_start; echo '.status = "ahead"' >"$stubdir/ghx.jq.compare"; echo x >"$clone/.devcontainer/extra.txt"; run_drv
+gh_refuses 'with the clone also mismatched' 1; check "base binding: the API reason is the one named" sh -c "grep -q ahead '$tmp/err' && ! grep -q extra.txt '$tmp/err'"
+# started from inside the Clone, every process still runs from the final -WowHome
+gh_start; cd "$clone"; run_drv; cd "$tmp"
+check "base binding: started inside the Clone, exits with the session's code" test "$rc" -eq 7
+check "base binding: ...gh and up ran from -WowHome, not the Clone" cwd_all "$(wp "$home")" 4
 
 # .devcontainer/ mismatch: refuses naming the file, before any devcontainer call
 mismatch() { # mismatch <label> <mutation command...>
@@ -544,7 +644,8 @@ check "attach: the probe script has none of & | ^ % or a double quote" sh -c "! 
 check "attach: the probe uses the [v] self-match guard on both patterns" probe_guarded
 check "attach: prints the record's commit" out_has "attaching to $ID1, created from $c2"
 check "attach: no warning for an unchanged .devcontainer/" sh -c "! grep -q 'has changed since' '$tmp/out'"
-check "attach: no compare and no git argv names the Clone" sh -c "! grep -q 'wb-driver' '$stubdir/git.log' && ! grep -q 'ls-tree' '$stubdir/git.log'"
+check "attach: no compare and no git argv names the Clone" sh -c "! grep -q 'wb-driver' '$stubdir/git.log'"
+check "attach: no gh call" no_gh
 check "attach: no recreate" sh -c "! grep -q 'remove-existing' '$stubdir/calls.log'"
 check "attach: the record is untouched" rec_ok_commit
 running1; write_record "$ID1" "$c1" "$(json_clone)"
