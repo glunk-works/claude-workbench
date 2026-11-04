@@ -21,6 +21,8 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+**⚠️ Migration** — the host broker now accepts `owner/name` entries in `broker.json`, and refuses a whole `broker.json` that holds two entries with the same name half, a repeated entry or a case-variant duplicate included, or an owner half equal to another entry's name: it exits 2 under `-Once`, and the looping broker logs it and stops every mint. Before reinstalling, check `broker.json` for repeated or case-duplicate entries. Then reinstall the host tools and restart the broker. To get `tokens/<owner>/<repo>`, change an entry to `owner/name` form; it then writes both `tokens/<repo>` and `tokens/<owner>/<repo>` until the old layout is retired. Each name half must now match the ASCII-only rule case-sensitively, so a name with U+212A is refused and the review sweeps leave such a directory in place (`#1276`).
+
 ## [0.30.0] — 2026-11-03
 
 **⚠️ Migration** — `/way-of-working:resume`'s, `/way-of-working:handoff`'s and `/way-of-working:archive-sprint`'s `plan-anchor.sh verify` now read `unreadable` (and wait) on a missing `orchestration` or a missing or empty `orchestration.loop_identity`, and handoff's and archive-sprint's also on a missing or malformed `identities`, App entry or maintainer list, where they used to omit the flag. Run `schema-complete.sh check .ai/project.yml` and fix any finding before bumping (`#1221`).
