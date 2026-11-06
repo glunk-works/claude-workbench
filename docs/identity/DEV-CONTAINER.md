@@ -11,32 +11,36 @@ that serves the host's git credential (see Hazards that remain).
 
 ## How it gets its token
 
-- The host broker (`scripts/identity/broker.ps1`) keeps `~/.config/glunk-identity/tokens/claude-workbench/dev-token`
+- The host broker (`scripts/identity/broker.ps1`) keeps `~/.config/glunk-identity/tokens/glunk-works/claude-workbench/dev-token`
   current: the token on line 1, its `expires_at` on line 2. The broker's scheduled task starts pwsh through
   `conhost.exe --headless`, so it opens no window; re-running `register-broker-task.ps1` brings an older registration up to date. Endpoint security software and public detection rules for headless conhost may flag that launch as a living-off-the-land pattern, and an alert on this task is expected; the flagged command line should show `conhost.exe` from the system directory starting pwsh on the installed copy of `bin\broker.ps1` under `WOW_HOME`, though a match shows only that the launch has this task's shape, not that the task or the installed script is unmodified.
 - `devcontainer.json` bind-mounts that **directory**, read-only, once, at `/run/wow`. A
   single-file mount would keep showing the file the broker replaced by atomic rename. Nothing else
   under the host's `glunk-identity` directory is mounted. The mount source names the GitHub repo
-  (`claude-workbench`), not the checkout folder, so a clone folder with another name still mounts
-  the right directory; it must exist, which `install-host-tools.ps1` ensures for each repo in `broker.json`.
-  For an `owner/name` entry in `broker.json` the broker also writes the same token to
-  `tokens/<owner>/<repo>/dev-token`, the owner-qualified directory of the shared template (`WB-D42`, `#1276`).
-  This repo's container keeps mounting `tokens/claude-workbench` until `#1226` changes the mount.
-  the `dev-token` script reads the `dev-token` file there, and the plugin's SessionStart banner reads `admin-token` there
+  (`glunk-works/claude-workbench`, owner-qualified, as the shared template requires and matched
+  case-sensitively against `github.repository`), not the checkout folder, so a clone folder with
+  another name still mounts the right directory; it must exist, which `install-host-tools.ps1`
+  ensures for each repo in `broker.json`. For an `owner/name` entry the broker writes the token to
+  both `tokens/<repo>/dev-token` and `tokens/<owner>/<repo>/dev-token` (`WB-D42`, `#1276`); this
+  container reads the second, and the first stays until the old layout is retired. The
+  `dev-token` script reads the `dev-token` file there, and the plugin's SessionStart banner reads `admin-token` there
   (`/run/wow/admin-token`, the fixed path it looks at); `wow-admin` writes the admin token into the same
   host directory (when `WOW_HOME` is the default directory, as *Opening it* already requires); for an `owner/name`
   entry in `broker.json` it writes both `tokens/<repo>/admin-token` and `tokens/<owner>/<repo>/admin-token`, as the
   broker does with the dev token (`#1340`). The change
   takes effect when the driver launcher's start-of-day path recreates the container.
-- `/usr/local/libexec/dev-token` reads the file **on every call** and refuses (in plain mode: exit 2, no stdout)
-  unless it holds a `ghs_` installation token with 5 minutes or more left on the container's
-  clock. The broker refreshes at 30 minutes left, so a failed mint has about 25 minutes of slack.
+- The reader, the wrapper and the credential helper are the base image flavour's
+  (603-Identity/devcontainers, `FROM` in `.devcontainer/Dockerfile`), at the paths named here;
+  this repo no longer carries a copy of them for the container. `/usr/local/libexec/dev-token` reads the file **on every call** and refuses
+  unless it holds a live installation token; its margin and exit codes are the flavour's, in
+  603-Identity/devcontainers `images/devapp/files/dev-token`. The review image's own copy
+  (`scripts/identity/review/dev-token`, tested by `tests/dev-token.test.sh`) refuses under 5 minutes left.
 - `/usr/local/bin/gh` is a shim that sets `GH_TOKEN` from it for that one call and runs the real
-  `gh` (`/usr/local/libexec/gh-real`). git's `https://github.com` credential helper is the same
+  `gh` (`/usr/local/libexec/gh-real`). git's system credential helper is the same
   reader. The token is never exported into a long-lived environment variable. When the token is
   refused, the helper answers `quit=1`, so git stops instead of trying another helper; the
-  container also sets `GIT_TERMINAL_PROMPT=0` and turns off VS Code's `github.gitAuthentication`
-  and `git.terminalAuthentication`. For the host side, `dev.containers.gitCredentialHelperConfigLocation`
+  image sets `GIT_TERMINAL_PROMPT=0` as `ENV`, and `devcontainer.json` carries no VS Code settings.
+  For the host side, `dev.containers.gitCredentialHelperConfigLocation`
   set to `none` keeps Dev Containers' helper out of git's config. It does not stop the channel
   behind that helper from answering once VS Code attaches (#720), so the container is not
   attached to.
@@ -50,8 +54,7 @@ that serves the host's git credential (see Hazards that remain).
   too), and not a worktree of any of those (a worktree shares that clone's `.git`, hooks and
   config, and its `.git` file points at a host path git cannot follow in the container). A
   container-writable source clone is host code execution beside the App keys.
-- **Enter it with the driver launcher** (#728), from `pwsh` 7.2+ on the host (not Git Bash, whose
-  `HOME` doubles the mount path), as the installed copy, never from a checkout:
+- **Enter it with the driver launcher** (#728), from `pwsh` 7.2+ on the host (not Git Bash), as the installed copy, never from a checkout:
   ```powershell
   pwsh -File $env:WOW_HOME\bin\wow-driver.ps1 -Clone <clone> -Reference <other clone>
   ```
@@ -115,13 +118,13 @@ that serves the host's git credential (see Hazards that remain).
   - **The record** is `<WowHome>\driver\<leaf>.json`: `id` (the container, 64 hex digits), `commit`
     (the commit compared against, 40), `clone` (the canonical clone path) and `origin` (the Reference's
     repository as lowercase `owner/name`, never a raw url). Unlike
-    `tokens/<repo>/`, the one directory the dev container mounts, it is never mounted into a container. It is written only after the re-list passes, to a
+    the token directory the dev container mounts, it is never mounted into a container. It is written only after the re-list passes, to a
     temp file in the same directory and then renamed.
   - **Why recreate, then `docker exec`.** `WB-D33` requires the compare before every `up` and every
     `devcontainer exec`, because `exec` re-reads `.devcontainer/devcontainer.json` from the host, and
     a running container can rewrite `/workspace/.devcontainer/devcontainer.json`. `docker exec` reads
-    no host copy; it reproduces what that file sets for entry (`remoteUser` `app`, `remoteEnv` only
-    `GIT_TERMINAL_PROMPT=0`) as literals, and `tests/identity-launchers.test.sh` holds the two equal.
+    no host copy; it reproduces what that file sets for entry (`remoteUser` `app`) as a literal, and `tests/identity-launchers.test.sh` holds it equal; the
+    `-e GIT_TERMINAL_PROMPT=0` literal matches the image's own `ENV`.
     `up` on an existing container would reuse the mounts and run arguments it was created with, and
     the compare covers only the files; recreating while nothing runs makes the container's
     configuration come from the file just compared. The session is
@@ -153,7 +156,7 @@ that serves the host's git credential (see Hazards that remain).
     has changed since, and the container should then be recreated at start of day once the lanes are
     done. Attach still fetches the Reference for the model, so an offline driver restart refuses.
   - **A live-run check for the maintainer's first run:** `docker inspect` of the recreated container
-    shows only the five mounts `devcontainer.json` declares, since the pinned base image might
+    shows only the workspace mount and the `mounts` entries `devcontainer.json` declares, since the pinned base image might
     declare a `VOLUME`. This is a check for the human, not launcher code.
 - **By hand.** The driver launcher is the only way a container is created: no hand `devcontainer up`,
   no host VS Code Dev Containers, and no host git in a checkout a container mounts. To get a shell in the
@@ -399,7 +402,7 @@ in the procedure changed. The trial filed follow-ups #727, #728 and #729.
   into the recorded running container, which is what attach, lanes and spec sessions do, reads no host file and is
   allowed. The reasons: the CLI runs `initializeCommand` on the host on each `up`, even
   against a container that already exists, and `exec` re-reads `.devcontainer/devcontainer.json`
-  from the host each call (its `remoteUser` and `remoteEnv`, with `${localEnv:*}` resolved from the
+  from the host each call (its `remoteUser`, with any `${localEnv:*}` it names resolved from the
   host's environment), so a session's edit could copy a host environment variable into the
   container. A container created before this change keeps its old lifecycle commands until it is
   recreated, so it has no backstop.
@@ -410,26 +413,36 @@ in the procedure changed. The trial filed follow-ups #727, #728 and #729.
   `REMOTE_CONTAINERS_IPC`, and calling the client directly returned the host's GitHub credential,
   so a process in the container could act on GitHub as the human. Keep the setting at `none`
   anyway, in every VS Code profile that keeps its own settings, as defense in depth for an
-  accidental attach. The container's `postStartCommand` and `postAttachCommand` remove the
-  channel's `/tmp/vscode-remote-containers-*` files (the latter also warns), as a backstop only:
-  the relay VS Code starts keeps running inside the container after its socket path is removed,
-  and VS Code may recreate the files at a later attach or reconnect, so an accidental attach is
-  narrowed, not closed. The check, from a `docker exec` shell, starts with the no-channel
+  accidental attach. The container's `postStartCommand` removes only the helper client,
+  `/tmp/vscode-remote-containers-*.js`, at every start, and its `postAttachCommand` only warns that
+  the repo is opened through the launcher, as the template's do (`WB-D33`, amended by `#1226`):
+  a backstop only. The relay VS Code starts keeps running inside the container after its socket
+  path is removed, and VS Code may recreate the files at a later attach or reconnect, so an
+  accidental attach is narrowed, not closed. **One limit follows from the narrowed removal:** after
+  an attach, a file of that prefix that is not a `.js` file (the IPC socket) stays on the `-tmp`
+  volume, which survives a recreate, so the launchers' relay probe (attach and every lane run, not
+  start of day) keeps refusing after the start-of-day recreate until the leftover files are
+  removed in the container start of day created: `docker exec -u app ID /bin/sh -c "/bin/rm -f
+  /tmp/vscode-remote-containers-*"`, with `ID` the id the start-of-day run printed as `started ID`
+  (the shell expands the glob; `docker exec` alone would pass it literally and remove nothing),
+  then the same `docker exec -u app ID /bin/sh -c` form running `/bin/ls -d
+  /tmp/vscode-remote-containers-*` lists no file. Removing the `-tmp` volume instead would also
+  delete every lane and spec worktree under `/tmp/lanes`. The check, from a `docker exec` shell, starts with the no-channel
   test: `echo "${REMOTE_CONTAINERS_IPC:-unset}"` prints `unset`,
   `ls /tmp/vscode-remote-containers-* 2>/dev/null` prints nothing, and
   `grep -la '[v]scode-remote-containers-server\|[v]scode-server' /proc/[0-9]*/cmdline 2>/dev/null`
   prints nothing. Anything but `unset` from the first, or any output from the second or third,
   fails the check. The first cannot see a live channel at all (the variable exists only in VS Code's own
-  processes), and the second cannot see a relay left running after the backstop removed its files;
+  processes), and the second cannot see a relay left running after its socket path is gone;
   the third can, within this container.
   After an accidental attach, close the VS Code window (or it will offer to reconnect) and stop
   the container at once (`docker stop`), which ends the relay, so that the next driver launcher run takes
   the start-of-day path;
   the exposure runs from the attach until that stop. A running Claude session, or code from a PR it
   builds, counts as untrusted, so in normal use treat every credential the host's git helpers can
-  return (each GitHub account, each host) as exposed and rotate it. The backstop also
+  return (each GitHub account, each host) as exposed and rotate it, and sign out of the GitHub account in VS Code and revoke its OAuth grant on github.com, since the git askpass channel an attach opens answers with that sign-in. The start-time removal also
   loses a race against a process already watching `/tmp`, which can read the new client and
-  connect before the removal runs, or move the socket out of the glob's reach.
+  connect before the removal runs.
   On the CLI path the test is the second and third checks plus the launcher's container listing. Do not
   run the masked credential test below there: when the `ls` check printed nothing no client file
   exists, so it has nothing to call and its lack of a `password=`
@@ -465,9 +478,10 @@ The host's `~/.gitconfig.d` is mounted read-only, and `git-identity.sh` copies t
 and email from it, so commits carry the human's author identity and are pushed by the App.
 
 It carries **no commit signing** (`WB-D25`, #574). Container commits and tags are unsigned:
-`devcontainer.json` forces `commit.gpgsign` and `tag.gpgsign` off through `containerEnv`
-(above the identity file's `gpgsign = true`), the Dockerfile deletes `gpg`, `gpg-agent`,
-`gpgconf`, `gpg-connect-agent` and `gpgsm`, and the template's `gpg-check.sh` no longer runs at start.
+the flavour image removes `gpg`, `gpg-agent`, `gpgconf`, `gpg-connect-agent` and `gpgsm` and
+writes its unsigned marker, which keeps `commit.gpgsign` and `tag.gpgsign` off, not `containerEnv`, which `devcontainer.json` no longer carries (a repo-local
+`gpgsign = true` wins, and the commit then fails for want of gpg); the
+template's `gpg-check.sh` does not run at start.
 `main` stays signed because every merge is a squash merge, which GitHub signs.
 
 Deleting the tools does not by itself prove VS Code stops forwarding the agent socket, and if an
@@ -495,24 +509,25 @@ removes it. The login lives on the volume; the binary does not.
 
 ## The `claude` binary
 
-- **Where it comes from.** The image: `/usr/local/bin/claude`, root-owned, at the version pinned
-  in `.devcontainer/Dockerfile` (`CLAUDE_VERSION`), its SHA-256 (`CLAUDE_SHA256`) checked at
-  build time. Auto-update is off through both `DISABLE_AUTOUPDATER=1` in `devcontainer.json`'s
-  `containerEnv` and the root-owned `/etc/claude-code/managed-settings.json` (`.devcontainer/`),
-  which a settings file cannot override. The read-only root filesystem keeps the binary from being
-  replaced, but not an updater writing a newer copy to `~/.local` on the home volume, so the
-  `DISABLE_AUTOUPDATER` setting (from either source) is the control. It stops the automatic updater
-  only: per Claude Code's environment-variable documentation, a manual `claude update` still works,
-  and `DISABLE_UPDATES` blocks both; this image does not set it. After a rebuild,
+- **Where it comes from.** The `FROM` image's flavour (603-Identity/devcontainers):
+  `/usr/local/bin/claude`, root-owned, at a pinned version checked at build time against its
+  SHA-256. Auto-update is off through `DISABLE_UPDATES` and `DISABLE_AUTOUPDATER` as image `ENV`
+  and through the root-owned `/etc/claude-code/managed-settings.json`, which a settings file cannot
+  override, sets both in `env` and pins the version with `requiredMinimumVersion` and
+  `requiredMaximumVersion`; its content comes with the `FROM` digest. The read-only root filesystem
+  keeps the binary from being replaced, but not an updater writing a newer copy to `~/.local` on
+  the home volume, so those settings are the control. `DISABLE_UPDATES` blocks a manual
+  `claude update` as well. After a rebuild,
   `stat -c '%U %a' /etc/claude-code/managed-settings.json` prints `root 444`. Per Claude Code's
   managed-settings documentation ("How Claude Code combines managed sources"), `env` merges per
   variable across managed sources, so server-managed settings, if this account ever receives them,
   override this pin only if they set `DISABLE_AUTOUPDATER` themselves.
-- **How to bump it.** Edit `CLAUDE_VERSION` and `CLAUDE_SHA256` in all three Dockerfiles
-  (`.devcontainer/`, `scripts/identity/review/` and `scripts/loop/`; Dependabot does not track
-  them, and `tests/devcontainer-image.test.sh` and `tests/review-image.test.sh` hold them equal).
-  Take the sha256 from that version's release `manifest.json` (the `linux-x64` entry). Then
-  recreate the container: after every lane, every spec session and the driver session have exited, `docker stop` it, then
+- **How to bump it.** A bump of this container's `claude` comes with a `FROM` bump (a new digest
+  from the flavour's "Build images" run, which `verify / verify` checks). The two Dockerfiles that
+  still carry the pin, `scripts/identity/review/` and `scripts/loop/`, are edited together in
+  `CLAUDE_VERSION` and `CLAUDE_SHA256` (Dependabot does not track them, and
+  `tests/review-image.test.sh` holds them equal). Take the sha256 from that version's release
+  `manifest.json` (the `linux-x64` entry). A `FROM` bump needs the container recreated too; recreate it: after every lane, every spec session and the driver session have exited, `docker stop` it, then
   run the driver launcher (start of day).
 - **Clearing a stopgap install.** A copy from the native installer lives on the home volume, and
   `~/.local/bin` leads `PATH`, so it shadows the image's. Remove `~/.local/bin/claude` and
@@ -523,8 +538,8 @@ removes it. The login lives on the volume; the binary does not.
   `~/.claude/settings.json` and startup code in `~/.bashrc` are still on the writable home volume, as are, for
   example, `~/.profile`, `~/.claude.json` and `~/.local/bin`, so a session can still persist code
   that runs in the next one. The VS Code extension's own `claude` is outside the pin too (VS Code
-  attach is unsupported here). `docker volume rm <checkout folder>-home <checkout folder>-tmp`
-  (after removing the containers that use them) resets the container's own state, not the `/workspace` checkout, whose `.claude/` and
+  attach is unsupported here). `docker volume rm <checkout folder>-home <checkout folder>-tmp <checkout folder>-venv <checkout folder>-node_modules`
+  (after removing the containers that use them; removing `-tmp` also deletes every lane and spec worktree under `/tmp/lanes`) resets the container's own state, not the `/workspace` checkout, whose `.claude/` and
   `.git/hooks` or `.git/config` a session can also write and which must be checked separately.
 
 ## GNU coreutils, not uutils
@@ -534,20 +549,11 @@ removes it. The login lives on the volume; the binary does not.
   which `scripts/identity/wow-review`, `tests/identity-review.test.sh` and other suites and plugin
   scripts pay, and some uutils tools give wrong results: `date +%s%3N` ignores the width and prints
   nanoseconds. CI and Git Bash run GNU, so the container was the odd one out (#741).
-- **What it does.** Every gnu-prefixed tool in `/usr/bin` (the base image's own gnu-coreutils
-  package, so nothing is downloaded) is linked under its plain name in `/usr/local/bin`, which
-  comes before `/usr/bin` on `PATH`. A build-time assertion fails the build if `timeout` does not
-  resolve to `/usr/bin/gnutimeout` or `date` ignores the millisecond width, and plain `ln -s`
-  fails it if a file or link of that name already exists (the `gh` shim and `claude` live there). A directory (or a link to one) of that name is not
-  refused, and that tool keeps uutils (for `timeout` and `date` the assertion fails the build). The
-  package providing the plain names is not switched to coreutils-from-gnu: the image ships no apt lists,
-  and the switch would need a network package fetch at build time that the FROM line's digest
-  does not pin.
+- **Where it comes from.** The `FROM` image's flavour links the GNU tools under their plain names
+  in `/usr/local/bin`, which comes before `/usr/bin` on `PATH`; how it does so is reviewed in
+  603-Identity/devcontainers, and this repo's Dockerfile builds none of it.
 - **What it covers.** Parity with CI for coreutils only. The container's `awk` (mawk) and `sh`
-  (dash) are unchanged. The links also change which `date` and `tr` the token reader
-  `/usr/local/libexec/dev-token` uses, to GNU; `tests/dev-token.test.sh` assumes GNU `date`. That
-  suite is not in CI, so the rebuilt container is the only place it is checked against the tools
-  the reader really runs.
+  (dash) are unchanged. `tests/dev-token.test.sh` assumes GNU `date`.
 - **What it does not cover.** Callers that bypass `PATH` still get uutils: absolute `/usr/bin/...`
   or `/bin/...` paths (`/bin` is the usrmerge link to `/usr/bin`), a `PATH` reset to
   `/usr/bin:/bin`, and `env -i` with no `PATH` (libc's default is `/bin:/usr/bin`). A
@@ -564,14 +570,14 @@ removes it. The login lives on the volume; the binary does not.
 ## PowerShell
 
 - **Where it comes from.** The image (#893): the `linux-x64` tarball of the version in
-  `PWSH_VERSION` in `.devcontainer/Dockerfile`, its SHA-256 (`PWSH_SHA256`) checked at build time
+  `PWSH_VERSION` in `.devcontainer/Dockerfile`, this repo's one extra on top of the flavour, its SHA-256 (`PWSH_SHA256`) checked at build time
   with `sha256sum -c`, extracted root-owned and without group or other write under `/opt/microsoft/powershell/7` and linked from
   `/usr/local/bin/pwsh`. A build-time assertion fails the build if `pwsh` does not run or reports
   another version. This is what lets `tests/identity-launchers.test.sh` and
   `tests/identity-broker.test.sh` run in lanes instead of printing `SKIP - pwsh not on PATH`.
 - **Why invariant globalization.** `pwsh` runs with `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, so it
-  needs no `libicu`. The base image ships no apt lists, and an unpinned build-time apt fetch is
-  refused here for the same reason as in the coreutils section. Telemetry is off
+  needs no `libicu`. The base image ships no apt lists, and a build-time package fetch the `FROM` digest does not pin is
+  refused here. Telemetry is off
   (`POWERSHELL_TELEMETRY_OPTOUT=1`). Both are set by one `ENV` line in the Dockerfile, which `docker exec`
   also sees.
 - **How to bump it.** Edit both `ARG` lines. Dependabot does not track a pin inside a `RUN`. Take the
@@ -586,10 +592,11 @@ removes it. The login lives on the volume; the binary does not.
   `sh tests/identity-broker.test.sh` no longer print their pwsh SKIP line (the broker suite's Task
   Scheduler case skips off Windows and runs in CI's `tests-windows` job).
 
-## Not adopted here yet
+## Adopted from the template, and not
 
-The template's `.github/workflows` (`devcontainer-image.yml`, `architect-review-gate.yml`,
-`secret-scan.yml`) are not copied: adding required checks is a ruleset decision for the
-maintainer. This repo has its own gate workflow of the name `architect-review-gate.yml` (#458,
-`WB-D37`), not the template's copy. The Dockerfile header lists what `verify / verify` would enforce, and the
-attestation command to check the pinned digest by hand.
+The template's `devcontainer-image.yml` (`verify / verify`) and `secret-scan.yml` (`secrets / scan`)
+are adopted, unchanged, and are not required checks: making either one required is a ruleset
+decision for the maintainer, so a red result blocks no merge. The template's
+`architect-review-gate.yml` is not adopted: this repo keeps its own gate workflow of that name
+(#458, `WB-D37`). The attestation command to check the pinned digest by hand is in
+`.devcontainer/Dockerfile`'s header (written for the tofu variant: use the `devcontainer-devapp` name).

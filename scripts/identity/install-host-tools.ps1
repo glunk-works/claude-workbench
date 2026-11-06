@@ -14,7 +14,7 @@
   What it does, in order, stopping at the first failure:
     1. Finds the source checkout (-SourceRepo, default the one holding this script).
     2. Checks, changing nothing in $WowHome: no source directory in the table below
-       (scripts/identity, .devcontainer, scripts/loop, plugins/way-of-working/bin) has an
+       (scripts/identity, scripts/loop, plugins/way-of-working/bin) has an
        uncommitted change, and HEAD is an ancestor of refs/remotes/<Remote>/<Base> after a fetch (which does update that
        remote-tracking ref): reviewed, merged code, not a worktree or an unpushed branch. HEAD is
        resolved once, and that commit is what is exported and recorded. Every table entry must
@@ -55,7 +55,7 @@
   installed copy (wow-review finds wow-review-mint beside itself). Run on its own it does not stop a running
   broker unless -StopTask is given; a held file then fails the swap cleanly.
 
-  The driver launcher is not a Git Bash command (Git Bash's HOME doubles the container mount path). Run
+  The driver launcher is not a Git Bash command. Run
   it from pwsh 7.2+ on the host, as the installed copy under $env:WOW_HOME\bin, or under the default
   $HOME\.config\glunk-identity\bin when WOW_HOME is unset (docs/identity/DEV-CONTAINER.md, Opening it):
     pwsh -File $env:WOW_HOME\bin\wow-driver.ps1 -Clone <clone> -Reference <other clone>
@@ -107,8 +107,8 @@ $table = @(
   ,@('scripts/identity/review/entrypoint.sh', 'review/entrypoint.sh')
   ,@('scripts/identity/review/outbox-read', 'review/outbox-read')
   ,@('scripts/identity/review/managed-settings.json', 'review/managed-settings.json')
-  ,@('.devcontainer/dev-token', 'review/dev-token')
-  ,@('.devcontainer/gh', 'review/gh')
+  ,@('scripts/identity/review/dev-token', 'review/dev-token')
+  ,@('scripts/identity/review/gh', 'review/gh')
   ,@('plugins/way-of-working/bin/token-check.sh', 'review/token-check.sh')
   ,@('plugins/way-of-working/bin/gh-identity.sh', 'review/gh-identity.sh')
   ,@('scripts/loop/inject.py', 'review/inject.py')

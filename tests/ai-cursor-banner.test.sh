@@ -61,7 +61,7 @@ fi
 # The whole entry, not its source: a later `src=` key would get past a check on the extracted source.
 wow_entry="$(printf '%s\n' "$wow_line" | sed -e 's/^[[:space:]]*//' -e 's/,$//')"
 # shellcheck disable=SC2016 # the expected entry is literal: ${localEnv:USERPROFILE} is the devcontainer's, not the shell's
-wow_want='"source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/claude-workbench,target=/run/wow,type=bind,readonly"'
+wow_want='"source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/glunk-works/claude-workbench,target=/run/wow,type=bind,readonly"'
 if [ "$wow_entry" = "$wow_want" ]; then
   echo "ok - the /run/wow mount entry is the expected claude-workbench token directory mount"
 else

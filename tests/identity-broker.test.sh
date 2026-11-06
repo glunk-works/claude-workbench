@@ -365,7 +365,7 @@ check "install: ...and bin is untouched" test "$(cat "$home/bin/MANIFEST")" = "$
 git -C "$src" checkout -q -- scripts/identity/mint.sh
 
 # An uncommitted change in any other source directory is refused too, before anything under $home changes.
-for dirty in .devcontainer/gh scripts/loop/inject.py scripts/identity/review/Dockerfile plugins/way-of-working/bin/token-check.sh; do
+for dirty in scripts/loop/inject.py scripts/identity/review/Dockerfile plugins/way-of-working/bin/token-check.sh; do
   echo '# dirty' >>"$src/$dirty"
   run_install
   check "install: an uncommitted change in $dirty is refused" test "$rc" -ne 0

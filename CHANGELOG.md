@@ -25,8 +25,11 @@ the GitHub release notes.
 
 **⚠️ Migration** — once the host tools are reinstalled, `wow-driver.ps1` needs `gh` on PowerShell's PATH on both paths (it refuses without it) and, for a start of day, a `gh` login that can read the origin repository.
 
+**⚠️ Migration** — before the dev container is recreated, change this repo's entry in `broker.json` to `glunk-works/claude-workbench`, then reinstall the host tools (which creates the owner-qualified token directory; a missing bind source fails `devcontainer up`) and restart the broker.
+
 ### Changed
 
+- `.devcontainer/` is rebased on the 603-Identity/devcontainers dev-App template (`#1226`, `WB-D42`): the `FROM` is `devcontainer-devapp:4.607` by tag and digest, so the `gh` wrapper, `dev-token`, the credential helper, gpg removal, the pinned `claude` with its managed settings and the GNU coreutils links come from the image and leave `.devcontainer/`; what stays is the owner-qualified token mount, the `FROM`, the `pwsh` extras and the template's volumes. `dev-token` and `gh` move to `scripts/identity/review/`, where the review image is their only consumer. The attach backstop narrows to the template's start-time removal of `/tmp/vscode-remote-containers-*.js` and a warn-only attach; attach stays unsupported. The relay probe's refusal now names the command that removes the files an attach leaves on the `-tmp` volume.
 - The driver launcher reads the committed `.devcontainer/` through the API with the host `gh`, at a commit the compare API places on the origin's base branch, and requires `.devcontainer/devcontainer.json` in it; every process it starts after its argument checks runs from `-WowHome`, which may not be or sit inside `-Reference`; and `DEV-CONTAINER.md` says the launcher is the only way a container is created (`#1339`).
 - Once the host tools are reinstalled, `wow-admin` writes the admin token to both `tokens/<repo>/` and `tokens/<owner>/<repo>/` for an `owner/name` entry in `broker.json`, revokes both copies, and refuses a malformed `broker.json` (`#1340`).
 

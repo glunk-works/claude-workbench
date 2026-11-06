@@ -1,9 +1,9 @@
 #!/bin/sh
-# Fixture tests for .devcontainer/dev-token, the container's dev-App token reader.
+# Fixture tests for scripts/identity/review/dev-token, the review image's copy of the dev-App token reader.
 #
-# #393 (WB-D24): the container reads the broker's token file on every call and fails closed on
+# #393 (WB-D24): the reader, before the review image rewrites its two fixed lines, reads the broker's token file on every call and fails closed on
 # anything but a live installation token with 5 minutes or more left. Permitted toolset:
-# POSIX sh plus GNU date (the container's own).
+# POSIX sh plus GNU date.
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,7 +12,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 # The production script fixes its directory; test a copy pointing at the fixture directory.
 mkdir "$tmp/d"
-sed "s|^dir=/run/wow\$|dir=$tmp/d|" "$root_dir/.devcontainer/dev-token" >"$tmp/script"
+sed "s|^dir=/run/wow\$|dir=$tmp/d|" "$root_dir/scripts/identity/review/dev-token" >"$tmp/script"
 grep -q "^dir=$tmp/d\$" "$tmp/script" || { echo "FAIL - could not substitute dir" >&2; exit 1; }
 script="$tmp/script"
 
