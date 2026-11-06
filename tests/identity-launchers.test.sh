@@ -30,7 +30,7 @@
 #                   restarting/paused, a failed docker ps, a missing tool
 #   yq minimum      the host yq version check: the pure comparison on stubbed version lines, both launchers refuse a
 #                   stub yq below v4.54.1 or an unreadable one (the lane through an exit-0 stub printing another yq's form) before any docker or git call, and the number is in neither launcher file
-#   model, canary, edit after up, the declared values the docker exec literals copy
+#   model, canary, edit after up, the declared values the docker exec literals match
 #   wow-lane        not installed, bad arguments, container and record refusals (the sweep's lanes-directory
 #                   refusal too), the lane probe and the
 #                   spec prep and cleanup scripts run for real (the stub docker runs a non-interactive
@@ -1148,12 +1148,11 @@ printf 'models:\n  coder: sonnet\nlanes:\n  dir: /tmp/lanes\n' >"$seed/.ai/proje
 reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
 check "model: a missing models.architect refuses" test "$rc" -eq 1
 
-# --- the declared values the docker exec literals copy ---------------------------------------------
+# --- the declared values the docker exec literals match ---------------------------------------------
 dc="$root_dir/.devcontainer/devcontainer.json"
 check "declared: devcontainer.json still carries remoteUser app" grep -q '"remoteUser": "app"' "$dc"
-check "declared: ...and remoteEnv GIT_TERMINAL_PROMPT=0" grep -q '"remoteEnv": { "GIT_TERMINAL_PROMPT": "0" }' "$dc"
 for f in wow-driver.ps1 wow-lane.ps1; do
-  check "declared: $f's docker exec carries the same two literals" sh -c "grep -q \"'-u', 'app'\" '$root_dir/scripts/identity/$f' && grep -q \"'GIT_TERMINAL_PROMPT=0'\" '$root_dir/scripts/identity/$f'"
+  check "declared: $f's docker exec carries the same user and the image's GIT_TERMINAL_PROMPT literal" sh -c "grep -q \"'-u', 'app'\" '$root_dir/scripts/identity/$f' && grep -q \"'GIT_TERMINAL_PROMPT=0'\" '$root_dir/scripts/identity/$f'"
 done
 
 # --- the helper defines functions only -----------------------------------------------------------

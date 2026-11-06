@@ -1,29 +1,34 @@
 #!/bin/sh
-# Static fixtures for the dev container image (#725, #742, #741, #893): .devcontainer/Dockerfile,
-# .devcontainer/devcontainer.json and .devcontainer/managed-settings.json.
+# Static fixtures for the dev container (#1226, WB-D42): .devcontainer/Dockerfile and
+# .devcontainer/devcontainer.json, which are the 603-Identity/devcontainers dev-App template
+# plus this repo's four per-repo surfaces (the token mount, the FROM, the root-run pwsh extras
+# (#893), and no appPort). Nothing the image sets is checked here: the flavour is reviewed in
+# that repo and `verify / verify` compares these two files with its template.
 #
-#   Dockerfile          the template's shape (header of the Dockerfile), the claude pin against
-#                       scripts/loop/Dockerfile's, the download and checksum, nothing in the app
-#                       user's home directory, no npm or node, the managed settings file's guard,
-#                       COPY and owner/mode assertion in order, the GNU coreutils links (#741): the
-#                       four-line link loop, its assertion, their order, and no replacing `ln`; the
-#                       pinned pwsh (#893): version and hash ARGs, the ENV line, the install RUN pinned
-#                       line by line, the version assertion, and their order
-#   devcontainer.json   DISABLE_AUTOUPDATER is "1" inside containerEnv. The file has // comments,
-#                       so jq cannot parse it; this checks with a line-anchored grep inside the
-#                       containerEnv block (awk cuts the block out), not by stripping comments.
-#                       Also: no `devcontainer exec` anywhere in it, and the postAttachCommand line
-#                       ends with `; true",` (#785).
-#   managed-settings.json  a regular file whose bytes are exactly the DISABLE_AUTOUPDATER pin
+#   Dockerfile          the template's shape (header of the Dockerfile): one `# syntax=` line, one
+#                       plain tag-and-digest FROM first, a devcontainer-devapp image, no ARG before
+#                       it, no COPY --from, RUN --mount from= or ONBUILD, ASCII, LF; no instruction
+#                       naming the app user's home directory, no npm or node, nothing masking a
+#                       failure; the instructions between the FROM and the last one, USER 1000:1000,
+#                       are exactly USER 0 and the pinned pwsh block (version and hash ARGs, the
+#                       ENV line, the install RUN pinned line by line, the version assertion)
+#   devcontainer.json   read with grep, not jq, after its `//` comment lines are removed (as
+#                       tests/ai-cursor-banner.test.sh does): the owner-qualified token mount, the
+#                       .gitconfig.d source from USERPROFILE only, the -node_modules and -venv
+#                       volumes, the start and attach commands, no containerEnv, remoteEnv or
+#                       customizations key, no build args, no `devcontainer exec`
+#   .devcontainer/      holds exactly Dockerfile and devcontainer.json
+#
+# Negative cases run the same file against scratch copies through DEVCONTAINER_DIR; the guard
+# variable keeps the inner run from recursing.
 #
 # Permitted toolset: POSIX sh and its standard utilities (awk, grep, sed, mktemp), plus cmp for the
-# managed settings bytes and the pwsh install RUN. A fixture that needs a tool the runner lacks would skip loudly; none does
-# beyond these (without cmp, only the managed-settings bytes and pwsh install RUN checks fail).
+# pwsh install RUN. A fixture that needs a tool the runner lacks would skip loudly; none does
+# beyond these (without cmp, only the pwsh install RUN check fails).
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 dc="${DEVCONTAINER_DIR:-$root_dir/.devcontainer}"
-loop="${LOOP_DOCKERFILE:-$root_dir/scripts/loop/Dockerfile}"
 
 for t in awk grep sed; do
   if ! command -v "$t" >/dev/null 2>&1; then
@@ -47,6 +52,12 @@ df="$dc/Dockerfile"
 dj="$dc/devcontainer.json"
 [ -f "$df" ] && [ -f "$dj" ] || { echo "FAIL - $df or $dj is missing" >&2; exit 1; }
 
+dfcode=$(mktemp); want=$(mktemp); dfstrip=$(mktemp); djc=$(mktemp); got=$(mktemp)
+trap 'rm -f "$dfcode" "$want" "$dfstrip" "$djc" "$got"' EXIT
+
+# --- .devcontainer/: exactly two files -----------------------------------------------------
+assert_eq ".devcontainer/ holds exactly Dockerfile and devcontainer.json" "Dockerfile devcontainer.json" "$(ls -A "$dc" | tr '\n' ' ' | sed 's/ $//')"
+
 # --- Dockerfile: the template's shape ----------------------------------------------------
 check "Dockerfile: the first line is a # syntax= directive" sh -c 'head -1 "$1" | grep -Eq "^# syntax=docker/dockerfile:[0-9.]+@sha256:[0-9a-f]{64}$"' _ "$df"
 check "Dockerfile: line 2 is not a parser directive" test -z "$(sed -n 2p "$df" | grep -Ei '^#[[:space:]]*[a-z][a-z0-9]*[[:space:]]*=' || true)"
@@ -57,100 +68,37 @@ assert_eq "Dockerfile: exactly one FROM" 1 "$(grep -Eci '^[[:space:]]*FROM[[:spa
 from=$(grep '^FROM ' "$df" | head -1)
 case $from in *'$'*|*' AS '*|*--platform*) bad "Dockerfile: the FROM line is not plain: $from" ;; *) ok "Dockerfile: the FROM line is plain" ;; esac
 printf '%s\n' "$from" | grep -Eq '^FROM [a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$' && ok "Dockerfile: the FROM line is tag-and-digest pinned" || bad "Dockerfile: FROM is not tag-and-digest pinned: $from"
+printf '%s\n' "$from" | grep -Eq '^FROM ghcr\.io/603-identity/devcontainer-devapp:' && ok "Dockerfile: the FROM is a devcontainer-devapp image" || bad "Dockerfile: FROM is not a ghcr.io/603-identity/devcontainer-devapp image: $from"
 assert_eq "Dockerfile: no ARG before FROM" 0 "$(sed -n '1,/^FROM /p' "$df" | grep -Eci '^[[:space:]]*ARG[[:space:]]' || true)"
 check "Dockerfile: no COPY --from, RUN --mount from= or ONBUILD" test -z "$(grep -v '^#' "$df" | grep -Ei -e 'COPY +(--[^ ]+ +)*--from' -e '--mount[^ ]*from=' -e '^[[:space:]]*ONBUILD' || true)"
 check "Dockerfile: ASCII only" test -z "$(LC_ALL=C grep -n '[^ -~	]' "$df" | grep -v '^[0-9]*:$' || true)"
 check "Dockerfile: LF line endings only" test -z "$(grep -c "$(printf '\r')" "$df" | grep -v '^0$' || true)"
 
-# --- Dockerfile: the claude install ------------------------------------------------------
-# The install checks read the file with comment lines removed, so a commented-out install fails.
-dfcode=$(mktemp); want=$(mktemp); dfstrip=$(mktemp); trap 'rm -f "$dfcode" "$want" "$dfstrip"' EXIT
+# The instruction checks read the file with comment lines removed, so a commented-out one fails.
 grep -v '^[[:space:]]*#' "$df" >"$dfcode"
-# Leading whitespace removed, no line dropped: line numbers equal $dfcode's.
-sed 's/^[[:space:]]*//' "$dfcode" >"$dfstrip"
+# Leading whitespace removed and blank lines dropped: one entry per instruction line.
+sed 's/^[[:space:]]*//' "$dfcode" | grep -v '^$' >"$dfstrip"
 arg() { sed -n "s/^ARG $2=//p" "$1"; }
-for a in CLAUDE_VERSION CLAUDE_SHA256; do
-  v=$(arg "$dfcode" $a); w=$(arg "$loop" $a)
-  if [ -n "$v" ] && [ "$v" = "$w" ]; then ok "Dockerfile: $a equals scripts/loop/Dockerfile's"; else bad "Dockerfile: $a [$v] differs from the loop's [$w]"; fi
-done
-check "Dockerfile: CLAUDE_VERSION is a plain x.y.z" sh -c 'arg=$(sed -n "s/^ARG CLAUDE_VERSION=//p" "$1"); printf "%s\n" "$arg" | grep -Eq "^[0-9]+\.[0-9]+\.[0-9]+\$"' _ "$dfcode"
-check "Dockerfile: CLAUDE_SHA256 is 64 lowercase hex" sh -c 'arg=$(sed -n "s/^ARG CLAUDE_SHA256=//p" "$1"); printf "%s\n" "$arg" | grep -Eq "^[0-9a-f]{64}\$"' _ "$dfcode"
 check "Dockerfile: nothing masks a failure (no || true)" test -z "$(grep -F -e '|| true' -e '; true' "$dfcode" || true)"
 check "devcontainer.json: no build args override the pin" test -z "$(grep -E -e '"args"[[:space:]]*:' -e '--build-arg' "$dj" || true)"
-check "Dockerfile: the download is to /usr/local/bin/claude from the \${CLAUDE_VERSION}/linux-x64/claude URL" \
-  grep -qF 'https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude' "$dfcode"
-check "Dockerfile: the download writes /usr/local/bin/claude" grep -q 'curl .*-o /usr/local/bin/claude' "$dfcode"
-check "Dockerfile: the download is checked with sha256sum -c against CLAUDE_SHA256" grep -qF '${CLAUDE_SHA256}  /usr/local/bin/claude" | sha256sum -c -' "$dfcode"
-# Anchored to the claude block (the pwsh block below has the same shape and must not satisfy these).
-claude_curl_n=$(grep -n '^curl .*-o /usr/local/bin/claude' "$dfstrip" | head -1 | cut -d: -f1)
-check "Dockerfile: the claude install RUN starts with set -eu" sh -c '[ -n "$2" ] && [ "$(sed -n "$(($2 - 1))p" "$1")" = "RUN set -eu; \\" ]' _ "$dfstrip" "$claude_curl_n"
-check "Dockerfile: the claude sha256sum -c line ends its line, nothing masks it" \
-  grep -qxF 'echo "${CLAUDE_SHA256}  /usr/local/bin/claude" | sha256sum -c -; \' "$dfstrip"
-check "Dockerfile: the binary is root-owned" grep -qF 'chown root:root /usr/local/bin/claude' "$dfcode"
-check "Dockerfile: the binary is mode 0755" grep -qF 'chmod 0755 /usr/local/bin/claude' "$dfcode"
-assert_eq "Dockerfile: USER 1000:1000 is the last USER" "USER 1000:1000" "$(grep '^USER ' "$df" | tail -1)"
+assert_eq "Dockerfile: USER 1000:1000 is the last instruction" "USER 1000:1000" "$(tail -1 "$dfstrip")"
 code=$(cat "$dfcode")
 check "Dockerfile: no instruction names the app user's home directory" test -z "$(printf '%s\n' "$code" | grep -e '/home/app' -e '~/' -e '\$HOME' || true)"
 check "Dockerfile: no instruction names npm or node" test -z "$(printf '%s\n' "$code" | grep -Ewi -e 'npm' -e 'node' -e 'nodejs' || true)"
 
-# --- Dockerfile and managed-settings.json: the root-owned managed settings (#742) ----------
-ms="$dc/managed-settings.json"
-guard='RUN set -eu; test ! -e /etc/claude-code; mkdir -p /etc/claude-code; chmod 0755 /etc/claude-code'
-copy='COPY --chown=root:root --chmod=0444 managed-settings.json /etc/claude-code/managed-settings.json'
-stat_line='RUN [ "$(stat -c %u:%a /etc/claude-code/managed-settings.json)" = 0:444 ]'
-check "managed-settings.json: a regular file, not a symbolic link" sh -c '[ -f "$1" ] && [ ! -L "$1" ]' _ "$ms"
-# cmp, not $(cat): command substitution drops trailing newlines.
-printf '{\n  "env": {\n    "DISABLE_AUTOUPDATER": "1"\n  }\n}\n' >"$want"
-check "managed-settings.json: the bytes are exactly the DISABLE_AUTOUPDATER pin" cmp -s "$ms" "$want"
-check "Dockerfile: the /etc/claude-code guard is a whole line" grep -qxF "$guard" "$dfcode"
-check "Dockerfile: the managed-settings COPY is a whole line" grep -qxF "$copy" "$dfcode"
-check "Dockerfile: the managed-settings owner and mode assertion is a whole line" grep -qxF "$stat_line" "$dfcode"
-guard_n=$(grep -nxF "$guard" "$dfcode" | head -1 | cut -d: -f1)
-copy_n=$(grep -nxF "$copy" "$dfcode" | head -1 | cut -d: -f1)
-stat_n=$(grep -nxF "$stat_line" "$dfcode" | head -1 | cut -d: -f1)
-user0_n=$(grep -n '^USER 0$' "$dfcode" | head -1 | cut -d: -f1)
-last_user_n=$(grep -n '^USER 1000:1000$' "$dfcode" | tail -1 | cut -d: -f1)
-check "Dockerfile: guard, COPY, stat in that order, after USER 0 and before the last USER 1000:1000" \
-  sh -c '[ -n "$1" ] && [ -n "$2" ] && [ -n "$3" ] && [ -n "$4" ] && [ -n "$5" ] && [ "$4" -lt "$1" ] && [ "$1" -lt "$2" ] && [ "$2" -lt "$3" ] && [ "$3" -lt "$5" ]' _ "$guard_n" "$copy_n" "$stat_n" "$user0_n" "$last_user_n"
-
-# --- Dockerfile: the GNU coreutils links (#741) --------------------------------------------
-# The loop is pinned as four consecutive lines (the gpg loop's own `done` matches a lone `done`).
-loop_head='RUN set -euf; \'
-loop_for="for p in \$(dpkg -L gnu-coreutils | grep '^/usr/bin/gnu'); do \\"
-loop_ln='ln -s "$p" "/usr/local/bin/${p#/usr/bin/gnu}"; \'
-loop_done='done'
-gnu_assert='RUN [ "$(readlink -f "$(command -v timeout)")" = /usr/bin/gnutimeout ] && [ "$(date +%s%3N | wc -c)" -eq 14 ]'
-assert_eq "Dockerfile: exactly one coreutils link loop head" 1 "$(grep -cxF "$loop_head" "$dfstrip" || true)"
-loop_n=$(grep -nxF "$loop_head" "$dfstrip" | head -1 | cut -d: -f1)
-if [ -n "$loop_n" ]; then
-  l1=$(sed -n "$((loop_n + 1))p" "$dfstrip"); l2=$(sed -n "$((loop_n + 2))p" "$dfstrip"); l3=$(sed -n "$((loop_n + 3))p" "$dfstrip")
-else
-  l1= l2= l3=
-fi
-assert_eq "Dockerfile: the link loop's for line follows its head" "$loop_for" "$l1"
-assert_eq "Dockerfile: the link loop's ln -s line follows" "$loop_ln" "$l2"
-assert_eq "Dockerfile: the link loop ends with done" "$loop_done" "$l3"
-check "Dockerfile: the coreutils assertion is a whole line" grep -qxF "$gnu_assert" "$dfstrip"
-gnu_assert_n=$(grep -nxF "$gnu_assert" "$dfstrip" | head -1 | cut -d: -f1)
-check "Dockerfile: managed-settings stat, link loop, assertion, last USER 1000:1000 in that order" \
-  sh -c '[ -n "$1" ] && [ -n "$2" ] && [ -n "$3" ] && [ -n "$4" ] && [ "$1" -lt "$2" ] && [ "$(($2 + 3))" -lt "$3" ] && [ "$3" -lt "$4" ]' _ "$stat_n" "$loop_n" "$gnu_assert_n" "$last_user_n"
-check "Dockerfile: no ln replaces an existing destination (force, backup or suffix)" \
-  test -z "$(grep -E '(^|[^[:alnum:]_.-])(gnu)?ln([[:space:]]+-[^[:space:]]*)*[[:space:]]+(-[[:alnum:]]*[fbS][^[:space:]]*|--(f|b|su)[^[:space:]]*)([[:space:]]|$)' "$dfstrip" || true)"
-
-# --- Dockerfile: the pinned PowerShell (#893) ----------------------------------------------
+# --- Dockerfile: the extras are USER 0 and the pinned PowerShell (#893) --------------------
 pwsh_ver=$(arg "$dfcode" PWSH_VERSION)
 pwsh_sha=$(arg "$dfcode" PWSH_SHA256)
-pwsh_env='ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 POWERSHELL_TELEMETRY_OPTOUT=1'
-pwsh_assert='RUN [ "$(pwsh -NoProfile -NonInteractive -Command '"'"'$PSVersionTable.PSVersion.ToString()'"'"')" = "$PWSH_VERSION" ]'
 check "Dockerfile: PWSH_VERSION is a plain x.y.z, 7.2 or later" sh -c 'printf "%s\n" "$1" | grep -Eq "^([89]|[1-9][0-9]+)\.[0-9]+\.[0-9]+\$|^7\.([2-9]|[1-9][0-9]+)\.[0-9]+\$"' _ "$pwsh_ver"
 check "Dockerfile: PWSH_SHA256 is 64 lowercase hex" sh -c 'printf "%s\n" "$1" | grep -Eq "^[0-9a-f]{64}\$"' _ "$pwsh_sha"
-assert_eq "Dockerfile: exactly one PWSH_VERSION ARG" 1 "$(grep -c '^ARG PWSH_VERSION=' "$dfcode" || true)"
-assert_eq "Dockerfile: exactly one PWSH_SHA256 ARG" 1 "$(grep -c '^ARG PWSH_SHA256=' "$dfcode" || true)"
-check "Dockerfile: the pwsh ENV line is a whole line" grep -qxF "$pwsh_env" "$dfcode"
-check "Dockerfile: the pwsh version assertion is a whole line" grep -qxF "$pwsh_assert" "$dfcode"
-# The install RUN is pinned line by line (like the coreutils loop): set -e, download, checksum before
-# extract, extract without owner, group/other write dropped, mode, link.
+# The install RUN is pinned line by line: set -e, download, checksum before extract, extract
+# without owner, group/other write dropped, mode, link. The ARG values are masked, since a bump
+# changes them (their shape is checked above).
 cat >"$want" <<'EOT'
+USER 0
+ARG PWSH_VERSION=@
+ARG PWSH_SHA256=@
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 POWERSHELL_TELEMETRY_OPTOUT=1
 RUN set -eu; \
 curl -fsSL --retry 3 -o /tmp/pwsh.tar.gz \
 "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz"; \
@@ -161,28 +109,70 @@ rm -f /tmp/pwsh.tar.gz; \
 chmod -R go-w /opt/microsoft/powershell/7; \
 chmod 0755 /opt/microsoft/powershell/7/pwsh; \
 ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh
+RUN [ "$(pwsh -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()')" = "$PWSH_VERSION" ]
 EOT
-pwsh_dl_n=$(grep -n '^curl .*-o /tmp/pwsh\.tar\.gz' "$dfstrip" | head -1 | cut -d: -f1)
-pwsh_head_n=$((${pwsh_dl_n:-0} - 1))
-pwsh_got=$(mktemp); trap 'rm -f "$dfcode" "$want" "$dfstrip" "$pwsh_got"' EXIT
-[ -n "$pwsh_dl_n" ] && sed -n "${pwsh_head_n},$((pwsh_head_n + 9))p" "$dfstrip" >"$pwsh_got"
-check "Dockerfile: the pwsh install RUN is exactly the pinned ten lines" cmp -s "$pwsh_got" "$want"
-pwsh_env_n=$(grep -nxF "$pwsh_env" "$dfstrip" | head -1 | cut -d: -f1)
-pwsh_assert_n=$(grep -nxF "$pwsh_assert" "$dfstrip" | head -1 | cut -d: -f1)
-check "Dockerfile: coreutils assertion, pwsh ENV, pwsh install, pwsh assertion, last USER 1000:1000 in that order" \
-  sh -c '[ -n "$1" ] && [ -n "$2" ] && [ -n "$3" ] && [ -n "$4" ] && [ -n "$5" ] && [ "$1" -lt "$2" ] && [ "$2" -lt "$3" ] && [ "$3" -lt "$4" ] && [ "$4" -lt "$5" ]' _ "$gnu_assert_n" "$pwsh_env_n" "$pwsh_dl_n" "$pwsh_assert_n" "$last_user_n"
+# Everything after the FROM line and before the last instruction.
+from_n=$(grep -n '^FROM ' "$dfstrip" | head -1 | cut -d: -f1)
+last_n=$(wc -l <"$dfstrip" | tr -d ' ')
+if [ -n "$from_n" ] && [ "$last_n" -gt "$from_n" ]; then
+  sed -n "$((from_n + 1)),$((last_n - 1))p" "$dfstrip" | sed -e 's/^ARG PWSH_VERSION=.*/ARG PWSH_VERSION=@/' -e 's/^ARG PWSH_SHA256=.*/ARG PWSH_SHA256=@/' >"$got"
+else
+  : >"$got"
+fi
+check "Dockerfile: between the FROM and the last USER are exactly USER 0 and the pinned pwsh block" cmp -s "$got" "$want"
 
 # --- devcontainer.json -------------------------------------------------------------------
-block=$(awk '/^[[:space:]]*"containerEnv"[[:space:]]*:/ {on=1} on {print} on && /}/ {exit}' "$dj")
-check "devcontainer.json: containerEnv is found" test -n "$block"
-check "devcontainer.json: DISABLE_AUTOUPDATER is \"1\" inside containerEnv" sh -c 'printf "%s\n" "$1" | grep -Eq "^[[:space:]]*\"DISABLE_AUTOUPDATER\"[[:space:]]*:[[:space:]]*\"1\"[[:space:]]*,?[[:space:]]*\$"' _ "$block"
-for k in 'GIT_CONFIG_COUNT": "2"' 'GIT_CONFIG_KEY_0": "commit.gpgsign"' 'GIT_CONFIG_VALUE_0": "false"' 'GIT_CONFIG_KEY_1": "tag.gpgsign"' 'GIT_CONFIG_VALUE_1": "false"'; do
-  check "devcontainer.json: containerEnv keeps $k" sh -c 'printf "%s\n" "$1" | grep -qF "$2"' _ "$block" "$k"
-done
-
+# Minus its comment lines (first non-blank characters `//`), so a commented-out key counts for nothing.
+sed '/^[[:space:]]*\/\//d' "$dj" >"$djc"
+mount='"source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/glunk-works/claude-workbench,target=/run/wow,type=bind,readonly"'
+check "devcontainer.json: the token mount is the owner-qualified directory, read-only, at /run/wow" grep -qxF "    $mount" "$djc"
+assert_eq "devcontainer.json: exactly one /run/wow mount" 1 "$(grep -c 'target=/run/wow' "$djc" || true)"
+check "devcontainer.json: .gitconfig.d comes from USERPROFILE only" grep -qF '"source=${localEnv:USERPROFILE}/.gitconfig.d,target=/home/app/.gitconfig.d,type=bind,readonly"' "$djc"
+check "devcontainer.json: the -node_modules volume" grep -qF '"source=${localWorkspaceFolderBasename}-node_modules,target=/workspace/node_modules,type=volume"' "$djc"
+check "devcontainer.json: the -venv volume" grep -qF '"source=${localWorkspaceFolderBasename}-venv,target=/workspace/.venv,type=volume"' "$djc"
+check "devcontainer.json: remoteUser is app" grep -q '"remoteUser": "app"' "$djc"
+check "devcontainer.json: postStartCommand is the narrowed removal and the three checks" \
+  grep -qxF '  "postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh",' "$djc"
+check "devcontainer.json: postAttachCommand only warns" sh -c 'l=$(grep "\"postAttachCommand\"" "$1"); case $l in *\"echo\ *) ! printf "%s\n" "$l" | grep -qE "rm |docker|;" ;; *) false ;; esac' _ "$djc"
+check "devcontainer.json: runArgs keep the hardening flags" \
+  grep -qxF '    "--cap-drop=ALL", "--security-opt=no-new-privileges",' "$djc"
+check "devcontainer.json: runArgs keep the read-only root and tmpfs mounts" \
+  grep -qxF '    "--read-only", "--tmpfs=/run", "--tmpfs=/var/tmp"' "$djc"
+assert_eq "devcontainer.json: exactly six mounts entries" 6 "$(grep -c '^[[:space:]]*"source=' "$djc" || true)"
+check "devcontainer.json: no appPort" test -z "$(grep -E '"appPort"[[:space:]]*:' "$djc" || true)"
+check "devcontainer.json: no containerEnv, remoteEnv or customizations key" test -z "$(grep -E '"(containerEnv|remoteEnv|customizations)"[[:space:]]*:' "$djc" || true)"
 check "devcontainer.json: no devcontainer exec anywhere" test -z "$(grep -F 'devcontainer exec' "$dj" || true)"
-check "devcontainer.json: postAttachCommand line ends with ; true\"," \
-  sh -c 'grep -Eq "^[[:space:]]*\"postAttachCommand\".*; true\",[[:space:]]*\$" "$1"' _ "$dj"
 
 [ "$fail" -eq 0 ] || exit 1
+
+# --- negative cases: scratch copies of the pair, each of which the checks above must refuse ----
+if [ -z "${DEVCONTAINER_IMAGE_TEST_INNER:-}" ]; then
+  scratch=$(mktemp -d); trap 'rm -rf "$scratch"; rm -f "$dfcode" "$want" "$dfstrip" "$djc" "$got"' EXIT
+  neg_fail=0
+  refuses() { # refuses <label> <mutation function>
+    d="$scratch/case"; rm -rf "$d"; mkdir -p "$d"; cp "$df" "$d/Dockerfile"; cp "$dj" "$d/devcontainer.json"
+    "$2" "$d"
+    if DEVCONTAINER_IMAGE_TEST_INNER=1 DEVCONTAINER_DIR="$d" sh "$0" >/dev/null 2>&1; then
+      printf 'FAIL - negative case not refused: %s\n' "$1" >&2; neg_fail=1
+    else
+      printf 'ok - refused: %s\n' "$1"
+    fi
+  }
+  m_second_from() { { sed '$d' "$1/Dockerfile"; printf 'FROM scratch\nUSER 1000:1000\n'; } >"$1/D" && mv "$1/D" "$1/Dockerfile"; }
+  m_base_from() { sed 's|devcontainer-devapp:|devcontainer-base:|' "$1/Dockerfile" >"$1/D" && mv "$1/D" "$1/Dockerfile"; }
+  m_last_user() { { sed '$d' "$1/Dockerfile"; printf 'USER 0\n'; } >"$1/D" && mv "$1/D" "$1/Dockerfile"; }
+  m_extra_instr() { { sed '$d' "$1/Dockerfile"; printf 'RUN echo extra\nUSER 1000:1000\n'; } >"$1/D" && mv "$1/D" "$1/Dockerfile"; }
+  m_container_env() { sed 's|^{$|{ "containerEnv": {},|' "$1/devcontainer.json" >"$1/j" && mv "$1/j" "$1/devcontainer.json"; }
+  m_extra_mount() { sed 's|^\(  "mounts": \[\)$|\1\n    "source=/h,target=/host,type=bind",|' "$1/devcontainer.json" >"$1/j" && mv "$1/j" "$1/devcontainer.json"; }
+  m_third_file() { echo x >"$1/dev-token"; }
+  refuses "a second FROM" m_second_from
+  refuses "a devcontainer-base FROM" m_base_from
+  refuses "a last instruction other than USER 1000:1000" m_last_user
+  refuses "an extra instruction among the extras" m_extra_instr
+  refuses "a containerEnv key" m_container_env
+  refuses "an extra mount" m_extra_mount
+  refuses "a third file in .devcontainer/" m_third_file
+  [ "$neg_fail" -eq 0 ] || exit 1
+fi
+
 echo "all devcontainer-image fixtures passed"

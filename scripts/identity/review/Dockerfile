@@ -3,16 +3,21 @@
 # session token, read on every call. The host launcher `wow-review` (#635) starts it.
 #
 # Maintenance, stated so nobody assumes more than holds:
-#   - Dependabot opens a separate PR for this directory, so nothing keeps the FROM pin equal
-#     to the dev container's.
+#   - Dependabot opens a separate PR for this directory.
 #   - The base image's signed provenance is not verified here, so a digest bump gets human
-#     review only. .devcontainer/Dockerfile's header names a `gh attestation verify` command
-#     for a check by hand.
-#   - The `claude` pin below is bumped by hand, together with scripts/loop/Dockerfile's and
-#     .devcontainer/Dockerfile's: tests hold the three equal.
+#     review only. Check it by hand, for the digest on the FROM line:
+#       gh attestation verify oci://ghcr.io/603-identity/devcontainer-base@sha256:<digest> \
+#         --repo 603-Identity/devcontainers \
+#         --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
+#         --cert-oidc-issuer https://token.actions.githubusercontent.com \
+#         --source-ref refs/heads/main --deny-self-hosted-runners
+#   - The `claude` pin below is bumped by hand, together with scripts/loop/Dockerfile's: a test
+#     holds the two equal.
 #   - The copied dev-token, gh shim, inject.py and proxy.py are reused unedited apart from
 #     dev-token's two rewritten lines, so their own comments still describe the dev container
-#     or the loop. In this image they act as the reviewer App.
+#     or the loop. In this image they act as the reviewer App. dev-token and gh live beside
+#     this file and are no longer the dev container's reader and wrapper (that container's
+#     come with its FROM image), so a fix to the image's copies does not reach these.
 #   - token-check.sh and gh-identity.sh come from plugins/way-of-working/bin/, which
 #     orchestration.human_only_paths does not list, so loop-written code (merged under human
 #     approval) becomes a root-owned identity check here.
@@ -50,8 +55,8 @@ ENV DISABLE_AUTOUPDATER=1 \
 COPY --chown=root:root --chmod=0444 managed-settings.json /etc/claude-code/managed-settings.json
 
 # Identity: the real gh moves to gh-real and a shim takes its place; git's credential helper
-# for https://github.com becomes the token reader (as .devcontainer/Dockerfile does). The
-# reader is the dev container's dev-token with its two fixed lines pointed at the review
+# for https://github.com becomes the token reader. The
+# reader is this directory's dev-token with its two fixed lines pointed at the review
 # session's token; the grep fails the build unless both rewrites took.
 COPY --chown=root:root --chmod=0555 dev-token /usr/local/libexec/dev-token
 COPY --chown=root:root --chmod=0555 gh /usr/local/libexec/gh-shim

@@ -7,7 +7,7 @@
 #                           org's config reads the same; "key" is a PEM filename in this directory
 #   admin.enc.pem          the admin App's private key, passphrase-encrypted (name by convention)
 #   review.pem             the reviewer App's private key, unencrypted (minted on request)
-#   tokens/<repo>/         the only directory of secrets a repo's container mounts, read-only: admin-token
+#   tokens/<repo>/         a directory of secrets a repo's container may mount, read-only: admin-token
 #                          (wow-admin) and dev-token (broker.ps1), each the token then its
 #                          expires_at. Admin and dev credentials only.
 #   tokens/<owner>/<repo>/ admin-token (wow-admin) and dev-token (broker.ps1), written for an "owner/name" entry in

@@ -39,8 +39,9 @@
 
   Anything else refuses and says what to run. docker exec reads no host copy of
   .devcontainer/devcontainer.json, which a running container can rewrite; devcontainer exec does
-  (WB-D33). The docker exec literals are that file's remoteUser (app) and remoteEnv
-  (GIT_TERMINAL_PROMPT=0); tests/identity-launchers.test.sh holds the two equal.
+  (WB-D33). The docker exec user literal is that file's remoteUser (app); GIT_TERMINAL_PROMPT=0
+  matches the flavour image's own ENV and is kept as a literal; tests/identity-launchers.test.sh
+  holds the user equal.
 
   After the argument checks (the sh run that converts an MSYS-form -WowHome aside, which runs before
   -WowHome is known) every external process this launcher starts runs with -WowHome as its working

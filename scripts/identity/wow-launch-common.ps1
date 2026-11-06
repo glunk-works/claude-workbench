@@ -527,6 +527,6 @@ function Test-RelayProbe([string]$Docker, [string]$Id) {
   if (-not (Test-Hex $Id 64)) { Stop-Launch 'refusing to probe a malformed container id' }
   $r = Invoke-Tool $Docker @('exec', '-u', 'root', $Id, '/bin/sh', '-c', (Get-RelayProbeScript))
   if ($r.Code -ne 0 -or $r.Out.Length -ne 0) {
-    Stop-Launch 'a VS Code attach may have reached this container: stop it (WB-D33), then rerun at start of day'
+    Stop-Launch 'a VS Code attach may have reached this container: stop it (WB-D33) and rotate every credential the host git helpers can return and sign out of the GitHub account in VS Code (revoking its OAuth grant on github.com), then rerun at start of day. The attach leaves files on the -tmp volume that survive that recreate and keep this probe refusing: in the new container, named by the id start of day printed as started ID, run docker exec -u app ID /bin/sh -c "/bin/rm -f /tmp/vscode-remote-containers-*", and check that docker exec -u app ID /bin/sh -c "/bin/ls -d /tmp/vscode-remote-containers-*" lists no file'
   }
 }

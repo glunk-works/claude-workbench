@@ -579,10 +579,10 @@ check "Dockerfile: the grep check for the dir rewrite is present" grep -qF "grep
 check "Dockerfile: the grep check for the file rewrite is present" grep -qF "grep -q '^file=\$dir/session-token\$' /usr/local/libexec/dev-token" "$df"
 # The rewrite really matches the committed dev-token's two lines.
 sed -e 's|^dir=/run/wow$|dir=/run/glunk-identity/review|' -e 's|^file=$dir/dev-token$|file=$dir/session-token|' \
-  "$root_dir/.devcontainer/dev-token" >"$tmp/dev-token.rewritten"
+  "$root_dir/scripts/identity/review/dev-token" >"$tmp/dev-token.rewritten"
 check "Dockerfile: the rewrite takes on the committed dev-token (dir)" grep -q '^dir=/run/glunk-identity/review$' "$tmp/dev-token.rewritten"
 check "Dockerfile: the rewrite takes on the committed dev-token (file)" grep -q '^file=$dir/session-token$' "$tmp/dev-token.rewritten"
-check "Dockerfile: the rewrite changes exactly those two lines" test "$(diff "$root_dir/.devcontainer/dev-token" "$tmp/dev-token.rewritten" | grep -c '^>')" -eq 2
+check "Dockerfile: the rewrite changes exactly those two lines" test "$(diff "$root_dir/scripts/identity/review/dev-token" "$tmp/dev-token.rewritten" | grep -c '^>')" -eq 2
 check "Dockerfile: the marker is created, root-owned, 0444" grep -q 'chmod 0444 /etc/way-of-working/review-container' "$df"
 check "Dockerfile: the managed settings are copied root-owned, 0444" grep -qF 'COPY --chown=root:root --chmod=0444 managed-settings.json /etc/claude-code/managed-settings.json' "$df"
 check "Dockerfile: the build requires allowManagedHooksOnly" grep -qF '.allowManagedHooksOnly == true' "$df"

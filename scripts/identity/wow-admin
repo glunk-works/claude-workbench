@@ -9,7 +9,7 @@
 # Mint: asks for the admin key's passphrase on the terminal (echo off, read from /dev/tty, never
 # an argument or an environment variable), unlocks the admin key into a private .unlock.*
 # directory under $WOW_HOME for the length of one mint.sh call, and writes the token and its
-# expires_at to $WOW_HOME/tokens/<repo>/admin-token -- the directory that repo's container mounts
+# expires_at to $WOW_HOME/tokens/<repo>/admin-token -- a directory a repo's container may mount
 # read-only. When $WOW_HOME/broker.json holds an "owner/name" entry whose name half is exactly
 # <repo>, the same two lines are also written to tokens/<owner>/<repo>/admin-token, as the broker
 # does with the dev token (#1276, #1340); with no broker.json, no such entry or a bare-name entry
