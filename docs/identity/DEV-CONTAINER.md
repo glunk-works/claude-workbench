@@ -177,6 +177,85 @@ that serves the host's git credential (see Hazards that remain).
   dev container, and `/way-of-working:architect-review` run here, under an `identities` map,
   posts nothing and prints the launcher command.
 
+## Adding a repo to this host
+
+This is the host-side procedure that brings another repository of the same org into a dev
+container acting as the dev App, on the shared-template route (`WB-D42`, its migration step 7).
+It is written for a repository `<owner>/<repo>`, for example `glunk-works/<repo>`, in GitHub's
+canonical case, and it needs no reading of this repo's `.devcontainer/`, scripts or config.
+Do the steps in order. It documents the steps and performs none.
+
+1. **Confirm the precondition (nothing is performed here).** The
+   repo's whole ruleset cutover is done: the cutover's last PR (PR 2 where the two-PR order
+   applies) is merged, and the gate's check is pinned (integration 15368) in the repo's checks
+   ruleset, not merely the approval side. The cutover, and the approval ruleset's read-back with who reads it, are the plugin's
+   `reference/cutover.md` (*The order*, *The approval side*); confirm that items 1 to 6 of *The
+   approval side* are in place, that every item of that read-back passed, and that the checks ruleset reads back
+   the same way (`enforcement` `active`, the default branch targeted, `bypass_actors` an empty
+   list) with the gate's check pinned. Why: the broker keeps a write token current for every repo it lists, and
+   with approvals at 0 a dev-App token could merge a green PR.
+2. **Confirm the reviewer App (the App owner or an org owner; installs nothing).** It was
+   installed on the repo before the cutover's PR 1 merged, since from that merge on a gated PR
+   passes only with that App's review (`reference/cutover.md`, *The order*).
+3. **Bring in the repo's `.devcontainer/` from the shared template (as one PR in
+   that repo).** Take it from 603-Identity/devcontainers, with the template's
+   `devcontainer-image.yml` workflow (it runs `verify / verify`). It replaces any existing
+   `.devcontainer/` whole: its devcontainer Features and a `remoteUser` other than `app` go with
+   it (`WB-D42`, *Per repo*). It carries a workflow file, so it is pushed and approved as
+   `reference/cutover.md` (*The approval side*) requires for a workflow PR, never pushed by the
+   dev App. It merges under the repo's own gate before the repo's first start of day, since the
+   driver launcher compares the clone's `.devcontainer/` with the committed copy. The per-repo
+   values, as the template's header lists them, are:
+   - the token mount source `tokens/<owner>/<repo>` under the default identity directory (which
+     `WOW_HOME` must be, per *Opening it*), equal to the repo's `github.repository` in GitHub's
+     canonical case;
+   - the `FROM` line: the dev-App flavour, or its tofu variant for a tofu repo, by tag and digest,
+     and any root-run extras before the final `USER` line;
+   - an optional loopback-only `appPort`.
+
+   Nothing else differs from the template.
+4. **Add the repo to the broker (the operator, on the host), only after step 1.** Add it, or replace any
+   bare entry for it, as an `owner/name` entry, in GitHub's canonical case, to the identity home's `broker.json` and
+   `review-poll.json`, never a bare name: only an `owner/name` entry makes the broker write
+   `tokens/<owner>/<repo>`, the directory the template mounts at `/run/wow`. Then rerun
+   `install-host-tools.ps1` through `register-broker-task.ps1`, from a claude-workbench clone no
+   container opens, at origin's `main` (it stops the broker task around the swap). That creates
+   `tokens/<owner>/<repo>`. Its cross-check must print no warning, and
+   `broker.log` must show no `config:` line after the edit (a `broker.json` the broker refuses
+   stops every repo's mint, not only the new one). One identity home serves one org: a repo of
+   another owner needs its own home, which this section does not cover.
+5. **Install the dev App and the loop App on the repo (whoever owns the installation, in the
+   browser).** Add the repo to each App's existing installation. A pending permission request on
+   an installation is not accepted in this procedure.
+6. **Prove it with one read-only mint (the operator, on the host from Git Bash).** Run the
+   installed `mint.sh` under the home's `bin`, with the `dev` entry of `apps.json` (`client_id`,
+   `installation_id`, and the key file named there), and:
+   - `--repos` the bare name half of the `owner/name` entry, because `mint.sh` refuses a slash;
+   - `--perms contents=read` and `--strict`;
+   - `--out` a file in a fresh directory no container mounts, removed afterwards without
+     printing it.
+
+   Exit 0 proves the dev installation covers the repo. One limit: removing the file does not
+   revoke the token, which stays live until it expires. Then confirm, without printing line 1,
+   that `tokens/<owner>/<repo>/dev-token` exists and that its second line, `expires_at`, is in the
+   future; the broker writes it on its next pass.
+7. **Enter the container (the operator, on the host).** The clone the container opens and the
+   `-Reference` clone follow the `-Clone` and `-Reference` rules in *Opening it*, and the
+   launcher prerequisites listed there apply, among them a host `gh` login that can read the
+   repo and the `.ai/project.yml` the launcher reads at `-Base`, which names `models.architect`.
+   Both folder names are unique among the checkouts on this host, since volumes and the driver
+   record are keyed by folder name. One limit for a repo that had a container before: the
+   Reference is a fresh second clone no container has ever opened, and the earlier container is
+   removed and its per-folder volumes reset first, with the `docker volume rm` command under *The
+   `claude` binary*, since the old home volume can hold a PAT login. Then run:
+   ```powershell
+   pwsh -File $env:WOW_HOME\bin\wow-driver.ps1 -Clone <clone> -Reference <second clone>
+   ```
+   After the first start of day, run the checks this file already gives: in the new container,
+   from a `docker exec` shell, the channel check under *Hazards that remain* and the
+   agent-socket check under *What it still carries from the template*; and on the host, the
+   `docker inspect` live-run check under *Opening it*.
+
 ## Lanes
 
 A lane is a second Claude session building one task in parallel with the driver session. The
