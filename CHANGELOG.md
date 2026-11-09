@@ -33,6 +33,10 @@ the GitHub release notes.
 - The driver launcher reads the committed `.devcontainer/` through the API with the host `gh`, at a commit the compare API places on the origin's base branch, and requires `.devcontainer/devcontainer.json` in it; every process it starts after its argument checks runs from `-WowHome`, which may not be or sit inside `-Reference`; and `DEV-CONTAINER.md` says the launcher is the only way a container is created (`#1339`).
 - Once the host tools are reinstalled, `wow-admin` writes the admin token to both `tokens/<repo>/` and `tokens/<owner>/<repo>/` for an `owner/name` entry in `broker.json`, revokes both copies, and refuses a malformed `broker.json` (`#1340`).
 
+### Added
+
+- `register-review-poll-task.ps1` gains `-Disable` and `-Enable` to pause and resume the review poller, and `REVIEW-LIVE-RUN.md` documents them as the pause (`#1382`).
+
 ## [0.30.0] — 2026-11-03
 
 **⚠️ Migration** — `/way-of-working:resume`'s, `/way-of-working:handoff`'s and `/way-of-working:archive-sprint`'s `plan-anchor.sh verify` now read `unreadable` (and wait) on a missing `orchestration` or a missing or empty `orchestration.loop_identity`, and handoff's and archive-sprint's also on a missing or malformed `identities`, App entry or maintainer list, where they used to omit the flag. Run `schema-complete.sh check .ai/project.yml` and fix any finding before bumping (`#1221`).
