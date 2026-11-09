@@ -1,7 +1,7 @@
 #Requires -Version 7.2
 <#
 .SYNOPSIS
-  Install (or remove) the scheduled task that runs wow-review-poll (WB-D24, issue #626).
+  Install, remove, disable or enable the scheduled task that runs wow-review-poll (WB-D24, issue #626).
 
 .DESCRIPTION
   Registers a per-user task, run as the current user with limited rights and an Interactive logon,
@@ -14,7 +14,10 @@
 
   Register it only after every item in docs/identity/REVIEW-LIVE-RUN.md has passed, and create
   $WowHome\review-poll.json ({"repos": ["owner/name", ...]}) at the same time. -Unregister stops and
-  removes the task.
+  removes the task. -Disable pauses it: the task stays registered with its triggers, none fires, and a
+  tick already running runs to its end. -Enable resumes it and starts no tick. At most one of
+  -Unregister, -Disable and -Enable may be given; none of them installs anything or needs -Sh or an
+  existing WowHome.
 
   Like register-broker-task.ps1, it installs the host scripts into $WowHome\bin with
   install-host-tools.ps1 (committed code on origin/main only) and registers the task against those
@@ -31,17 +34,38 @@ param(
   [string]$SourceRepo,
   [string]$TaskName = 'glunk-wow-review-poll',
   [ValidateRange(2, 60)][int]$IntervalMinutes = 5,
-  [switch]$Unregister
+  [switch]$Unregister,
+  [switch]$Disable,
+  [switch]$Enable
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if ($TaskName -notmatch '^[A-Za-z0-9._-]+$') { throw "TaskName must be letters, digits, . _ -" }
 
+$given = @(@('Unregister', 'Disable', 'Enable') | Where-Object { (Get-Variable -Name $_ -ValueOnly) })
+if ($given.Count -gt 1) { throw "-$($given -join ' and -') cannot be given together; pass at most one of -Unregister, -Disable, -Enable" }
+
 if ($Unregister) {
   if ($PSCmdlet.ShouldProcess($TaskName, 'Unregister scheduled task')) {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+  }
+  return
+}
+
+# Disable-ScheduledTask and Enable-ScheduledTask take neither -Confirm nor -WhatIf; ShouldProcess guards them.
+if ($Disable) {
+  if ($PSCmdlet.ShouldProcess($TaskName, 'Disable scheduled task')) {
+    $null = Disable-ScheduledTask -TaskName $TaskName
+    "disabled $TaskName"
+  }
+  return
+}
+if ($Enable) {
+  if ($PSCmdlet.ShouldProcess($TaskName, 'Enable scheduled task')) {
+    $null = Enable-ScheduledTask -TaskName $TaskName
+    "enabled $TaskName"
   }
   return
 }

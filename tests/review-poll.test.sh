@@ -7,7 +7,7 @@
 # from per-case fixture files and records every call. stdin is closed throughout, to prove nothing
 # prompts.
 #
-# Permitted toolset: POSIX sh and its standard utilities, jq and yq (skipped, loudly, if absent).
+# Permitted toolset: POSIX sh and its standard utilities, jq, yq, timeout and pwsh (each skipped, loudly, if absent).
 set -u
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -532,6 +532,36 @@ check "install-host-tools.ps1's table names wow-review-poll" has "$root_dir/scri
 check "register-review-poll-task.ps1 builds the action as conhost --headless" has "$root_dir/scripts/identity/register-review-poll-task.ps1" '$conArg = "--headless `"$pwsh`" $arg"'
 check "register-review-poll-task.ps1 registers conhost as the executable" has "$root_dir/scripts/identity/register-review-poll-task.ps1" 'New-ScheduledTaskAction -Execute $conhost -Argument $conArg'
 check "register-review-poll-task.ps1 writes WOW_HOME with forward slashes" has "$root_dir/scripts/identity/register-review-poll-task.ps1" "WOW_HOME = '\$(\$WowHome.Replace('\\', '/'))'"
+
+# -Disable and -Enable (#1382): run under -WhatIf with a task name that names no real task
+reg="$root_dir/scripts/identity/register-review-poll-task.ps1"
+check "register-review-poll-task.ps1 disables by task name" has "$reg" 'Disable-ScheduledTask -TaskName $TaskName'
+check "register-review-poll-task.ps1 enables by task name" has "$reg" 'Enable-ScheduledTask -TaskName $TaskName'
+if ! command -v pwsh >/dev/null 2>&1; then
+  echo "SKIP - pwsh not on PATH; register-review-poll-task.ps1 -Disable/-Enable cases not run" >&2
+else
+  esc=$(printf '\033')
+  rt() { # rt <out> <args...>: run the script, stdout and stderr together; sets rc
+    o=$1; shift
+    timeout 120 pwsh -NoProfile -NonInteractive -File "$reg" -TaskName "wow-test-$$" "$@" >"$o" 2>&1 </dev/null
+    rc=$?
+    sed "s/$esc\\[[0-9;]*[A-Za-z]//g" "$o" >"$o.plain"
+  }
+  for sw in Disable Enable; do
+    lc=$(printf '%s' "$sw" | tr 'DE' 'de')
+    rt "$tmp/rt.$sw" "-$sw" -WhatIf -WowHome "$tmp/no-such-home"
+    assert_eq "-$sw -WhatIf: exit 0" 0 "$rc"
+    check "-$sw -WhatIf: a What-if line names the task" grep -q "What if:.*wow-test-$$" "$tmp/rt.$sw.plain"
+    check "-$sw -WhatIf: the switch's own line is not printed" test -z "$(grep -E "^${lc}d wow-test-" "$tmp/rt.$sw.plain")"
+    check "-$sw -WhatIf: nothing created under WowHome" test ! -e "$tmp/no-such-home"
+  done
+  for pair in "-Disable -Enable" "-Disable -Unregister" "-Enable -Unregister"; do
+    # shellcheck disable=SC2086
+    rt "$tmp/rt.pair" $pair -WhatIf
+    check "[$pair] together: non-zero exit" test "$rc" -ne 0
+    check "[$pair] together: mutual-exclusion message" grep -q "cannot be given together" "$tmp/rt.pair.plain"
+  done
+fi
 
 [ "$fail" = 0 ] && echo "all review-poll fixtures passed"
 exit "$fail"
