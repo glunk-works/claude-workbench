@@ -1,8 +1,13 @@
 #Requires -Version 7.2
 <#
 .SYNOPSIS
-  Start a coder lane, or a spec session, or list the spec sessions, in the claude-workbench dev container that the driver
-  launcher recorded (WB-D24, WB-D33, issue #762, split from #728). Run it from pwsh 7.2+ on the host,
+  Start a coder lane, or a spec session, or list the spec sessions, in the container the driver
+  launcher recorded for -Clone, for the repository of -Reference's origin (WB-D24, WB-D33, issue #762,
+  split from #728).
+  Any repository of the org works, chosen by -Clone and -Reference, if it is set up as the
+  "Adding a repo to this host" section of claude-workbench's docs/identity/DEV-CONTAINER.md describes
+  and its .ai/project.yml at -Base holds the keys the -Reference help names.
+  Run it from pwsh 7.2+ on the host,
   from the installed copy in $WOW_HOME\bin (install-host-tools.ps1), never from a checkout. Use
   `pwsh -File`: from a pwsh prompt `-Spec 1,2` binds as `1 2` and is refused with exit 2.
 

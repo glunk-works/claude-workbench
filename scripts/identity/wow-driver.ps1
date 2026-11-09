@@ -1,8 +1,12 @@
 #Requires -Version 7.2
 <#
 .SYNOPSIS
-  Start the driver session in the claude-workbench dev container, after the checks that must come
-  first (WB-D24, WB-D33, issue #728). Run it from pwsh 7.2+ on the host, from the installed copy in
+  Start the driver session in the dev container of -Clone, for the repository of -Reference's origin,
+  after the checks that must come first (WB-D24, WB-D33, issue #728).
+  Any repository of the org works, chosen by -Clone and -Reference, if it is set up as the
+  "Adding a repo to this host" section of claude-workbench's docs/identity/DEV-CONTAINER.md describes
+  and its .ai/project.yml at -Base holds the keys the -Reference help names.
+  Run it from pwsh 7.2+ on the host, from the installed copy in
   $WOW_HOME\bin (install-host-tools.ps1), never from a checkout.
 
 .DESCRIPTION
@@ -67,8 +71,7 @@
   (devcontainer.cmd re-parses & | ^ % and " through cmd.exe).
 
 .PARAMETER Reference
-  A different full clone that no container opens (for example the one install-host-tools.ps1 installs
-  from): its .git a directory, not a file. It supplies the commit, the origin repository and models.architect.
+  A different full clone that no container opens: its .git a directory, not a file. It supplies the commit, the origin repository and models.architect.
   Its <Remote> must have exactly one github.com url, and its repository must match the driver
   record's origin when there is one.
 
