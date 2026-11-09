@@ -495,7 +495,7 @@ decided from the default branch's copy of `identities`, never the working tree's
 issue's body is read either, and `plan-anchor.sh` projects its own fetches, so it too never
 brings a body into context.
 `identities: null` keeps the body read. `/way-of-working:architect-review` follows the same
-rule: under a map it loads the found spec comment only (the id from `spec-find.sh`, run once inside the call that uses it), after checking its `updated_at`, author, issue and a maintainer's fresh reaction with `spec-comment.sh`, labels it through `bin/spec-reaction.sh` (`#613`), and states in the review when no spec could be loaded.
+rule: under a map it loads the found spec comment only (the id from `spec-find.sh`, run once inside the call that uses it), after checking its `updated_at`, author, issue and a maintainer's fresh reaction with `spec-comment.sh`, labels it through `bin/spec-reaction.sh` (`#613`), and states in the review when no spec could be loaded. Under a map the task issue is the PR's single closing reference from the API, which must be open and, under `github_milestones`, on a milestone (`WB-D45`).
 
 ### `load_bearing_docs`, `code_paths`
 

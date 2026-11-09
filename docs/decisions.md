@@ -2187,6 +2187,7 @@ take effect. Full reasoning and the task breakdown that implements them:
     5. The review may judge against a different spec than the build used. Today no in-session
        review loads a spec under a map: host mode stops at the `wow-review` line, and container
        mode has no `state.json`. So this applies once the review loads specs again.
+       *Amended by `WB-D45`: the container review now loads the found spec, so this residual applies.*
     6. The reaction alone selects the spec.
     7. **No second party before the build.** `WB-D29`'s first residual is no longer limited by
        the anchor PR's code-owner approval. A session holding a maintainer credential can write
@@ -2756,6 +2757,11 @@ take effect. Full reasoning and the task breakdown that implements them:
   - **Authentication.** No Slack message is read, so none is authenticated. A GitHub write made from Slack through a linked GitHub account is a GitHub write by that account, read like any other, and the reaction by a declared maintainer matched on numeric id stays the only approval.
   - **Accepted residual.** An escalation that adds no label to the issue sends no notice, whatever the cause, an issue already carrying the label included.
   - **Unverified.** Which issue events the subscription notifies on, a label added to an open issue included, and whether a linked account can react from Slack; the maintainer confirms both after setting it up.
+- **WB-D45 (`#1368`) — the container review loads the approved spec, binding the task issue from the PR's closing reference.** Builds on `WB-D24` item 7. Amends `WB-D30` residual 5.
+  - **The decision.** Under an `identities` map, `/way-of-working:architect-review`'s *Task spec* Map branch runs in the review container, which has no `.ai/state.json`. It reads none: `I` is the PR's single closing reference from `gh pr view --json closingIssuesReferences`, never parsed from the PR body or title, and it must be in `{backlog.repo}`. `#I` must be open and, under `github_milestones`, on a milestone. The rest of the recipe is unchanged (finder, task-author, reactions before comment, `spec-comment.sh`, `spec-reaction.sh`). The label adds "bound to #I by the PR's closing reference", and the verdict checks the diff against *Files touched*, *Done when* and *Out of scope*. Every failure keeps the "No spec was loaded" outcome with a fixed reason.
+  - **What the container review now trusts.** GitHub's closing-reference list for the PR, which the PR's author, or anyone who can link an issue to the PR, chooses.
+  - **Residual.** That chooser can bind any issue in `{backlog.repo}` that carries a maintainer-approved spec. That needs no write access when the issue is already open and on a milestone, a fork author included, and it includes a closed one, because an author with Issues write can reopen it and put it on a milestone; the open and milestone checks do not narrow this. The chooser can also bind none and get the no-spec outcome. A PR that closes folded issues (the `lanes` `ALSO` flow) loads no spec, with the several-entries reason. The label's `#I` is what the code owner checks, against the PR's closing references at merge time: a body edit after the review changes the binding without moving the head the review pinned.
+  - **Unchanged.** The spec comment is still only one that a declared maintainer approved after its last edit, checked by `spec-comment.sh` and `spec-reaction.sh`. The code owner's approval remains the merge gate.
 
 ## Status
 

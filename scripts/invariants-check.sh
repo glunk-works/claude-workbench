@@ -722,14 +722,14 @@ if [ -n "$gate_hits" ]; then
 fi
 fi
 
-# --- 15. architect-review never loads the task issue's body under an identities map (#566) --
+# --- 15. architect-review never loads the task issue's body under an identities map (#566), and binds it from the closing reference (#1368) --
 if want 15; then
 #
 # resume and the coder's builder rule read only the approved spec comment under a map, because
 # the maintainer's reaction covers the comment and an agent with issue write can edit the body
 # afterwards (#496). architect-review's step 5 still loaded "its body and, when one exists, its
 # anchored spec comment" for every repo, and the schema doc recorded that as "not yet covered".
-# Two things are the invariant: the skill carries the map-mode rule ("the body is never
+# (#1368 adds a second report, below.) Two things are the invariant: the skill carries the map-mode rule ("the body is never
 # loaded") and no longer carries the unconditional body-and-comment phrasing; and the schema
 # doc does not say the skill is uncovered again. A tree with no architect-review skill or no
 # schema doc fails: a check that cannot look must not pass (#243's stance).
@@ -753,6 +753,19 @@ if [ -n "$specbody_hits" ]; then
   report "architect-review may load the task issue's body under an identities map (#566)" \
     "$specbody_hits" \
     "Under a map step 5 loads the approved spec comment only; keep that rule and the schema text saying it is covered."
+fi
+# The container review loads the spec too (#1368, WB-D45): the skill must not skip the recipe with
+# the old reason, and must bind the task issue from the PR's closing reference as the API reports it.
+closing_hits=""
+for f in plugins/*/skills/architect-review/SKILL.md; do
+  [ -f "$f" ] || continue
+  if grep -Fq 'no state.json in the review container' "$f"; then closing_hits+="$f (skips the spec recipe in the review container)"$'\n'; fi
+  grep -Fq 'closingIssuesReferences' "$f" || closing_hits+="$f (does not bind the task issue from closingIssuesReferences)"$'\n'
+done
+if [ -n "$closing_hits" ]; then
+  report "architect-review does not load the spec in the review container (#1368)" \
+    "$closing_hits" \
+    "The Map branch binds the task issue from the PR's closing reference and reads no state.json; keep it (WB-D45)."
 fi
 fi
 
