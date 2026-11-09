@@ -182,3 +182,5 @@ unblock one.
 
 A repo may have neither key today. Bumping the pin later follows `conventions.md`'s *Bumping a
 pinned plugin* section, which this file does not restate.
+
+This is not part of the pin the review container checks; it concerns the Claude Code permission rules in the same `.claude/settings.json`. The only merge call `/way-of-working:ship` makes is `gh pr merge <N> --repo <repo> --auto --squash --match-head-commit <oid>`. A deny rule wins over any allow rule, and because the PR number comes before the flags, a prefix rule cannot tell that call from a direct merge. A repo therefore has two choices. It can keep a `gh pr merge` deny: arming then stays the maintainer's, and ship reports `Auto-merge: not armed (denied by the repo's permission rules)`. Or it can have no such deny: then no permission rule denies an agent's direct merge, whether one runs without a prompt depends on the session's allow rules and permission mode, and the base's required code-owner approval is the control, where the base requires one.
