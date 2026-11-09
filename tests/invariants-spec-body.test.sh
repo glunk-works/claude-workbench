@@ -1,6 +1,8 @@
 #!/bin/sh
 # Fixture tests for scripts/invariants-check.sh's check 15: architect-review never loads the
-# task issue's body under an identities map, and the schema doc does not call it uncovered (#566).
+# task issue's body under an identities map, and the schema doc does not call it uncovered (#566);
+# its second report (#1368) fires when the skill skips the spec in the review container or lacks
+# closingIssuesReferences.
 #
 # Each case mutates a COPY of the real tree and asserts the check fires (or stays silent), so
 # a check that only passes on the real tree cannot hide. Only check 15's own message is
@@ -58,6 +60,7 @@ assert_silent() { # <desc> <dir>
 sel=
 d="$(tree control)"
 assert_silent "real tree passes" "$d"
+if run "$d" | grep -qF -- "architect-review does not load the spec in the review container"; then echo "FAIL - real tree fires the #1368 report" >&2; fail=1; else echo "ok - real tree is silent on the #1368 report"; fi
 sel="--only 15"
 
 # The map-mode rule removed fires.
@@ -77,6 +80,19 @@ d="$(tree notcovered)"
 f="$(ls "$d"/plugins/*/reference/project-schema.md)"
 printf '%s\n' '`/way-of-working:architect-review` is not yet covered.' >>"$f"
 assert_fires "the schema doc saying not yet covered fires" "$d"
+
+# The container-skip reason coming back fires the #1368 report.
+MSG2="architect-review does not load the spec in the review container"
+d="$(tree skipback)"
+f="$(ls "$d"/plugins/*/skills/architect-review/SKILL.md)"
+printf '%s\n' 'reason `no state.json in the review container`' >>"$f"
+if run "$d" | grep -qF -- "$MSG2"; then echo "ok - the container-skip phrase fires the #1368 report"; else echo "FAIL - container-skip phrase did not fire" >&2; fail=1; fi
+
+# Deleting every closingIssuesReferences fires the #1368 report.
+d="$(tree noclosing)"
+f="$(ls "$d"/plugins/*/skills/architect-review/SKILL.md)"
+sed 's/closingIssuesReferences/closingRefs/g' "$f" >"$f.new" && mv "$f.new" "$f"
+if run "$d" | grep -qF -- "$MSG2"; then echo "ok - no closingIssuesReferences fires the #1368 report"; else echo "FAIL - missing closingIssuesReferences did not fire" >&2; fail=1; fi
 
 # A tree with no architect-review skill fails, never passes.
 d="$(tree noskill)"
