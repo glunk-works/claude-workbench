@@ -1,31 +1,28 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 19** (cursor id `sprint-19`), status **implementing**, milestone 26, *Identity M5b: dev containers on the shared template*, anchored on task #1165. #1226 is merged; no lane is running.
+**Now:** **Sprint 19** (cursor id `sprint-19`), status **implementing**, re-anchored on milestone 30, *Second consumer: fixes from resume-orchestrator's cutover*, task #1378. Milestone 26 (#1340, #1352, #1361) continues alongside; no lane is running.
 
-**Just done (2026-11-06, driver session, opus):**
-- #1226 built and merged as #1351 (`de6e8dd`): `.devcontainer/` is the shared template's dev-App flavour, `FROM devcontainer-devapp:4.607` by digest, with the `pwsh` block as its one extra. Spec 6691155775, redrafted after the image-pin note; the lane's critic gate ran architect, security-critic and docs-consistency.
-- The two template workflows went in as the maintainer's host commit; `verify / verify` passed. `secrets / scan` is red on test fixtures only (all fake values), not required; the ignore list is #1352.
-- wow-review passed at `ed3ad81`; its non-blocking findings are #1353.
-- Appended a 2026-11-06 note to #1165's body: resume-orchestrator is the section's first case.
-- Reviewed resume-orchestrator's cutover spec (its #88, comment 6690566962) with its session: it stands as posted (workflow PRs published as glunk-admin, broker entry after its #115).
+**Just done (2026-11-09, driver session, opus):**
+- #1165 merged as #1363 (`ecd0120`); its lane was cleaned up (worktree, branch and prompt removed).
+- Triaged the resume-orchestrator cutover findings (#169 there): each issue's body carries its 2026-11-09 triage decision. Filed #1378 (ship head check, closes #1372), #1379 (scheduled ruleset-drift workflow, a credential decision), #1380 and #1382 (launcher text, review-poll pause), #1381 (driver-record clone paths, deferred) and #1383 (cutover preflight as wow-admin).
+- Folded #1372 into #1378, #1259 into #1371 (moved off milestone 29), and parts of #1370 into #1371 and #1377; the critic-identity check from #1377 into #1373.
+- Created milestone 30 (due 2026-11-27, ahead of milestone 21's cutover) with its Build order and Lanes line; placed 12 issues; #1379 and #1381 left unmilestoned on purpose. Milestone 29's Build order updated.
+- First anchor for milestone 30 (switched from milestone 26).
 
-**Next:** task #1165 — after the #1226 Migration line, the rebuild and its live checks, the maintainer reacts on #1165 and runs one -Spec 1165 session; the driver reviews the spec before the reaction; then the lane. The driver stays on opus.
+**Next:** task #1378 — the maintainer reacts on #1378 and runs one -Spec 1378 session; the driver reviews the posted spec before the reaction; then the lane. Wave 1 beside it: #1373 and #1368, plus #1380 and #1382 any time, each after its own reaction and -Spec session. #1376 is specced after #1378 merges. The driver stays on opus.
 
-**HITL Gate: OPEN** — the maintainer does the #1226 Migration line, rebuilds the dev container through start of day and confirms the #1226 live checks; then the reaction on #1165 and each spec and PR merge
+**HITL Gate: OPEN** — first anchor for milestone 30 (switched from milestone 26): the maintainer confirms milestone 30, reacts on #1378 and runs its -Spec session; then each spec reaction and PR merge
 
-**Critic pass:** none in this session; it wrote no code (the #1226 lane ran its own).
+**Critic pass:** none in this session; it wrote no code.
 
 **Maintainer actions:**
-- #1226 Migration line: `broker.json` entry `glunk-works/claude-workbench`, reinstall the host tools, restart the broker; then start of day, and the spec's live checks in a session acting as the dev App.
-- Remove `status/needs-human` from #1165 if its escalation was deleted on purpose; delete the outsider comment on #1165 if it is spam.
-- Remove the old `/tmp/lanes/spec-*` and `record-spec-*` directories of exited spec sessions.
+- React on each wave 1 issue after its last body edit (#1378, #1373, #1368; #1380 and #1382 when wanted) before its -Spec session.
+- Carried: remove `status/needs-human` from #1165 if still set; remove the old `/tmp/lanes/spec-*` and `record-spec-*` directories of exited spec sessions.
 
 **Triage queue (driver, with the maintainer):**
-- Place #1349 (resume-orchestrator's cutover, filed under its old name resume-optimizer) and #1352.
-- #1353: keep finding 2 (live checks in DEV-CONTAINER.md's after-rebuild section) as a docs follow-up; decline 3 and 4; finding 1 is #1352.
-- #1340 step 2 note (#1348 findings 1 and 3, decline 2) and re-spec; triage #1344.
+- #1349 (tracking, milestone 26), #1352, #1353 (finding 2 kept as #1361), #1340 step 2 re-spec, #1344.
 
 **Follow-ups outside this repo (not sprint-19 work):**
 - The remaining items of #419's private record (the Infisical identity list and the Cloudflare token audit). global-bootstrap #71 and #68 can be closed; #67 and #69 stay open. bounty-infra #196, #197 (docs) and #194 (Gemini key). loop-orchestrator #216. Delete the leftover serverless-bedrock-rag folder in Infisical.
 
-**Pointers:** [docs/decisions.md](../docs/decisions.md) · [milestone 26](https://github.com/glunk-works/claude-workbench/milestone/26) · [.ai/parked/](parked/)
+**Pointers:** [docs/decisions.md](../docs/decisions.md) · [milestone 30](https://github.com/glunk-works/claude-workbench/milestone/30) · [milestone 26](https://github.com/glunk-works/claude-workbench/milestone/26) · [.ai/parked/](parked/)
