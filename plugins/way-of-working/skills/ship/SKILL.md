@@ -33,6 +33,15 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
      typed prefix matching the change (`docs/…`, `chore/…`, `fix/…`, `ci/…`). The branch is
      cut **from `{pr_base}`**.
    - **Already on a work branch?** Confirm it was cut from `{pr_base}` and just add to it.
+   - **On a `docs/sync-cursor-` branch (`#1376`)?** That prefix is `/way-of-working:handoff`'s
+     cursor-sync branch, never a work branch, and ship never adds to it. A build that
+     auto-started on an open sync PR's branch ends up here. Ship stops, before any commit, and
+     says so when the branch has no upstream that resolves or HEAD is not that upstream
+     (`@{u}`, which every push route sets), since local commits would be left out of the new
+     branch. A merged sync branch whose remote-tracking ref was pruned locally stops here too,
+     and the human moves the work to a new branch. Otherwise fetch `{pr_base}` and cut the
+     work branch from `origin/{pr_base}`, carrying only the uncommitted work, never from the
+     sync branch's HEAD; a refused switch to the new branch is a stop too.
    - Never rebase/force-push a pushed branch. To refresh a stale branch, merge `{pr_base}`
      **into** it. A conflict in a ledger file (a backlog, a changelog) is usually *two
      additions* — **keep both sides**. That default is load-bearing: of the two errors
@@ -244,6 +253,30 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
           A pass says the token `gh` holds can write; the previous check says which App it is,
           and the pin makes the push use the token `gh` holds, not whatever account `git`'s own
           helper stores.
+   - **Read the branch's PR, before any commit** (on an existing work branch, after the mode is
+     decided and, in App mode, the token proven above). Read the branch's PRs in one line:
+     `gh pr list --repo {repo} --head <branch> --state all --limit 200 --json number,state,baseRefName,headRefOid,isCrossRepository`.
+     A failed read, or a result of 200 entries (the window may have hidden the branch's own PR
+     behind fork PRs of the same name), stops before any commit. Only a PR whose `isCrossRepository` is false and whose
+     `baseRefName` is `{pr_base}` counts: `--head` matches the branch name alone, so a fork's PR on
+     the same name would otherwise match. Then:
+     - **No counted PR:** carry on.
+     - **Exactly one counted open PR:** its number is `<N>` for the rest of the run, the
+       *existing-PR path* below. In App mode, run the actor-check block of the *Open the PR*
+       step on `<N>` now, before any commit (refer to it, never copy it). Any non-zero status
+       (a mismatch, exit 2 or a failed read) stops before any commit; the stop names the PR, its
+       author (or that it could not be read) and the expected `identities.dev_app`, says this run
+       pushed nothing, and writes nothing to the PR.
+     - **More than one counted open PR:** stop and name them.
+     - **No counted open PR, but a merged or closed one:** stop before any commit, name that PR
+       and its state, and say the work belongs on a new branch cut from `{pr_base}`.
+
+     **The existing-PR path** skips the *Length-check the PR title*, *Open the PR* (apart from its
+     actor check, run above), *Arm auto-merge* and *Label* steps: ship makes no title, body, label
+     or arm write to that PR. The review-gate step still runs. After the push (if any), the *Verify the PR
+     head* step runs on `<N>`, and when this run pushed, the report says the PR's head changed since it was last
+     reported, and it repeats that step's `Armed:` line. The *Arm auto-merge* step's closing
+     paragraph on a later push (no re-pin) stands.
 
 2. **Review the diff, then compose the commit.** `git status --short` + `git diff --staged`
    (stage with `git add` as needed). Write the message per `reference/conventions.md`
@@ -266,7 +299,8 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    `HEAD` after it; a refusal (exit 2, no write sent) is a stop to report, not to retry with
    a bare push, and a workflow edit it refuses stays a host-side commit). Push freely to the work branch,
    **never to `{pr_base}`**. Once asked to push in a session, keep pushing later commits
-   without re-confirming — but always to the branch.
+   without re-confirming — but always to the branch, and each later push runs ship again from
+   the *Preflight the branch* step, its *Push-reach preflight* included.
 
 4. **Length-check the PR title BEFORE creating the PR.** This is the recurring mistake —
    never eyeball it:
@@ -363,13 +397,32 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    draft conversion or body edit — each is another write by the possibly-wrong identity; the
    human decides. The remaining steps below do not run.
 
-6. **Arm auto-merge, only where an approval stands behind it (`WB-D24`, `#386`).** Arming is
+6. **Verify the PR head, before arming or reporting ready.** One Bash call of its own; every
+   remote read goes through `gh`. `<N>` is the PR number (created above, or found by the
+   preflight's PR read). Read the PR's state, base, head and whether auto-merge is armed, on one
+   line (the `--jq` keeps only a boolean, so the request's author-editable text is never printed):
+   ```bash
+   gh pr view <N> --repo {repo} --json state,headRefOid,baseRefName,autoMergeRequest --jq '[.state, .headRefOid, .baseRefName, (.autoMergeRequest != null)] | @tsv'
+   ```
+   Then local `git rev-parse HEAD`, and the branch tip on `{repo}`, read through `gh` so no
+   credential helper is consulted: `gh api repos/{repo}/git/ref/heads/<branch> --jq .object.sha`.
+   Print `PR head: verified <oid>` only when the state is `OPEN`, the base is `{pr_base}` and all
+   three ids are equal; otherwise `PR head: differs (...)`, naming the state, the base and each
+   id that does not match. On a `differs`, run the whole step once more in a new Bash call and
+   count only that result, since GitHub can report the old head for a moment after a push. A
+   second `differs` stops ship: arm nothing and do not report the PR ready. A failed read prints
+   `PR head: unreadable` and stops the same way; it is never a pass. When the read succeeded,
+   also print `Armed: yes` or `Armed: no`. Report that line only on the existing-PR path; on the
+   new-PR path the arm outcome stands in its place.
+
+7. **Arm auto-merge, only where an approval stands behind it (`WB-D24`, `#386`).** Arming is
    the one merge-adjacent write this skill makes, and it is safe only when the base *requires
    a code-owner approval*: `gh pr merge --auto` **merges immediately** on a PR that is already
    mergeable, so on a base without a required code-owner approval it is an agent-run merge on green checks.
    The plugin's tested predicate (`auto-merge-arm.sh`, bare name on the Bash tool's `PATH`
    like `cursor-drift.sh`) decides from three facts GitHub reports; never judge them by eye
-   and never pipe `gh` output into it. **Run the whole block in one Bash call** — each call
+   and never pipe `gh` output into it. **Run the whole block in one Bash call, and that call runs
+   alone: no body edit, label or other command is chained into it, before or after** — each call
    is a fresh shell, so a `$OID` read in one call is empty in the next and would arm the PR
    with no head pin. `<N>` is the PR number the *Open the PR* step created:
    ```bash
@@ -406,12 +459,15 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
      the tools must be on `PATH`) — arm nothing and say so. A `PR head … is not the pushed …` line
      means the PR head and local `HEAD` differ: a push landed, or a local commit was made, since the
      *Push the branch* step — arm nothing either.
+   - **The Bash tool reports the call was denied by permission rules** — the outcome is the line
+     `Auto-merge: not armed (denied by the repo's permission rules)`. Do not retry another way;
+     the *Verify the PR head* result still stands.
 
    Arming pins the head only at the moment of arming; a later push to the branch is not
    re-pinned (`WB-D24`, accepted residual) — the base's stale-approval dismissal is what
    guards the new head. After pushing again to an armed PR, say so in the report.
 
-7. **Label on the three axes** if labels are being used: type (`type/bug`/`type/feature`/`type/docs`/
+8. **Label on the three axes** if labels are being used: type (`type/bug`/`type/feature`/`type/docs`/
    `type/chore`), `area/*` (mirrors the scope), `status/*` — see `reference/conventions.md`
    § *Issue + label taxonomy*. Machine-emitted labels stay namespaced under **the emitting
    system**; for a label this skill emits, that emitter is the repo's own automation, so the
@@ -420,7 +476,7 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    emitter is a separately-named engine, is real and is covered in `conventions.md` — but it
    is never what *this* skill emits, so it never changes the answer here.
 
-8. **If a review gate applies, flag it — do not satisfy it here.**
+9. **If a review gate applies, flag it — do not satisfy it here.**
    - **`{review.ci_gate}` is set and the diff touches `{code_paths}`:** the
      `{review.ci_gate.check}` check stays red until a **fresh-session** review is posted
      against the PR's current head commit. `/way-of-working:ship` does **not** post that
@@ -431,8 +487,9 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
      one — do not invent a review step, and do not describe the PR as exempt from a gate
      that does not exist. The PR is complete at the *Stop at the open PR* step.
 
-9. **Stop at the open PR.** Report the PR URL, the *Arm auto-merge* step's outcome (armed, or
-   not armed and why), and, if you want, hand off to `/way-of-working:pr-checks <N>` to watch
+10. **Stop at the open PR.** Report the PR as ready only after `PR head: verified`. Report that
+   line with the PR URL and the *Arm auto-merge* step's outcome (armed, or not armed and why), or
+   say the arm step was skipped on the existing-PR path, and, if you want, hand off to `/way-of-working:pr-checks <N>` to watch
    the required checks. **No `gh pr review --approve`, no `git push --force`, and no
    `gh pr merge` beyond the *Arm auto-merge* step's one `--auto` call** — an armed PR merges
    when the rules on `{pr_base}` are met, and the approval they require is a human's.

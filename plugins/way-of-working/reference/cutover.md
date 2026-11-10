@@ -160,6 +160,18 @@ repo admin, in the browser or through an admin App, unless an org policy fixes t
 The App permissions are the App owner's, in the browser. CODEOWNERS and `.ai/project.yml` are
 PR changes.
 
+On a host with the marketplace repository's host tools installed, `wow-preflight <owner/name>
+<project.yml>` prints these preconditions as one table, judged against the project file it is
+given (pass the reviewed PR's copy), and makes only GET requests. A row reads `ok`, `missing`
+or `check in the UI`; the last is left for the operator: a precondition this command does not
+read (the approval rule's parameters, the App installations,
+org secrets, fork pull request workflows) or a read that failed or was not conclusive. It also
+reports each environment's admins-bypass setting, which must be off, and says that a secret the
+repo's workflows use needs this repo in its visibility; both are set in the browser. It uses the admin token the repo's container mounts, so run `wow-admin
+<name> --revoke` after the run. A `missing` row is fixed in the order *The order* gives, and in
+its second case the checks ruleset row reads `missing` for the gate's check until the check is
+added after PR 1 merges.
+
 A PR adding, editing or deleting a workflow file is pushed by a code owner or by an App
 holding Workflows write, never the dev App (its registration holds no Workflows permission,
 checked above; while an admin-App token is live in a container, everything in it is
@@ -182,3 +194,15 @@ unblock one.
 
 A repo may have neither key today. Bumping the pin later follows `conventions.md`'s *Bumping a
 pinned plugin* section, which this file does not restate.
+
+This is not part of the pin the review container checks; it concerns the Claude Code permission rules in the same `.claude/settings.json`. The only merge call `/way-of-working:ship` makes is `gh pr merge <N> --repo <repo> --auto --squash --match-head-commit <oid>`. A deny rule wins over any allow rule, and because the PR number comes before the flags, a prefix rule cannot tell that call from a direct merge. A repo therefore has two choices. It can keep a `gh pr merge` deny: arming then stays the maintainer's, and ship reports `Auto-merge: not armed (denied by the repo's permission rules)`. Or it can have no such deny: then no permission rule denies an agent's direct merge, whether one runs without a prompt depends on the session's allow rules and permission mode, and the base's required code-owner approval is the control, where the base requires one.
+
+## Onboarding a consuming repo
+
+This is not one of the cutover's four parts: it runs after them, and it points at setup rather than restating it. A repo that installs the plugin also needs:
+
+- **The `statusLine`.** Copy the `statusLine` entry from the marketplace repository's own `.claude/settings.json`, at the pinned tag, into the repo's `.claude/settings.json`. It is a `jq` command that prints the context percentage and flags a handoff.
+- **The deny list.** The repo makes the `gh pr merge` deny choice that *The plugin pin the review container requires* section's last paragraph describes.
+- **`lanes.dir`** (`project-schema.md` § `lanes`) under `/tmp`. The shared devcontainer template already mounts `/tmp` as a per-repo volume (as the marketplace repository's own `.devcontainer/devcontainer.json`, checked against the template by `verify / verify`, shows), so no mount is added by hand.
+- **The host launchers.** Install the host tools, then follow the *Adding a repo to this host* section of the marketplace repository's `docs/identity/DEV-CONTAINER.md`. `wow-driver.ps1` and `wow-lane.ps1` take any repo of the org set up that way through `-Clone` and `-Reference`.
+- **A short skills list for the repo's `CLAUDE.md`:** `resume` at session start, `handoff` before a switch, `spec-task` per issue, `lanes` from the driver, `critic-gate` after the green gate, `ship`, `pr-checks`, `plan-sprint`.

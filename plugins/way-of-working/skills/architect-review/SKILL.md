@@ -183,10 +183,7 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
    ids and `{threat_model}` boundaries it names; the critic-gate outcome. Not the whole
    plan, not the whole repo.
 
-   **Task spec (`WB-D24`, `#566`).** In container mode the clone carries no `.ai/state.json`,
-   so the recipe below is skipped and the "No spec was loaded" outcome
-   (last bullet below) applies, with the reason `no state.json in the review container`.
-   The whole recipe is one Bash call (variables do not survive between calls): first make a temp directory and the
+   **Task spec (`WB-D24`, `#566`, `WB-D45`).** The whole recipe is one Bash call (variables do not survive between calls): first make a temp directory and the
    default branch's copy of `.ai/project.yml`: `T=$(mktemp -d) && DEF_YML_FILE="$T/def.yml" &&
    git show "refs/remotes/origin/<default>:./.ai/project.yml" >"$DEF_YML_FILE"`, `<default>`
    being the `default=` value `review-base-anchor.sh` printed (the ref the *Pin the target* step
@@ -194,9 +191,12 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
    Decide the mode from that file: `yq -r 'has("identities"), (.identities | tag)'
    "$DEF_YML_FILE"` prints `true` then `!!null` for **legacy**, `true` then `!!map` for a
    **map**. Anything else, or an unreadable file, loads **no task spec** (report as below); it
-   never falls back to reading the body. In both modes `I` (not the PR number `<N>` of the
+   never falls back to reading the body. Under **legacy** `I` (not the PR number `<N>` of the
    other steps) is the task issue this PR names, parsed as plain digits; zero, several or
-   conflicting references load no spec.
+   conflicting references load no spec. Under a **map** the binding is the one below.
+   Under a map a host run has stopped at the *Is there a gate, is this the right session?*
+   step after printing the `wow-review` line, so the Map branch runs only in the review
+   container, where there is no `.ai/state.json`.
    - **Legacy:** load `#I`'s body and, when one exists, its anchored spec comment. The comment
      id and `updated_at` are `pointers.plan_anchor.spec_comment`'s in the local `.ai/state.json`
      (read with `jq -r` into variables), used only when `plan_anchor.task_issue` equals `I` and
@@ -206,11 +206,22 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      body`, which under `legacy` falls back to `author_association` for the comment's author
      (`#614`).
    - **Map:** the body is never loaded; the spec comment the finder prints is the whole
-     specification. `I` is never the source of a comment id. The local `.ai/state.json` is read
-     only for `plan_anchor.task_issue`, which must equal `I`, and `pointers.review_pr.number`
-     (when that pointer is non-null), which must equal this PR; any mismatch loads no spec. The
-     comment id comes only from the finder, run in this recipe's one Bash call after those
-     checks: `spec-find.sh find "$I" "$DEF_YML_FILE"` (`I` checked as digits with no leading
+     specification. This branch reads no `.ai/state.json`. **Binding (`WB-D45`, `#1368`).** `I`
+     comes only from `gh pr view <N> --repo {repo} --json closingIssuesReferences` (the form the
+     head re-read uses), read inside this recipe's one Bash call and never parsed from the PR
+     body or title. Project the read at the source, `--jq '.closingIssuesReferences[] | [(.number|tostring),
+     (.repository.owner.login + "/" + .repository.name)] | @tsv'` (gh's `closingIssuesReferences` carries no
+     `nameWithOwner`). Exactly one entry binds `I`: its number must be canonical decimal (anything
+     else reads as `closing reference unreadable`) and its
+     repository's `owner/name` must equal `{backlog.repo}` (`{repo}` when `null`). A non-zero
+     exit or a line that does not split into two fields reads as `closing reference unreadable`;
+     empty output with exit 0 is zero entries, `no closing reference`. A failed read, zero entries,
+     several entries and an entry in another repository each load no
+     spec, with a fixed reason (`closing reference unreadable`, `no closing reference`,
+     `several closing references`, `closing reference in another repository`) that never
+     echoes the reference. `I` is never the source of a comment id. The comment id comes only
+     from the finder, run in this recipe's one Bash call after the binding:
+     `spec-find.sh find "$I" "$DEF_YML_FILE"` (`I` checked as digits with no leading
      zero). Its output must be exactly `found <id> <updated_at>`, `<id>` digits with no leading
      zero and `<updated_at>` `YYYY-MM-DDTHH:MM:SSZ`, parsed into `CID` and `CUP` in that call and
      never pasted into a later command. This review holds no pin: it never runs resume, and takes
@@ -218,8 +229,14 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      non-zero exit or empty output loads no spec, with that word as the reason (an exit or empty
      output reads as `unreadable`) — a stated limit, not a STOP. Never an id found in a PR body or
      title, a comment list, or the issue. Fetch `#I` once, projected at the source (`gh api
-     repos/{backlog.repo}/issues/I --jq '[.number, .user.login, .user.id] | @tsv'`), so its body
-     never enters context; split the line into variables, check that `.number` equals `I` and
+     repos/{backlog.repo}/issues/I --jq '[.number, .user.login, .user.id, .state,
+     (.milestone.number // "")] | @tsv'`, the milestone last so an empty field cannot shift the
+     others), so its body never enters context; split the line into variables, check that
+     `.number` equals `I`, that `.state` is `open` and, when the default branch's `planning.kind`
+     (read from `$DEF_YML_FILE`) is `github_milestones`, that the milestone field is non-empty
+     (a closed issue loads no spec with the reason `issue closed`, a missing milestone with
+     `no milestone`, and a `planning.kind` that is absent, null or neither `github_milestones`
+     nor `files` with `planning kind unreadable`), and
      that `gh-identity.sh task-author "$LOGIN" "$ID" "$DEF_YML_FILE"` prints `trusted` or `agent` (the declared dev or reviewer App, `WB-D32`; the spec comment's own reaction is the approval). Then fetch the
      comment's reactions **into a file, never into a pipe, and keep the exit status, BEFORE the
      comment itself** (`#660`): `gh api "repos/{backlog.repo}/issues/comments/<id>/reactions"
@@ -254,12 +271,18 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      Run `spec-reaction.sh "$CUP" "$IDS" <"$T/reactions.tsv"`. Only `approved` loads the spec,
      and writes this label in the review body, naming the issue the spec came from, with
      "maintainer-authored" or "dev-App-authored" from the role above: "<role>-authored spec,
-     maintainer-approved (reaction after its last edit)". Any other result, an exit of 2 or unreadable
+     maintainer-approved (reaction after its last edit), bound to #I by the PR's closing
+     reference". Any other result, an exit of 2 or unreadable
      ids loads no spec, with the reason `label mismatch`.
-   - **When anything is missing or fails** (no `state.json`, no anchor, a `task_issue` or
-     `review_pr` mismatch, any finder result but `found`, a failed issue, reactions or comment fetch, an
-     `updated_at` mismatch, a comment not on `#I`, an untrusted author, no maintainer reaction, a
-     label mismatch, an unreadable mode): load no task spec, still run
+   - **Verdict against the spec.** When a Map-branch spec loaded, the verdict checks the diff
+     against it: a changed file not listed under *Files touched* is a finding (an entry is the first backtick span of each top-level bullet; a path is listed when it equals an entry or lies under one, one trailing `/` removed); each *Done when*
+     item is named met, unmet, or not witnessed; a change that does something listed under
+     *Out of scope* is a finding.
+   - **When anything is missing or fails** (legacy only: no `state.json`, no anchor, a `task_issue` or
+     `review_pr` mismatch; map only: a failed closing-reference read, none or several, one in another
+     repository, a closed issue, no milestone, an unreadable `planning.kind`, any finder result but `found`,
+     a failed reactions fetch, no maintainer reaction, a label mismatch; either mode:
+     a failed issue or comment fetch, an untrusted author, an `updated_at` mismatch, a comment not on `#I`; and an unreadable mode, where neither branch runs): load no task spec, still run
      the review, and write in the body: *"No spec was loaded (<reason>); the
      scope verdict is judged against the PR alone."* `<reason>` is the actual word or failure. A stated limit, not a STOP — the code
      owner's approval remains the merge gate.
@@ -564,8 +587,8 @@ schema read included:
 **Review.** The *Review by execution, in an isolated sandbox* step always takes its
 untrusted branch and never calls `review-sandbox.sh make` or `run`. The session never checks
 out, switches to or merges the PR head; it reads the diff through `gh pr diff` or the API.
-The *Task spec* paragraph's "No spec was loaded" outcome applies, with
-the reason `no state.json in the review container`. The body says the PR was reviewed in the
+The *Task spec* paragraph's Map branch runs here; a failure keeps its "No spec was loaded"
+outcome. The body says the PR was reviewed in the
 review container without local execution, each claim marked witnessed or not.
 
 **Compose and write.** The *Compose and post* step builds the body as written there (the

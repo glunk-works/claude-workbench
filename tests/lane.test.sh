@@ -1053,6 +1053,97 @@ FX_STATE_RC=0
 export FX_STATE_RC
 printf '[]\n' >"$CAN/state.json"
 
+# ---- groups --------------------------------------------------------------------------------
+for v in '' 0 012 abc; do
+  nc
+  argcase "groups M [$v]" groups "$v"
+done
+nc
+argcase "groups M newline" groups "$(nl 7 8)"
+argcase "groups without M" groups
+argcase "groups with two arguments" groups $MS 2
+nc
+groups_two
+run_lane groups $MS
+assert_eq "groups: the rows and groups verbatim, then live none" "800	found	p/a	-	-
+801	found	p/b	#800	-
+802	found	p/c	-	-
+group	1	#800 #802
+group	2	#801
+live none" "$out"
+assert_eq "groups: exit" 0 "$rc"
+assert_eq "groups: lane-groups gets the milestone and no live issue" "$MS 2" "$(awk '{print $1, NF}' "$CAN/groups.args")"
+nc
+printf 'group none\n' >"$CAN/groups.txt"
+run_lane groups $MS
+assert_eq "groups: group none succeeds" "group none
+live none" "$out"
+assert_eq "groups: group none: exit" 0 "$rc"
+nc
+mkdir -m 700 "$LD"
+printf '[{"issue":900,"branch":"feat/y-900","worktree":"%s/900","spec":"none","pr":null},{"issue":800,"branch":"feat/x-800","worktree":"%s/800","spec":"none","pr":null}]\n' "$LD" "$LD" >"$CAN/state.json"
+groups_two
+run_lane groups $MS
+assert_eq "groups: live lanes print ascending after the groups" "live #800 #900" "$(printf '%s\n' "$out" | tail -n 1)"
+assert_eq "groups: live lanes: exit" 0 "$rc"
+assert_eq "groups: live lanes are arguments after the milestone and the file" "$MS 800 900" "$(sed -e 's/^\([0-9]*\) [^ ]* /\1 /' "$CAN/groups.args")"
+assert_eq "groups: no group is dropped for a live lane" 2 "$(printf '%s\n' "$out" | grep -c '^group')"
+nc
+mkdir -m 700 "$LD"
+groups_two
+printf '[]\n' >"$CAN/state.json"
+run_lane groups $MS
+assert_eq "groups: an empty live list" "live none" "$(printf '%s\n' "$out" | tail -n 1)"
+for bad in 'unreadable' 'garbage line' '800\tfound\tp/a\t-\t-' 'group\t1\t#800 evil' 'group\tnone' ''; do
+  nc
+  printf "$bad\n" >"$CAN/groups.txt"
+  stop_case "groups: lane-groups printing [$bad]" 1 unreadable groups $MS
+done
+nc
+FX_GROUPS_RC=2
+: >"$CAN/groups.txt"
+export FX_GROUPS_RC
+stop_case "groups: lane-groups exiting 2" 1 unreadable groups $MS
+nc
+FX_GROUPS_RC=1
+export FX_GROUPS_RC
+printf 'group none\n' >"$CAN/groups.txt"
+stop_case "groups: lane-groups exiting non-zero after a good line" 1 unreadable groups $MS
+FX_GROUPS_RC=0
+export FX_GROUPS_RC
+for bad in 'unreadable' '[{"issue":"0800","branch":"feat/x-800","worktree":"w","spec":"none","pr":null}]' '[{"branch":"feat/x"}]' '{"issue":800}'; do
+  nc
+  mkdir -m 700 "$LD"
+  printf '%s\n' "$bad" >"$CAN/state.json"
+  groups_two
+  stop_case "groups: lane-state printing [$bad]" 1 unreadable groups $MS
+done
+nc
+mkdir -m 700 "$LD"
+printf '[]\n' >"$CAN/state.json"
+FX_STATE_RC=1
+export FX_STATE_RC
+groups_two
+stop_case "groups: lane-state exiting non-zero" 1 unreadable groups $MS
+FX_STATE_RC=0
+export FX_STATE_RC
+printf '[]\n' >"$CAN/state.json"
+nc
+mkdir "$D/real"
+ln -s "$D/real" "$LD"
+groups_two
+stop_case "groups: LANES is a symbolic link" 1 unsafe-dir groups $MS
+nc
+setyml '.identities = null'
+stop_case "groups: not-map" 1 not-map groups $MS
+nc
+setyml '.lanes = null'
+stop_case "groups: no-lanes" 1 no-lanes groups $MS
+nc
+$real_git -C "$R" worktree add -q "$D/other" -b other
+CWD="$D/other"
+stop_case "groups: not-main from a linked worktree" 1 not-main groups $MS
+
 # ---- status --------------------------------------------------------------------------------
 nc
 stop_case "status: no lanes directory" 0 none status

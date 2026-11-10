@@ -1,4 +1,4 @@
-# Shared helpers for wow-admin, wow-review, wow-review-poll and wow-review-mint (WB-D24, issues #374, #635). Sourced, not run.
+# Shared helpers for wow-admin, wow-preflight, wow-review, wow-review-poll and wow-review-mint (WB-D24, issues #374, #635, #1383). Sourced, not run.
 #
 # Host layout, under $WOW_HOME (default ~/.config/glunk-identity):
 #   apps.json              {"admin": {app_id, client_id, installation_id, bot_user_id, key},
@@ -53,7 +53,7 @@
 # mint.sh stages beside any token it writes. wow-review (the launcher) also writes its own review-sessions/,
 # review-host/, review-state/ (its lock, ledger and .live/ lease files) and review-logs/ entries. wow-review-poll writes review-poll.log (and .1),
 # review-state/.poll-lock and review-host/poll-<id>/. wow-driver.ps1 writes driver/<leaf>.json and its same-directory
-# temp file. Nothing else under $WOW_HOME is modified.
+# temp file. wow-preflight writes nothing under $WOW_HOME: it only reads tokens/<repo>/admin-token. Nothing else under $WOW_HOME is modified.
 #
 # The caller sets $prog before sourcing. Toolset: POSIX sh, jq, plus what mint.sh needs.
 

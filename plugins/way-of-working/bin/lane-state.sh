@@ -3,8 +3,8 @@
 # (#729). A lane is a git worktree at exactly <lanes dir>/<N> checked out on a branch, one per
 # task issue N (project-schema.md § `lanes`). Its callers: /way-of-working:handoff (writes the
 # array into the cursor's `lanes` field), /way-of-working:resume (reports it on a `Lanes:`
-# line and compares it with the recorded one), `lane.sh status` (one row per lane) and `lane.sh done`
-# (the live issue numbers its `next` lines check).
+# line and compares it with the recorded one), `lane.sh status` (one row per lane), `lane.sh done`
+# (the live issue numbers its `next` lines check) and `lane.sh groups` (the live issues it passes on).
 #
 # Usage: lane-state.sh list  <dir> <project.yml>
 #        lane-state.sh check <dir> <project.yml> <state.json>
