@@ -368,8 +368,10 @@ the draft* step) and relays its findings to the drafter.
    Then run
    `/way-of-working:critic-gate`'s *Spec mode* on `draft.md` with the pinned `SHA`; it asks the
    human nothing. When `architect` is not in `{agents.enabled}`, stop with `not posted:
-   no-critics` (enable `architect`), before any post, and remove both directories. After the gate
-   ends:
+   no-critics` (enable `architect`), before any post, and remove both directories. When the
+   gate stops on its registration check (a critic's agent type is not registered), stop with
+   `not posted: critic <name> not registered; run /reload-plugins`, nothing posted, and remove
+   both directories. After the gate ends:
    - add the critic line on its own line right under the title line (under the `Model
      provenance:` line when there is one);
    - on an escalation end (cap reached or not converging), add the `### Open findings` section
@@ -434,7 +436,9 @@ the draft* step) and relays its findings to the drafter.
      reports the call was denied before it ran.
 
    On `posted`, `escalated` or a final stop, remove both directories after printing the outcome, never
-   between the two shape checks. Add nothing to the comment afterwards: it is posted as written.
+   between the two shape checks. After the outcome, list the tightenings the gate did not apply
+   (*Convergence*, in `/way-of-working:critic-gate`); they are never added to the comment. Add
+   nothing to the comment afterwards: it is posted as written.
 
 ## What this skill never does
 

@@ -151,7 +151,7 @@ light change may want one critic; a trust-boundary change may want the full set.
 diff mode where `agents.diff_rule` is `null`. Where it is a list, `bin/critic-select.sh` computes the
 set from the diff's paths and the default branch's config (`WB-D41`), a list of names from the session
 can only add to it, and the human is not asked. Its spec mode, which `/way-of-working:spec-task` runs on every draft, selects the
-critics by rule from the files the spec lists and runs unattended under the same cap.
+critics by rule from the files the spec lists and runs unattended under its own cap of 2 fix-and-re-run rounds.
 
 > **`/way-of-working:critic-gate` is defense-in-depth that runs EARLIER — it is NOT the
 > fresh-session review gate (`review.ci_gate`) and never satisfies it.** Where a repo wires

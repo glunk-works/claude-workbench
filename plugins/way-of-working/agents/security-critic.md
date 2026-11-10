@@ -157,3 +157,8 @@ scenario, which `{threat_model}` rule it violates, and a confidence. End with a 
 verdict: does the diff open or weaken any trust boundary? A clean "no reachable violations"
 is valid and valuable — never overstate. Note any finding better owned by `architect`
 (structural) or by the repo's generic security linter, so triage stays clean.
+
+Label every finding with exactly one of `defect:<class>` (the class one of `false-statement`,
+`contradiction`, `operationally-wrong`, `newly-introduced`, `trust-boundary`) or `tightening`, and
+list every defect you find in this one pass, not only the most severe. Where the spawn imposes an
+output schema, that schema governs instead.
