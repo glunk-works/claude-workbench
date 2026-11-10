@@ -150,9 +150,13 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
      not exist before it starts or after it is committed or aborted. For a merge already
      committed, the incoming side is `HEAD^2`.
    - **Push-reach preflight, before any commit:**
-     **Name the actor first** (`reference/conventions.md` § *Acting identity and reach*): `gh api
-     user --jq .login`. The mode is decided here, never by what `.permissions.push` reads.
-     - **It succeeds (user mode):**
+     **Name the actor first** (`reference/conventions.md` § *Acting identity and reach*): run
+     that section's installation probe first, so an installation token is never refused `GET /user`
+     before it is recognised. `reached` is **App mode**; a probe whose call succeeded but did not
+     print `reached` stops (`could not establish the actor`); a probe call that fails runs `gh api
+     user --jq .login`, whose failure stops. The mode is decided here, never by what
+     `.permissions.push` reads.
+     - **The probe's call failed and `gh api user --jq .login` succeeds (user mode):**
        ```bash
        gh api repos/{repo} --jq .permissions.push   # substitute {repo}'s real owner/name —
                                                      # gh expands {repo} itself, and a literal
@@ -175,9 +179,8 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
        *Push the branch* step's push 403s despite this check passing, that mismatch is the first thing to check —
        use the workaround documented there — though a 403 can also mean SSO authorization,
        an IP allow-list, or a credential that expired between this check and the push.
-     - **It fails (refused to an installation token, or any other failure):** run that
-       section's installation probe. Anything but `reached` → stop: `could not establish the
-       actor`; never clear on a guessed identity. `reached` is **App mode** (`#464`), and
+     - **The probe printed `reached`:** anything else the probe printed stops (`could not
+       establish the actor`; never clear on a guessed identity). `reached` is **App mode** (`#464`), and
        `.permissions.push` is not read — it is all `false` for an App even where it can write.
        Before any commit, in order, each a stop that writes nothing:
        1. **`origin` is `{repo}`, over HTTPS, for fetch and push alike.** Both `git remote

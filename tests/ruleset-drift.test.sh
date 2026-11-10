@@ -150,7 +150,13 @@ ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=1 u
 setup_ok; list_yml; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_2"
 assert_eq "list form bypass actors not visible" \
 "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[]
-ruleset approval inconclusive (bypass actors not visible to this identity)" "$(run $R $BASE $yml)"
+ruleset approval inconclusive (bypass actors not visible to this identity) missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_1"
+echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"pull_request","ruleset_id":2}]' >"$STUBS/$EP_B"
+assert_eq "list form bypass actors not visible still names a missing type and check" \
+"ruleset checks inconclusive (bypass actors not visible to this identity) missing_types=[deletion] missing_checks=[test]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; touch "$STUBS/$EP_L.rc"
 assert_eq "list form: a failed rulesets-list read" "ruleset checks inconclusive
@@ -245,6 +251,22 @@ setup_ok; single_yml '[required_status_checks, deletion]' '[lint, test]'
 assert_eq "single form healthy" "ruleset checks missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
 
 # branch rules split over two pages
+setup_ok; single_yml '[required_status_checks, deletion]' '[lint, test]'; echo 'identities: {}' >>"$yml"
+assert_eq "single form under an identities map ends bypass_actors=unchecked" \
+  "ruleset checks missing_types=[] missing_checks=[] bypass_actors=unchecked" "$(run $R $BASE $yml)"
+setup_ok; single_yml '[required_status_checks, deletion, non_fast_forward]' '[lint, e2e]'; echo 'identities: {}' >>"$yml"
+assert_eq "single form under an identities map, weakened, keeps the suffix" \
+  "ruleset checks missing_types=[non_fast_forward] missing_checks=[e2e] bypass_actors=unchecked" "$(run $R $BASE $yml)"
+setup_ok; single_yml '[required_status_checks, deletion]' '[lint, test]'; printf '%s\n' 'base: &a {}' 'identities: *a' >>"$yml"
+assert_eq "single form under an aliased identities map still ends bypass_actors=unchecked" \
+  "ruleset checks missing_types=[] missing_checks=[] bypass_actors=unchecked" "$(run $R $BASE $yml)"
+setup_ok; single_yml '[required_status_checks, deletion]' '[lint, test]'; echo 'identities: null' >>"$yml"
+assert_eq "single form with identities null is exactly as before" \
+  "ruleset checks missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
+setup_ok; single_yml '[required_status_checks, deletion]' '[lint, test]'
+assert_eq "single form with no identities key is exactly as before" \
+  "ruleset checks missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
+
 setup_ok; single_yml '[required_status_checks, deletion]' '[lint, test]'
 echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint"},{"context":"test"}]}}]' >"$STUBS/$EP_B.1"
 echo '[{"type":"deletion","ruleset_id":1}]' >"$STUBS/$EP_B.2"

@@ -135,7 +135,7 @@ edited it. **Default to the full checklist whenever unsure.**
 
 3. **Read the cursor** (in this order, stop reading once you have enough — except where marked
    unconditional):
-   - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`, and `lanes`, which is compared only by `lane-state.sh check` in the *State the pick-up point* step and never read into the pick-up point). If it is missing, fall back to `.ai/next-steps.md` alone — and note that a `/way-of-working:resume` running on `next-steps.md` alone can never auto-start (the *State the pick-up point* step): no cursor, no unattended work.
+   - `.ai/state.json` — the machine cursor (`current_phase`, `current_sprint_id`, `sprint_status`, `assigned_model`, `assigned_persona`, `last_commit`, `next_action`, `hitl_gate`, `pointers`, and `lanes`, which is compared only by `lane-state.sh check` in the *State the pick-up point* step and never read into the pick-up point). If it is missing, fall back to `.ai/next-steps.md` alone, and add the no-cursor line (the *State the pick-up point* step) — and note that a `/way-of-working:resume` running on `next-steps.md` alone can never auto-start (the *State the pick-up point* step): no cursor, no unattended work.
    - `.ai/next-steps.md` — the human ledger: what was just done, what's next, which model to
      use, HITL Gate status, and — whenever `/way-of-working:critic-gate` ran a round on
      `{models.second_opinion}` — which model that round was confirmed to run on, or that its
@@ -405,8 +405,7 @@ edited it. **Default to the full checklist whenever unsure.**
    and the line grows. Hygiene, not a gate — never block the session on it; if `pr_base` can't be
    read or the `gh` call fails, skip pruning and say so.
 
-6. **Check the branch-protection ruleset for drift.** A scheduled job catches drift between
-   sessions; this catches it when work resumes.
+6. **Check the branch-protection ruleset for drift.** This check runs when work resumes.
 
    **First, establish that this session can actually reach the repo.** One read-only call,
    before the ruleset call:
@@ -433,9 +432,18 @@ edited it. **Default to the full checklist whenever unsure.**
    > token can do; never parse that output.
 
    Then the ruleset itself, one call after the reach check, run by bare name from the same
-   `bin/` `PATH` as `cursor-drift.sh`:
+   `bin/` `PATH` as `cursor-drift.sh`, on the **default branch's** committed `.ai/project.yml`,
+   fetched to a temp file in the same Bash call the way the `Lanes:` block reads it (never the
+   working tree's copy) and removed afterwards, so a `rulesets` list added on an unmerged branch
+   is not checked until it merges:
    ```bash
-   ruleset-drift.sh {repo} {pr_base} .ai/project.yml
+   T=$(mktemp -d) && trap 'rm -rf "$T"' EXIT &&
+   TOPLEVEL=$(git rev-parse --show-toplevel) && U=$(git -C "$TOPLEVEL" remote get-url origin) &&
+   R=$(gh repo view "$U" --json nameWithOwner --jq .nameWithOwner) && [ "$R" = "{repo}" ] &&
+   D=$(gh repo view "$U" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') && [ -n "$D" ] &&
+   git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
+   git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml" >"$T/def.yml" &&
+   ruleset-drift.sh {repo} {pr_base} "$T/def.yml"
    ```
    The script reads `rules/branches/{pr_base}` (which carries each applying ruleset's **id**,
    never its name, so a name check without it would pass against any ruleset), then the
@@ -450,20 +458,31 @@ edited it. **Default to the full checklist whenever unsure.**
    script. A **non-zero exit is inconclusive**, whatever the script printed.
 
    Read its lines. Report in the pick-up summary, **at most one line**:
-   - Healthy → e.g. `Ruleset check: healthy ({N} rule types, {M} required checks).`
+   - Healthy → e.g. `Ruleset check: healthy ({N} rule types, {M} required checks).` A
+     single-form line ending `bypass_actors=unchecked` (the default branch's `identities` is a
+     map and it declares no `rulesets` list) with nothing missing is not a bare healthy: say
+     `Ruleset check: healthy ({N} rule types, {M} required checks); bypass actors not checked:
+     the project file declares no rulesets list.` An `identities: null` repo reads as before.
    - Weakened or missing → impossible to miss; name exactly what is absent. `missing` is
      "weakened or missing"; a non-empty `missing_types` or `missing_checks` is weakened. **`approval=1`
      (a `pull_request` rule) with `bypass_actors` above `0` is drift:** name the ruleset and
      say the approval gate has a standing bypass. Everything else is healthy. Report per ruleset
      only when something is wrong (`Ruleset check: healthy (2 rulesets, 4 rule types, 3 required
      checks).`).
+   - **The one exception, on the reach exception above** (`.permissions` all `false` and the
+     installation probe `reached` `{repo}`): when the script exits 0 and prints one or more
+     lines, every one the `inconclusive (bypass actors not visible to this identity)` line with
+     empty `missing_types` and `missing_checks`, report `Ruleset check: bypass actors not readable
+     as an installation token; the rule types and required checks were readable and present.` in
+     place of the inconclusive report.
    - Any `inconclusive` line, a script that is missing, or a run that prints no line at all →
      **inconclusive**, never healthy, and say **which** — an unreachable identity and a failed
      lookup are different reports. An organization ruleset a repo-scoped token cannot read is
      `inconclusive`, and the report says so rather than guessing. So is a ruleset whose response
      carries no `bypass_actors` array (the key missing, or sent as `null` — which one GitHub
      sends a caller who cannot edit the ruleset was not observed, so the check keys on the type):
-     a dev-App token reads `inconclusive`, never `0`.
+     inconclusive, except in the plain-line case above. The not-visible line also carries
+     `missing_types` and `missing_checks`; the report names any type or check it lists as absent.
 
    It is still a report, not a gate. The check confirms that the declared rule types, check
    names and (lack of) bypass actors are there; it does not read the approval rule's parameters
@@ -563,16 +582,15 @@ edited it. **Default to the full checklist whenever unsure.**
    [ -n "$D" ] && [ "$R" = "{repo}" ] &&
    git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
    DEF_YML=$(git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml") &&
-   if LOGIN=$(gh api user --jq .login); then MODE=user DEVAPP=-
-   else MODE=app LOGIN=- &&
-     env -u GH_HOST -u GH_ENTERPRISE_TOKEN gh api --hostname github.com --paginate installation/repositories \
-       --jq '.repositories[].full_name' >"$T/repos.txt" &&
+   if env -u GH_HOST -u GH_ENTERPRISE_TOKEN gh api --hostname github.com --paginate installation/repositories \
+       --jq '.repositories[].full_name' >"$T/repos.txt"; then MODE=app LOGIN=- &&
      [ "$(gh-identity.sh reach "$R" <"$T/repos.txt")" = reached ] &&
      printf '%s\n' "$DEF_YML" >"$T/def.yml" &&
      SEL='explode(.) | .identities | select(tag == "!!map") | .dev_app | select(tag == "!!map" and ((.id | tag) == "!!int") and .id > 0 and ((.login | tag) == "!!str"))' &&
      DEVAPP=$(yq -r "$SEL | .login" "$T/def.yml") && DEVID=$(yq -r "$SEL | .id" "$T/def.yml") &&
      if [ -z "$DEVAPP" ]; then DEVAPP=-
      else [ "$(gh-identity.sh role "$DEVAPP" "$DEVID" "$T/def.yml")" = dev_app ]; fi
+   else LOGIN=$(gh api user --jq .login) && MODE=user DEVAPP=-
    fi &&
    ACTOR=$(review-step.sh login "$MODE" "$LOGIN" "$DEVAPP") &&
    HAS=$(printf '%s' "$DEF_YML" | yq -r '.review | has("ci_gate")') &&
@@ -607,10 +625,11 @@ edited it. **Default to the full checklist whenever unsure.**
    DERIVED=$(review-step.sh derive "$ACTOR" "$R" "${BREPO:--}" "$N" 200 <"$T/prs.tsv")
    ```
    **The acting login, by mode (`WB-D24`, `#381`).** `$ACTOR` is what `derive` and `decide` run as.
-   In **user mode** `gh api user` answers and `$ACTOR` is that login. An installation token is
-   refused `GET /user` (`reference/conventions.md` § *Acting identity and reach*), so the `else`
-   branch applies that section's probe (run with `GH_HOST` and `GH_ENTERPRISE_TOKEN` unset, as
-   there; the block does it with `env -u`) and, only when the token `reached` `{repo}`, runs in **App mode**: `$ACTOR` is the declared
+   The installation probe runs first (`reference/conventions.md` § *Acting identity and reach*;
+   run with `GH_HOST` and `GH_ENTERPRISE_TOKEN` unset, as there; the block does it with `env -u`),
+   so an installation token is never refused `GET /user` first. When its call fails, `gh api user`
+   runs, **user mode** follows and `$ACTOR` is that login; a failure there is a failed link. When
+   its call succeeds, the token runs in **App mode** only when it `reached` `{repo}`: `$ACTOR` is the declared
    `identities.dev_app.login` from the **default branch's** copy (`$DEF_YML`, never the working
    tree's), validated as a map with a positive integer `id` and a string `login`, then confirmed as
    `dev_app` by `gh-identity.sh role` (a duplicate id or a login/id mismatch refuses) — anything else, a
@@ -718,6 +737,13 @@ edited it. **Default to the full checklist whenever unsure.**
    line** naming each parked sprint with its `parked_at` (the *Read the cursor* step), derived
    from the directory, which is the authority (`Parked: 41 (2026-09-02), 43 (2026-09-15) —
    restore with /way-of-working:unpark-sprint <id>.`). Omit the line when there are none.
+
+   **The no-cursor line.** When `.ai/state.json` is absent, add one line: the current branch (or
+   `detached HEAD`) and how many commits it is ahead of the base, from `git rev-list --count` of
+   the fetched `origin/{pr_base}` to `HEAD`, for example `No cursor: on feat/x, 3 commits ahead
+   of origin/main.` A failed fetch or count says the count could not be read; a `{pr_base}` the
+   *Ensure the schema is complete* step left unanswered or reported invalid says so without
+   running `git`. It never enables auto-start.
 
    **The `Lanes:` line (`#729`, `WB-D34`).** When the **default branch's** `lanes` is a map
    (`reference/project-schema.md` § `lanes`; `null` or undeclared says nothing: the block below still runs, to learn which),

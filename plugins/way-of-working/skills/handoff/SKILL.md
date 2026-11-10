@@ -262,13 +262,11 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
    has its own rule):
 
    1. **The PR is the one resume will derive.** On a clean tree (`git status --short` prints
-      nothing), with this session's acting login (user mode: `gh api user`; App mode: the declared `dev_app`, below):
+      nothing), with this session's acting login (App mode: the declared `dev_app`, below; user mode: `gh api user`, tried only when the installation probe's call fails):
       ```bash
       T=$(mktemp -d) &&
-      if LOGIN=$(gh api user --jq .login); then MODE=user DEVAPP=-
-      else MODE=app LOGIN=- &&
-        env -u GH_HOST -u GH_ENTERPRISE_TOKEN gh api --hostname github.com --paginate installation/repositories \
-          --jq '.repositories[].full_name' >"$T/repos.txt" &&
+      if env -u GH_HOST -u GH_ENTERPRISE_TOKEN gh api --hostname github.com --paginate installation/repositories \
+          --jq '.repositories[].full_name' >"$T/repos.txt"; then MODE=app LOGIN=- &&
         [ "$(gh-identity.sh reach {repo} <"$T/repos.txt")" = reached ] &&
         TOPLEVEL=$(git rev-parse --show-toplevel) && U=$(git -C "$TOPLEVEL" remote get-url origin) &&
         R=$(gh repo view "$U" --json nameWithOwner --jq .nameWithOwner) && [ "$R" = "{repo}" ] &&
@@ -279,6 +277,7 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
         DEVAPP=$(yq -r "$SEL | .login" "$T/def.yml") && DEVID=$(yq -r "$SEL | .id" "$T/def.yml") &&
         if [ -z "$DEVAPP" ]; then DEVAPP=-
         else [ "$(gh-identity.sh role "$DEVAPP" "$DEVID" "$T/def.yml")" = dev_app ]; fi
+      else LOGIN=$(gh api user --jq .login) && MODE=user DEVAPP=-
       fi &&
       ACTOR=$(review-step.sh login "$MODE" "$LOGIN" "$DEVAPP") &&
       gh pr list --repo {repo} --state open --limit 200 \
@@ -288,9 +287,11 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
       review-step.sh derive "$ACTOR" {repo} <{backlog.repo}, or - when null> <N> 200 <"$T/prs.tsv"
       ```
       (This is `/way-of-working:resume`'s *acting login, by mode* rule, `WB-D24`, `#381`: in user
-      mode `gh api user` names the login; an installation token is refused that call, so the `else`
-      branch probes it as `reference/conventions.md` § *Acting identity and reach* does, with
-      `GH_HOST` and `GH_ENTERPRISE_TOKEN` unset, and runs in App mode as the `identities.dev_app.login`
+      mode `gh api user` names the login; the installation probe runs first, as
+      `reference/conventions.md` § *Acting identity and reach* does, with
+      `GH_HOST` and `GH_ENTERPRISE_TOKEN` unset, so an installation token is never refused
+      `GET /user` first: when the probe's call succeeds, a token that does not reach `{repo}` is
+      a failed link, and one that does runs in App mode as the `identities.dev_app.login`
       the **default branch's** `.ai/project.yml` declares, validated as a map with a positive integer
       `id` and a string `login` and confirmed by `gh-identity.sh role` (`origin` must be `{repo}`, as in resume). A `null`, absent or malformed `dev_app`, or a token that does not
       reach `{repo}`, fails the chain, and this is a failed link like any other: the ledger PR

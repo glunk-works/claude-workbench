@@ -34,7 +34,10 @@
 #   ruleset <name> missing
 #   ruleset <name> inconclusive
 #   ruleset #<i> inconclusive
-#   ruleset <name> inconclusive (bypass actors not visible to this identity)
+#   ruleset <name> inconclusive (bypass actors not visible to this identity) missing_types=[..] missing_checks=[..]
+# The not-visible line (an identity that cannot edit a ruleset is not shown its bypass actors)
+# still carries the rule types and required checks the branch rules lack, computed as for a
+# visible ruleset; if either computation fails the plain `ruleset <name> inconclusive` is printed.
 # `unpinned_checks` (#1383) names the declared `required_checks` that this ruleset's
 # `required_status_checks` rule on the branch carries with an `integration_id` absent or null,
 # from the branch-rules read already made. It judges only whether a check is pinned to some App,
@@ -45,9 +48,13 @@
 #
 # Without a `rulesets` key, the single form checks `ruleset` and prints one line:
 #   ruleset <name> missing_types=[..] missing_checks=[..]
+#   ruleset <name> missing_types=[..] missing_checks=[..] bypass_actors=unchecked
+#                                  -- the same line when the project file's `identities` is a map
+#                                     (no rulesets list, so no bypass check ran); an `identities: null`
+#                                     or absent key leaves the line without the suffix
 #   ruleset <name> missing         -- no ruleset of that name, or none of its rules applies
-#   ruleset <name> inconclusive    -- a failed rulesets read, a non-numeric id, or an unreadable
-#                                     type or check list
+#   ruleset <name> inconclusive    -- a failed rulesets read, a non-numeric id, an unreadable
+#                                     type or check list, or an unreadable `identities` tag
 # `missing_checks` is filled only when `required_status_checks` is a declared type, and then
 # `ruleset.required_checks` must be a list: absent, it is inconclusive, never an empty list.
 # Bypass actors are not read in this form: a repo that has not cut over still carries the
@@ -134,7 +141,13 @@ if [ "$HAS" = true ]; then
     [ -n "$RID" ] || { printf 'ruleset %s missing\n' "$NAME"; continue; }
     case "$RID" in *[!0-9]*) printf 'ruleset %s inconclusive\n' "$NAME"; continue ;; esac
     BYP=$(gh api "$API/$RID" --jq 'if (.bypass_actors | type) == "array" then (.bypass_actors | length) else "unknown" end' </dev/null) || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
-    case "$BYP" in '' | *[!0-9]*) printf 'ruleset %s inconclusive (bypass actors not visible to this identity)\n' "$NAME"; continue ;; esac
+    case "$BYP" in
+      '' | *[!0-9]*)
+        MT=$(missing_types "$RID" "$TYPES") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
+        MC=$(missing_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
+        printf 'ruleset %s inconclusive (bypass actors not visible to this identity) missing_types=[%s] missing_checks=[%s]\n' "$NAME" "$MT" "$MC"
+        continue ;;
+    esac
     MT=$(missing_types "$RID" "$TYPES") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
     MC=$(missing_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
     UC=$(unpinned_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
@@ -161,4 +174,8 @@ APPLIES=$(printf '%s' "$B" | jq --argjson id "$RID" '[.[] | select(.ruleset_id==
 [ "$APPLIES" != 0 ] || { printf 'ruleset %s missing\n' "$NAME"; exit 0; }
 MT=$(missing_types "$RID" "$TYPES") || { printf 'ruleset %s inconclusive\n' "$NAME"; exit 0; }
 MC=$(missing_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; exit 0; }
-printf 'ruleset %s missing_types=[%s] missing_checks=[%s]\n' "$NAME" "$MT" "$MC"
+# Under a map the project file declares no rulesets list, so no bypass actor was checked: say so.
+IDT=$(yq 'explode(.) | .identities | tag' "$YML" </dev/null) || { printf 'ruleset %s inconclusive\n' "$NAME"; exit 0; }
+SFX=
+[ "$IDT" != '!!map' ] || SFX=' bypass_actors=unchecked'
+printf 'ruleset %s missing_types=[%s] missing_checks=[%s]%s\n' "$NAME" "$MT" "$MC" "$SFX"

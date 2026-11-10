@@ -105,11 +105,9 @@ case i: "not a reach signal"). So a bare `gh api user` as the "name the identity
 report itself into a second failure, and an all-`false` `.permissions` is not "no access"
 (`WB-D24`, `#380`). One procedure, used by every skill that says *"report the actor"*:
 
-1. **Name the actor.** Try `gh api user --jq .login`. It succeeds for a user token, and for a
-   GitHub App *user-to-server* token it names the human that App acts for. If it **fails**
-   (refused, or any other failure: the cause is not read from the failure), probe whether the token is an
-   installation token that reaches the repo (capture first, so a failed call can never read as
-   an empty list):
+1. **Name the actor.** Run the installation probe first, so an installation token is not
+   refused `GET /user` before it is recognised (capture first, so a failed call can never read
+   as an empty list):
    ```bash
    T=$(mktemp -d) &&
    gh api --hostname github.com --paginate installation/repositories \
@@ -118,9 +116,13 @@ report itself into a second failure, and an all-`false` `.permissions` is not "n
    ```
    (with `GH_HOST` and `GH_ENTERPRISE_TOKEN` unset, as `token-check.sh`'s recipe has it.)
    `reached` — report `an installation token that reaches {repo}; which App is not established`.
-   Anything else (`unreached`, a failed call, exit 2) — report `could not establish the actor:
-   GET /user failed and the installation probe did not reach {repo}` and stop. Never report an
-   empty or guessed login.
+   A call that **succeeded** but did not print `reached` (`unreached`, exit 2) stops: report
+   `could not establish the actor: the installation probe did not reach {repo}`. Only a call
+   that **failed** (refused, or any other failure: the cause is not read from the failure) goes
+   on to `gh api user --jq .login`, which succeeds for a user token, and for a GitHub App
+   *user-to-server* token names the human that App acts for. If that also fails, report `could
+   not establish the actor: the installation probe did not reach {repo} and GET /user did not
+   name a login` and stop. Never report an empty or guessed login.
 2. **Name the mode only when a decision turns on it.** `gh-identity.sh classify` over the
    *default branch's* committed `identities` (`reference/project-schema.md` § `identities`)
    answers `user` or `app` from a login and numeric id. The *Name the actor* probe reads no login
@@ -146,6 +148,8 @@ report itself into a second failure, and an all-`false` `.permissions` is not "n
    is refused before any branch exists. It keeps a check after the first write that returns an
    actor as the backstop (`#464`): the opened PR's `user` must be the declared
    `identities.dev_app` (`gh-identity.sh pr-actor`), else ship stops and touches nothing further.
+
+The two hooks (`ai-cursor-banner.sh`, `reach-gate.sh`) still try `GET /user` first and fail soft.
 
 Every skill that consumes this procedure fails closed: a step that cannot be completed is a stop or
 the skill's own safe fallback (handoff opens the ledger PR), and its report names which step failed.
