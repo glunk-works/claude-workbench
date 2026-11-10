@@ -184,3 +184,13 @@ A repo may have neither key today. Bumping the pin later follows `conventions.md
 pinned plugin* section, which this file does not restate.
 
 This is not part of the pin the review container checks; it concerns the Claude Code permission rules in the same `.claude/settings.json`. The only merge call `/way-of-working:ship` makes is `gh pr merge <N> --repo <repo> --auto --squash --match-head-commit <oid>`. A deny rule wins over any allow rule, and because the PR number comes before the flags, a prefix rule cannot tell that call from a direct merge. A repo therefore has two choices. It can keep a `gh pr merge` deny: arming then stays the maintainer's, and ship reports `Auto-merge: not armed (denied by the repo's permission rules)`. Or it can have no such deny: then no permission rule denies an agent's direct merge, whether one runs without a prompt depends on the session's allow rules and permission mode, and the base's required code-owner approval is the control, where the base requires one.
+
+## Onboarding a consuming repo
+
+This is not one of the cutover's four parts: it runs after them, and it points at setup rather than restating it. A repo that installs the plugin also needs:
+
+- **The `statusLine`.** Copy the `statusLine` entry from the marketplace repository's own `.claude/settings.json`, at the pinned tag, into the repo's `.claude/settings.json`. It is a `jq` command that prints the context percentage and flags a handoff.
+- **The deny list.** The repo makes the `gh pr merge` deny choice that *The plugin pin the review container requires* section's last paragraph describes.
+- **`lanes.dir`** (`project-schema.md` § `lanes`) under `/tmp`. The shared devcontainer template already mounts `/tmp` as a per-repo volume (as the marketplace repository's own `.devcontainer/devcontainer.json`, checked against the template by `verify / verify`, shows), so no mount is added by hand.
+- **The host launchers.** Install the host tools, then follow the *Adding a repo to this host* section of the marketplace repository's `docs/identity/DEV-CONTAINER.md`. `wow-driver.ps1` and `wow-lane.ps1` take any repo of the org set up that way through `-Clone` and `-Reference`.
+- **A short skills list for the repo's `CLAUDE.md`:** `resume` at session start, `handoff` before a switch, `spec-task` per issue, `lanes` from the driver, `critic-gate` after the green gate, `ship`, `pr-checks`, `plan-sprint`.
