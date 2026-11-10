@@ -29,11 +29,16 @@
 # Otherwise one line per entry.
 #
 # When the file declares a `rulesets` key, the list form reads every entry and prints:
-#   ruleset <name> missing_types=[..] missing_checks=[..] approval=<n> bypass_actors=<n>
+#   ruleset <name> missing_types=[..] missing_checks=[..] approval=<n> bypass_actors=<n> unpinned_checks=[..]
 #   ruleset <name> missing
 #   ruleset <name> inconclusive
 #   ruleset #<i> inconclusive
 #   ruleset <name> inconclusive (bypass actors not visible to this identity)
+# `unpinned_checks` (#1383) names the declared `required_checks` that this ruleset's
+# `required_status_checks` rule on the branch carries with an `integration_id` absent or null,
+# from the branch-rules read already made. It judges only whether a check is pinned to some App,
+# never which App: a pin to the wrong App reads as pinned. A declared check the rule does not
+# carry at all is in `missing_checks`, not here.
 # An entry's `source` picks the API: `repo` -> repos/<repo>/rulesets, `org` ->
 # orgs/<owner>/rulesets; anything else is inconclusive, never read as `repo`.
 #
@@ -58,7 +63,7 @@
 # Report lines that carry a config value are printed with printf, never echo: a name may carry a backslash, which is no
 # control character, and some shells' echo would turn `\n` in it into a second line.
 #
-# Permitted toolset: gh, jq, yq (mikefarah v4), POSIX sh.
+# Permitted toolset: gh, jq, yq (mikefarah v4), POSIX sh plus mktemp, tr and rm (the CR-stripping wrappers below).
 set -u
 
 if [ "$#" -ne 3 ]; then
@@ -84,6 +89,11 @@ command -v gh >/dev/null 2>&1 || inc no-gh
 command -v jq >/dev/null 2>&1 || inc no-jq
 command -v yq >/dev/null 2>&1 || inc no-yq
 
+# A native jq.exe or yq.exe under Git Bash can end each output line in CR (the sibling host scripts strip it);
+# these wrappers keep the exit status and drop the CR from every value read into a variable.
+jq() { _o=$(mktemp) || return 1; command jq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+yq() { _o=$(mktemp) || return 1; command yq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+
 B=$(gh api --paginate "repos/$R/rules/branches/$BASE" </dev/null) || inc branch-rules
 B=$(printf '%s' "$B" | jq -s 'add // []') || inc branch-rules
 [ -n "$B" ] || inc branch-rules
@@ -96,6 +106,11 @@ missing_types() {
 }
 missing_checks() {
   printf '%s' "$B" | jq -r --argjson id "$1" --arg c "$2" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[].context] as $have | ($c | split(",") | map(select(. != ""))) - $have | join(",")'
+}
+
+# The declared checks (comma-joined, $2) this ruleset's required_status_checks rule carries unpinned.
+unpinned_checks() {
+  printf '%s' "$B" | jq -r --argjson id "$1" --arg c "$2" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[] | select(.integration_id == null) | .context] as $un | ($c | split(",") | map(select(. != ""))) | map(select(. as $x | $un | index($x))) | join(",")'
 }
 
 if [ "$HAS" = true ]; then
@@ -118,8 +133,9 @@ if [ "$HAS" = true ]; then
     case "$BYP" in '' | *[!0-9]*) printf 'ruleset %s inconclusive (bypass actors not visible to this identity)\n' "$NAME"; continue ;; esac
     MT=$(missing_types "$RID" "$TYPES") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
     MC=$(missing_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
+    UC=$(unpinned_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
     AP=$(printf '%s' "$B" | jq --argjson id "$RID" '[.[] | select(.ruleset_id==$id and .type=="pull_request")] | length') || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
-    printf 'ruleset %s missing_types=[%s] missing_checks=[%s] approval=%s bypass_actors=%s\n' "$NAME" "$MT" "$MC" "$AP" "$BYP"
+    printf 'ruleset %s missing_types=[%s] missing_checks=[%s] approval=%s bypass_actors=%s unpinned_checks=[%s]\n' "$NAME" "$MT" "$MC" "$AP" "$BYP" "$UC"
   done
   exit 0
 fi

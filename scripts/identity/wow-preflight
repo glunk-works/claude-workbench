@@ -1,0 +1,294 @@
+#!/bin/sh
+# Host command: a read-only table of the GitHub-side cutover preconditions for one repo (WB-D24, #1383).
+#
+#   wow-preflight <owner/name> <project.yml>
+#
+# Run it by its path, not through a symlink: it finds wow-common.sh, token-check.sh and
+# ruleset-drift.sh beside itself. <project.yml> is the `.ai/project.yml` the cutover's PR 1 will
+# merge (before PR 1 the default branch has no map): pass the reviewed PR's copy, never one from a
+# checkout a container can write. The rows are judged against that file.
+#
+# It acts as the admin App, through $WOW_HOME/tokens/<name>/admin-token, the copy wow-admin
+# always writes (wow-admin writes the same token into the directory the repo's dev container mounts, so it elevates the
+# container while it is live: run `wow-admin <name> --revoke` after the run). Mint it with
+#   wow-admin <name> --perms administration=write,contents=read,actions=read
+# because a ruleset's bypass_actors may be withheld from a caller who cannot edit the ruleset.
+# The script, not the token, keeps the run to reads: every `gh api` call below has no method,
+# field or input flag. token-check.sh proves it is an installation token reaching the repo (not which
+# App it is), and nothing checks which permissions it holds; a row whose read needs a permission the token lacks reads `check in the UI`.
+#
+# Output: a header line, then one line per row of three tab-separated fields: the precondition,
+# its state and a detail. A state is `ok`, `missing` (a read succeeded and shows the precondition
+# is not met) or `check in the UI` (not read by this command, or the read failed or was not
+# conclusive). A value from GitHub or the project file is printed only when it has no control
+# character. Exit 0 once the table is printed, whatever the states; 1 when the token or a tool is
+# not usable, or the project file cannot be parsed (before any row request); 2 on bad usage.
+#
+# Toolset: POSIX sh, gh, jq, yq (mikefarah v4), awk, plus what wow-common.sh and token-check.sh use.
+set -u
+set -f
+prog=wow-preflight
+here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+. "$here/wow-common.sh"
+
+usage() { die "usage: wow-preflight <owner/name> <project.yml>" 2; }
+
+[ $# -eq 2 ] || usage
+repo=$1 yml=$2
+case "$repo" in
+  '' | -* | /* | */ | */*/* | *[!A-Za-z0-9._/-]*) usage ;;
+  */*) ;;
+  *) usage ;;
+esac
+owner=${repo%%/*} name=${repo#*/}
+case "$owner" in . | ..) usage ;; esac
+check_repo "$name"
+[ -n "$yml" ] || usage
+
+T=
+cleanup() { [ -z "$T" ] || rm -rf -- "$T" || true; }
+trap cleanup EXIT
+trap 'exit 1' INT TERM HUP
+
+for tool in gh jq yq awk; do
+  command -v "$tool" >/dev/null 2>&1 || die "$tool not on PATH"
+done
+yq '.' "$yml" >/dev/null 2>&1 </dev/null || die "cannot parse $yml"
+T=$(umask 077 && mktemp -d) || die "cannot make a temporary directory"
+
+# A native jq.exe or yq.exe under Git Bash can end each output line in CR (the sibling host scripts strip it);
+# these wrappers keep the exit status and drop the CR from every value read into a variable.
+jq() { _o=$(mktemp) || return 1; command jq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+yq() { _o=$(mktemp) || return 1; command yq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+
+unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
+
+# --- the token: checked before any row request ----------------------------------------------
+tokfile=$wow_home/tokens/$name/admin-token
+stop_token() {
+  die "no usable admin token for $name ($1); if one is on file, run: wow-admin $name --revoke; then mint one with: wow-admin $name --perms administration=write,contents=read,actions=read"
+}
+TOK=$(sh "$here/token-check.sh" token "$tokfile" 2>/dev/null) && [ -n "$TOK" ] || stop_token "token file"
+GH_TOKEN=$TOK gh api --hostname github.com --paginate installation/repositories \
+  --jq '.repositories[].full_name' >"$T/inst" 2>/dev/null </dev/null || stop_token "installation read"
+V=$(sh "$here/token-check.sh" verify admin "$repo" "$tokfile" "$T/inst" "$yml" 2>/dev/null) || stop_token "verify"
+[ "$V" = installation ] || stop_token "verify"
+export GH_TOKEN
+GH_TOKEN=$TOK
+TOK=
+
+# rd <outfile> <gh api args...>: one GET; stdout to the file, stderr to $T/err. Never prints.
+rd() { o=$1; shift; gh api --hostname github.com "$@" >"$o" 2>"$T/err" </dev/null; }
+
+UI='check in the UI'
+printf 'precondition\tstate\tdetail\n'
+
+# row <precondition> <state> <detail>: one table line; a value with a control character is refused.
+clean() { [ "$(printf '%s' "$1" | tr -d '[:cntrl:]' | wc -c)" -eq "$(printf '%s' "$1" | wc -c)" ]; }
+row() {
+  if clean "$1" && clean "$2" && clean "$3"; then
+    printf '%s\t%s\t%s\n' "$1" "$2" "$3"
+  else
+    printf '%s\t%s\t%s\n' 'unprintable row' "$UI" 'unprintable value'
+  fi
+}
+
+# --- the repo read -------------------------------------------------------------------------
+base=
+if rd "$T/repo.json" "repos/$repo"; then
+  base=$(jq -er '.default_branch | strings' "$T/repo.json" 2>/dev/null) || base=
+  case "$base" in
+    '' | -* | /* | */ | *//* | . | .. | ./* | ../* | */. | */.. | */./* | */../* | *[!A-Za-z0-9._/-]*) base= ;;
+  esac
+fi
+
+# --- rulesets ------------------------------------------------------------------------------
+if [ "$(yq 'has("rulesets")' "$yml" 2>/dev/null </dev/null)" != true ]; then
+  row rulesets missing 'the project file has no rulesets key'
+elif [ -z "$base" ]; then
+  row rulesets "$UI" 'the repo or its default branch could not be read'
+else
+  n=$(yq '.rulesets | length' "$yml" 2>/dev/null </dev/null) || n=
+  GH_HOST=github.com sh "$here/ruleset-drift.sh" "$repo" "$base" "$yml" >"$T/rd.out" 2>/dev/null </dev/null
+  rc=$?
+  first=$(sed -n 1p "$T/rd.out")
+  lines=$(wc -l <"$T/rd.out" | tr -d ' ')
+  case "$n" in '' | *[!0-9]*) n= ;; esac
+  if [ "$rc" -ne 0 ]; then
+    row rulesets "$UI" 'ruleset-drift.sh failed'
+  elif case "$first" in 'inconclusive '*) true ;; *) false ;; esac; then
+    row rulesets "$UI" "ruleset-drift.sh: $first"
+  elif [ -z "$n" ] || [ "$n" -eq 0 ] || [ "$lines" != "$n" ]; then
+    row rulesets "$UI" 'ruleset-drift.sh printed an unexpected number of lines'
+  else
+    i=0
+    while [ "$i" -lt "$n" ]; do
+      line=$(sed -n "$((i + 1))p" "$T/rd.out")
+      ent=$(yq -o=json -I=0 ".rulesets[$i]" "$yml" 2>/dev/null </dev/null) || ent=
+      nm=$(printf '%s' "$ent" | jq -er '.name | strings | select(test("^[^\\p{Cc}]+\\z"))' 2>/dev/null) || nm=
+      src=$(printf '%s' "$ent" | jq -r '.source | strings' 2>/dev/null) || src=
+      if [ -z "$nm" ]; then
+        row "ruleset #$i" "$UI" 'the entry has no readable name'
+      elif [ "$src" = org ]; then
+        row "ruleset $nm" "$UI" 'an org ruleset: a repo-scoped admin token cannot read it'
+      else
+        pre="ruleset $nm missing_types=[] missing_checks=[] approval="
+        okfmt=0
+        case "$line" in
+          "$pre"*)
+            rest=${line#"$pre"}
+            ap=${rest%% *}
+            case "$ap" in '' | *[!0-9]*) ;; *) [ "$rest" = "$ap bypass_actors=0 unpinned_checks=[]" ] && okfmt=1 ;; esac
+            ;;
+        esac
+        if [ "$okfmt" = 1 ]; then
+          row "ruleset $nm" ok 'the App a check is pinned to, and checks the project file does not declare, are not judged'
+        elif [ "$line" = "ruleset $nm missing" ]; then
+          row "ruleset $nm" missing 'no ruleset of that name'
+        else
+          case "$line" in
+            "ruleset $nm missing_types="*) row "ruleset $nm" missing "${line#"ruleset $nm "}" ;;
+            *) row "ruleset $nm" "$UI" 'not conclusive' ;;
+          esac
+        fi
+      fi
+      i=$((i + 1))
+    done
+  fi
+fi
+
+row 'approval rule parameters' "$UI" 'code-owner review, stale reviews dismissed on push, last-push approval and an approving review count of 1 are not read by this command'
+
+# --- default workflow token ----------------------------------------------------------------
+if rd "$T/wf.json" "repos/$repo/actions/permissions/workflow"; then
+  v=$(jq -er '.default_workflow_permissions | strings' "$T/wf.json" 2>/dev/null) || v=
+  case "$v" in
+    read) row 'default workflow token' ok 'read' ;;
+    write) row 'default workflow token' missing 'the default workflow token is write' ;;
+    *) row 'default workflow token' "$UI" 'default_workflow_permissions absent or not read/write' ;;
+  esac
+else
+  row 'default workflow token' "$UI" 'the read failed'
+fi
+
+# --- allow auto-merge ----------------------------------------------------------------------
+v=$(jq -r '.allow_auto_merge | booleans' "$T/repo.json" 2>/dev/null) || v=
+case "$v" in
+  false) row 'allow auto-merge' ok 'off; a precondition until the cutover'"'"'s last PR merges' ;;
+  true) row 'allow auto-merge' missing 'on; a precondition until the cutover'"'"'s last PR merges' ;;
+  *) row 'allow auto-merge' "$UI" 'allow_auto_merge absent or the repo read failed' ;;
+esac
+
+# --- environments --------------------------------------------------------------------------
+if rd "$T/env.raw" --paginate "repos/$repo/environments" \
+   && jq -s 'if length > 0 and all(.[]; (.environments | type) == "array") then [.[].environments[]] else error("shape") end' "$T/env.raw" >"$T/env.json" 2>/dev/null; then
+  en=$(jq 'length' "$T/env.json")
+  if [ "$en" -eq 0 ]; then
+    row environments ok none
+  else
+    i=0
+    while [ "$i" -lt "$en" ]; do
+      nm=$(jq -er --argjson i "$i" '.[$i].name | strings | select(test("^[^\\p{Cc}]+\\z"))' "$T/env.json" 2>/dev/null) || nm=
+      by=$(jq -r --argjson i "$i" '.[$i].can_admins_bypass | booleans' "$T/env.json" 2>/dev/null) || by=
+      if [ -z "$nm" ]; then
+        row "environment #$i" "$UI" 'unprintable value'
+      else
+        case "$by" in
+          false) row "environment $nm" ok 'admins cannot bypass' ;;
+          true) row "environment $nm" missing 'admins can bypass (can_admins_bypass is true)' ;;
+          *) row "environment $nm" "$UI" 'can_admins_bypass absent' ;;
+        esac
+      fi
+      i=$((i + 1))
+    done
+  fi
+else
+  row environments "$UI" 'the environments read failed'
+fi
+
+# --- CODEOWNERS ----------------------------------------------------------------------------
+codeowners() {
+  [ -n "$base" ] || { row CODEOWNERS "$UI" 'the default branch could not be read'; return; }
+  found= other=
+  for p in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+    if rd "$T/co" -H 'Accept: application/vnd.github.raw+json' "repos/$repo/contents/$p?ref=$base"; then
+      found=$p; break
+    elif grep -q 'HTTP 404' "$T/err"; then
+      continue
+    else
+      other=1; break
+    fi
+  done
+  [ -z "$other" ] || { row CODEOWNERS "$UI" 'a CODEOWNERS read failed'; return; }
+  [ -n "$found" ] || { row CODEOWNERS missing 'no CODEOWNERS file on the default branch'; return; }
+  awk '
+    { sub(/\r$/, "") }
+    /^[ \t]*(#|$)/ { next }
+    {
+      if ($1 == "*") {
+        star = 1; after = 0; own = ""
+        for (i = 2; i <= NF; i++) { if ($i ~ /^#/) break; own = own " " $i }
+      } else if (star) after = 1
+    }
+    END { print (star ? "star" : "nostar"); print after + 0; print own }
+  ' "$T/co" >"$T/co.parsed" 2>/dev/null || { row CODEOWNERS "$UI" 'the file could not be parsed'; return; }
+  st=$(sed -n 1p "$T/co.parsed") af=$(sed -n 2p "$T/co.parsed") own=$(sed -n 3p "$T/co.parsed")
+  [ "$st" = star ] || { row CODEOWNERS missing "$found has no * line"; return; }
+  [ "$af" = 0 ] || { row CODEOWNERS missing "$found has a line after its last * line"; return; }
+  # shellcheck disable=SC2086
+  set -- $own
+  [ $# -gt 0 ] || { row CODEOWNERS missing "the * line in $found names no owner"; return; }
+  for o in "$@"; do
+    case "$o" in
+      @*) l=${o#@}; case "$l" in '' | *[!A-Za-z0-9-]*) row CODEOWNERS missing "an owner in $found is not a plain @login"; return ;; esac ;;
+      *) row CODEOWNERS missing "an owner in $found is not a plain @login"; return ;;
+    esac
+  done
+  lacking=
+  for o in "$@"; do
+    l=${o#@}
+    if rd "$T/perm.json" "repos/$repo/collaborators/$l/permission"; then
+      pm=$(jq -er '.permission | strings' "$T/perm.json" 2>/dev/null) || pm=
+      case "$pm" in
+        write | admin) ;;
+        '') row CODEOWNERS "$UI" "the permission of @$l is absent"; return ;;
+        *) lacking="$lacking @$l" ;;
+      esac
+    else
+      row CODEOWNERS "$UI" "the permission read for @$l failed"; return
+    fi
+  done
+  if [ -n "$lacking" ]; then
+    row CODEOWNERS missing "owners without write access:$lacking"
+  else
+    row CODEOWNERS ok "$found: the * line names only owners with write access"
+  fi
+}
+codeowners
+
+# --- dev App permissions -------------------------------------------------------------------
+dev_app() {
+  login=$(yq -o=json -I=0 '.identities.dev_app' "$yml" 2>/dev/null </dev/null | jq -er 'objects | .login | strings' 2>/dev/null) || login=
+  slug=${login%'[bot]'}
+  case "$slug" in '' | *[!A-Za-z0-9-]*) row 'dev App permissions' "$UI" 'identities.dev_app.login is not a usable App login'; return ;; esac
+  if rd "$T/app.json" "apps/$slug"; then
+    jq -e '.permissions | objects' "$T/app.json" >/dev/null 2>&1 || { row 'dev App permissions' "$UI" "the permissions of $slug are absent"; return; }
+    held=$(jq -r '.permissions | [(if has("workflows") then "workflows" else empty end), (if has("administration") then "administration" else empty end)] | join(" and ")' "$T/app.json" 2>/dev/null) || held=
+    if [ -n "$held" ]; then
+      row 'dev App permissions' missing "the dev App holds $held"
+    else
+      row 'dev App permissions' ok 'holds neither workflows nor administration'
+    fi
+  else
+    row 'dev App permissions' "$UI" 'the App read failed'
+  fi
+}
+dev_app
+
+row 'reviewer App installation' "$UI" 'no installation token can list another App'"'"'s installations'
+row 'dev App installation' "$UI" 'no installation token can list another App'"'"'s installations; add it only after the approval ruleset reads back'
+row 'org secrets' "$UI" 'the admin App holds no secrets permission; a secret the repo'"'"'s workflows use must have this repo in its visibility'
+row 'fork pull request workflows' "$UI" 'not read by this command; the setting applies to a private repo'
+
+echo "wow-preflight: done; revoke the admin token now: wow-admin $name --revoke" >&2
+exit 0

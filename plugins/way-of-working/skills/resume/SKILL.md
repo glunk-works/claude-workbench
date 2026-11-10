@@ -445,8 +445,9 @@ edited it. **Default to the full checklist whenever unsure.**
 
    It is still a report, not a gate. The check confirms that the declared rule types, check
    names and (lack of) bypass actors are there; it does not read the approval rule's parameters
-   (approval count, code-owner review) or an app pin, so a ruleset weakened only in those still
-   reads healthy.
+   (approval count, code-owner review), and it does not judge the `unpinned_checks` field the
+   list form prints (which App a check is pinned to is not read at all), so a ruleset weakened
+   only in those still reads healthy.
 
    **When a migration is live, also check the default branch.** `/way-of-working:architect-review`
    accepts a non-default PR base only because the **default branch's own** `.ai/project.yml`
