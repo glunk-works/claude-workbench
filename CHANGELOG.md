@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- The secret scan's ignore list, `.betterleaksignore`: one fingerprint per distinct flagged value in this repo's history (13 test-fixture values and one docs false positive), so `secrets / scan` can pass on PRs whose base includes it (#1352).
+
 ### Changed
 
 - This repo's dev container installs its pinned plugin at start: `postStartCommand` ends with the image's `plugin-install.sh`, which installs the `.claude/settings.json` pin at user scope and fails the start when it cannot, and the secret scan and image check workflows move to 603-Identity/devcontainers v1.7. A project-scope install from before is not removed by it: uninstall it once, before the first start with this change.
