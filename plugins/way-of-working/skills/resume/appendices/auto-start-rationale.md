@@ -4,10 +4,15 @@ Loaded on demand; nothing in the auto-start decision depends on reading it.
 
    **Why auto-start is not a lost approval:** the `next_action` was written by the
    previous session's `/way-of-working:handoff` — which the human approved by merging its
-   cursor-sync PR. A merge on GitHub approves the ledger's **Next:**, which `next_action`
+   cursor-sync PR, when one merged. A merge on GitHub approves the ledger's **Next:**, which `next_action`
    should match but which nothing compares (`WB-D24` removed the `/resume` merge that once
    showed `next_action` beside it, `WB-D20`). A cursor whose PR is still open was never
    approved, which is why the *Report a forgotten cursor-sync PR* step's other outcomes wait.
+   The one tolerated case (`WB-D47`) is a build, under `github_milestones` with an `identities`
+   map, on the open sync PR's own branch at its head with the ledger's gate equal to the
+   base's closed gate. There no human approved the ledger. The `hitl_gate` and the reacted spec
+   carry the approval: the full-mode `match` binds the build to a spec a maintainer reacted
+   to, and the ledger never carried `next_action` (`WB-D24`).
    Re-approving it at the start of the next session approves the same decision twice, and
    in practice that second approval is a content-free "go" the overwhelming majority of the
    time. The approval that carries real signal is the **`hitl_gate`**, and it is still
