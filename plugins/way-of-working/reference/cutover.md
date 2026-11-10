@@ -160,6 +160,18 @@ repo admin, in the browser or through an admin App, unless an org policy fixes t
 The App permissions are the App owner's, in the browser. CODEOWNERS and `.ai/project.yml` are
 PR changes.
 
+On a host with the marketplace repository's host tools installed, `wow-preflight <owner/name>
+<project.yml>` prints these preconditions as one table, judged against the project file it is
+given (pass the reviewed PR's copy), and makes only GET requests. A row reads `ok`, `missing`
+or `check in the UI`; the last is left for the operator: a precondition this command does not
+read (the approval rule's parameters, the App installations,
+org secrets, fork pull request workflows) or a read that failed or was not conclusive. It also
+reports each environment's admins-bypass setting, which must be off, and says that a secret the
+repo's workflows use needs this repo in its visibility; both are set in the browser. It uses the admin token the repo's container mounts, so run `wow-admin
+<name> --revoke` after the run. A `missing` row is fixed in the order *The order* gives, and in
+its second case the checks ruleset row reads `missing` for the gate's check until the check is
+added after PR 1 merges.
+
 A PR adding, editing or deleting a workflow file is pushed by a code owner or by an App
 holding Workflows write, never the dev App (its registration holds no Workflows permission,
 checked above; while an admin-App token is live in a container, everything in it is

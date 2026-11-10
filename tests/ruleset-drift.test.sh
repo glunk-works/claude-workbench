@@ -80,7 +80,7 @@ EP_B="repos_o_r_rules_branches_main"; EP_L="repos_o_r_rulesets"
 # Branch rules: ruleset 1 = checks (pull_request none), ruleset 2 = approval.
 rules_json() {
   cat <<'J'
-[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint"},{"context":"test"}]}},
+[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},
  {"type":"deletion","ruleset_id":1},
  {"type":"pull_request","ruleset_id":2}]
 J
@@ -117,27 +117,39 @@ assert_eq "a wrong argument count exits 2" "2" "$rc"
 # --- list form -----------------------------------------------------------------------------
 setup_ok; list_yml
 assert_eq "list form healthy" \
-"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; echo '[{"id":2,"name":"approval"}]' >"$STUBS/$EP_L"
 assert_eq "list form missing" "ruleset checks missing
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0" "$(run $R $BASE $yml)"
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml
-echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint"}]}},{"type":"pull_request","ruleset_id":2}]' >"$STUBS/$EP_B"
+echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"pull_request","ruleset_id":2}]' >"$STUBS/$EP_B"
 assert_eq "list form weakened names the absent type and check" \
-"ruleset checks missing_types=[deletion] missing_checks=[test] approval=0 bypass_actors=0
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[deletion] missing_checks=[test] approval=0 bypass_actors=0 unpinned_checks=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[]" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml
+echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":null},{"context":"test"},{"context":"extra"}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2}]' >"$STUBS/$EP_B"
+assert_eq "list form: a null or absent integration_id names the check; an undeclared check is not judged" \
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[lint,test]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[]" "$(run $R $BASE $yml)"
+
+setup_ok; list_yml
+echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2}]' >"$STUBS/$EP_B"
+assert_eq "list form: an absent check is missing, not unpinned" \
+"ruleset checks missing_types=[] missing_checks=[test] approval=0 bypass_actors=0 unpinned_checks=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; echo '{"bypass_actors":[{"actor_id":1}]}' >"$STUBS/repos_o_r_rulesets_2"
 assert_eq "list form drift: one bypass actor" \
-"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=1" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=1 unpinned_checks=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_2"
 assert_eq "list form bypass actors not visible" \
-"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[]
 ruleset approval inconclusive (bypass actors not visible to this identity)" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; touch "$STUBS/$EP_L.rc"
@@ -171,13 +183,18 @@ assert_eq "list form: a check ending in a newline" "ruleset #0 inconclusive" "$(
 setup_ok; list_yml; echo '[{"id":1.5,"name":"checks"},{"id":2,"name":"approval"}]' >"$STUBS/$EP_L"
 echo '{"bypass_actors":[]}' >"$STUBS/repos_o_r_rulesets_1.5"
 assert_eq "list form: a non-numeric ruleset id" "ruleset checks inconclusive
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0" "$(run $R $BASE $yml)"
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[]" "$(run $R $BASE $yml)"
 
 # A backslash in a name is no control character; echo in some shells would make it a new line.
 setup_ok
 printf '%s\n' 'rulesets:' "  - name: 'x\\nruleset forged missing_types=[]\\c'" '    source: team' '    rule_types: [deletion]' >"$yml"
 assert_eq "list form: a backslash in a name stays on one line" \
   'ruleset x\nruleset forged missing_types=[]\c inconclusive' "$(run $R $BASE $yml)"
+
+# The CR-stripping wrappers keep their temp files in a private directory, removed on exit.
+setup_ok; list_yml; mkdir -p "$tmp/td"
+TMPDIR="$tmp/td" run $R $BASE $yml >/dev/null
+assert_eq "no temp file is left after a run" "" "$(ls -A "$tmp/td")"
 
 # --- pre-name inconclusive -----------------------------------------------------------------
 setup_ok; list_yml

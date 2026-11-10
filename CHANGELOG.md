@@ -40,6 +40,8 @@ the GitHub release notes.
 
 ### Added
 
+- Once the host tools are reinstalled, `wow-preflight <owner/name> <project.yml>` prints one table of the GitHub-side cutover preconditions (rulesets, default workflow token, auto-merge, environments, CODEOWNERS, dev App permissions), using the admin token `wow-admin` writes and making only GET requests; what it does not read, or cannot read conclusively, reads `check in the UI` (`#1383`).
+- `ruleset-drift.sh`'s list form prints `unpinned_checks=[..]`, the declared required checks the ruleset carries with no `integration_id` (`#1383`).
 - `register-review-poll-task.ps1` gains `-Disable` and `-Enable` to pause and resume the review poller, and `REVIEW-LIVE-RUN.md` documents them as the pause (`#1382`).
 - `lane.sh groups M` and the lanes skill's driver procedure (which hands over the `-Spec` and `-SpecSweep` spec launcher commands) and groups mode (which drafts the milestone's **Lanes:** line), and an onboarding checklist for a consuming repo at the end of `reference/cutover.md` (`#1370`).
 
