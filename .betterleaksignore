@@ -1,0 +1,32 @@
+# Reviewed false positives for the org secret scan (secrets / scan). One fingerprint per
+# distinct flagged value, each a hash of the matched value: 13 test-fixture values and one
+# docs false positive (an issue reference), never a real credential.
+
+# plugins/way-of-working/reference/project-schema.md: a docs false positive, an issue reference in prose matched by generic-password
+0edd2bd6e39f38c45c9bf68a6de01a4c97c97bdd58443c2e0eda1f39be999175
+# tests/identity-mint.test.sh, tests/identity-wow.test.sh: a fake JWT_TOKEN fixture (generic-api-key)
+06773145235e0fcc68b90ad632913411095eec27363b9e2231cebe6016299018
+# tests/identity-broker.test.sh: a made-up ghs_ token for a refresh test (github-app-token)
+104fb8772dce42d864c15b5028f9e8baf5d6fb9818c05408a5b2e71fc561e5bf
+# tests/review-image.test.sh: FAKE_TOKEN stand-in (github-app-token)
+26c7bbe4335b05ed25ab6c919ea8e37b362e3a1d8e747a7c29925d8f78cc5690
+# tests/identity-wow.test.sh: a short made-up TOKEN stand-in (generic-api-key)
+2d867bd439fe65a28a620bf5a861f412b439b7767dc15ae384ecbf10cd07d210
+# tests/reach-gate.test.sh: a placeholder password in a userinfo-bearing URL the test feeds as an origin not in the three recognised forms (generic-credential-uri)
+30c952fab122c3f9759f02a6d95c3758b246b4fee239957b2d4fee46e26170c4
+# tests/identity-wow.test.sh: made-up TOKEN2 stand-in (github-app-token)
+3ea076c26761e8b1cff411df480fb088ac10bdc9b8353be2493b486c369f18d6
+# tests/identity-wow.test.sh: made-up TOKEN stand-in (github-app-token)
+81446c425fbe2d51cc7e768a6c0707b6a778f44f2ab02a7dc710e75b2ffdde89
+# tests/identity-wow.test.sh: made-up TOKEN2 stand-in (generic-api-key)
+9d8e2626d420ecf61961e422971300253706dafab96c069b4a416782ea3c1da8
+# tests/identity-mint.test.sh: a made-up ghp_ token the test expects to be refused (github-pat)
+b137b3a99b0a279f9453ca2c942aff60eeea10c4df1984ac59b8361458c7b836
+# tests/dev-token.test.sh: made-up tok2 stand-in (github-app-token)
+b369a9e09b493d61e38e368f59385c7f8d6f8fcc0bba3faee4f84cca0f4b6f14
+# tests/identity-wow.test.sh: made-up TOKEN stand-in (generic-api-key)
+bac4a9ac0b9d989bab9c43ab8ea74b5abf7ea58e65f5a9a129fdfa6ba0a66bf3
+# tests/identity-mint.test.sh: made-up fake token stand-in (github-app-token)
+c9ae04ecbe0ecfaab89ffe00811c8091db891595b01503451439f9826ec1ad0a
+# tests/identity-launchers.test.sh: a userinfo-bearing URL with a placeholder password that the test expects to be refused (generic-credential-uri)
+e7bcfbcf08ea825205e5d32c1a86e9f53ae1f8a51732a2a7a2792ead2069b382
