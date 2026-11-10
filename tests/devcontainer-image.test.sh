@@ -131,8 +131,8 @@ check "devcontainer.json: .gitconfig.d comes from USERPROFILE only" grep -qF '"s
 check "devcontainer.json: the -node_modules volume" grep -qF '"source=${localWorkspaceFolderBasename}-node_modules,target=/workspace/node_modules,type=volume"' "$djc"
 check "devcontainer.json: the -venv volume" grep -qF '"source=${localWorkspaceFolderBasename}-venv,target=/workspace/.venv,type=volume"' "$djc"
 check "devcontainer.json: remoteUser is app" grep -q '"remoteUser": "app"' "$djc"
-check "devcontainer.json: postStartCommand is the narrowed removal and the three checks" \
-  grep -qxF '  "postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh",' "$djc"
+check "devcontainer.json: postStartCommand is the narrowed removal, the three checks and plugin-install last" \
+  grep -qxF '  "postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh; sh /usr/local/share/devc/plugin-install.sh",' "$djc"
 check "devcontainer.json: postAttachCommand only warns" sh -c 'l=$(grep "\"postAttachCommand\"" "$1"); case $l in *\"echo\ *) ! printf "%s\n" "$l" | grep -qE "rm |docker|;" ;; *) false ;; esac' _ "$djc"
 check "devcontainer.json: runArgs keep the hardening flags" \
   grep -qxF '    "--cap-drop=ALL", "--security-opt=no-new-privileges",' "$djc"
