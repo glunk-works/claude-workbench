@@ -66,8 +66,8 @@
 #
 # Which login the derivation runs as. The caller (resume's derive chain, handoff's no-op
 # handoff) establishes <mode> by `reference/conventions.md` § *Acting identity and reach*, not by a
-# new probe: `user` when `gh api user` answered, `app` when it was refused (or failed) and the token is an
-# installation token that reaches {repo} (`gh-identity.sh reach`). Under an installation token
+# new probe: `app` when the installation probe (tried before `gh api user`) `reached` {repo}
+# (`gh-identity.sh reach`), `user` when that call failed and `gh api user` answered. Under an installation token
 # `gh api user` is refused (403, measured in `#380`), so there is no login to read; the identity is
 # the one the repo DECLARES for the dev flow, `identities.dev_app.login` from the default branch's
 # copy. Which App holds the token is NOT proven here, so `decide` never lets App mode reach `auto`

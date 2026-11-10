@@ -38,8 +38,8 @@
 # never read (a device would hang the hook). Unlike the cursor lines, an admin
 # line other than `off` is said even with no .ai/state.json or no jq: a live token
 # elevates everything in the container, and a missing cursor is when it is least expected.
-# `Acting as:` follows conventions.md's "Acting identity and reach" (GET /user, then
-# the installation probe) on github.com only, each gh call bounded at 3 seconds and no
+# `Acting as:` tries GET /user first, then the installation probe (the skills run the probe
+# first, per conventions.md's "Acting identity and reach"; this hook keeps its order) on github.com only, each gh call bounded at 3 seconds and no
 # new call started after 4 seconds of the hook's 10, and prints `unknown` on any failure
 # -- never a guessed login. The no-cursor case makes no network call.
 set -euo pipefail

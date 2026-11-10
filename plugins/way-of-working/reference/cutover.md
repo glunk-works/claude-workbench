@@ -172,6 +172,8 @@ repo's workflows use needs this repo in its visibility; both are set in the brow
 its second case the checks ruleset row reads `missing` for the gate's check until the check is
 added after PR 1 merges.
 
+A dev-App session's ruleset check cannot read bypass actors (only an identity that can edit a ruleset sees them), so the full bypass check runs from the host as an admin: `wow-preflight` on the admin token `wow-admin` writes, then `wow-admin NAME --revoke`.
+
 A PR adding, editing or deleting a workflow file is pushed by a code owner or by an App
 holding Workflows write, never the dev App (its registration holds no Workflows permission,
 checked above; while an admin-App token is live in a container, everything in it is
