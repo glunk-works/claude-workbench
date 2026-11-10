@@ -155,3 +155,8 @@ judgment is involved). End with a one-line verdict: do the audited claims hold a
 current ground truth? A clean "no contradictions found" is a valid and valuable result — do
 not invent drift to look thorough, and never recommend editing a doc toward a *less* accurate
 statement.
+
+Each reported finding also carries exactly one label: `defect:<class>` (the class one of
+`false-statement`, `contradiction`, `operationally-wrong`, `newly-introduced`, `trust-boundary`) or
+`tightening`. List every defect you find in this one pass, not only the most severe. Where the spawn
+imposes an output schema, that schema governs instead. Intentional prose stays unreported.

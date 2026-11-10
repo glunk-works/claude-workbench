@@ -123,6 +123,11 @@ confidence. Then a one-line verdict: does the diff meet its stated acceptance cr
 hold every invariant it touches? Be honest — a clean "no findings" is a valid result; do not
 invent findings to look thorough, and never claim correct what you could not verify.
 
+Label every finding with exactly one of `defect:<class>` (the class one of `false-statement`,
+`contradiction`, `operationally-wrong`, `newly-introduced`, `trust-boundary`) or `tightening`, and
+list every defect you find in this one pass, not only the most severe. Where the spawn imposes an
+output schema, that schema governs instead.
+
 ## The one thing you are NOT
 
 Where `{review.ci_gate}` is set, you are **not** that gate. It requires a *fresh session*
