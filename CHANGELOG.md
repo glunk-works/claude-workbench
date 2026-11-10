@@ -41,6 +41,7 @@ the GitHub release notes.
 ### Added
 
 - `register-review-poll-task.ps1` gains `-Disable` and `-Enable` to pause and resume the review poller, and `REVIEW-LIVE-RUN.md` documents them as the pause (`#1382`).
+- `lane.sh groups M` and the lanes skill's driver procedure (which hands over the `-Spec` and `-SpecSweep` spec launcher commands) and groups mode (which drafts the milestone's **Lanes:** line), and an onboarding checklist for a consuming repo at the end of `reference/cutover.md` (`#1370`).
 
 ## [0.30.0] — 2026-11-03
 

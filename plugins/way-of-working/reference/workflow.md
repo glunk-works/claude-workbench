@@ -406,8 +406,11 @@ edits to the description and cannot be mistaken for the human's approval.
 - **`/way-of-working:lanes`** — start, report on and clean up coder lanes in a repo's own
   container: `start N M BRANCH CRITICS [ALSO]` preps a worktree and a prompt file and prints the host
   command, `status` prints one table of the lanes, `clean up N` removes a merged lane and says what
-  the freed lane can take. Each is one call to `bin/lane.sh`, which reads `lanes.dir`. It never
-  drafts specs, starts a session, merges or approves.
+  the freed lane can take, `groups M` shows which open tasks on a milestone can run as parallel
+  lanes and drafts its **Lanes:** line. It also carries the driver's per-task procedure: hand over
+  the spec launcher command, read the spec session's closing output, review a posted spec and advise
+  before the maintainer reacts, then start the lane. Each mode is one call to `bin/lane.sh`, which
+  reads `lanes.dir`. It never drafts specs, starts a session, merges or approves.
 - **`/way-of-working:retro`** — a session-end look at *how the session worked*, and at the
   repo's other recent sessions (lane, spec, earlier driver ones): friction
   that recurred or cost rework, each finding routed to its existing home (a backlog item,

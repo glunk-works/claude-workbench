@@ -267,8 +267,8 @@ container can follow. A host worktree beside the checkout cannot be used: the co
 only `/workspace`, and its `.git` file names a host path.
 
 - **Prepare, report on and clean up lanes** (driver, in `/workspace`, the main worktree) through
-  `/way-of-working:lanes`, which calls the plugin's `bin/lane.sh` in three modes: `prep`, `status`
-  and `done`. `bin/lane.sh` runs only from the installed plugin, never as a working-tree copy by
+  `/way-of-working:lanes`, which calls the plugin's `bin/lane.sh` in four modes: `prep`, `status`,
+  `done` and `groups`. `bin/lane.sh` runs only from the installed plugin, never as a working-tree copy by
   path, because it finds its siblings beside itself; no lane is prepped until a release carrying it
   is installed. Prepare a lane with:
   ```sh
@@ -320,7 +320,7 @@ only `/workspace`, and its `.git` file names a host path.
 - **Another repo on the same host.** The same installed `wow-lane.ps1` starts a lane for another
   repository, given that repository's `-Clone` and `-Reference`. The command carries the hash that
   `prep` printed in that repository's container, that repository's issue, and the model from that
-  repository's `models.coder`. A lane belongs to its container, so `prep`, `status` and `done` run in
+  repository's `models.coder`. A lane belongs to its container, so `prep`, `status`, `done` and `groups` run in
   the container of the repository the lane is for.
 - **Start the lane** (#762) from the host, in its own terminal, from `pwsh` 7.2+, as the installed
   copy beside the driver launcher:

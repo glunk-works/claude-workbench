@@ -1,5 +1,5 @@
 #!/bin/sh
-# Prepare, report on and clean up coder lanes: a worktree under the lanes directory
+# Prepare, report on and clean up coder lanes, and show which tasks can run as parallel lanes: a worktree under the lanes directory
 # (`lanes.dir`) and the prompt file its session reads. Wrapped by /way-of-working:lanes. Issue #715.
 # It runs only from the installed plugin, never as a working-tree copy by path: its siblings
 # (spec-find.sh, gh-identity.sh, prune-verdict.sh, lane-state.sh, lane-groups.sh) are found
@@ -9,10 +9,12 @@
 #   lane.sh prep N M BRANCH CRITICS [ALSO]
 #   lane.sh status
 #   lane.sh done N
+#   lane.sh groups M
 #
 #   N        the task issue number, digits with no leading zero
 #   M        the milestone number the driver expects the task to be on (the driver's own
-#            anchored milestone); the container clone has no .ai/state.json to name it
+#            anchored milestone); the container clone has no .ai/state.json to name it. For
+#            groups, the milestone whose open tasks are grouped
 #   BRANCH   TYPE/SLUG: TYPE a commit type of reference/conventions.md, SLUG one or more of
 #            a-z, 0-9 and `-`, starting with a letter or digit
 #   CRITICS  a comma list of architect, security-critic, docs-consistency; no repeats
@@ -35,7 +37,8 @@
 #   unsafe-dir       the lanes directory (or its resolved path) is a link, not a directory,
 #                    not owned by this user, or could not be made
 #   unreadable       a read failed or had an unexpected shape (the default-branch read, the
-#                    existence probes, the verdict inputs), or this script sits inside the main
+#                    existence probes, the verdict inputs, groups: lane-state.sh's list or
+#                    lane-groups.sh's output), or this script sits inside the main
 #                    worktree or the lanes directory instead of the installed plugin
 #   repo-mismatch    the default branch's .repo is not the origin's nameWithOwner
 #   backlog-case     every mode: the default branch's backlog.repo names the origin's repository in
@@ -78,6 +81,15 @@
 # `done`, merged or not. It is checked for path overlap whatever its issue's milestone, but only
 # when lane-groups.sh could read its spec paths. A lane-state.sh list that fails or prints
 # `unreadable` makes the result `next unreadable`. The lines never change done's exit status.
+# groups M prints, on exit 0, the lines lane-groups.sh printed for milestone M, verbatim (one row
+# per open issue, then one `group` line each, or `group none`), then `live #a #b` (ascending, the
+# live lanes' issues as `done` takes them) or `live none`. The groups ignore live lanes: the issues
+# of live lanes are passed to lane-groups.sh only for its path overlap, and none is dropped. It
+# stops `unreadable`, printing nothing else, when lane-state.sh's list fails or has an unexpected
+# shape, when lane-groups.sh exits non-zero or prints a line outside the row and group shapes
+# `done` accepts (its own `unreadable` included), or when it prints no `group` line and not
+# `group none`. A missing lanes directory means no live lanes; a present one that fails the
+# checks above stops `unsafe-dir`.
 #
 # GitHub host. The script unsets GH_HOST and GH_ENTERPRISE_TOKEN once at the top. Each gh call
 # names its host or repository explicitly (--hostname github.com, --repo, a repos/ path);
@@ -124,7 +136,7 @@ trap '[ -z "$TMP" ] || rm -rf "$TMP"' EXIT
 trap 'exit 1' INT TERM HUP
 
 usage() {
-  echo "usage: lane.sh prep N M BRANCH CRITICS [ALSO] | lane.sh status | lane.sh done N" >&2
+  echo "usage: lane.sh prep N M BRANCH CRITICS [ALSO] | lane.sh status | lane.sh done N | lane.sh groups M" >&2
   exit 2
 }
 
@@ -263,6 +275,11 @@ case "$MODE" in
     [ "$#" -eq 2 ] || usage
     N=$2
     num_ok "$N" || usage
+    ;;
+  groups)
+    [ "$#" -eq 2 ] || usage
+    M=$2
+    num_ok "$M" || usage
     ;;
   *) usage ;;
 esac
@@ -850,9 +867,53 @@ lane_done() {
   done_next
 }
 
+# ---- groups ---------------------------------------------------------------------------------
+
+# lane_groups: the groups lane-groups.sh finds for milestone M, with the live lanes' issues passed
+# as `done` passes them. Nothing is printed until every check has passed.
+lane_groups() {
+  gp_nums=
+  if [ -e "$LANES" ] || [ -L "$LANES" ]; then
+    lanes_check || stop unsafe-dir
+    gp_st=$(sh "$BIN/lane-state.sh" list "$LANES" "$DEFFILE" 2>/dev/null) || stop unreadable
+    case "$gp_st" in
+      '[]') ;;
+      '['*']')
+        case "$gp_st" in *'
+'*) stop unreadable ;; esac
+        printf '%s\n' "$gp_st" >"$TMP/live.json"
+        gp_nums=$(yq -p=json -r 'unique_by(.issue) | sort_by(.issue) | .[] | (.issue | tostring)' "$TMP/live.json" 2>/dev/null) || stop unreadable
+        ;;
+      *) stop unreadable ;;
+    esac
+  fi
+  gp_live=
+  for gp_i in $gp_nums; do
+    num_ok "$gp_i" || stop unreadable
+    gp_live="$gp_live #$gp_i"
+  done
+  gp_rc=0
+  # shellcheck disable=SC2086
+  (cd "$TOPLEVEL" && sh "$BIN/lane-groups.sh" "$M" "$DEFFILE" $gp_nums >"$TMP/groups.tsv" 2>/dev/null) || gp_rc=$?
+  [ "$gp_rc" -eq 0 ] || stop unreadable
+  awk -F'\t' '
+    NF==5 && $1 ~ /^[1-9][0-9]*$/ { next }
+    $0 == "group none" { seen = 1; next }
+    NF==3 && $1 == "group" && $2 ~ /^[1-9][0-9]*$/ && $3 ~ /^#[0-9]+( #[0-9]+)*$/ { seen = 1; next }
+    { bad = 1 }
+    END { exit (bad || !seen) }' "$TMP/groups.tsv" || stop unreadable
+  cat "$TMP/groups.tsv"
+  if [ -z "$gp_live" ]; then
+    echo "live none"
+  else
+    printf 'live%s\n' "$gp_live"
+  fi
+}
+
 FID= FUP=
 case "$MODE" in
   prep) prep ;;
   status) lane_status ;;
   done) lane_done ;;
+  groups) lane_groups ;;
 esac

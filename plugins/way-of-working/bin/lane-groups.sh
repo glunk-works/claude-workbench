@@ -4,7 +4,7 @@
 # (a bullet marked (append) does not count, except under .github/) and no `depends_on` from the
 # milestone's Build order holds between them. The output is display only: nothing gates on it,
 # and the driver uses it to update the milestone description's Lanes line through
-# milestone-desc.sh by hand; `lane.sh done` reads its groups too. Nothing here writes a description, an issue or a comment.
+# milestone-desc.sh by hand; `lane.sh done` and `lane.sh groups` read its groups too. Nothing here writes a description, an issue or a comment.
 #
 # Usage: lane-groups.sh <milestone> <project.yml> [<live issue>...]
 #
@@ -12,7 +12,7 @@
 #   <project.yml>  the DEFAULT branch's committed copy (the callers' $DEF_YML_FILE), never the
 #                  working tree's, which a branch under review can edit
 #   <live issue>   a live lane's issue number, digits with no leading zero; any number of them,
-#                  a repeat counting once (`lane.sh done` passes its live lanes' issues)
+#                  a repeat counting once (`lane.sh done` and `lane.sh groups` pass their live lanes' issues)
 #
 # Run it from inside a checkout of the repository: each `spec-fresh.sh check` it runs fetches the
 # base into that checkout. The caller's GIT_DIR, GIT_WORK_TREE and GIT_COMMON_DIR are cleared.
