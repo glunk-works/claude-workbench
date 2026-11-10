@@ -1,26 +1,24 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 19** (cursor id `sprint-19`), status **implementing**, re-anchored on milestone 30, *Second consumer: fixes from resume-orchestrator's cutover*, task #1378. Milestone 26 (#1340, #1352, #1361) continues alongside; no lane is running.
+**Now:** **Sprint 19** (cursor id `sprint-19`), status **implementing**, on milestone 30, *Second consumer: fixes from resume-orchestrator's cutover*. Waves 1 and 2 merged; task #1371 next. Milestone 26 (#1340, #1352, #1361) continues alongside; no lane is running.
 
-**Just done (2026-11-09, driver session, opus):**
-- #1165 merged as #1363 (`ecd0120`); its lane was cleaned up (worktree, branch and prompt removed).
-- Triaged the resume-orchestrator cutover findings (#169 there): each issue's body carries its 2026-11-09 triage decision. Filed #1378 (ship head check, closes #1372), #1379 (scheduled ruleset-drift workflow, a credential decision), #1380 and #1382 (launcher text, review-poll pause), #1381 (driver-record clone paths, deferred) and #1383 (cutover preflight as wow-admin).
-- Folded #1372 into #1378, #1259 into #1371 (moved off milestone 29), and parts of #1370 into #1371 and #1377; the critic-identity check from #1377 into #1373.
-- Created milestone 30 (due 2026-11-27, ahead of milestone 21's cutover) with its Build order and Lanes line; placed 12 issues; #1379 and #1381 left unmilestoned on purpose. Milestone 29's Build order updated.
-- First anchor for milestone 30 (switched from milestone 26).
+**Just done (2026-11-09 to 11-10, driver session, opus):**
+- Wave 1 merged: #1368 (#1387), #1380 (#1385), #1382, #1378 (#1392, closes #1372), #1373 (#1394, `WB-D46`).
+- Wave 2 merged: #1376 (#1401, `7ef2e35`, `WB-D47`), #1370 (#1400, `025afe6`), #1383 (#1399, `a762698`). Escalations on #1376 and #1370 answered by the maintainer and redrafted; each spec reviewed against `main` and its critic transcript before the reaction. Lanes cleaned up.
+- Image bumps merged: dev container and review image to 4.661 (#1396, #1397). devcontainers v1.7 is cut: its secret scan uses `betterleaks stdin --git-diff` (rc.7); `verify` at v1.7 accepts this repo's `devcontainer.json` as is (it equals v1.7's previous template), and requires the `plugin-install.sh` postStart line from v1.8 on.
+- Milestone 30's Build order and Lanes line kept current through each prep and merge.
 
-**Next:** task #1378 — the maintainer reacts on #1378 and runs one -Spec 1378 session; the driver reviews the posted spec before the reaction; then the lane. Wave 1 beside it: #1373 and #1368, plus #1380 and #1382 any time, each after its own reaction and -Spec session. #1376 is specced after #1378 merges. The driver stays on opus.
+**Next:** task #1371 — after the plugin release and its pin bump, the maintainer reacts on #1371 (after its last body edit) and runs one -Spec 1371 session; the driver reviews the posted spec before the reaction on it; then the #1371 lane. Then #1375, #1377 and #1374 in milestone 30 Build order. Milestone 26: #1352 after the devcontainers v1.7 pin bump and the restart. The driver stays on opus.
 
-**HITL Gate: OPEN** — first anchor for milestone 30 (switched from milestone 26): the maintainer confirms milestone 30, reacts on #1378 and runs its -Spec session; then each spec reaction and PR merge
+**HITL Gate: OPEN** — the maintainer cuts the plugin release for waves 1 and 2, merges its pin bump and the devcontainers v1.7 pin bump with the plugin-install.sh postStart line, and restarts; then reacts on #1371 and runs its -Spec session; then each spec reaction and PR merge
 
-**Critic pass:** none in this session; it wrote no code.
+**Critic pass:** none in this session; it wrote no code. Each lane ran its own.
 
 **Maintainer actions:**
-- React on each wave 1 issue after its last body edit (#1378, #1373, #1368; #1380 and #1382 when wanted) before its -Spec session.
-- Carried: remove `status/needs-human` from #1165 if still set; remove the old `/tmp/lanes/spec-*` and `record-spec-*` directories of exited spec sessions.
-
-**Triage queue (driver, with the maintainer):**
-- #1349 (tracking, milestone 26), #1352, #1353 (finding 2 kept as #1361), #1340 step 2 re-spec, #1344.
+- Plugin release, then the dogfood of `plugin-install.sh`: one host-pushed PR moving `secret-scan.yml` and `devcontainer-image.yml` to devcontainers `0517df2c0288c8c5d817cc9c286c37975e6399b1` (v1.7) and appending `; sh /usr/local/share/devc/plugin-install.sh` to `postStartCommand`; merge the plugin pin bump; with every container session exited, `claude plugin uninstall way-of-working@claude-workbench --scope project` (restore `.claude/settings.json` if rewritten); restart; check one user-scope install at the tag's `gitCommitSha`, that the driver and a lane load it, and `betterleaks version` reads `2.0.0-rc.7`. Then rewrite `reference/conventions.md` § *Bumping a pinned plugin*.
+- #1352: react and run -Spec 1352 after the restart; fingerprints regenerated with rc.7 and the v1.7 git flags. The ignore-list PR's own scan stays red (the list is read from the base).
+- Triage the review-findings issues #1395, #1398, #1402, #1403, #1404 and #1405 (#1405 has a one-line `cutover.md` fix; #1404 notes the push-onto-open-sync-PR path is untested: watch the first live run).
+- Carried: remove the old `/tmp/lanes/spec-*` and `record-spec-*` directories of exited spec sessions; Dependabot #1364.
 
 **Follow-ups outside this repo (not sprint-19 work):**
 - The remaining items of #419's private record (the Infisical identity list and the Cloudflare token audit). global-bootstrap #71 and #68 can be closed; #67 and #69 stay open. bounty-infra #196, #197 (docs) and #194 (Gemini key). loop-orchestrator #216. Delete the leftover serverless-bedrock-rag folder in Infisical.
