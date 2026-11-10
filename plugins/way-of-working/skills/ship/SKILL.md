@@ -33,6 +33,15 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
      typed prefix matching the change (`docs/…`, `chore/…`, `fix/…`, `ci/…`). The branch is
      cut **from `{pr_base}`**.
    - **Already on a work branch?** Confirm it was cut from `{pr_base}` and just add to it.
+   - **On a `docs/sync-cursor-` branch (`#1376`)?** That prefix is `/way-of-working:handoff`'s
+     cursor-sync branch, never a work branch, and ship never adds to it. A build that
+     auto-started on an open sync PR's branch ends up here. Ship stops, before any commit, and
+     says so when the branch has no upstream that resolves or HEAD is not that upstream
+     (`@{u}`, which every push route sets), since local commits would be left out of the new
+     branch. A merged sync branch whose remote-tracking ref was pruned locally stops here too,
+     and the human moves the work to a new branch. Otherwise fetch `{pr_base}` and cut the
+     work branch from `origin/{pr_base}`, carrying only the uncommitted work, never from the
+     sync branch's HEAD; a refused switch to the new branch is a stop too.
    - Never rebase/force-push a pushed branch. To refresh a stale branch, merge `{pr_base}`
      **into** it. A conflict in a ledger file (a backlog, a changelog) is usually *two
      additions* — **keep both sides**. That default is load-bearing: of the two errors

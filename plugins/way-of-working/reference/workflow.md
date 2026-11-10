@@ -301,8 +301,10 @@ edits to the description and cannot be mistaken for the human's approval.
   pick-up point, and adopts the assigned persona/model.
   **It may then start the `next_action` unattended** — but only on a clean, unambiguous
   cursor: `hitl_gate` reading `closed` to `bin/hitl-gate-closed.sh` (its header defines the form), `sprint_status` `implementing`, the model
-  matching `assigned_model`, no cursor/HEAD drift, no open cursor-sync PR and no unmerged
-  sync branch under HEAD, and —
+  matching `assigned_model`, no cursor/HEAD drift, no blocking cursor-sync PR or unmerged
+  sync branch under HEAD (an open one is tolerated only for a build, on its own branch at its
+  head, under `github_milestones` with an `identities` map and an unchanged closed gate,
+  `WB-D47`), and —
   under `github_milestones` — the plan anchor verified and the task issue's author trusted (or, under a map, the declared dev or reviewer App, `WB-D32`)
   (the skill's own *Auto-start* rule is the complete list). Before reading the cursor it
   reports a forgotten handoff cursor-sync PR, which it never merges (`WB-D24`).
@@ -317,7 +319,8 @@ edits to the description and cannot be mistaken for the human's approval.
   is unchanged and still enforced; what auto-start removes is the content-free "go" that
   re-approved a `next_action` the human already approved by merging its cursor-sync PR (a
   merge on GitHub approves the ledger's **Next:**, which `next_action` should match but
-  which nothing compares).
+  which nothing compares). Where an open sync PR is tolerated (`WB-D47`), no human approved
+  that ledger; the `hitl_gate` and the reacted spec carry the approval.
   After a **no-op handoff** (below) it also derives a review or merge step from GitHub state
   alone — never from `next_action` — and auto-starts
   `/way-of-working:architect-review <M> --pin <oid>` only when `state.json` agrees on the PR,
@@ -329,7 +332,12 @@ edits to the description and cannot be mistaken for the human's approval.
   current cursor to `.ai/state.json` — **including `hitl_gate`, always, even when nothing
   is open**, since `/way-of-working:resume`'s auto-start reads it — regenerates `.ai/next-steps.md` (what
   was done, what's next, which model next), and reminds you to commit if the tree is
-  dirty. Does **not** archive. Because `/way-of-working:resume` may execute the `next_action` unattended,
+  dirty. Skips the ledger PR when `ledger-material.sh` finds no change to **Now:**, **Next:**,
+  the **HITL Gate** text or the milestone-close line, no critic outcome is to be recorded, and the
+  checkout is a synced `{pr_base}` with no sync PR open, or the open sync branch at its head, and reports
+  `Cursor sync: not needed (no material change)`. When a sync PR is already open it pushes onto
+  that PR's branch, after an author check, instead of opening a second. `/way-of-working:ship`
+  never builds on a `docs/sync-cursor-` branch (`WB-D47`, `#1376`). Does **not** archive. Because `/way-of-working:resume` may execute the `next_action` unattended,
   write it as a bounded imperative you would be content to see carried out without you; if
   it genuinely needs a decision, open a `hitl_gate` instead.
   **When the only cursor change is "review or merge PR #M next"** it is a *no-op handoff*:

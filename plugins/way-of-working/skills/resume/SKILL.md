@@ -5,8 +5,8 @@ description: >-
   assigned persona/model, and state the exact pick-up point. Reports a forgotten
   handoff cursor-sync PR (it never merges one). Then start the next_action
   unattended IF the cursor is clean and unambiguous (hitl_gate reads closed to hitl-gate-closed.sh, sprint_status
-  implementing, model matches, no drift, no orchestrator-driver lock, no open cursor-sync PR and no unmerged sync branch
-  under HEAD — an unreadable check counts as one — and — under planning.kind: github_milestones — the
+  implementing, model matches, no drift, no orchestrator-driver lock, no blocking cursor-sync PR or unmerged sync branch under HEAD
+  (an unreadable check blocks), and — under planning.kind: github_milestones — the
   plan anchor verifies and the task issue's author is trusted, or, under a map, the declared dev or reviewer App); otherwise state the pick-up
   point and wait. As the declared dev App only, it may instead draft and post one spec comment
   (when the finder finds no spec comment at all, or the approved one is stale) and end without building. Fails
@@ -95,6 +95,8 @@ edited it. **Default to the full checklist whenever unsure.**
    - **`open <N> <oid> <branch>`** — report `Cursor-sync PR #N is open and awaits
      your merge on GitHub (after the code owner's approval, where the repo has cut over); this
      session does not merge it.` Read-only: do not show its text, offer a merge, or run one.
+     When it does not block auto-start (the tolerated-open conditions below), the line also says
+     that this session auto-started on its cursor.
    - **`refuse <N> <reason>`** or **`ambiguous <N> <N>...`** — report one line naming the
      PR(s) and the reason (`files` is also what a `/way-of-working:park-sprint` or
      `/way-of-working:unpark-sprint` PR returns — they share handoff's branch prefix but also
@@ -110,6 +112,26 @@ edited it. **Default to the full checklist whenever unsure.**
    `cursor-drift.sh` can read it as `cursor-sync`. So *Auto-start* waits on every other
    outcome, `unreadable` included: "couldn't tell whether one is open" is not "none is
    open." Once the PR merges, a later `/way-of-working:resume` finds `none`.
+
+   **The tolerated open PR (`#1376`, `WB-D47`).** `open <N> <oid> <branch>` does not block a
+   build's auto-start when all of the following hold; otherwise it waits, as above.
+   - The default branch's copy of the project file is `github_milestones` with an `identities`
+     map, so the full-mode `match` bounds the build to a spec a maintainer reacted to.
+   - `git symbolic-ref -q HEAD` equals `refs/heads/` plus that branch.
+   - HEAD is that `oid` and the tree is clean.
+   - `cursor-drift.sh` reads `clean` or `cursor-sync`.
+   - The **HITL Gate** text of the ledger committed on `origin/{pr_base}`, read after a fetch of `{pr_base}` in the same Bash call (the text after
+     `HITL Gate:`, flattened to one line, as `hitl-gate-closed.sh`'s header says) reads `closed`
+     to `hitl-gate-closed.sh`, and the checkout's ledger has the same flattened **HITL Gate**
+     text, byte for byte, so any gate change made on an unmerged sync waits for its merge. A
+     failed fetch or read waits.
+   - Every other Auto-start condition holds, the gate included.
+
+   `refuse`, `ambiguous`, `unmerged` and `unreadable` still wait. Stated limits: the tolerated
+   `open` counts only toward a build, so the drafting branch still waits on it; the review shape
+   still waits, because `review-step.sh decide` requires the base; and a cursor written on an
+   unmerged work branch still reads `drift`, and so does a sync pushed onto the open PR from its
+   own branch when the base moved since that branch's last merge.
 
 3. **Read the cursor** (in this order, stop reading once you have enough — except where marked
    unconditional):
@@ -320,8 +342,8 @@ edited it. **Default to the full checklist whenever unsure.**
 
    - **`clean`** — `last_commit` is HEAD. Not drift.
    - **`cursor-sync`** — HEAD differs from `last_commit` only in `.ai/next-steps.md`, in files
-     under `.ai/parked/`, or both. **Not drift.** It is the expected shape of a merged
-     `/way-of-working:handoff` (which sets `last_commit` to HEAD *before* committing the ledger;
+     under `.ai/parked/`, or both. **Not drift.** It is the expected shape of a
+     `/way-of-working:handoff` sync, merged or sitting on its open PR's branch (which sets `last_commit` to HEAD *before* committing the ledger;
      `.ai/state.json` is git-ignored, so nothing corrects it afterwards — recognising this case
      is required, or auto-start can never fire in the intended flow). `.ai/parked/` holds
      snapshots of sprints *other than* the live one, which cannot invalidate the live
@@ -340,7 +362,7 @@ edited it. **Default to the full checklist whenever unsure.**
      the abbreviation of exactly one object, a commit. Wait.
 
    Say which case you found in one line, e.g. `HEAD differs from last_commit only in
-   .ai/next-steps.md — the merged cursor-sync PR, not drift.` Anything the script cannot
+   .ai/next-steps.md — the cursor-sync commit, not drift.` Anything the script cannot
    classify as `clean` or `cursor-sync` is drift.
 
 5. **Prune squash-merged local branches.** `git branch --merged {pr_base}` **cannot** see a squash-merged branch, so ask GitHub which PRs merged: one read-only `gh` call, then a safe `-D` on **only** the branches whose PR GitHub reports `merged` and whose local tip is that merged commit or an ancestor of it — never an unmerged or PR-less branch, never `{pr_base}`, never the current branch:
@@ -766,7 +788,9 @@ edited it. **Default to the full checklist whenever unsure.**
    - the *Ensure the schema is complete* step's `schema-complete.sh check .ai/project.yml`
      printed `complete` — `incomplete` or `unreadable` both wait, the same fail-closed
      reading as an unreadable `hitl_gate` (`WB-D17`, `#142`);
-   - the *Report a forgotten cursor-sync PR* step found `none` — every other outcome waits;
+   - the *Report a forgotten cursor-sync PR* step found `none` — every other outcome waits,
+     except an `open <N> <oid> <branch>` that meets that step's tolerated-open conditions, which
+     counts toward a build only (`WB-D47`);
    - `hitl_gate` is closed, by the plugin's one predicate (`#557`), run on the value read
      with `jq -r` into a variable and passed quoted as its single argument (it is data, never
      typed into a command line):
@@ -1075,9 +1099,10 @@ edited it. **Default to the full checklist whenever unsure.**
    `Drafting: no spec comment for #N, acting as the dev App with no stored login.`)
    so the choice is visible and you can stop it.
 
-   **Auto-start removes a rubber stamp, not a gate.** The ledger's **Next:** was approved by the human's
-   merge of the previous handoff's cursor-sync PR (the `next_action` itself is not shown there,
-   `WB-D24`); the approval that carries real signal
+   **Auto-start removes a rubber stamp, not a gate.** The ledger's **Next:** is approved by the
+   human's merge of the previous handoff's cursor-sync PR when one merged (the `next_action`
+   itself is not shown there, `WB-D24`); an open one is tolerated under `WB-D47`, and no human
+   approved that ledger. The approval that carries real signal
    is the **`hitl_gate`**, still absolutely enforced. It never crosses a merge boundary:
    `/way-of-working:critic-gate` still proposes and the human still picks (said of its diff mode,
    or, where the repo set `{agents.diff_rule}` on its default branch, a rule over the diff selects the

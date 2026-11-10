@@ -4,8 +4,9 @@ description: >-
   Serialize the current dev-session state into .ai/ before switching model or session —
   check the /way-of-working:critic-gate pass ran on any code diff, update .ai/state.json (including
   hitl_gate, always), regenerate .ai/next-steps.md, and commit/push it as its own docs-only
-  PR (never merged — the human merges). Run this at the END of a session. Does NOT archive a
-  sprint.
+  PR (never merged — the human merges), skipping that PR when nothing material changed on a
+  synced base with no sync PR open, or the open sync branch at its head and no critic outcome is to be recorded.
+  Run this at the END of a session. Does NOT archive a sprint.
 ---
 
 # /way-of-working:handoff — externalize state before switching model/session
@@ -255,7 +256,7 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
    `.ai/state.json` and **nothing else** (link 5's switch aside): skip the *Regenerate `.ai/next-steps.md`* and
    *Commit `.ai/next-steps.md` as its own docs-only PR* steps, and end with a switch to
    `{pr_base}`, synced (link 5 below), so the checkout does not stay on the work branch. A regenerated,
-   uncommitted ledger would leave the tree dirty, and `/way-of-working:resume` would wait. Any other cursor change still gets the ledger PR.
+   uncommitted ledger would leave the tree dirty, and `/way-of-working:resume` would wait. Any other cursor change still gets the ledger PR when the *Commit* step finds a material change.
    The test is mechanical, in this order, and **every failed link in 1–4 falls back to the
    ledger PR** — say which link failed (link 5's switch runs after the cursor is written and
    has its own rule):
@@ -491,6 +492,73 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
 5. **Commit `.ai/next-steps.md` as its own docs-only PR against `{pr_base}`.** **Skipped on a no-op handoff** (see the *Regenerate `.ai/next-steps.md`* step). The cursor
    sync travels as a small, standalone, docs-only PR, separate from whatever code PR this
    session's work landed on. Do it now, don't just remind:
+   - **Skip the sync when nothing material changed, and push onto an open sync PR (`#1376`, `WB-D47`).** This
+     paragraph applies to handoff's own run only. Park, unpark and plan-sprint cite this step by
+     reference and keep today's fresh-branch path below. Run `cursor-sync-pr.sh {repo} {pr_base}`
+     once and keep its word. Then write HEAD's committed copy of `.ai/next-steps.md` to a temp
+     file and run `ledger-material.sh <that file> .ai/next-steps.md` (the regenerated file),
+     keeping its word.
+     **Not needed.** This path is taken only when all of the following hold; otherwise the run
+     syncs, as below.
+     - The `ledger-material.sh` word is `same` (`changed` and `unreadable` both sync).
+     - Either the `cursor-sync-pr.sh` word is `none` and HEAD is `{pr_base}`, equal to
+       `origin/{pr_base}` after a fetch, or the word is `open N oid branch` and HEAD is that
+       branch at that `oid`.
+     - This session wrote no critic outcome: no pass ran and none was declined.
+     - The earlier critic record read in the *Determine the new cursor* step is empty. A record
+       that could not be read counts as non-empty.
+
+     On this path handoff makes no commit, no push and no PR. It restores `.ai/next-steps.md`
+     to HEAD's copy, keeps the `.ai/state.json` already written, makes no branch switch, and
+     reports exactly `Cursor sync: not needed (no material change)`.
+
+     **Push onto the open PR.** When the word was `open N oid branch`, the sync goes onto that
+     PR in place of cutting a new branch.
+     - First, the PR's author must be this session's acting identity: in App mode, the
+       actor-check block of `/way-of-working:ship`'s *Open the PR* step (cited, never copied)
+       passes on N; in user mode, the PR's author login is the login `gh api user` prints.
+       Otherwise stop before anything else on this path, so one identity authors the PR; the report names the branch and says the regenerated ledger is
+       uncommitted in the tree.
+     - The copy-aside, the chain, the commit and the copy-back below run in one Bash call,
+       because each call is a fresh shell. First, copy the regenerated file to a temp file and
+       restore `.ai/next-steps.md` to HEAD's copy, so the checkout is not refused. The temp file
+       has no exit trap, and a failing step in this call copies it back over `.ai/next-steps.md`
+       in that same call before the call ends, so a conflicted merge or a refused checkout never
+       loses the regenerated ledger.
+     - One `&&` chain fetches `{pr_base}`, checks out the sync branch and merges
+       `origin/{pr_base}` into it. It is a merge, never a rebase, because the `api` route refuses
+       a non-fast-forward. A failed step stops handoff and says so, and a conflicted merge is
+       aborted first.
+     - Copy the saved file back and commit only `.ai/next-steps.md`.
+     - Before the push, read the PR's state, base, head and armed auto-merge, as
+       `/way-of-working:ship`'s *Verify the PR head* step reads them. Unless the PR is `OPEN`, on
+       `{pr_base}`, with its head still that `oid` and no auto-merge armed, stop before pushing
+       and say so.
+     - The push takes the route the push bullet below gives. This paragraph names no push script
+       and writes no literal push command.
+     - After the push, the *Verify the PR head* check runs: state `OPEN`, base `{pr_base}`, and
+       the PR head, local HEAD and remote branch tip all equal, with one re-read on `differs`.
+     - A refused or failed push, a second `differs`, or an unreadable read is reported as a
+       failed sync. No second PR is opened.
+     - **On any stop after the copy-aside:**
+       - The regenerated ledger to put back is the saved file when the stop comes in the
+         copy-aside call, and otherwise the sync commit's copy (`git show` of its
+         `.ai/next-steps.md`), taken before any reset.
+       - When the local branch has moved past the `oid` (a merge or a commit was made), read
+         the remote branch tip through `gh`, as the *Verify the PR head* check reads it. Only
+         when that tip is still the `oid`, reset the branch to it with `git reset --keep`, so
+         later runs still read `open`. When the tip moved, or the read fails, the push may have
+         landed: make no reset, leave the branch where it is, and name its state for the human.
+       - Write the ledger back over `.ai/next-steps.md`. The tree is dirty when the branch was
+         reset or the stop came before the commit; when the sync commit was made and not reset,
+         the tree matches the branch, and `cursor-sync-pr.sh` decides.
+       - The report names where the checkout is.
+     - In App mode, a `.github/workflows/` change merged in from the base is a known refusal on
+       this path, and every later handoff on that PR hits it again; the report then tells the
+       human to merge or close the sync PR.
+
+     **Every other word** (`none`, `unmerged`, `refuse`, `ambiguous`, `unreadable`) cuts a
+     fresh `docs/sync-cursor-` branch and opens a PR, as below, and the report names the word.
    - If the current branch is a code branch (e.g. mid-implementation, or the just-pushed
      feature branch), do **not** commit the cursor sync there — switch to `{pr_base}`, cut
      a fresh small branch named `docs/sync-cursor-<slug>` (the prefix is required — see
@@ -572,7 +640,9 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
      is still open when the next session starts, `/way-of-working:resume`'s *Report a
      forgotten cursor-sync PR* step finds it — which is why the branch must keep the
      `docs/sync-cursor-` prefix and stay a local branch on this machine — and reports it
-     without merging it (`WB-D24`); until it merges, that session does not auto-start.
+     without merging it (`WB-D24`); until it merges, that session does not auto-start, except
+     where resume's tolerated-open rule lets a build auto-start on the open PR's own branch
+     (`WB-D47`).
    - `.ai/state.json` is git-ignored and needs no commit; it already travels with the
      working tree for this machine.
    - If something *else* is dirty beyond `.ai/next-steps.md` (leftover from this
@@ -609,9 +679,9 @@ names `{backlog.repo}` takes `{repo}` then (the derive line below passes `-` ins
      precondition 3 leaves it. The entry records the commit hash the roadmap's own convention names
      for the sprint's last work, which is already merged, never the roadmap PR's own merge commit,
      which a squash merge cannot name. Report a stop the way precondition 3 does and go on to the *Report*
-     step. A no-op handoff skips this step, so it never makes the offer.
+     step. A no-op handoff skips this step, so it never makes the offer, and neither does the not-needed path. It runs on the new-PR and pushed paths, on the sync branch actually used.
 
-6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. If the critic pass was skipped by choice (the *Check the QA-critic pass ran* step), say so here. If the `lanes` write printed `lanes: unreadable`, say the lane state could not be read. If the roadmap-PR offer ran, name the roadmap PR's URL, say the committed `next_action` was written before it opened (and still names archive-sprint, if it does, which waits on that PR's merge) and that merging it makes the next `/way-of-working:resume` read drift and wait; or, if its chain stopped, the stop, `git branch --show-current`, and, in App mode after a failed push, that the commit waits on `docs/<sprint>-status` and the push is retried from this session, never by hand. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/way-of-working:resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
+6. **Report** the new `sprint_status`, the `next_action`, and the recommended next model in 2–3 lines. Name which sync outcome ran: the not-needed line, a push onto the open PR, a failed sync with its stop, or a new PR. If the critic pass was skipped by choice (the *Check the QA-critic pass ran* step), say so here. If the `lanes` write printed `lanes: unreadable`, say the lane state could not be read. If the roadmap-PR offer ran, name the roadmap PR's URL, say the committed `next_action` was written before it opened (and still names archive-sprint, if it does, which waits on that PR's merge) and that merging it makes the next `/way-of-working:resume` read drift and wait; or, if its chain stopped, the stop, `git branch --show-current`, and, in App mode after a failed push, that the commit waits on `docs/<sprint>-status` and the push is retried from this session, never by hand. Then **end with the exact next-session command block** — the human runs the mechanical switch (`/clear` / `/model` / `/way-of-working:resume` are harness commands a skill **cannot** execute), so hand them the literal keystrokes, not a description:
 
    ```
    Next session:
