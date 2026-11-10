@@ -20,6 +20,7 @@
 # bound) prints exactly one line, `inconclusive <reason>`, and nothing else. The reason is one of:
 #   bad-repo, bad-base   -- a refused argument
 #   no-gh, no-jq, no-yq  -- a tool is missing from PATH
+#   no-tmp               -- the private temporary directory could not be made
 #   branch-rules         -- the branch-rules read failed or was not JSON
 #   unreadable           -- the project file is missing or not parseable YAML
 #   bad-rulesets         -- a `rulesets` key that is empty or not a list (checked by type,
@@ -63,7 +64,7 @@
 # Report lines that carry a config value are printed with printf, never echo: a name may carry a backslash, which is no
 # control character, and some shells' echo would turn `\n` in it into a second line.
 #
-# Permitted toolset: gh, jq, yq (mikefarah v4), POSIX sh plus mktemp, tr and rm (the CR-stripping wrappers below).
+# Permitted toolset: gh, jq, yq (mikefarah v4), POSIX sh plus mktemp, tr and rm (the CR-stripping wrappers below, which keep their temp files in a private directory).
 set -u
 
 if [ "$#" -ne 3 ]; then
@@ -91,8 +92,11 @@ command -v yq >/dev/null 2>&1 || inc no-yq
 
 # A native jq.exe or yq.exe under Git Bash can end each output line in CR (the sibling host scripts strip it);
 # these wrappers keep the exit status and drop the CR from every value read into a variable.
-jq() { _o=$(mktemp) || return 1; command jq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
-yq() { _o=$(mktemp) || return 1; command yq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+WT=$(umask 077 && mktemp -d) || inc no-tmp
+trap 'rm -rf -- "$WT"' EXIT
+trap 'exit 1' INT TERM HUP
+jq() { _o=$(mktemp "$WT/w.XXXXXX") || return 1; command jq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+yq() { _o=$(mktemp "$WT/w.XXXXXX") || return 1; command yq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
 
 B=$(gh api --paginate "repos/$R/rules/branches/$BASE" </dev/null) || inc branch-rules
 B=$(printf '%s' "$B" | jq -s 'add // []') || inc branch-rules

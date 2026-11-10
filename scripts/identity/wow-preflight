@@ -58,8 +58,8 @@ T=$(umask 077 && mktemp -d) || die "cannot make a temporary directory"
 
 # A native jq.exe or yq.exe under Git Bash can end each output line in CR (the sibling host scripts strip it);
 # these wrappers keep the exit status and drop the CR from every value read into a variable.
-jq() { _o=$(mktemp) || return 1; command jq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
-yq() { _o=$(mktemp) || return 1; command yq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+jq() { _o=$(mktemp "$T/w.XXXXXX") || return 1; command jq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+yq() { _o=$(mktemp "$T/w.XXXXXX") || return 1; command yq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
 
 unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
 

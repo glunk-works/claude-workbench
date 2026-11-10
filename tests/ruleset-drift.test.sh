@@ -191,6 +191,11 @@ printf '%s\n' 'rulesets:' "  - name: 'x\\nruleset forged missing_types=[]\\c'" '
 assert_eq "list form: a backslash in a name stays on one line" \
   'ruleset x\nruleset forged missing_types=[]\c inconclusive' "$(run $R $BASE $yml)"
 
+# The CR-stripping wrappers keep their temp files in a private directory, removed on exit.
+setup_ok; list_yml; mkdir -p "$tmp/td"
+TMPDIR="$tmp/td" run $R $BASE $yml >/dev/null
+assert_eq "no temp file is left after a run" "" "$(ls -A "$tmp/td")"
+
 # --- pre-name inconclusive -----------------------------------------------------------------
 setup_ok; list_yml
 assert_eq "a failed branch-rules read, list form" "inconclusive branch-rules" \
