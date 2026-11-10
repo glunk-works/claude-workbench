@@ -21,6 +21,8 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-11-10
+
 **⚠️ Migration** — the host broker now accepts `owner/name` entries in `broker.json`, and refuses a whole `broker.json` that holds two entries with the same name half, a repeated entry or a case-variant duplicate included, or an owner half equal to another entry's name: it exits 2 under `-Once`, and the looping broker logs it and stops every mint. Before reinstalling, check `broker.json` for repeated or case-duplicate entries. Then reinstall the host tools and restart the broker. To get `tokens/<owner>/<repo>`, change an entry to `owner/name` form; it then writes both `tokens/<repo>` and `tokens/<owner>/<repo>` until the old layout is retired. Each name half must now match the ASCII-only rule case-sensitively, so a name with U+212A is refused and the review sweeps leave such a directory in place (`#1276`).
 
 **⚠️ Migration** — once the host tools are reinstalled, `wow-driver.ps1` needs `gh` on PowerShell's PATH on both paths (it refuses without it) and, for a start of day, a `gh` login that can read the origin repository.
