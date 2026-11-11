@@ -413,8 +413,8 @@ only `/workspace`, and its `.git` file names a host path.
   lane, and the second shows a line telling the driver to run handoff before new work. Both stay silent
   in a lane or spec worktree and outside a main worktree, never block a compaction, and a manual
   `/compact` runs neither. At 60% or more of context used the line reads `ctx NN% handoff` (#792). Lane state
-  reads `lanes: { dir: /tmp/lanes }` in `.ai/project.yml` (#793; kept by the maintainer or driver,
-  since lanes never write under `.ai/`), and `bin/lane-state.sh` lets handoff record the live lanes and
+  reads `lanes: { dir: /tmp/lanes }` in `.ai/project.yml` (#793; kept by the maintainer or driver), and
+  `bin/lane-state.sh` lets handoff record the live lanes and
   resume report them, and `lane.sh status` reads it with `lane-state.sh` too.
 - **Identity.** Every session, driver or lane, acts as the dev App through the container's `gh`
   shim and git credential helper. Do not prefix commands with `GH_TOKEN`. Suites run natively
@@ -441,7 +441,8 @@ only `/workspace`, and its `.git` file names a host path.
   `/way-of-working:architect-review` prints the launcher command.
 - **Lane rules that still apply:**
   - Lanes never run `/way-of-working:resume`, `/way-of-working:handoff`,
-    `/way-of-working:plan-sprint` or `/way-of-working:archive-sprint`, and never write `.ai/`.
+    `/way-of-working:plan-sprint` or `/way-of-working:archive-sprint`, and never write the `.ai/` cursor (another `.ai/` path only when the
+    spec's *Files touched* lists it).
   - A lane never merges, approves or force-pushes. It works in its own worktree and does not
     edit `/workspace`'s working tree (the worktree's `.git` lives under `/workspace/.git`, so its
     commits and refs land there).

@@ -116,8 +116,9 @@ under-specified, or requires a design decision, STOP and report back rather than
    the gate of record — CI on the PR is — so a green run here is necessary, not sufficient.
    If the task changed dependencies, also run whatever dependency or SBOM gate the repo
    defines for that case.
-7. Do NOT commit unless explicitly told to. Do NOT touch `{roadmap}`, the `.ai/` cursor or
-   state, or any flag/wiring beyond what the task specifies.
+7. Do NOT commit unless explicitly told to. Do NOT touch `{roadmap}` or the `.ai/` cursor (`.ai/state.json`,
+   `.ai/next-steps.md`, `.ai/parked/`, `.ai/archive/`). Touch any other path under `.ai/`, or
+   any flag/wiring, only where the task specifies it.
 
 ## Report back
 
