@@ -8,10 +8,10 @@
 # merge (before PR 1 the default branch has no map): pass the reviewed PR's copy, never one from a
 # checkout a container can write. The rows are judged against that file.
 #
-# It acts as the admin App, through $WOW_HOME/tokens/<name>/admin-token, the copy wow-admin
-# always writes (wow-admin writes the same token into the directory the repo's dev container mounts, so it elevates the
-# container while it is live: run `wow-admin <name> --revoke` after the run). Mint it with
-#   wow-admin <name> --perms administration=write,contents=read,actions=read
+# It acts as the admin App, through $WOW_HOME/tokens/<owner>/<name>/admin-token, the file wow-admin
+# writes. That is the directory the repo's dev container mounts, so the token elevates the
+# container while it is live: run `wow-admin <owner/name> --revoke` after the run. Mint it with
+#   wow-admin <owner/name> --perms administration=write,contents=read,actions=read
 # because a ruleset's bypass_actors may be withheld from a caller who cannot edit the ruleset.
 # The script, not the token, keeps the run to reads: every `gh api` call below has no method,
 # field or input flag. token-check.sh proves it is an installation token reaching the repo (not which
@@ -64,9 +64,9 @@ yq() { _o=$(mktemp "$T/w.XXXXXX") || return 1; command yq "$@" >"$_o"; _r=$?; tr
 unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
 
 # --- the token: checked before any row request ----------------------------------------------
-tokfile=$wow_home/tokens/$name/admin-token
+tokfile=$wow_home/tokens/$owner/$name/admin-token
 stop_token() {
-  die "no usable admin token for $name ($1); if one is on file, run: wow-admin $name --revoke; then mint one with: wow-admin $name --perms administration=write,contents=read,actions=read"
+  die "no usable admin token for $repo ($1); if one is on file, run: wow-admin $repo --revoke; then mint one with: wow-admin $repo --perms administration=write,contents=read,actions=read"
 }
 TOK=$(sh "$here/token-check.sh" token "$tokfile" 2>/dev/null) && [ -n "$TOK" ] || stop_token "token file"
 GH_TOKEN=$TOK gh api --hostname github.com --paginate installation/repositories \
@@ -290,5 +290,5 @@ row 'dev App installation' "$UI" 'no installation token can list another App'"'"
 row 'org secrets' "$UI" 'the admin App holds no secrets permission; a secret the repo'"'"'s workflows use must have this repo in its visibility'
 row 'fork pull request workflows' "$UI" 'not read by this command; the setting applies to a private repo'
 
-echo "wow-preflight: done; revoke the admin token now: wow-admin $name --revoke" >&2
+echo "wow-preflight: done; revoke the admin token now: wow-admin $repo --revoke" >&2
 exit 0

@@ -6,7 +6,7 @@
 # broker.json). The broker runs with -Once, one pass per case.
 #
 #   mint         no token -> minted for the dev installation, one repo, the dev permissions, written to
-#                tokens/<repo>/dev-token; the staging file is gone
+#                tokens/<owner>/<repo>/dev-token (entries are owner/name, #1340); the staging file is gone
 #   current      a token with more than 30 minutes left is left alone (mint never called)
 #   rotation     a token with 10 minutes left, then an expired one, are replaced by the new token
 #   failure      a failed mint, or one that yields a non-token or already-expired file, exits 1 and
@@ -21,7 +21,7 @@
 #   install      install-host-tools.ps1 exports committed files only into bin with a MANIFEST (commit, hashes),
 #                the review image's build context into bin/review/ from the table in the script,
 #                refuses an uncommitted change (in any source directory) or a HEAD not on origin/main, and
-#                creates tokens/<repo>; warns, without failing, when broker.json, review-poll.json and tokens/ name different repos, and
+#                creates tokens/<owner>/<repo> only; warns, without failing, when broker.json and review-poll.json name different repos, or a top-level tokens/ directory is no entry's owner, and
 #                gives poll entries it cannot read as owner/name one warning holding only their count;
 #                register-broker-task.ps1 -WhatIf points the task at bin, runs pwsh through conhost --headless and installs nothing (skipped, loudly,
 #                where New-ScheduledTaskAction is not available)
@@ -35,12 +35,14 @@
 #   no tool on PATH  with PATH holding only an empty directory and no -Sh, register-broker-task, broker
 #                and install-host-tools each reach their own "no POSIX sh found" / "git not found" message,
 #                never a null .Source error; broker never calls mint.sh and install creates no bin
-#   owner/name   a broker.json entry "acme/alpha" mints once (--repos alpha) and writes the same token to tokens/alpha and
-#                tokens/acme/alpha with no staged file left; one stale or missing copy re-mints both; a publish blocked for
-#                one copy is logged, exits 1, leaves no staged file and the other entry is still minted; bad shapes (a/b/c,
-#                /alpha, acme/, a half starting with . or -, a non-ASCII half, an owner equal to another entry's name in any
-#                case, two entries with one name half, a non-string entry) exit 2 before any mint; acme/acme is accepted; the sweeps leave a non-ASCII directory; a bare entry still writes only tokens/<name>; the install creates both
-#                directories, skips an entry failing the rule, and its cross-check ignores the owner directory (#1276)
+#   owner/name   a broker.json entry "acme/alpha" mints once (--repos alpha) and writes only tokens/acme/alpha with no staged file
+#                left; a stale or missing owner copy re-mints, and a stale or missing old-layout tokens/alpha alone never
+#                does; a publish blocked for the owner copy is logged, exits 1, leaves no staged file and the other entry is
+#                still minted; bad shapes (a/b/c, /alpha, acme/, a half starting with . or -, a non-ASCII half, an owner
+#                equal to another entry's name in any case, two entries with one name half, a non-string entry) exit 2 before
+#                any mint; acme/acme is accepted; a bare-name entry exits 2 before any mint (#1340); the sweeps leave a
+#                non-ASCII directory; the install creates only owner directories, warns once by name for a bare entry,
+#                skips an entry failing the rule, and its cross-check names a top-level directory that is not an owner half
 #   config       a bad repo name (or a trailing dot) or a missing broker.json exits 2 before anything
 #                is minted
 #
@@ -74,7 +76,7 @@ cat >"$home/apps.json" <<'CONF'
 {"dev": {"client_id": "Iv1devclient", "installation_id": "4242", "key": "dev.pem"}}
 CONF
 echo pem >"$home/dev.pem"
-repos_ok='{"repos": ["alpha", "beta"]}'
+repos_ok='{"repos": ["acme/alpha", "acme/beta"]}'
 echo "$repos_ok" >"$home/broker.json"
 
 sh_path=$(wp "$(command -v sh)")
@@ -103,10 +105,12 @@ run_broker() { # leaves the exit code in $rc, output in $tmp/out
 reset() { rm -f "$stubdir"/*; rm -rf "$home/tokens" "$home/staging" "$home/broker.log" "$home/review-sessions" "$home/review-logs"; echo "$repos_ok" >"$home/broker.json"; }
 set_repos() { printf '{"repos": [%s]}\n' "$1" >"$home/broker.json"; }
 calls() { if [ -f "$stubdir/$1" ]; then wc -l <"$stubdir/$1" | tr -d ' '; else echo 0; fi; }
+# tpath <repo>: a bare name means the fixtures' owner, acme; owner/name and paths with a slash are kept
+tpath() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'acme/%s' "$1" ;; esac; }
 write_token() { # write_token <repo> <token> <expires>
-  mkdir -p "$home/tokens/$1"; printf '%s\n%s\n' "$2" "$3" >"$home/tokens/$1/dev-token"
+  d="$home/tokens/$(tpath "$1")"; mkdir -p "$d"; printf '%s\n%s\n' "$2" "$3" >"$d/dev-token"
 }
-tokfile() { cat "$home/tokens/$1/dev-token" 2>/dev/null || true; }
+tokfile() { cat "$home/tokens/$(tpath "$1")/dev-token" 2>/dev/null || true; }
 expect_fresh() { printf '%s\n%s' "$fresh" "$live"; }
 
 # --- mint ------------------------------------------------------------------------------------
@@ -166,17 +170,17 @@ done
 
 # --- survival --------------------------------------------------------------------------------
 reset
-mkdir -p "$home/tokens/alpha/dev-token"   # unpublishable: a directory where the token file goes
+mkdir -p "$home/tokens/acme/alpha/dev-token"   # unpublishable: a directory where the token file goes
 run_broker
 check "survival: failed repo exits 1" test "$rc" -eq 1
 check "survival: the other repo is still minted" test "$(tokfile beta)" = "$(expect_fresh)"
-check "survival: failure is logged" grep -q 'dev alpha' "$home/broker.log"
+check "survival: failure is logged" grep -q 'dev acme/alpha' "$home/broker.log"
 
 # --- token shape -----------------------------------------------------------------------------
 reset
-mkdir -p "$home/tokens/alpha" "$home/tokens/beta"
-printf '%s\r\n%s\r\n' "$old" "$(stamp '+55 minutes')" >"$home/tokens/alpha/dev-token"
-printf '%s\n\n%s\n' "$old" "$(stamp '+55 minutes')" >"$home/tokens/beta/dev-token"
+mkdir -p "$home/tokens/acme/alpha" "$home/tokens/acme/beta"
+printf '%s\r\n%s\r\n' "$old" "$(stamp '+55 minutes')" >"$home/tokens/acme/alpha/dev-token"
+printf '%s\n\n%s\n' "$old" "$(stamp '+55 minutes')" >"$home/tokens/acme/beta/dev-token"
 run_broker
 check "shape: CRLF token is replaced" test "$(tokfile alpha)" = "$(expect_fresh)"
 check "shape: token with a blank line is replaced" test "$(tokfile beta)" = "$(expect_fresh)"
@@ -296,7 +300,8 @@ for f in wow-review review-gate-state.sh token-check.sh gh-identity.sh wow-drive
 done
 check "install: files are LF" not_cr "$home/bin/mint.sh" "$home/bin/wow-admin" "$home/bin/broker.ps1"
 check "install: no staging left" test ! -e "$home/bin.new" -a ! -e "$home/bin.old"
-check "install: tokens/<repo> created for each repo" test -d "$home/tokens/alpha" -a -d "$home/tokens/beta"
+check "install: tokens/<owner>/<repo> created for each repo" test -d "$home/tokens/acme/alpha" -a -d "$home/tokens/acme/beta"
+check "install: no bare tokens/<repo> directory created" test ! -e "$home/tokens/alpha" -a ! -e "$home/tokens/beta"
 # cross-check of broker.json, review-poll.json and tokens/ (#1161): warns only, never changes the exit code
 xc_warns() { grep -c 'WARNING: ' "$tmp/out"; }
 xc_has() { grep -q -F -e "WARNING: $1" "$tmp/out"; }
@@ -305,7 +310,7 @@ run_install
 check "cross-check: a mismatch still exits 0" test "$rc" -eq 0
 check "cross-check: a poll name not in broker.json is named" xc_has "gamma is in review-poll.json but not broker.json: no dev token is minted for it on this host"
 check "cross-check: a broker.json name with no poll entry is named" xc_has "beta is in broker.json but not review-poll.json: no automatic reviews for it"
-check "cross-check: a tokens directory with no broker.json entry is named" xc_has "tokens/delta has no broker.json entry"
+check "cross-check: a tokens directory with no broker.json entry is named" xc_has "tokens/delta is not the owner directory of any broker.json entry"
 check "cross-check: exactly three warnings" test "$(xc_warns)" -eq 3
 reset; echo '{"repos": ["acme/alpha", "other/beta"]}' >"$home/review-poll.json"
 run_install
@@ -313,7 +318,7 @@ check "cross-check: matching sets give no warning" test "$(xc_warns)" -eq 0
 reset; rm -f "$home/review-poll.json"; mkdir -p "$home/tokens/delta"
 run_install
 check "cross-check: no poll file gives no poll warning" test "$(grep -c 'review-poll.json' "$tmp/out")" -eq 0
-check "cross-check: no poll file still reports the extra tokens directory" xc_has "tokens/delta has no broker.json entry"
+check "cross-check: no poll file still reports the extra tokens directory" xc_has "tokens/delta is not the owner directory of any broker.json entry"
 reset; echo 'POLLSECRET not json' >"$home/review-poll.json"
 run_install
 check "cross-check: a poll file that is not JSON: one warning, exit 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
@@ -322,14 +327,14 @@ reset; echo '{"repos": ["acme/alpha", 7, "POLLSECRET/x"]}' >"$home/review-poll.j
 run_install
 check "cross-check: a poll file with a non-string entry: one warning, exit 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
 check "cross-check: a poll file with a non-string entry: the content is not echoed" sh -c "! grep -q POLLSECRET '$tmp/out'"
-reset; echo '{"repos": ["Alpha"]}' >"$home/broker.json"; echo '{"repos": ["acme/alpha"]}' >"$home/review-poll.json"
+reset; echo '{"repos": ["Acme/Alpha"]}' >"$home/broker.json"; echo '{"repos": ["acme/alpha"]}' >"$home/review-poll.json"
 run_install
 check "cross-check: names compare case-insensitively" test "$rc" -eq 0 -a "$(xc_warns)" -eq 0
-reset; echo '{"repos": ["keys", "alpha"]}' >"$home/broker.json"; echo '{"repos": ["acme/keys", "acme/gamma"]}' >"$home/review-poll.json"
+reset; echo '{"repos": ["acme/keys", "acme/alpha"]}' >"$home/broker.json"; echo '{"repos": ["acme/keys", "acme/gamma"]}' >"$home/review-poll.json"
 run_install
 check "cross-check: a repo named keys does not hide other broker.json names" xc_has "alpha is in broker.json but not review-poll.json: no automatic reviews for it"
 check "cross-check: a repo named keys does not hide other poll names" xc_has "gamma is in review-poll.json but not broker.json: no dev token is minted for it on this host"
-reset; echo '{"repos": ["alpha"]}' >"$home/broker.json"; echo '{"repos": ["acmealpha"]}' >"$home/review-poll.json"
+reset; echo '{"repos": ["acme/alpha"]}' >"$home/broker.json"; echo '{"repos": ["acmealpha"]}' >"$home/review-poll.json"
 run_install
 check "cross-check: an unreadable poll entry: exit 0" test "$rc" -eq 0
 check "cross-check: an unreadable poll entry is counted" xc_has "review-poll.json entries this check cannot read as owner/name: 1; they are not compared with broker.json"
@@ -341,18 +346,19 @@ check "cross-check: mixed poll entries: exit 0" test "$rc" -eq 0
 check "cross-check: mixed poll entries: the skipped ones are counted" xc_has "review-poll.json entries this check cannot read as owner/name: 3; they are not compared with broker.json"
 check "cross-check: mixed poll entries: exactly one warning" test "$(xc_warns)" -eq 1
 check "cross-check: mixed poll entries: the entry text is not echoed" sh -c "! grep -q POLLSECRET '$tmp/out'"
-reset; set_repos '"acme/alpha", "beta"'; echo '{"repos": ["acme/alpha", "acme/beta"]}' >"$home/review-poll.json"
+reset; set_repos '"acme/alpha", "beta"'; echo '{"repos": ["acme/alpha"]}' >"$home/review-poll.json"
 run_install
-check "install: an owner/name entry creates both token directories" test -d "$home/tokens/alpha" -a -d "$home/tokens/acme/alpha"
-check "install: a bare entry creates only tokens/<name>" test -d "$home/tokens/beta" -a ! -e "$home/tokens/acme/beta"
-check "cross-check: the owner directory is not warned about; the bare half is compared with review-poll.json" test "$rc" -eq 0 -a "$(xc_warns)" -eq 0
+check "install: an owner/name entry creates its owner directory" test -d "$home/tokens/acme/alpha"
+check "install: a bare entry creates nothing, not even tokens/<name>" test ! -e "$home/tokens/beta" -a ! -e "$home/tokens/acme/beta" -a "$(find "$home/tokens" -mindepth 1 | wc -l | tr -d ' ')" -eq 2
+check "install: a bare entry gets one fixed warning naming it" xc_has "broker.json entry beta is a bare name; the broker refuses it, write it as owner/name"
+check "install: ...and nothing else is warned about, the exit stays 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
 reset; set_repos '"acme/alpha", "a/b/c", "acme/", "acKme/zeta"'; rm -f "$home/review-poll.json"
 run_install
 check "install: entries failing the per-half rule create nothing" test ! -e "$home/tokens/b" -a ! -e "$home/tokens/a" -a ! -e "$home/tokens/zeta" -a ! -e "$home/tokens/c" -a -d "$home/tokens/acme/alpha"
 check "install: ...and the install still exits 0" test "$rc" -eq 0
 reset; set_repos '"acme/alpha"'; echo '{"repos": ["acme/alpha"]}' >"$home/review-poll.json"; mkdir -p "$home/tokens/other"
 run_install
-check "cross-check: a tokens directory that is not an owner half is still named" xc_has "tokens/other has no broker.json entry"
+check "cross-check: a tokens directory that is not an owner half is named" xc_has "tokens/other is not the owner directory of any broker.json entry"
 check "cross-check: ...and the owner directory is not" test "$(grep -c 'tokens/acme' "$tmp/out")" -eq 0
 reset; rm -f "$home/review-poll.json"
 manifest=$(cat "$home/bin/MANIFEST")
@@ -555,7 +561,7 @@ check "no-confirm check: an unreadable path fails" sh -c '! "$@" 2>/dev/null' sh
 check "no-confirm check: no file fails" sh -c '! "$@" 2>/dev/null' sh pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/noconfirm.ps1")"
 check "identity scripts: no -Confirm or -WhatIf on Disable-/Enable-ScheduledTask" noconfirm_identity
 
-# --- owner/name entries (#1276) ---------------------------------------------------------------
+# --- owner/name entries (#1276, #1340) ---------------------------------------------------------
 staged() { find "$home/staging" -type f 2>/dev/null | wc -l | tr -d ' '; }
 reset; set_repos '"acme/alpha"'
 run_broker
@@ -563,8 +569,9 @@ check "owner/name: exits 0" test "$rc" -eq 0
 check "owner/name: one mint" test "$(calls mint-calls)" -eq 1
 check "owner/name: --repos carries the bare name" grep -qx 'alpha' "$stubdir/mint-argv"
 check "owner/name: no owner/ in the mint argv" sh -c "! grep -q 'acme' '$stubdir/mint-argv'"
-check "owner/name: old layout written" test "$(tokfile alpha)" = "$(expect_fresh)"
 check "owner/name: owner-qualified layout written" test "$(tokfile acme/alpha)" = "$(expect_fresh)"
+check "owner/name: nothing written under tokens/<repo>" test ! -e "$home/tokens/alpha"
+check "owner/name: tokens/ holds only the owner directory" test "$(ls -A "$home/tokens")" = acme
 check "owner/name: no staged file left" test "$(staged)" -eq 0
 check "owner/name: tokens/<owner> holds no token itself" test ! -e "$home/tokens/acme/dev-token"
 for f in "$tmp/out" "$home/broker.log"; do
@@ -572,42 +579,42 @@ for f in "$tmp/out" "$home/broker.log"; do
 done
 
 reset; set_repos '"acme/alpha"'
-write_token alpha "$old" "$soon"          # old layout current, owner-qualified missing
+write_token acme/alpha "$old" "$(stamp '+10 minutes')"
 run_broker
-check "owner/name: a missing owner copy triggers a mint" test "$(calls mint-calls)" -eq 1
-check "owner/name: ...and both copies hold the new token" test "$(tokfile alpha)" = "$(expect_fresh)" -a "$(tokfile acme/alpha)" = "$(expect_fresh)"
+check "owner/name: an expiring owner copy triggers a mint" test "$(calls mint-calls)" -eq 1 -a "$(tokfile acme/alpha)" = "$(expect_fresh)"
 reset; set_repos '"acme/alpha"'
-write_token alpha "$old" "$soon"; write_token acme/alpha "$old" "$(stamp '+10 minutes')"
+write_token acme/alpha "$old" "$soon"
 run_broker
-check "owner/name: an expiring owner copy triggers a mint" test "$(calls mint-calls)" -eq 1
-check "owner/name: ...and both copies hold the new token (stale owner copy)" test "$(tokfile alpha)" = "$(expect_fresh)" -a "$(tokfile acme/alpha)" = "$(expect_fresh)"
+check "owner/name: a current owner copy: no mint" test "$(calls mint-calls)" -eq 0
+# an old-layout file is never read: stale, expired or missing, it triggers no mint and is left alone
 reset; set_repos '"acme/alpha"'
-write_token alpha "$old" "$(stamp '+10 minutes')"; write_token acme/alpha "$old" "$soon"
+write_token acme/alpha "$old" "$soon"; mkdir -p "$home/tokens/alpha"; past=$(stamp '-5 minutes'); printf '%s\n%s\n' "$old" "$past" >"$home/tokens/alpha/dev-token"
 run_broker
-check "owner/name: an expiring old copy triggers a mint of both" test "$(calls mint-calls)" -eq 1 -a "$(tokfile alpha)" = "$(expect_fresh)" -a "$(tokfile acme/alpha)" = "$(expect_fresh)"
+check "owner/name: a stale old-layout file alone triggers no mint" test "$(calls mint-calls)" -eq 0 -a "$rc" -eq 0
+check "owner/name: ...and is left as it was" test "$(cat "$home/tokens/alpha/dev-token")" = "$old
+$past"
 reset; set_repos '"acme/alpha"'
-write_token alpha "$old" "$soon"; write_token acme/alpha "$old" "$soon"
+write_token acme/alpha "$old" "$(stamp '+10 minutes')"; mkdir -p "$home/tokens/alpha"
 run_broker
-check "owner/name: both copies current: no mint" test "$(calls mint-calls)" -eq 0
+check "owner/name: a mint writes no old-layout file" test "$(calls mint-calls)" -eq 1 -a ! -e "$home/tokens/alpha/dev-token"
 
 reset; set_repos '"acme/alpha", "acme/beta"'
 mkdir -p "$home/tokens/acme/alpha/dev-token"   # unpublishable owner copy
 run_broker
 check "owner/name: a blocked publish exits 1" test "$rc" -eq 1
 check "owner/name: ...and is logged" grep -q 'dev acme/alpha' "$home/broker.log"
-check "owner/name: ...the old-layout copy still lands" test "$(tokfile alpha)" = "$(expect_fresh)"
 check "owner/name: ...no staged file is left" test "$(staged)" -eq 0
-check "owner/name: ...the other entry is still minted" test "$(tokfile acme/beta)" = "$(expect_fresh)" -a "$(tokfile beta)" = "$(expect_fresh)"
-reset; set_repos '"acme/alpha"'
-mkdir -p "$home/tokens/alpha/dev-token"   # unpublishable old copy
-run_broker
-check "owner/name: a blocked old copy exits 1, the owner copy lands, nothing staged" test "$rc" -eq 1 -a "$(tokfile acme/alpha)" = "$(expect_fresh)" -a "$(staged)" -eq 0
+check "owner/name: ...the other entry is still minted" test "$(tokfile acme/beta)" = "$(expect_fresh)"
 
 reset; set_repos '"alpha"'
 run_broker
-check "bare: writes tokens/<name>" test "$(tokfile alpha)" = "$(expect_fresh)"
-check "bare: writes no owner directory" test "$(find "$home/tokens" -mindepth 1 -type d | wc -l | tr -d ' ')" -eq 1
-check "bare: no staged file left" test "$(staged)" -eq 0
+check "bare: a bare entry exits 2" test "$rc" -eq 2
+check "bare: ...before any mint" test "$(calls mint-calls)" -eq 0
+check "bare: ...with the reason" grep -q 'bare name, which is no longer accepted' "$tmp/out"
+check "bare: ...and nothing written under tokens/" test ! -e "$home/tokens"
+reset; set_repos '"acme/alpha", "beta"'
+run_broker
+check "bare: a bare entry beside an owner/name entry mints for neither" test "$rc" -eq 2 -a "$(calls mint-calls)" -eq 0
 
 bad_shape() { # bad_shape <broker.json repos list> <label>
   reset; set_repos "$1"; run_broker
@@ -635,7 +642,7 @@ reset; set_repos '"acme/acme"'; run_broker
 check "owner/name config: an owner equal to its own entry's name is accepted" test "$rc" -eq 0 -a "$(tokfile acme/acme)" = "$(expect_fresh)"
 
 # the sweeps leave a directory whose name has a non-ASCII letter
-reset; set_repos '"alpha"'
+reset; set_repos '"acme/alpha"'
 mkdir -p "$home/review-sessions/ac$(printf '\342\204\252')" "$home/review-tokens/ac$(printf '\342\204\252')"
 touch -d '-200 minutes' "$home/review-sessions/ac$(printf '\342\204\252')"
 echo t >"$home/review-tokens/ac$(printf '\342\204\252')/reviewer-token"; touch -d '-20 minutes' "$home/review-tokens/ac$(printf '\342\204\252')/reviewer-token"

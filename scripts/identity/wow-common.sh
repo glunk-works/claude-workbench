@@ -7,11 +7,11 @@
 #                           org's config reads the same; "key" is a PEM filename in this directory
 #   admin.enc.pem          the admin App's private key, passphrase-encrypted (name by convention)
 #   review.pem             the reviewer App's private key, unencrypted (minted on request)
-#   tokens/<repo>/         a directory of secrets a repo's container may mount, read-only: admin-token
-#                          (wow-admin) and dev-token (broker.ps1), each the token then its
-#                          expires_at. Admin and dev credentials only.
-#   tokens/<owner>/<repo>/ admin-token (wow-admin) and dev-token (broker.ps1), written for an "owner/name" entry in
-#                          broker.json beside tokens/<repo>/ (#1276, #1340); the owner-qualified layout, mounted the same way.
+#   tokens/<owner>/<repo>/ the one directory of secrets a repo's container may mount, read-only: admin-token
+#                          (wow-admin) and dev-token (broker.ps1), each the token then its expires_at.
+#                          Admin and dev credentials only (#1276, #1340).
+#   tokens/<repo>/         the layout before #1340: nothing writes it now, and only wow-admin --revoke removes a file in it; a leftover the maintainer removes
+#                          (after wow-admin <owner/name> --revoke finds no readable admin token in it and no admin-token file is there).
 #   dev.pem, broker.json   broker.ps1 config: the dev App's unencrypted key (name by convention), and
 #                          {"repos": [...]}, the repos it keeps a dev token for. Also broker.lock,
 #                          broker.log and staging/<repo>/, none mounted anywhere.
@@ -41,19 +41,18 @@
 #                          written only to the injector sidecar's stdin.
 #   review-logs/           review run logs; may hold secrets and private contents the session read, swept by the
 #                          broker by age.
-# Invariant: no path under $WOW_HOME is container-writable. tokens/<repo>/ and tokens/<owner>/<repo>/ are
-# mounted only into a dev container (for the repos listed in broker.json, tokens/<owner>/ is never another repo's mount source), and
+# Invariant: no path under $WOW_HOME is container-writable. tokens/<owner>/<repo>/ is
+# mounted only into a dev container (for the repos listed in broker.json, tokens/<owner>/ is never another repo's mount source; wow-admin's owner half is otherwise a typed label), and
 # review-sessions/<id>/ only into a review container, each read-only.
 # claude-credential is never mounted into any container and reaches only the injector's stdin.
-# What these commands write: tokens/ and review-tokens/ directories, a per-repo .lock directory
-# and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed; for an
-# "owner/name" entry in broker.json also under tokens/<owner>/<repo>/, with the tokens/<repo>/ copy staged as a .mint.* file and renamed),
+# What these commands write: tokens/ and review-tokens/ directories, a per-repo-name .admin-lock.<name> directory directly under $WOW_HOME
+# and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed under tokens/<owner>/<repo>/; wow-admin --revoke also removes a leftover tokens/<repo>/admin-token),
 # reviewer-token (default review-tokens/<repo>/, or the path --out names), the session and filing
 # tokens (wow-review-mint --read / --file, written only to the path --out names), and the .mint.* file
 # mint.sh stages beside any token it writes. wow-review (the launcher) also writes its own review-sessions/,
 # review-host/, review-state/ (its lock, ledger and .live/ lease files) and review-logs/ entries. wow-review-poll writes review-poll.log (and .1),
 # review-state/.poll-lock and review-host/poll-<id>/. wow-driver.ps1 writes driver/<leaf>.json and its same-directory
-# temp file. wow-preflight writes nothing under $WOW_HOME: it only reads tokens/<repo>/admin-token. Nothing else under $WOW_HOME is modified.
+# temp file. wow-preflight writes nothing under $WOW_HOME: it only reads tokens/<owner>/<repo>/admin-token. Nothing else under $WOW_HOME is modified.
 #
 # The caller sets $prog before sourcing. Toolset: POSIX sh, jq, plus what mint.sh needs.
 

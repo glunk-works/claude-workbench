@@ -32,7 +32,7 @@ assert_eq() {
 STUBS="$tmp/stubs"; export STUBS
 TOKEN=ghs_0123456789abcdefghijklmnopqrstuvwxyzABCD
 WOW_HOME="$tmp/home"; export WOW_HOME
-mkdir -p "$STUBS" "$tmp/bin" "$tmp/ghbin" "$tmp/tmpdir" "$WOW_HOME/tokens/r"
+mkdir -p "$STUBS" "$tmp/bin" "$tmp/ghbin" "$tmp/tmpdir" "$WOW_HOME/tokens/o/r"
 for f in scripts/identity/wow-preflight scripts/identity/wow-common.sh plugins/way-of-working/bin/token-check.sh \
          plugins/way-of-working/bin/gh-identity.sh plugins/way-of-working/bin/ruleset-drift.sh; do
   cp "$root_dir/$f" "$tmp/bin/$(basename "$f")"
@@ -86,7 +86,7 @@ fail_ep() { # fail_ep <endpoint> [<stderr text>]
 }
 drop() { rm -f "$STUBS/$(printf '%s' "$1" | tr '/?=' '___')"; }
 
-write_token() { printf '%s\n%s\n' "$1" "$2" >"$WOW_HOME/tokens/r/admin-token"; }
+write_token() { printf '%s\n%s\n' "$1" "$2" >"$WOW_HOME/tokens/o/r/admin-token"; }
 
 rules_ok='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2}]'
 yml="$tmp/p.yml"
@@ -156,7 +156,7 @@ for k in 'approval rule parameters' 'reviewer App installation' 'dev App install
   assert_eq "all ok: $k is a fixed UI row" "check in the UI" "$(state "$k")"
 done
 assert_eq "all ok: every row has three fields" 0 "$(awk -F'\t' 'NF != 3' "$tmp/out" | wc -l | tr -d ' ')"
-assert_eq "all ok: the revoke line on stderr" "wow-preflight: done; revoke the admin token now: wow-admin r --revoke" "$(tail -n 1 "$tmp/err")"
+assert_eq "all ok: the revoke line on stderr" "wow-preflight: done; revoke the admin token now: wow-admin o/r --revoke" "$(tail -n 1 "$tmp/err")"
 assert_eq "all ok: every call carried the token in GH_TOKEN" 0 "$(grep -c bad "$STUBS/tok.log" || true)"
 
 # --- CR-ending tool output (Git Bash with native .exe tools) ---------------------------------
@@ -293,9 +293,9 @@ stops() { # stops <label>: exit 1, no row endpoint requested
   if [ -f "$STUBS/gh.log" ]; then n=$(grep -vc 'installation/repositories' "$STUBS/gh.log" || true); else n=0; fi
   assert_eq "$1: no row endpoint requested" 0 "$n"
 }
-setup_ok; rm -f "$WOW_HOME/tokens/r/admin-token"; run
+setup_ok; rm -f "$WOW_HOME/tokens/o/r/admin-token"; run
 stops "a missing token file"
-case "$(cat "$tmp/err")" in *"wow-admin r --revoke"*"wow-admin r --perms administration=write,contents=read,actions=read"*) echo "ok - a stop names the revoke and the mint" ;; *) echo "FAIL - a stop names the revoke and the mint: $(cat "$tmp/err")" >&2; fail=1 ;; esac
+case "$(cat "$tmp/err")" in *"wow-admin o/r --revoke"*"wow-admin o/r --perms administration=write,contents=read,actions=read"*) echo "ok - a stop names the revoke and the mint" ;; *) echo "FAIL - a stop names the revoke and the mint: $(cat "$tmp/err")" >&2; fail=1 ;; esac
 setup_ok; write_token "$TOKEN" 2000-01-01T00:00:00Z; run
 stops "an expired token"
 setup_ok; write_token "ghs_short" 2099-01-01T00:00:00Z; run
@@ -369,7 +369,7 @@ snap() { (cd "$WOW_HOME" && find . -print | sort | while read -r p; do [ -d "$p"
 setup_ok; before=$(snap); run; after=$(snap)
 assert_eq "\$WOW_HOME is unchanged by a run" "$before" "$after"
 assert_eq "no temp file is left after a run" "" "$(ls -A "$tmp/tmpdir")"
-setup_ok; rm -f "$WOW_HOME/tokens/r/admin-token"; before=$(snap); run; after=$(snap)
+setup_ok; rm -f "$WOW_HOME/tokens/o/r/admin-token"; before=$(snap); run; after=$(snap)
 assert_eq "\$WOW_HOME is unchanged by a stopped run" "$before" "$after"
 assert_eq "no temp file is left after a stopped run" "" "$(ls -A "$tmp/tmpdir")"
 setup_ok; fail_ep installation/repositories; run
