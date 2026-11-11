@@ -36,7 +36,7 @@ failure the skill exists to prevent.
 Same rule for an individual key: a key that is absent is not a key that is `null`. `null` is
 a decision ("this repo has no review CI gate"); **absent is an unanswered question, always —
 no key has a default any more** (`WB-D17`, `#142`, reversing `#127`'s Optional-key clause).
-(`rulesets`, `lanes` and `append_only`, the three optional keys, and the optional sub-key
+(`rulesets`, `lanes`, `append_only` and `host_tools`, the four optional keys, and the optional sub-key
 `identities.dev_app.commit_route` are the stated exceptions: an absent one is simply not declared and is never asked, and
 each one's section says so.)
 `/way-of-working:resume` is the one place a missing key is asked for, once per session, at
@@ -161,6 +161,10 @@ lanes: null                      # null means this repo runs no lanes. Optional:
 # ── append-only files (optional) ─────────────────────────────────────────────
 append_only: null                # null means no file is held to the append marker rule. Optional:
                                  # an undeclared key is never asked. A list of paths — see below.
+
+# ── host tools (optional) ────────────────────────────────────────────────────
+host_tools: null                 # null (or an empty list) declares no host tool. Optional: an
+                                 # undeclared key is never asked. A list of { name, min, fix } — see below.
 ```
 
 ---
@@ -976,6 +980,28 @@ carries the marker and is skipped by the freshness check, so a repo declares onl
 appends to, never a workflow file or a file the loop protects. A `.github` path (`.github` itself or
 anything under `.github/`) is refused, because `spec-fresh.sh` never skips one.
 
+### `host_tools`
+
+`host_tools` (`#1377`) is **optional**, like `append_only`: it is either `null` or a list of the host
+tools the repo relies on, each a map of exactly `name`, `min` and `fix`. An undeclared `host_tools` is
+simply not declared and is never asked; `null` and an empty list both declare no tool. The plugin
+names no tool itself: every tool a session checks comes from here.
+
+- `name` — the command name: letters, digits, `.`, `_`, `-`, starting with a letter or digit, at most
+  64 characters, unique in the list.
+- `min` — the lowest version, a **string** of decimal components joined by `.`, each at most nine digits
+  (`"2.40"`). A YAML number is refused, since `1.10` would read as `1.1`.
+- `fix` — what to do when the tool is missing or too old: 1 to 200 printable ASCII characters. It is
+  shown to the reader as data and never run.
+
+`bin/schema-complete.sh` validates the key (any other shape is one `invalid host_tools` finding) and
+`bin/host-doctor.sh tools` applies the same rule. The doctor runs each named tool with `--version`, reads
+the first version on the first line, and reports `ok`, `old`, `missing` or `unknown` for it.
+`/way-of-working:resume` reads the **default branch's** committed copy for its `Host tools:` line; the
+doctor checks only the `PATH` of the machine the session runs on. What the doctor reports never gates
+an auto-start; a declared but malformed `host_tools` is `incomplete` like any key and holds auto-start
+as one does (an `invalid host_tools…` finding is fixed by hand, or by removing the key).
+
 ---
 
 ## Worked example — a second repo, to show the seams move
@@ -1070,6 +1096,8 @@ lanes:
   dir: /tmp/lanes                 # worktrees at dir/<N>, one per task issue N
 
 append_only: null                 # optional, never asked; no file is held to the append marker rule
+
+host_tools: null                  # optional, never asked; no host tool is declared
 ```
 
 The two configurations differ in every value and in the *shapes* (`backlog.kind`, and
