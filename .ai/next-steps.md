@@ -1,24 +1,24 @@
 
 # Cursor — claude-workbench
 
-**Now:** **Sprint 19** (cursor id `sprint-19`), status **implementing**, on milestone 30, *Second consumer: fixes from resume-orchestrator's cutover*. #1371, #1375 and #1377 merged; the #1374 and #1435 spec sessions are running. Milestone 26 is closed; the remaining repos' dev-container cutovers are milestone 34.
+**Now:** **Sprint 19** (cursor id `sprint-19`), status **implementing**, on milestone 30, *Second consumer: fixes from resume-orchestrator's cutover*. No lane is live and no spec is pending. Milestone 34 holds the remaining repos' dev-container cutovers.
 
 **Just done (2026-11-11, driver session, opus):**
-- #1340 step 2 merged (PR #1427, `6b93749`): the bare `tokens/<repo>` layout is retired and `wow-admin` takes `owner/name`; closes #1340 and #1348. The maintainer reinstalled the host tools on the glunk home (register-broker-task) and the 603id home (install only, no task). #1345 closed against it.
-- #1361 merged (PR #1436, `84186e6`): the live-run check witnesses the image-provided controls. Milestone 26 closed with no open issue; its opening now says it covers route steps 1 to 6 plus resume-orchestrator.
-- #1377 merged (PR #1437, `45a829a`): the optional `host_tools` key, `bin/host-doctor.sh`, and resume's `Host tools:` and `Plugin:` lines. Its review findings are #1438 (milestone 33).
-- Milestone 34 created, *Identity M5c: remaining repos on the dev-container template* (route step 7), with tracking issues #1429 to #1433: bounty-infra, bedrock-serverless-rag, scope-core, global-bootstrap, loop-orchestrator.
-- Filed #1434 (host-side launcher check, milestone 29) and #1435 (declare `host_tools` here, milestone 30), both split from #1377's spec. Milestone 26, 29, 30, 33 and 34 descriptions are current.
+- #1435 merged (PR #1441, `9688272`): this repo's `.ai/project.yml` declares `host_tools` (yq, jq, git, gh, claude).
+- #1374 merged (PR #1442, `a78d697`): spec-task refreshes a stale approved spec by carrying it forward (`WB-D48`), and the finder prefers the newer approved comment when the older is stale. Review findings are #1444 (milestone 33).
+- #1440 filed and merged (PR #1443, `803a478`): the lane prompt forbids only the `.ai/` cursor files. Its review finding #1445 was closed as decided (the driver note's deletion).
+- #1424 merged (PR #1446, `ae32ab7`): an escalation outranks an older unreacted spec draft in `find` and `answer`.
+- Milestone 30's description was rewritten: merged items moved to a Done line, Build order holds only open items with met dependencies marked `none`. Milestone 33 gained #1444.
 
-**Next:** task #1374 — the driver reviews the posted #1374 and #1435 specs against main and their critic transcripts before the maintainer reacts on each; then the #1374 and #1435 lanes, and a merge assessment of each lane PR's wow-review and diff vs spec before the maintainer approves. Then milestone 30 Build order: #1424, #1416; #1381 (fold #1346, #1386, #1391 at spec time), #1425, #1287, #1289, #1405, #1408. The driver stays on opus.
+**Next:** task #1381 — the maintainer cuts a plugin release carrying #1374, #1375, #1377, #1424 and #1440 and bumps the pin; then the driver hands over -Spec commands for the next milestone 30 specs (#1381, #1416, #1425, #1287, #1408 have no unmet depends_on), reviews each posted spec against main and its critic transcript before the maintainer reacts, preps a lane per approved spec, and gives a merge assessment of each lane PR. The driver stays on opus.
 
-**HITL Gate: OPEN** — the #1374 and #1435 specs need the driver's review and the maintainer's reaction; then each lane PR's wow-review and the maintainer merge
+**HITL Gate: OPEN** — the plugin release and pin bump are the maintainer's; each next milestone 30 spec needs the driver's review and the maintainer's reaction, then each lane PR the maintainer's approval
 
-**Critic pass:** none in this session; it wrote no code. The #1340, #1361 and #1377 lanes ran their own: #1427 converged in 3 rounds (architect, security-critic, docs-consistency), #1436 in 2 (docs-consistency), #1437 in 3 (architect, security-critic, docs-consistency).
+**Critic pass:** none in this session; it wrote no code. The lanes ran their own: #1441 converged in 1 round (architect, security-critic) and #1443 in 2 (architect, security-critic, docs-consistency); #1442 and #1446 ran all three, with their round counts in each lane's transcript.
 
 **Maintainer actions:**
+- The plugin release above. Until the pin includes #1440, a spec that edits `.ai/project.yml` still needs the driver's ruling typed into its lane; until it includes #1424, a superseded draft must be deleted, not un-reacted, before answering an escalation.
 - The rest of #1427's Migration line: remove each old `tokens/<repo>` directory on both homes, only after `wow-admin <owner/name> --revoke` says no admin token is on file for it (an owner-equals-name directory keeps its owner directory; remove only the leftover token files in it).
-- A plugin release after this wave: #1375 and #1377 reach sessions only with it and a pin bump.
 - After every plugin pin bump and restart, before any session: inside the container, `claude plugin uninstall way-of-working@claude-workbench --scope project && git checkout -- .claude/settings.json`; every `installed_plugins.json` entry must then be at the tag's `gitCommitSha`. Rewrite `reference/conventions.md` § *Bumping a pinned plugin* to this flow.
 - The next time the container is recreated after a `FROM` bump, run the extended live-run check under *Opening it* in `docs/identity/DEV-CONTAINER.md`.
 - Carried: resume-orchestrator: merge its PR #186, then the home-volume cleanup and restart through `wow-driver.ps1`.
