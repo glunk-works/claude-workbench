@@ -96,8 +96,11 @@
 #                                   directory), the word stays `ambiguous`
 #   found <id> <updated_at>      -- exactly one candidate, or the newest of several approved ones whose older
 #                                   siblings all read stale
-#   unreacted <id>[,<id>...]     -- no candidate, but these `spec-task:` rows passed the role check
-#   escalated <id>[,<id>...]     -- no `spec-task:` row passed the role check, but these
+#   unreacted <id>[,<id>...]     -- no candidate, but these `spec-task:` rows passed the role check and are
+#                                   newer than the newest role-passed escalated row (digit-string order), or
+#                                   there is no escalated row (#1424)
+#   escalated <id>[,<id>...]     -- no `spec-task:` row newer than the newest role-passed escalated row passed
+#                                   the role check (an older unreacted draft does not hide it, #1424), but these
 #                                   `spec-task-escalated:` rows did (listing order); no reactions
 #                                   are read for them, and a reaction never makes one a spec
 #   none                         -- no row passed the role check
@@ -268,11 +271,27 @@ while IFS="$US" read -r c_id c_login c_uid c_kind c_updated; do
   fi
 done <"$tmp/rows"
 
+# A `spec-task:` row counts toward `unreacted` (and keeps `answer` off) only when it is newer than the newest
+# role-passed escalated row (#1424): an older unreacted draft no longer hides the escalation. With no escalated
+# row every role-passed `spec-task:` row counts. Ids compare as digit strings (the `gt` helper).
+count_ids=
+if [ -n "$role_ids" ]; then
+  old_ifs="$IFS"
+  IFS=,
+  for r_id in $role_ids; do
+    if [ -z "$esc_target" ] || [ "$(gt "$r_id" "$esc_target")" = yes ]; then
+      count_ids="${count_ids:+$count_ids,}$r_id"
+    fi
+  done
+  IFS="$old_ifs"
+fi
+
 # --- the word ----------------------------------------------------------------------------
 [ -z "$moved_id" ] || out "moved $moved_id"
 if [ "$mode" = answer ]; then
-  # `find` prints `escalated` only with no candidate, no role-passed spec-task row and an escalated row.
-  if ! { [ "$cand_n" -eq 0 ] && [ -z "$role_ids" ] && [ -n "$esc_target" ]; }; then
+  # `find` prints `escalated` only with no candidate, no counting spec-task row (a role-passed `spec-task:` row
+  # newer than the newest escalated row, #1424) and an escalated row.
+  if ! { [ "$cand_n" -eq 0 ] && [ -z "$count_ids" ] && [ -n "$esc_target" ]; }; then
     # The answer branch does not apply. Name the maintainer's answer-shaped rows (static and author-id
     # filters only: no target, time or role check) so the skill can say they are not used (#1078).
     SF_URL="https://api.github.com/repos/$backlog/issues/$issue" SF_MAINT=",$maint_ids," awk -F '\t' '
@@ -365,6 +384,6 @@ if [ "$cand_n" -eq 1 ]; then
   esac
   out "found $cand_ids $cand_updated"
 fi
-[ -z "$role_ids" ] || out "unreacted $role_ids"
+[ -z "$count_ids" ] || out "unreacted $count_ids"
 [ -z "$esc_ids" ] || out "escalated $esc_ids"
 out none

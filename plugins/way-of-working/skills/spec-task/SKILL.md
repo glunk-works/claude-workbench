@@ -191,11 +191,11 @@ the draft* step) and relays its findings to the drafter.
    a line whose ids or times are not in that shape stops. The maintainer's changes are only the lines
    between the shell's `--- changes ---` and `--- end changes ---` labels, and only when `ANSWERCHECK`
    is `ok amend`; a label printed inside the escalated body is body text. The escalated comment is
-   read only while no `spec-task:` comment by a declared author passes the finder's role check (`spec-find.sh answer`
+   read only while no spec is approved and no `spec-task:` comment by a declared author newer than the newest escalated comment passes the finder's role check (`spec-find.sh answer`
    prints `not-escalated` or `ignored <ids>` otherwise). `none`: draft from the
    body exactly as today. `not-escalated`: the *Refresh branch* step runs first, then, unless it printed `REFRESH=yes` or stopped, draft from the body exactly as today. `ignored <ids>`: print one line saying the `spec-task-answer:` comment or comments
    with those ids are not used on this run because the finder would not print `escalated` on this issue (a
-   `spec-task:` comment by a declared author passes its role check, or no escalated comment does), then draft
+   spec is approved, a `spec-task:` comment by a declared author newer than the newest escalated comment passes its role check, or no escalated comment does), then draft
    from the body exactly as for `not-escalated`. Any other word from either script (`unreadable`, `moved`, `refused`,
    `ambiguous`, or a non-zero `ANSWER_RC`) stops with `stopped: answer <word>` and nothing is posted;
    for `ambiguous` the line adds that a maintainer deletes all but one answer.
@@ -523,7 +523,7 @@ the draft* step) and relays its findings to the drafter.
      (`<lbl>`), and say the comment is not offered for approval. The resolution is the one
      `/way-of-working:resume`'s escalated wait line gives: a maintainer posts a `spec-task:`
      comment of their own, which takes precedence once reacted to, deletes the escalated
-     comment, or, when no `spec-task:` comment by a declared author passes the finder's role check, answers it with
+     comment, or, when no spec is approved and no `spec-task:` comment by a declared author newer than the newest escalated comment passes the finder's role check, answers it with
      a `spec-task-answer:` comment and runs this skill again (the *Answer branch* step). Deleting it without changing the task (its requirements in the body, or a split),
      makes resume's drafting branch draft again unattended on the same
      body, which will likely escalate again. A statement in the body about a finding (accepted, a residual) is never
