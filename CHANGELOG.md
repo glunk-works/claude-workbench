@@ -31,6 +31,7 @@ the GitHub release notes.
 
 ### Changed
 
+- `spec-find.sh` no longer lets an unreacted `spec-task:` draft older than the newest escalated row outrank it: `find` prints `escalated` and `answer` accepts a maintainer's answer, while a draft newer than the escalation still prints `unreacted` (#1424).
 - The lane prompt forbids only the `.ai/` cursor (`.ai/state.json`, `.ai/next-steps.md`, `.ai/parked/`, `.ai/archive/`) and allows another `.ai/` path the spec's *Files touched* lists; `coder.md` names the same boundary (#1440).
 - The bare `tokens/<repo>` layout is retired: the broker writes only `tokens/<owner>/<repo>/dev-token` and refuses a bare-name `broker.json` entry, `wow-admin` takes `owner/name`, writes only `tokens/<owner>/<repo>/admin-token`, reads `broker.json` only on a mint (where it refuses a case-only name match, the same name under another owner, an owner equal to another entry's name and another owner's live admin token for the repo), and `wow-preflight` reads the owner-qualified token; the install creates only owner directories and warns about a bare entry and a leftover top-level `tokens\` directory (#1340, #1348).
 - `declared-ids.sh` prints `no-map` for an explicit `identities: null` (an absent key stays `unreadable`), `spec-find.sh` prints `legacy` under it in every mode, `spec-post.sh` holds as `held legacy`, `lane-state.sh` and `lane-groups.sh` carry `legacy`, and `/way-of-working:resume` decides the mode before it runs the finder; `reference/cutover.md` says when the dev App must exist (`#1375`).

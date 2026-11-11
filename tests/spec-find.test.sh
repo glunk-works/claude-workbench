@@ -380,6 +380,22 @@ expect "unreacted: a spec-task row beside an escalated row wins" "unreacted 1002
 nc; addesc 1001 maint1 101; approved 1002 maint1 101; run
 expect "found: an approved spec-task row beside an escalated row wins" "found 1002 $T1"
 
+# #1424: an unreacted spec-task row older than the newest escalated row no longer hides it.
+nc; addrow 1001 maint1 101; addesc 1002 maint1 101; run
+expect "escalated: an older unreacted spec-task row does not hide the escalated row" "escalated 1002"
+
+nc; addrow 1001 maint1 101; addesc 1002 maint1 101; addrow 1003 maint1 101; run
+expect "unreacted: an older and a newer unreacted row around an escalated row list only the newer" "unreacted 1003"
+
+nc; addesc 1001 maint1 101; addrow 1002 maint1 101; addesc 1003 maint1 101; run
+expect "escalated: an unreacted row between two escalated rows is older than the newest" "escalated 1001,1003"
+
+nc; addrow 999 maint1 101; addesc 1002 maint1 101; run
+expect "escalated: an unreacted id with fewer digits is older (digit-string order)" "escalated 1002"
+
+nc; approved 1001 maint1 101; addesc 1002 maint1 101; run
+expect "found: an approved row older than an escalated row still wins" "found 1001 $T1"
+
 nc; addrow 1001 maint1 101 "$T1" 7 main "https://api.github.com/repos/acme/app/issues/7" bogus-kind; run
 expect "none: a row of an unknown kind is dropped" "none"
 
@@ -752,7 +768,7 @@ nc; approved 1001 maint1 101; addans 1002 maint1 101 1001 apply; runa
 expect "ignored: find would say found" "ignored 1002"
 
 nc; addrow 1001 maint1 101; addesc 1002 maint1 101 "$TE1"; addans 1003 maint1 101 1002 apply; runa
-expect "ignored: find would say unreacted" "ignored 1003"
+expect "answer: an unreacted row older than the escalated row does not stop the answer" "answer 1002 $TE1 1003 $TA1 apply"
 
 nc; addans 1002 maint1 101 1001 apply; runa
 expect "ignored: find would say none" "ignored 1002"
@@ -763,13 +779,19 @@ nc; approved 1001 maint1 101; addans 1002 maint1 101 1001 apply "$TA1" "2026-09-
 expect "ignored: an answer edited after it was posted (created before updated)" "ignored 1002"
 
 nc; addrow 1001 maint1 101; addesc 1002 maint1 101 "$TE1"; addans 1003 maint1 101 1002 apply "2026-09-21T08:59:59Z"; runa
-expect "ignored: an answer created before the escalated row's updated_at" "ignored 1003"
+expect "none: an answer created before the escalated row's updated_at, beside an older unreacted row" "none"
+
+nc; addesc 1001 maint1 101 "$TE1"; addrow 1002 maint1 101; addans 1003 maint1 101 1001 apply "2026-09-21T08:59:59Z"; runa
+expect "ignored: a newer unreacted row, an answer created before the escalated row's updated_at" "ignored 1003"
 
 nc; approved 1001 maint1 101; runa
 expect "not-escalated: find would say found, no answer row" "not-escalated"
 
 nc; addrow 1001 maint1 101; addesc 1002 maint1 101 "$TE1"; runa
-expect "not-escalated: find would say unreacted, no answer row" "not-escalated"
+expect "none: an unreacted row older than the escalated row, no answer row" "none"
+
+nc; addesc 1001 maint1 101 "$TE1"; addrow 1002 maint1 101; runa
+expect "not-escalated: find would say unreacted (a newer draft), no answer row" "not-escalated"
 
 nc; runa
 expect "not-escalated: find would say none, no answer row" "not-escalated"
