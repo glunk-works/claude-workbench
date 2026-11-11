@@ -53,8 +53,8 @@
 #     are suffixed ` if-map` -- each group is required only when its parent
 #     (`review.ci_gate`, `orchestration`) itself resolves to a map, never when it
 #     is `null`. `identities` itself is unsuffixed and its four sub-keys carry ` if-map`,
-#     as `orchestration` does. `rulesets`, `lanes` and `append_only` are suffixed ` if-present` -- the three
-#     OPTIONAL paths: never reported when absent, validated when there (WB-D24 dual mode, WB-D34, #1155, below).
+#     as `orchestration` does. `rulesets`, `lanes`, `append_only` and `host_tools` are suffixed ` if-present` -- the four
+#     OPTIONAL paths: never reported when absent, validated when there (WB-D24 dual mode, WB-D34, #1155, #1377, below).
 #     `lanes.dir` is suffixed ` if-map`, required only when `lanes` itself is a map.
 #     Always exits 0.
 #
@@ -158,6 +158,7 @@ set -eu
 #          | identmap (identities only) | optnelist (rulesets only: optional, non-empty if present)
 #          | optlanemap (lanes only: optional; null or a map if present)
 #          | optappend (append_only only: optional; null or a list of paths if present)
+#          | opthost (host_tools only: optional; null or a list of {name, min, fix} maps if present)
 #   shape: - | ownername | branch | ghlogin | rulename | textname | pair | lanesdir   (consulted for
 #          value/nullable; `pair` is a {login, id} map, `identities.*_app` only; `textname`
 #          is a ruleset name a reader binds as a value, #451; `lanesdir` is `lanes.dir`'s
@@ -225,6 +226,13 @@ APPEND_TOP='
 append_only optappend -
 '
 
+# `host_tools` (#1377) is the fourth OPTIONAL key (`opthost`): silent when absent, `null` or a list
+# when present (a scalar, a map or an aliased list is `invalid`), and every entry of a list must be
+# a map of exactly `name`, `min` and `fix` as `check_host_tools_entries` reads them.
+HOST_TOP='
+host_tools opthost -
+'
+
 # `identities` is a nullable map exactly like `orchestration`: `null` is the explicit
 # answer "this repo has not cut over to App identities" (the pre-WB-D24 model), a map is
 # the declared set, and then these sub-keys are required -- present, so absent prompts.
@@ -285,6 +293,7 @@ case "$mode" in
       printf '%s if-map\n' "$path"
     done
     printf '%s\n' "append_only if-present"
+    printf '%s\n' "host_tools if-present"
     printf '%s\n' "review.ci_gate"
     printf '%s\n' "$CIGATE_KEYS" | while IFS=' ' read -r path kind shape; do
       [ -n "$path" ] || continue
@@ -586,7 +595,7 @@ check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
   path="$1"; kind="$2"; shape="$3"; present="$4"; tag="$5"; safe="$6"; json="$7"
 
   if [ "$present" != true ]; then
-    case "$kind" in optnelist | optlanemap | optappend) return ;; esac   # an absent optional key is not a finding
+    case "$kind" in optnelist | optlanemap | optappend | opthost) return ;; esac   # an absent optional key is not a finding
     case "$kind" in cigate | orchmap | identmap) kind=nullable ;; nelist) kind=list ;; esac   # printed as the interview asks it
     add_finding "missing $path $kind"
     return
@@ -652,6 +661,13 @@ check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
       case "$tag" in
         '!!null') : ;;
         '!!seq') append_is_seq=1; append_json="$json" ;;
+        *) invalid_finding "$path" "$json" ;;
+      esac
+      ;;
+    opthost)
+      case "$tag" in
+        '!!null') : ;;
+        '!!seq') host_is_seq=1; host_json="$json" ;;
         *) invalid_finding "$path" "$json" ;;
       esac
       ;;
@@ -811,12 +827,29 @@ check_append_entries() {
   esac
 }
 
+# The `host_tools` entry rule, the one host-doctor.sh's `tools` mode applies too: a map of exactly
+# the keys `name`, `min` and `fix`; `name` a string of letters, digits, `.`, `_`, `-`, starting with
+# a letter or digit, at most 64 characters, unique in the list; `min` a string (a YAML number is
+# refused, since `1.10` would read as `1.1`) of decimal components joined by `.`, each at most nine
+# digits; `fix` a string of 1 to 200 printable ASCII characters. The whole check runs inside yq and
+# one boolean line is the only thing read back.
+check_host_tools_entries() {
+  good=$(yq eval '.host_tools | explode(.) | ([.[] | (select(tag == "!!map") | select((keys | sort | join(",")) == "fix,min,name") | select((.name | tag) == "!!str" and (.min | tag) == "!!str" and (.fix | tag) == "!!str") | ((.name | test("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")) and (.min | test("^[0-9]{1,9}([.][0-9]{1,9})*$")) and (.fix | test("^[ -~]{1,200}$")))) // false] | all) as $ok | (if $ok then (([.[] | .name] | unique | length) == length) else false end) | to_string' "$FILE" 2>/dev/null) || { echo unreadable; exit 0; }
+  case "$good" in
+    true) ;;
+    false) invalid_finding host_tools "$host_json" ;;
+    *) echo unreadable; exit 0 ;;
+  esac
+}
+
 cigate_is_map=0
 orch_is_map=0
 ident_is_map=0
 lanes_is_map=0
 append_is_seq=0
 append_json=
+host_is_seq=0
+host_json=
 run_table "$MAIN_KEYS"
 run_table "$RULESETS_KEYS"
 check_ruleset_entries
@@ -825,6 +858,8 @@ run_table "$LANES_TOP"
 [ "$lanes_is_map" = 1 ] && run_table "$LANES_KEYS"
 run_table "$APPEND_TOP"
 [ "$append_is_seq" = 1 ] && check_append_entries
+run_table "$HOST_TOP"
+[ "$host_is_seq" = 1 ] && check_host_tools_entries
 [ "$cigate_is_map" = 1 ] && run_table "$CIGATE_KEYS"
 [ "$orch_is_map" = 1 ] && run_table "$ORCH_KEYS"
 [ "$ident_is_map" = 1 ] && run_table "$IDENT_KEYS"

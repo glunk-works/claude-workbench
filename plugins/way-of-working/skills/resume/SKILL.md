@@ -779,6 +779,40 @@ edited it. **Default to the full checklist whenever unsure.**
    blocks or enables auto-start, and resume never acts on a lane: no `lane.sh` call, no worktree
    or branch removal.
 
+   **The `Host tools:` and `Plugin:` lines (`#1377`).** Two more report-only lines, each built from
+   one Bash block with `host-doctor.sh` (bare name, same `bin/` `PATH`) the way the `Lanes:` block
+   reads its inputs. The `tools` mode reads the **default branch's** committed `.ai/project.yml`
+   (fetched and shown into a temp file, removed afterwards, never the working tree's copy):
+   ```bash
+   T=$(mktemp -d) && trap 'rm -rf "$T"' EXIT &&
+   TOPLEVEL=$(git rev-parse --show-toplevel) && U=$(git -C "$TOPLEVEL" remote get-url origin) &&
+   R=$(gh repo view "$U" --json nameWithOwner --jq .nameWithOwner) && [ "$R" = "{repo}" ] &&
+   D=$(gh repo view "$U" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') && [ -n "$D" ] &&
+   git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$D:refs/remotes/origin/$D" &&
+   git -C "$TOPLEVEL" show "refs/remotes/origin/$D:./.ai/project.yml" >"$T/def.yml" &&
+   host-doctor.sh tools "$T/def.yml"
+   ```
+   The `plugin` mode reads the **working tree's** `.claude/settings.json` (what this session loaded),
+   the user's `installed_plugins.json` under the `.claude/plugins` directory of `$HOME`, and the repo
+   top level (in the `pwd -W` form under MSYS or MINGW, the one the installed records carry):
+   ```bash
+   TOPLEVEL=$(git rev-parse --show-toplevel) && DIR=$(cd "$TOPLEVEL" && { pwd -W 2>/dev/null || pwd; }) &&
+   host-doctor.sh plugin "$TOPLEVEL/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" "$DIR"
+   ```
+   The `Host tools:` line is omitted on `none`, reads `Host tools: ok` when every line is `ok`, and
+   otherwise names each tool that is not `ok` with its state (`old`, `missing` or `unknown`), the
+   versions and its `fix` line, the fix text quoted as data and never run; a failed chain or
+   `unreadable` reads `Host tools: could not be checked.` The `Plugin:` line says, per key,
+   `pinned at <ref> and installed at that commit` (`match`), `pinned at <ref> but not installed`
+   (`not-installed`), `installed at <commit> but <ref> is <commit>` (`differs`, pointing at
+   `reference/conventions.md` *Bumping a pinned plugin*), `unpinned` or `the tag could not be
+   resolved` (`unresolved`); a `bad-pin` line names no key and says `a pin could not be read`;
+   `no-settings` or `no-plugin` says so. It then says `statusLine present` or `statusLine missing (see
+   reference/cutover.md, Onboarding a consuming repo)`, and the deny choice neutrally, `gh pr merge
+   denied` or `not denied`, each a choice and neither a failure. A failed chain or `unreadable`
+   reads `Plugin: could not be checked.` Neither line blocks or enables auto-start, and resume never
+   installs, updates or edits anything for either.
+
    **Under `{planning.kind}: github_milestones`, when `sprint_status` is `planning`, also run**
    (`#153`: `hitl_gate: NONE OPEN` on a `planning` cursor is not proof the prior sprint's
    milestone actually closed — `/way-of-working:archive-sprint`'s Close step can be skipped or

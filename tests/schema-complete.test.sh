@@ -126,6 +126,7 @@ rulesets if-present
 lanes if-present
 lanes.dir if-map
 append_only if-present
+host_tools if-present
 review.ci_gate
 review.ci_gate.check if-map
 review.ci_gate.header if-map
@@ -142,7 +143,7 @@ identities.maintainer if-map
 identities.dev_app if-map
 identities.reviewer_app if-map
 identities.loop_app if-map"
-assert_eq "keys: the exact required path set, conditionals suffixed if-map, optional rulesets, lanes and append_only if-present" \
+assert_eq "keys: the exact required path set, conditionals suffixed if-map, optional rulesets, lanes, append_only and host_tools if-present" \
   "$expected_keys" "$("$script" keys)"
 
 echo "# check -- the complete fixture"
@@ -827,6 +828,41 @@ ao_fixture 'append_only: [CHANGELOG.md, .github/x.yml]' "$tmp/ao.yml"
 assert_eq "append_only: an entry under .github/ is invalid, with the whole value" \
   'incomplete
 invalid append_only ["CHANGELOG.md",".github/x.yml"]' "$(run_check "$tmp/ao.yml")"
+
+echo "# check -- host_tools (#1377): the fourth optional key; null or a list of {name, min, fix} maps"
+
+ht_fixture() { { cat "$base"; printf '%s\n' "$1"; } >"$2"; }
+
+assert_eq "host_tools: absent is silent" "complete" "$(run_check "$base")"
+for v in 'host_tools: null' 'host_tools: []' 'host_tools: [{name: gh, min: "2.40", fix: "winget install GitHub.cli"}, {name: yq, min: "4.40.5", fix: "scoop install yq"}]'; do
+  ht_fixture "$v" "$tmp/ht_ok.yml"
+  assert_eq "$v is complete" "complete" "$(run_check "$tmp/ht_ok.yml")"
+done
+
+ht_bad() { # ht_bad <label> <yaml>
+  ht_fixture "$2" "$tmp/ht_bad.yml"
+  out=$(run_check "$tmp/ht_bad.yml")
+  assert_eq "host_tools: $1 is invalid" "incomplete|invalid host_tools" "$(printf '%s\n' "$out" | sed -n '1p;2p' | cut -d' ' -f1,2 | paste -sd'|')"
+  assert_eq "host_tools: $1 is the only finding" "2" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+}
+ht_bad "a scalar" 'host_tools: gh'
+ht_bad "a map" 'host_tools: {name: gh, min: "1", fix: x}'
+ht_bad "an aliased list" 'x: &x [{name: gh, min: "1", fix: x}]
+host_tools: *x'
+ht_bad "an entry that is not a map" 'host_tools: [gh]'
+ht_bad "an extra entry key" 'host_tools: [{name: gh, min: "1", fix: x, why: y}]'
+ht_bad "a missing entry key" 'host_tools: [{name: gh, min: "1"}]'
+ht_bad "a name starting with a dash" 'host_tools: [{name: -gh, min: "1", fix: x}]'
+ht_bad "a name with a slash" 'host_tools: [{name: a/b, min: "1", fix: x}]'
+ht_bad "a name over 64 characters" "host_tools: [{name: $(printf 'a%.0s' $(seq 65)), min: \"1\", fix: x}]"
+ht_bad "a duplicate name" 'host_tools: [{name: gh, min: "1", fix: x}, {name: gh, min: "2", fix: y}]'
+ht_bad "a numeric min" 'host_tools: [{name: gh, min: 1.10, fix: x}]'
+ht_bad "a malformed min" 'host_tools: [{name: gh, min: "1..2", fix: x}]'
+ht_bad "a min component over nine digits" 'host_tools: [{name: gh, min: "1.1234567890", fix: x}]'
+ht_bad "an empty fix" 'host_tools: [{name: gh, min: "1", fix: ""}]'
+ht_bad "an over-long fix" "host_tools: [{name: gh, min: \"1\", fix: \"$(printf 'a%.0s' $(seq 201))\"}]"
+ht_bad "a fix holding a control character" 'host_tools: [{name: gh, min: "1", fix: "a\tb"}]'
+ht_bad "a fix holding a newline" 'host_tools: [{name: gh, min: "1", fix: "a\nb"}]'
 
 echo "# check -- ruleset.name (#451): bound as a value, so only an empty or control-character name is rejected"
 

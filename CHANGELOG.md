@@ -25,6 +25,7 @@ the GitHub release notes.
 
 ### Added
 
+- The optional `host_tools` key (a list of `{ name, min, fix }`), validated by `schema-complete.sh`, the new `host-doctor.sh` with a `tools` mode (each declared tool's version against its minimum) and a `plugin` mode (the installed copy's commit against the `.claude/settings.json` pin, the `statusLine` and the `gh pr merge` deny choice), and two report-only lines of `/way-of-working:resume`'s pick-up point, `Host tools:` and `Plugin:` (#1377).
 - The secret scan's ignore list, `.betterleaksignore`: one fingerprint per distinct flagged value in this repo's history (13 test-fixture values and one docs false positive), so `secrets / scan` can pass on PRs whose base includes it (#1352).
 
 ### Changed
