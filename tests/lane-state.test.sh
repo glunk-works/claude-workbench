@@ -139,7 +139,7 @@ assert_eq "a DIR that is a file is unreadable" "unreadable" "$(run list "$tmp/a-
 
 echo "# list -- the finder's words"
 
-for w in none unreacted escalated ambiguous moved unreadable; do
+for w in none unreacted escalated ambiguous moved unreadable legacy; do
   printf '%s\n' "$w" >"$stubs/finder.7"
   assert_eq "finder $w is the lane's own value" \
     "\"$w\"" "$(run list "$lanes" "$yml" | jq -c '.[0].spec')"

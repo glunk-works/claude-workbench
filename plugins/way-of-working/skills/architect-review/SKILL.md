@@ -201,7 +201,7 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      id and `updated_at` are `pointers.plan_anchor.spec_comment`'s in the local `.ai/state.json`
      (read with `jq -r` into variables), used only when `plan_anchor.task_issue` equals `I` and
      `pointers.review_pr.number` (when that pointer is non-null) equals this PR; `spec-find.sh` is
-     not run (it prints `unreadable` without a map). The comment is fetched into a file the way
+     not run (it prints `legacy` without a map). The comment is fetched into a file the way
      the Map branch fetches it (reactions are not needed) and printed only with `spec-comment.sh
      body`, which under `legacy` falls back to `author_association` for the comment's author
      (`#614`).
@@ -225,7 +225,7 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      zero). Its output must be exactly `found <id> <updated_at>`, `<id>` digits with no leading
      zero and `<updated_at>` `YYYY-MM-DDTHH:MM:SSZ`, parsed into `CID` and `CUP` in that call and
      never pasted into a later command. This review holds no pin: it never runs resume, and takes
-     a fresh `found`. Any other word (`none`, `unreacted`, `escalated`, `ambiguous`, `moved`, `unreadable`), a
+     a fresh `found`. Any other word (`none`, `unreacted`, `escalated`, `ambiguous`, `moved`, `unreadable`, `legacy`), a
      non-zero exit or empty output loads no spec, with that word as the reason (an exit or empty
      output reads as `unreadable`) — a stated limit, not a STOP. Never an id found in a PR body or
      title, a comment list, or the issue. Fetch `#I` once, projected at the source (`gh api

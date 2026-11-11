@@ -73,8 +73,10 @@
 #   posted-unreadable   the POST answered, but the response is not one this run can vouch for;
 #                       the comment exists
 # A hold is one line, `held <reason> <path>`, and exit 1; <path> is `<out-dir>/comment.md`, the
-# composed comment, for a human to post verbatim. Reasons: `no-identities` (the default branch's
-# `identities` is not a map), `actor-unreadable` (the viewer read failed) and `not-dev-app` (the
+# composed comment, for a human to post verbatim. Reasons: `legacy` (the default branch reads
+# `identities: null`: no dev App posts there, and the comment is for a legacy-allowlisted account to post),
+# `no-identities` (the default branch's `identities` is any other non-map value, a defence: the author
+# check stops it as `untrusted` first), `actor-unreadable` (the viewer read failed) and `not-dev-app` (the
 # acting account is not the declared dev App, or gh-identity.sh could not say). Nothing is
 # written to stderr on a stop or a hold. A bad argument, a slash-less $0 or a missing sibling
 # script prints a usage line (or a one-line diagnostic) on stderr and nothing on stdout, and
@@ -459,6 +461,7 @@ declared_ids() {
   case "$di_line" in
     *"
 "*) stop unreadable ;;
+    no-map) stop unreadable ;;
     "ok "*) : ;;
     *) stop unreadable ;;
   esac
@@ -622,6 +625,7 @@ ctmp=
 # hold: only a map, and only the declared dev App, posts
 yq -r 'has("identities"), (.identities | tag)' "$tmp/def.yml" >"$tmp/ident" 2>/dev/null || stop unreadable
 ident="$(tr '\n' ' ' <"$tmp/ident")"
+[ "$ident" = 'true !!null ' ] && held legacy
 [ "$ident" = 'true !!map ' ] || held no-identities
 gh api --hostname github.com graphql -f query='{ viewer { login databaseId } }' --jq '[.data.viewer.login, .data.viewer.databaseId] | @tsv' >"$tmp/viewer" 2>/dev/null || held actor-unreadable
 vlogin="$(cut -f1 <"$tmp/viewer")"

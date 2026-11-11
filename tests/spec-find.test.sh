@@ -459,7 +459,8 @@ nc; use_gi_stub undeclared; approved 1001 maint1 101; run
 expect "unreadable: role prints undeclared for a declared id" "unreadable"
 
 nc; Y_IDENT=" null"; writeyml; approved 1001 maint1 101; run
-expect "unreadable: identities: null" "unreadable"
+expect "legacy: identities: null" "legacy"
+assert_eq "legacy: identities: null made no gh call" "" "$(cat "$cd_/gh.log")"
 
 nc; Y_IDENT='  maintainer: []
   dev_app: null'; writeyml; approved 1001 maint1 101; run
@@ -822,5 +823,19 @@ for stub in 'exit 2' 'exit 1' 'echo unreadable' 'echo "ok 101"' 'echo "ok 101 - 
   run
   expect "unreadable: a helper stub that does [$stub]" "unreadable"
 done
+
+# A null identities map is the legacy shape in every mode, with no gh call (#1375).
+nc; Y_IDENT=" null"; writeyml; approved 1001 maint1 101; runp 1001
+expect "legacy: pending under identities: null" "legacy"
+assert_eq "legacy: pending under identities: null made no gh call" "" "$(cat "$cd_/gh.log")"
+nc; Y_IDENT=" null"; writeyml; approved 1001 maint1 101; runa
+expect "legacy: answer under identities: null" "legacy"
+assert_eq "legacy: answer under identities: null made no gh call" "" "$(cat "$cd_/gh.log")"
+
+# A declared-ids.sh stub that prints exactly `no-map` gives `legacy`, outside the shared stub loop above.
+nc; approved 1001 maint1 101
+printf '#!/bin/sh\necho no-map\n' >"$cd_/bin/declared-ids.sh"
+run
+expect "legacy: a helper stub that prints no-map" "legacy"
 
 [ "$fail" -eq 0 ]

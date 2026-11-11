@@ -99,6 +99,7 @@ verdict() {
   case "$di_line" in
     *"
 "*) word=unreadable; return ;;
+    no-map) word=unreadable; return ;;
     "ok "*) : ;;
     *) word=unreadable; return ;;
   esac

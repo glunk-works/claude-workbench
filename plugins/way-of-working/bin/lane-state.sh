@@ -23,7 +23,8 @@
 # element: {"issue":N,"branch":"TYPE/SLUG","worktree":"<dir>/N","spec":S,"pr":P}.
 #   spec  {"id":ID,"updated_at":"YYYY-MM-DDTHH:MM:SSZ"} when the sibling spec-find.sh says
 #         `found`; otherwise the finder's first word as a string (`unreacted <ids>` is
-#         "unreacted"). A finder `unreadable` is that one lane's value, not the whole output's.
+#         "unreacted"). A finder `unreadable` is that one lane's value, not the whole output's, and so
+#         is `legacy` (`identities: null`).
 #   pr    {"number":N,"state":"OPEN"|"CLOSED"|"MERGED"} for exactly one same-repository PR on
 #         the branch, null for none, "ambiguous" for more than one. Cross-repository PRs are
 #         dropped inside gh's own --jq.
@@ -219,7 +220,7 @@ lane_one() {
       [ "$#" -eq 3 ] && num_ok "$2" && ts_ok "$3" || { live=unreadable; return 1; }
       spec="{\"id\":$2,\"updated_at\":\"$3\"}"
       ;;
-    none | unreacted | escalated | ambiguous | moved | unreadable) spec="\"$1\"" ;;
+    none | unreacted | escalated | ambiguous | moved | unreadable | legacy) spec="\"$1\"" ;;
     *) live=unreadable; return 1 ;;
   esac
 

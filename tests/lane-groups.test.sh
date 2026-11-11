@@ -241,7 +241,7 @@ echo "# the finder's words"
 list 5 11 12
 printf '**Build order:**\n1. #11: a. [depends_on: none]\n2. #12: b. [depends_on: none]\n' | desc 5
 spec 12 102 '- `plugins/b.sh`'
-for w in none unreacted escalated ambiguous moved; do
+for w in none unreacted escalated ambiguous moved legacy; do
   : >"$stubs/gh.log"
   printf '%s\n' "$w" >"$stubs/finder.11"
   want="$(row 11 "$w" '?' '?' -)$nl$(row 12 found plugins/b.sh - -)${nl}group${tab}1${tab}#12"

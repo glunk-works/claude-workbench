@@ -489,7 +489,7 @@ desc="escalate hold: identities null"
 setyml "$tmp/legacy.yml"
 o="$(newdir)"
 esc "$dre/draft.md" "$o"
-held_is no-identities "$o" spec-task-escalated
+held_is legacy "$o" spec-task-escalated
 setyml "$tmp/map.yml"
 
 desc="escalate hold: the viewer is not the dev App"
@@ -524,7 +524,7 @@ desc="backlog.repo null is the origin's repository"
 setyml "$tmp/nullbacklog.yml"
 o="$(newdir)"
 FX_NWO=ACME/Repo post "$dr/draft.md" "$o"
-assert_eq "$desc (word)" "held no-identities $o/comment.md" "$out"
+assert_eq "$desc (word)" "held legacy $o/comment.md" "$out"
 assert_eq "$desc (issue read at the origin's repository)" 1 "$(grep -c '^api|--hostname|github.com|repos/ACME/Repo/issues/661|' "$glog" || true)"
 setyml "$tmp/map.yml"
 
@@ -533,7 +533,7 @@ desc="hold: identities null"
 setyml "$tmp/legacy.yml"
 o="$(newdir)"
 post "$dr/draft.md" "$o"
-held_is no-identities "$o"
+held_is legacy "$o"
 assert_eq "$desc (no viewer read)" 0 "$(grep -c 'graphql' "$glog" || true)"
 
 # An absent `identities` key is a config gh-identity.sh cannot judge, so the author check stops it
@@ -936,7 +936,7 @@ setyml "$tmp/legacy.yml"
 mkissue someone 7 '"COLLABORATOR"'
 o="$(newdir)"
 post "$dr/draft.md" "$o"
-held_is no-identities "$o"
+held_is legacy "$o"
 assert_eq "$desc (no content-time query)" 0 "$(grep -c lastEditedAt "$glog" || true)"
 desc="legacy: a CONTRIBUTOR author is untrusted"
 mkissue someone 7 '"CONTRIBUTOR"'
@@ -1422,6 +1422,17 @@ for stub in 'exit 2' 'exit 1' 'echo unreadable' 'echo "ok 101"' 'echo "ok 101 - 
   SCRIPT="$tmp/dstub$si/spec-post.sh" FX_RX="$RXF" post "$dr2/draft.md" "$o"
   stop_is unreadable
 done
+
+# A declared-ids.sh that prints exactly `no-map` stops a maintainer's issue `unreadable`, outside the shared stub loop.
+mkdir -p "$tmp/dstubnm"
+cp "$script" "$tmp/dstubnm/spec-post.sh"
+cp "$bindir/gh-identity.sh" "$bindir/spec-shape.sh" "$bindir/spec-reaction.sh" "$tmp/dstubnm/"
+printf '#!/bin/sh\necho no-map\n' >"$tmp/dstubnm/declared-ids.sh"
+desc="a helper stub that prints no-map stops a maintainer's issue unreadable"
+mkissue maint 100 '"OWNER"'
+o="$(newdir)"
+SCRIPT="$tmp/dstubnm/spec-post.sh" FX_RX="$RXF" post "$dr2/draft.md" "$o"
+stop_is unreadable
 
 # hidden
 mkrx "$RXF" "$RX_GOOD"

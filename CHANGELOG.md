@@ -27,6 +27,7 @@ the GitHub release notes.
 
 ### Changed
 
+- `declared-ids.sh` prints `no-map` for an explicit `identities: null` (an absent key stays `unreadable`), `spec-find.sh` prints `legacy` under it in every mode, `spec-post.sh` holds as `held legacy`, `lane-state.sh` and `lane-groups.sh` carry `legacy`, and `/way-of-working:resume` decides the mode before it runs the finder; `reference/cutover.md` says when the dev App must exist (`#1375`).
 - `ruleset-drift.sh` keeps reading the rule types and required checks of a ruleset whose bypass actors are not visible, and its single form ends `bypass_actors=unchecked` under an `identities` map; `/way-of-working:resume` reports one plain line for an installation token, drops its scheduled-job claim, and prints the commits ahead of the base when there is no cursor; resume, handoff, ship and `reference/conventions.md` try the installation probe before `gh api user`; `reference/cutover.md` says the full bypass check runs from the host as an admin (`#1371`, `#1259`).
 - This repo's dev container installs its pinned plugin at start: `postStartCommand` ends with the image's `plugin-install.sh`, which installs the `.claude/settings.json` pin at user scope and fails the start when it cannot, and the secret scan and image check workflows move to 603-Identity/devcontainers v1.7. A project-scope install from before is not removed by it: uninstall it once, before the first start with this change.
 

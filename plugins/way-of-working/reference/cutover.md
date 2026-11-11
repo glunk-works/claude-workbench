@@ -208,3 +208,9 @@ This is not one of the cutover's four parts: it runs after them, and it points a
 - **`lanes.dir`** (`project-schema.md` § `lanes`) under `/tmp`. The shared devcontainer template already mounts `/tmp` as a per-repo volume (as the marketplace repository's own `.devcontainer/devcontainer.json`, checked against the template by `verify / verify`, shows), so no mount is added by hand.
 - **The host launchers.** Install the host tools, then follow the *Adding a repo to this host* section of the marketplace repository's `docs/identity/DEV-CONTAINER.md`. `wow-driver.ps1` and `wow-lane.ps1` take any repo of the org set up that way through `-Clone` and `-Reference`.
 - **A short skills list for the repo's `CLAUDE.md`:** `resume` at session start, `handoff` before a switch, `spec-task` per issue, `lanes` from the driver, `critic-gate` after the green gate, `ship`, `pr-checks`, `plan-sprint`.
+
+## When the dev App must exist
+
+- **The cutover's own PR 1** is built while the default branch still reads `identities: null`, so its spec is legacy: `spec-task` holds it as `legacy`, an account allowlisted by `author_association` posts the held file verbatim, and `/way-of-working:handoff` anchors it.
+- **The bootstrap exception.** From PR 1's merge until the dev App is installed on the repo and is in the host's token broker, `spec-task` holds as `not-dev-app`. A declared maintainer posts the held file verbatim, and a declared maintainer's reaction approves it (their own reaction counts).
+- **The dev App is installed and brokered** before the first build whose spec `/way-of-working:resume` is to draft unattended, since resume's drafting branch needs `Drafting identity: dev_app`.

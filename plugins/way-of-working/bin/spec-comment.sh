@@ -179,6 +179,7 @@ reaction_word() {
   case "$di_line" in
     *"
 "*) echo unreacted; return ;;
+    no-map) echo unreacted; return ;;
     "ok "*) : ;;
     *) echo unreacted; return ;;
   esac

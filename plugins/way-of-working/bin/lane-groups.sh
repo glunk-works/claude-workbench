@@ -29,7 +29,7 @@
 #            failed yq read is `unreadable`); then `spec-fresh.sh check` on the file: `fresh` is state
 #            `found`, a first word of `stale` is `stale`, any other output is `unreadable`
 #   others   the finder's first word is the state (`none`, `unreacted`, `escalated`, `ambiguous`,
-#            `moved`, `unreadable`) and no comment is fetched; a finder that exits non-zero or
+#            `moved`, `unreadable`, `legacy`) and no comment is fetched; a finder that exits non-zero or
 #            prints anything else is `unreadable` for that row only
 # Paths come from `spec-fresh.sh paths` on the same file, for the `found` and `stale` states only.
 # They are used only when that is one line whose first word is `paths` and whose other words each
@@ -236,7 +236,7 @@ row_of() {
               fi
             fi
             ;;
-          none | unreacted | escalated | ambiguous | moved | unreadable) state=$1 ;;
+          none | unreacted | escalated | ambiguous | moved | unreadable | legacy) state=$1 ;;
         esac
         ;;
     esac
