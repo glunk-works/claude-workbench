@@ -71,8 +71,13 @@ $DEV"
 n=$((n + 1))
 printf 'repo: acme/app\nidentities: null\n' >"$tmp/p$n.yml"
 rc=0; out="$(sh "$script" "$tmp/p$n.yml" 2>/dev/null)" || rc=$?
-assert_eq "unreadable: identities null (stdout)" unreadable "$out"
-assert_eq "unreadable: identities null (exit)" 0 "$rc"
+assert_eq "no-map: identities null (stdout)" no-map "$out"
+assert_eq "no-map: identities null (exit)" 0 "$rc"
+n=$((n + 1))
+printf 'repo: acme/app\nnull_anchor: &z null\nidentities: *z\n' >"$tmp/p$n.yml"
+rc=0; out="$(sh "$script" "$tmp/p$n.yml" 2>/dev/null)" || rc=$?
+assert_eq "unreadable: identities an alias of a null anchor (stdout)" unreadable "$out"
+assert_eq "unreadable: identities an alias of a null anchor (exit)" 0 "$rc"
 n=$((n + 1))
 printf 'repo: acme/app\n' >"$tmp/p$n.yml"
 rc=0; out="$(sh "$script" "$tmp/p$n.yml" 2>/dev/null)" || rc=$?

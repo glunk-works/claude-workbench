@@ -469,6 +469,18 @@ for stub in 'exit 2' 'exit 1' 'echo unreadable' 'echo "ok 101"' 'echo "ok 101 - 
   done
 done
 
+# A declared-ids.sh that prints exactly `no-map` is `unreacted`, outside the shared stub loop.
+d="$tmp/stubnm"
+mkdir "$d"
+cp "$script" "$d/spec-comment.sh"
+cp "$(dirname "$script")/gh-identity.sh" "$d/gh-identity.sh"
+printf '#!/bin/sh\necho approved\n' >"$d/spec-reaction.sh"
+printf '#!/bin/sh\necho no-map\n' >"$d/declared-ids.sh"
+rc=0
+out="$(sh "$d/spec-comment.sh" check "$tmp/good.json" $REPO $ISSUE $CID $UPD "$tmp/map.yml" "$tmp/fresh.tsv" 2>/dev/null)" || rc=$?
+assert_eq "helper stub [no-map], good author (stdout)" unreacted "$out"
+assert_eq "helper stub [no-map], good author (rc)" 0 "$rc"
+
 # Eight arguments with a reactions file are accepted (the nine-argument refusal is above).
 run check "$tmp/good.json" "$tmp/map.yml" "$CID" "$UPD" "$ISSUE" "$REPO" "$tmp/fresh.tsv"
 assert_eq "eight arguments accepted (rc)" 0 "$rc"

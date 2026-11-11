@@ -1005,6 +1005,16 @@ for stub in 'exit 2' 'exit 1' 'echo unreadable' 'echo "ok 101"' 'echo "ok 101 - 
   SCRIPT="$tmp/stub$si/spec-issue.sh" run fetch 611 "$o"
   stop_is unreadable "$o"
 done
+# A declared-ids.sh that prints exactly `no-map` stops a maintainer's issue `unreadable`, outside the shared stub loop.
+mkdir -p "$tmp/stubnm"
+cp "$script" "$tmp/stubnm/spec-issue.sh"
+cp "$bindir/gh-identity.sh" "$bindir/spec-reaction.sh" "$tmp/stubnm/"
+printf '#!/bin/sh\necho no-map\n' >"$tmp/stubnm/declared-ids.sh"
+desc="a helper stub that prints no-map stops a maintainer's issue unreadable"
+mkissue maint 100 '"OWNER"'
+o="$(newout)"
+SCRIPT="$tmp/stubnm/spec-issue.sh" run fetch 611 "$o"
+stop_is unreadable "$o"
 setyml "$tmp/legacy.yml"
 desc="an out-dir inside the checkout"
 mkdir -p "$co/inside"

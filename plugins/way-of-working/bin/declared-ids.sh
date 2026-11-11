@@ -24,6 +24,8 @@
 # Prints exactly one line to stdout and exits 0:
 #   ok <maintainer-ids> <dev-app-id>  -- the maintainer ids comma-joined in list order, and the dev App's id,
 #                                        or `-` when `identities.dev_app` is null or missing
+#   no-map                            -- `identities` is present and explicitly null (a repo before its cutover:
+#                                        the legacy shape, WB-D17). An absent key is `unreadable`, not this
 #   unreadable                        -- any value above failed its shape
 #
 # Exits 2, printing nothing to stdout, for a wrong argument count or a <project.yml> that is missing or not
@@ -46,6 +48,9 @@ out() {
   exit 0
 }
 
+# An explicit `identities: null` is the legacy shape; the unexploded tag is read, so an alias (empty tag) and an
+# absent key (`has` false) stay `unreadable`, as `plan-anchor-flags.sh`, resume and spec-post's hold stage read it.
+if [ "$(yq -r 'has("identities"), (.identities | tag)' "$yml" 2>/dev/null | tr '\n' ' ')" = 'true !!null ' ]; then out no-map; fi
 [ "$(yq -r 'explode(.) | .identities | tag' "$yml" 2>/dev/null)" = '!!map' ] || out unreadable
 m_total="$(yq -r 'explode(.) | .identities.maintainer | select(tag == "!!seq") | length' "$yml" 2>/dev/null)" || out unreadable
 maint_ids="$(yq -r 'explode(.) | .identities.maintainer | select(tag == "!!seq") | [.[] | select(tag == "!!map" and ((.id | tag) == "!!int") and .id > 0 and ((.login | tag) == "!!str")) | .id] | join(",")' "$yml" 2>/dev/null)" || out unreadable

@@ -412,7 +412,13 @@ the draft* step) and relays its findings to the drafter.
      this session never retypes or re-renders it, and does not post it. In `escalate` mode, say
      the held comment is an escalation, not offered for approval, and that the label is not added
      (only the dev App writes it). The out directory is kept, and only the draft directory is
-     removed.
+     removed. For the reason `legacy` (the default branch reads `identities: null`, so no dev App
+     posts), in `post` mode, say instead of "then react": an account whose association on the backlog
+     repo is OWNER, MEMBER or COLLABORATOR posts the file verbatim, and the build uses the comment only
+     once `/way-of-working:handoff` anchors its id as `plan_anchor.spec_comment`, where
+     `spec-comment.sh` checks that author's association and reads no reaction. This hint applies in `post`
+     mode only: an escalated comment held as `legacy` is not a spec to post and anchor, and the
+     `escalate`-mode text above applies to it unchanged.
    - **`posted-unreadable`** and **`post-unknown`**: print "posted, id unknown" or "post state
      unknown". Neither prints the comment for re-posting. Both say to look at `#N` before any
      re-run, because the comment may exist.

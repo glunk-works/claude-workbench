@@ -300,6 +300,7 @@ declared_ids() {
   case "$di_line" in
     *"
 "*) stop unreadable ;;
+    no-map) stop unreadable ;;
     "ok "*) : ;;
     *) stop unreadable ;;
   esac

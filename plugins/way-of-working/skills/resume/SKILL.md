@@ -200,7 +200,13 @@ edited it. **Default to the full checklist whenever unsure.**
        (which always waits — no task token can match; a `--plan` word never satisfies the
        Auto-start rule's *plan verified* condition), full mode can only print `drift`
        (`bin/plan-anchor.sh` says so itself); run `verify --plan` instead, same flags,
-       and report its word. **Under a map with a non-null `task_issue`,** the same Bash call
+       and report its word. **The same Bash call decides the identities mode before any finder
+       run,** with the predicate the body read uses (`yq -r 'has("identities"), (.identities | tag)'`
+       on `$DEF_YML_FILE`): `true` then `!!null` is legacy, so the finder does not run and `verify`
+       runs in full mode (or `--plan` when `task_issue` is `null`) with the helper's flags, as the
+       legacy text below describes; `true` then `!!map` is a map and runs the finder as follows;
+       anything else reports `Plan anchor: unreadable (identities)` and waits.
+       **Under a map with a non-null `task_issue`,** the same Bash call
        also runs the finder, after the mode and flag decisions, by the *reader rule* below
        (`spec-find.sh find "$TASK" "$DEF_YML_FILE"`, `TASK` parsed from `$ANCHOR`'s
        `task_issue` and checked as digits with no leading zero). On `found <id> <updated_at>`

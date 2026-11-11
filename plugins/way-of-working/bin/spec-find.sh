@@ -17,7 +17,7 @@
 # `pending` (#663) uses the same configuration reads, the same one listing and the same static,
 # role, reaction and `moved` logic as `find`. It answers whether an unreacted draft, or an
 # escalated comment, newer than the approved spec is already posted, so resume does not post a
-# duplicate. Its words are, in order: `unreadable`, `moved <id>`, `pending <id>[,<id>...]` (the
+# duplicate. Its words are, in order: `unreadable`, `legacy` (as for `find`), `moved <id>`, `pending <id>[,<id>...]` (the
 # `spec-task:` rows that passed the role check, are not approved candidates and have an id greater
 # than <after-id>, plus the role-passed escalated rows with an id greater than <after-id>, compared
 # as digit strings: the longer is larger, equal lengths compare as strings) or `pending none`.
@@ -27,7 +27,7 @@
 # regex alternates a third first-line grammar, `spec-task-answer: escalated=<id> choice=apply|amend`; an
 # answer row is projected with a ninth field (its `created_at`), so the `NF != 8` rule keeps it out of
 # `find` and `pending`, whose words do not change. Its words, the first that applies winning:
-# `unreadable` (as for `find`), `moved <id>` (as for `find`), `ignored <id>[,<id>...]` or `not-escalated`
+# `unreadable` (as for `find`), `legacy` (as for `find`), `moved <id>` (as for `find`), `ignored <id>[,<id>...]` or `not-escalated`
 # (the word `find` would print on this listing is not `escalated`: `ignored` when the listing holds
 # answer-shaped rows, comma-joined in listing order, which passed only the static filters and the
 # declared-maintainer author-id filter, no target, time or role check, no reactions and no comment
@@ -65,7 +65,7 @@
 # Read from <project.yml> with yq, aliases expanded: `pr_base` (a plain branch name) and the
 # backlog repo (`backlog.repo`, or `repo` when that is null; owner/name). The rest, which declared-ids.sh
 # reads (#1079) and which is where its rules live, is: `identities` (a map;
-# under null, the legacy shape, the finder does not apply), `identities.maintainer` (at least
+# under an explicit null, the legacy shape, every mode prints `legacy`), `identities.maintainer` (at least
 # one entry, each a map with an !!int `id` above 0 that is canonical decimal and a string `login`) and
 # `identities.dev_app`, `identities.reviewer_app` and `identities.loop_app` (each null or
 # missing: no check for that key here, and a missing key is a declared residual (WB-D30
@@ -78,6 +78,8 @@
 # and the first word in this order wins:
 #   unreadable                   -- a config value, a fetch, a read or a lookup failed, or a
 #                                   value was not the shape expected
+#   legacy                       -- `identities` is an explicit null (declared-ids.sh says `no-map`): no
+#                                   finder applies, and no `gh` call is made
 #   moved <id>                   -- the first row, in listing order, whose `updated_at` changed
 #                                   between the listing and the second read
 #   ambiguous <id>,<id>[,...]    -- two or more candidates; the finder never picks one
@@ -156,6 +158,7 @@ esac
 # One of five copies of the declared-ids.sh ok-line parser (spec-find, spec-comment, spec-answer, spec-issue, spec-post); a change to that line edits all five (declared-ids.sh header, #1105).
 di_line="$(sh "$di" "$yml" </dev/null 2>/dev/null)" || out unreadable
 case "$di_line" in
+  no-map) out legacy ;;
   *"
 "*) out unreadable ;;
   "ok "*) : ;;

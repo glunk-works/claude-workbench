@@ -267,4 +267,10 @@ for stub in 'exit 2' 'exit 1' 'echo unreadable' 'echo "ok 101"' 'echo "ok 101 - 
   expect "unreadable: a helper stub that does [$stub]" unreadable
 done
 
+# A declared-ids.sh that prints exactly `no-map` gives unreadable, outside the shared stub loop.
+nc
+printf '#!/bin/sh\necho no-map\n' >"$cd_/bin/declared-ids.sh"
+run check
+expect "unreadable: a helper stub that prints no-map" unreadable
+
 [ "$fail" -eq 0 ]
