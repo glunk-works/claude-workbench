@@ -5,15 +5,19 @@
 # Before a build uses a found spec, the paths the spec lists under its *Files touched* section
 # are compared between that commit and the current tip of the base. If any changed, the spec is
 # stale and the build does not use it. A `paths` mode prints those checked paths and makes no git
-# call. Callers: /way-of-working:resume's map body read (and its stale branch's re-run) and the
+# call. bin/spec-find.sh also runs `check` (#1374), on older approved candidates, without `spec-comment.sh check` first. A `changed` mode (#1374) runs the same stages and, where `check` would print `stale <n>`, prints
+# the marker commit, the tip commit and the changed paths, for /way-of-working:spec-task's refresh branch.
+# Callers: /way-of-working:resume's map body read (and its stale branch's re-run) and the
 # coder agent's, each after `spec-comment.sh check` says `ok` and before `spec-comment.sh body`;
-# /way-of-working:spec-task runs the `shape` mode on a draft before posting it, and bin/spec-answer.sh runs it on an
+# /way-of-working:spec-task runs the `shape` mode on a draft before posting it and the `changed` mode on a stale
+# approved comment (its refresh branch), and bin/spec-answer.sh runs it on an
 # escalated comment's body (#790); bin/lane-groups.sh
 # runs `check` and `paths`, in its own clause: after its own `.id` and `.updated_at` compare, not
 # after `spec-comment.sh check`.
 #
 # Usage: spec-fresh.sh check <comment.json> <issue> <project.yml>
 #        spec-fresh.sh paths <comment.json> <issue> <project.yml>
+#        spec-fresh.sh changed <comment.json> <issue> <project.yml>
 #        spec-fresh.sh shape <draft.md>
 #
 #   <comment.json>  the caller's own fetch of the ONE spec comment, to a file (the same file
@@ -37,9 +41,14 @@
 #                         compares: (append) bullets skipped except under .github/), space-separated;
 #                         `paths` alone when that set is empty
 # or `bad-marker`, `bad-shape` or `unreadable`, as `check` does. It makes no git call.
+# `changed` (#1374) runs every stage `check` runs and prints the same word for every outcome but a stale one:
+#   changed <marker-sha> <tip-sha> <path>[ <path>...]
+#                     -- where `check` prints `stale <n>`: the marker's 40-hex commit, the 40-hex base tip
+#                        commit every stage after the Fetch stage used (resolved once, never re-read from the ref), and each
+#                        checked path that changed, in the order the Shape stage wrote them, space-separated
 # It exits 2, with a usage line on stderr and nothing on stdout, for a bad argument (the wrong
 # count, an unknown mode, an issue with a leading zero or non-digits), a missing file, or a
-# slash-less $0. It never prints the body or git's output; only `paths` prints paths, and only
+# slash-less $0. It never prints the body or git's output (`changed` prints the 40-hex tip, shape-checked); only `paths` and `changed` print paths, and only
 # ones that passed the Shape stage's path rule. Every git and yq call's
 # stderr goes to /dev/null. Nothing is evaluated; the body is data.
 #
@@ -52,7 +61,8 @@
 #   Shape    no refused form (the Shape rules below) or stray CR on any line, and the *Files touched*
 #            section (from the one `### Files touched` heading to the one `### Done when` heading
 #            after it) is readable: see below.
-#   Fetch    `git fetch` of the base into refs/remotes/origin/<base>, then rev-parse of it.
+#   Fetch    `git fetch` of the base into refs/remotes/origin/<base>, then rev-parse of it, once, to
+#            one 40-hex commit that every later stage (and `changed`'s printed tip) uses.
 #   Commit   the sha is a commit and an ancestor of the base tip, before any other git command
 #            uses it.
 #   Changed  `git diff --name-only -z <sha> <tip>`, NUL-split, minus the cursor-sync set that
@@ -88,13 +98,13 @@ LC_ALL=C
 export LC_ALL
 
 usage() {
-  echo "usage: spec-fresh.sh check|paths <comment.json> <issue> <project.yml> | spec-fresh.sh shape <draft.md>" >&2
+  echo "usage: spec-fresh.sh check|paths|changed <comment.json> <issue> <project.yml> | spec-fresh.sh shape <draft.md>" >&2
   exit 2
 }
 [ "$#" -ge 1 ] || usage
 mode="$1"
 case "$mode" in
-  check | paths) [ "$#" -eq 4 ] || usage ;;
+  check | paths | changed) [ "$#" -eq 4 ] || usage ;;
   shape) [ "$#" -eq 2 ] || usage ;;
   *) usage ;;
 esac
@@ -236,8 +246,9 @@ fi
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || out unreadable
 [ -n "$top" ] || out unreadable
 git -C "$top" fetch -q --no-tags origin "+refs/heads/$base:refs/remotes/origin/$base" >/dev/null 2>&1 </dev/null || out unreadable
-tip="refs/remotes/origin/$base"
-git -C "$top" rev-parse --verify "$tip^{commit}" >/dev/null 2>&1 </dev/null || out unreadable
+tip="$(git -C "$top" rev-parse --verify "refs/remotes/origin/$base^{commit}" 2>/dev/null </dev/null)" || out unreadable
+case "$tip" in '' | *[!0-9a-f]*) out unreadable ;; esac
+[ "${#tip}" -eq 40 ] || out unreadable
 
 # --- Commit ------------------------------------------------------------------------------
 git -C "$top" cat-file -e "$sha^{commit}" >/dev/null 2>&1 </dev/null || out bad-sha
@@ -268,4 +279,26 @@ n="$(FRESH_CHANGED="$tmp/changed" awk '
 ' "$tmp/paths" 2>/dev/null)" || out unreadable
 case "$n" in '' | *[!0-9]*) out unreadable ;; esac
 [ "$n" -eq 0 ] && out fresh
+if [ "$mode" = changed ]; then
+  # The checked paths that changed, in Shape order (the Compare rule again, strings only).
+  list="$(FRESH_CHANGED="$tmp/changed" awk '
+    BEGIN {
+      f = ENVIRON["FRESH_CHANGED"]
+      while ((r = (getline l < f)) > 0) {
+        if (l == ".ai/next-steps.md" || substr(l, 1, 11) == ".ai/parked/") continue
+        ch[++nc] = l
+      }
+      if (r < 0) { bad = 1; exit 1 }
+    }
+    {
+      p = $0
+      for (i = 1; i <= nc; i++) {
+        if (ch[i] == p || substr(ch[i], 1, length(p) + 1) == p "/") { printf "%s%s", (o++ ? " " : ""), p; break }
+      }
+    }
+    END { if (bad) exit 1; print "" }
+  ' "$tmp/paths" 2>/dev/null)" || out unreadable
+  [ -n "$list" ] || out unreadable
+  out "changed $sha $tip $list"
+fi
 out "stale $n"

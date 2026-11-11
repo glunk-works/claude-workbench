@@ -150,7 +150,7 @@ and spawns **only** what the human confirms (or the critics named explicitly in 
 light change may want one critic; a trust-boundary change may want the full set. That is the
 diff mode where `agents.diff_rule` is `null`. Where it is a list, `bin/critic-select.sh` computes the
 set from the diff's paths and the default branch's config (`WB-D41`), a list of names from the session
-can only add to it, and the human is not asked. Its spec mode, which `/way-of-working:spec-task` runs on every draft, selects the
+can only add to it, and the human is not asked. Its spec mode, which `/way-of-working:spec-task` runs on every draft but an unchanged carried-forward refresh, selects the
 critics by rule from the files the spec lists and runs unattended under its own cap of 2 fix-and-re-run rounds.
 
 > **`/way-of-working:critic-gate` is defense-in-depth that runs EARLIER — it is NOT the
@@ -387,7 +387,7 @@ edits to the description and cannot be mistaken for the human's approval.
   drafting ahead has no such backstop there. It reads the issue only when its author is
   trusted (or, under a map, an App-filed issue a maintainer reacted to, `WB-D32`), drafts the spec comment in the fixed shape against the PR base's tree, then **posts it as the dev App or holds it for a human to post, and stops
   (`bin/spec-post.sh`)**. A declared maintainer reacts on GitHub, and once they have,
-  under a map, the readers find it. Critic-gates every draft first (critic-gate's spec mode, unattended, by rule), then posts it, or
+  under a map, the readers find it. Critic-gates every draft first (critic-gate's spec mode, unattended, by rule; the one exception is a refresh of a stale approved spec whose text is carried forward unchanged, `#1374`), then posts it, or
   posts it as an escalation with its open findings when the gate hits the cap or stops converging.
   Under a map, a declared maintainer's `spec-task-answer:` comment on the newest escalated comment steers a redraft of it on a later run (`WB-D39`).
   Never edits, deletes or reacts (`WB-D29`); its one label write is the escalation's. Runs on `models.architect`.

@@ -14,7 +14,10 @@
 #   2. Script fixtures. Each case copies spec-find.sh into its own fixture bin/ directory and
 #      runs it by path, beside the real spec-reaction.sh and either the real gh-identity.sh or a
 #      logging stub. A stub `gh`, first on PATH and keyed on the shape of the call, serves a
-#      canned listing TSV, canned reactions and a second-read value, and logs its argv.
+#      canned listing TSV, canned reactions and, for the second read, one JSON file per row (its
+#      `updated_at` plus a body carrying the sentinel), and logs its argv. A stub sibling
+#      spec-fresh.sh, keyed on the comment file it is given, serves a canned freshness word (default
+#      `fresh`) and logs its argv (#1374).
 #
 # No case's stdout or stderr may contain the sentinel the stub plants on its failure paths.
 # Needs yq (mikefarah v4) and jq; skips, loudly, without either.
@@ -160,13 +163,13 @@ case "$*" in
     fi
     [ ! -f "$FX_DIR/rx/$id.tsv" ] || cat "$FX_DIR/rx/$id.tsv"
     ;;
-  "api repos/"*"/issues/comments/"*" --jq .updated_at")
+  "api repos/"*"/issues/comments/"*)
     id="${2##*/issues/comments/}"
     if [ -n "${FX_UPD_FAIL:-}" ]; then
       leak
       exit 1
     fi
-    cat "$FX_DIR/upd/$id"
+    cat "$FX_DIR/cj/$id.json"
     ;;
   *)
     leak
@@ -175,6 +178,18 @@ case "$*" in
 esac
 FAKE_GH
 chmod +x "$fakebin/gh"
+
+cat >"$tmp/sf-stub.sh" <<'FAKE_SF'
+#!/bin/sh
+d="$(dirname "$0")/.."
+id="$(sed -n 's/.*"id": \([0-9]*\),.*/\1/p' "$2")"
+printf '%s %s %s %s\n' "$1" "$id" "$3" "$4" >>"$d/sf.log"
+echo "$FX_MARK sibling stderr" >&2
+[ -f "$d/sfword/$id" ] || { echo fresh; exit 0; }
+w="$(cat "$d/sfword/$id")"
+[ "$w" != EXIT1 ] || exit 1
+printf '%b\n' "$w"
+FAKE_SF
 
 cat >"$tmp/gi-stub.sh" <<'FAKE_GI'
 #!/bin/sh
@@ -214,12 +229,14 @@ writeyml() {
 nc() {
   cn=$((cn + 1))
   cd_="$tmp/c$cn"
-  mkdir -p "$cd_/bin" "$cd_/rx" "$cd_/upd"
+  mkdir -p "$cd_/bin" "$cd_/rx" "$cd_/cj" "$cd_/sfword"
   cp "$script" "$cd_/bin/spec-find.sh"
+  cp "$tmp/sf-stub.sh" "$cd_/bin/spec-fresh.sh"
   cp "$bindir/spec-reaction.sh" "$bindir/gh-identity.sh" "$bindir/declared-ids.sh" "$cd_/bin/"
   : >"$cd_/list.tsv"
   : >"$cd_/gh.log"
   : >"$cd_/gi.log"
+  : >"$cd_/sf.log"
   BACKLOG="acme/app"
   ISSUE=7
   reset_yml
@@ -239,8 +256,12 @@ addrow() {
   r_url="${7:-https://api.github.com/repos/$BACKLOG/issues/$ISSUE}"
   r_kind="${8:-spec-task}"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$r_updated" "$r_url" "$2" "$3" "$r_issue" "$r_base" "$r_kind" >>"$cd_/list.tsv"
-  printf '%s' "$r_updated" >"$cd_/upd/$1"
+  setupd "$1" "$r_updated"
 }
+# setupd <id> <updated_at> -- the second read's JSON for a row: its updated_at and a body carrying the sentinel
+setupd() { printf '{"id": %s, "updated_at": "%s", "body": "%s comment body"}\n' "$1" "$2" "$SENTINEL" >"$cd_/cj/$1.json"; }
+# sfword <id> <word> -- the stub sibling's canned freshness word for a row (EXIT1 exits 1; \n is a line break)
+sfword() { printf '%s' "$2" >"$cd_/sfword/$1"; }
 # addesc <id> <login> <uid> [updated] [issue-in-marker] [base] [issue_url] -- an escalated-marker row
 addesc() { addrow "$1" "$2" "$3" "${4:-}" "${5:-}" "${6:-}" "${7:-}" spec-task-escalated; }
 # addrx <id> <user-id> <content> <created_at>
@@ -281,7 +302,7 @@ nc; Y_BACKLOG="other/backlog"; BACKLOG="other/backlog"; writeyml; approved 1001 
 expect "found: a non-null backlog.repo" "found 1001 $T1"
 if grep -q 'repos/other/backlog/issues/7/comments' "$cd_/gh.log" &&
   grep -q 'repos/other/backlog/issues/comments/1001/reactions' "$cd_/gh.log" &&
-  grep -q 'repos/other/backlog/issues/comments/1001 --jq' "$cd_/gh.log" &&
+  grep -Fxq 'api repos/other/backlog/issues/comments/1001' "$cd_/gh.log" &&
   ! grep -q 'repos/acme/app/' "$cd_/gh.log"; then
   echo "ok - found: the listing and the reaction reads go to backlog.repo"
 else
@@ -411,11 +432,11 @@ nc; approved 1001 maint1 101; approved 1002 maint2 102; run
 expect "ambiguous: two approved rows" "ambiguous 1001,1002"
 
 # --- moved ---
-nc; approved 1001 maint1 101; printf '%s' "2026-09-21T09:06:00Z" >"$cd_/upd/1001"; run
+nc; approved 1001 maint1 101; setupd 1001 "2026-09-21T09:06:00Z"; run
 expect "moved: updated_at changes between the listing and the second read" "moved 1001"
 
 # --- precedence ---
-nc; approved 1001 maint1 101; approved 1002 maint1 101; approved 1003 maint1 101; printf '%s' "2026-09-21T09:06:00Z" >"$cd_/upd/1001"; run
+nc; approved 1001 maint1 101; approved 1002 maint1 101; approved 1003 maint1 101; setupd 1001 "2026-09-21T09:06:00Z"; run
 expect "precedence: a moved row beside two candidates gives moved" "moved 1001"
 
 nc; approved 1001 maint1 101; addrow 1002 maint1 101 "2026-09-21 09:00:00"; run
@@ -424,7 +445,7 @@ expect "precedence: an unreadable row after a candidate gives unreadable" "unrea
 nc; addrow 1002 maint1 101 "2026-09-21 09:00:00"; approved 1001 maint1 101; run
 expect "precedence: an unreadable row before a candidate gives unreadable" "unreadable"
 
-nc; approved 1001 maint1 101; addrow 1002 maint1 101; printf '%s' "2026-09-21T09:06:00Z" >"$cd_/upd/1002"; addrow 1003 maint1 101 "2026-09-21 09:00:00"; run
+nc; approved 1001 maint1 101; addrow 1002 maint1 101; setupd 1002 "2026-09-21T09:06:00Z"; addrow 1003 maint1 101 "2026-09-21 09:00:00"; run
 expect "precedence: unreadable beats moved" "unreadable"
 
 # --- unreadable ---
@@ -633,7 +654,7 @@ expect "pending: all role-passed rows approved" "pending none"
 nc; runp 1001
 expect "pending: no marker comments" "pending none"
 
-nc; approved 1001 maint1 101; addrow 1002 "dev-app[bot]" 201; printf '%s' "2026-09-21T09:06:00Z" >"$cd_/upd/1002"; runp 1001
+nc; approved 1001 maint1 101; addrow 1002 "dev-app[bot]" 201; setupd 1002 "2026-09-21T09:06:00Z"; runp 1001
 expect "pending: a row that moves between the reads" "moved 1002"
 
 nc; approved 1001 maint1 101; flag "FX_LIST_FAIL=1"; runp 1001
@@ -768,7 +789,7 @@ expect "ignored: two answer rows, both ids in listing order" "ignored 1002,1003"
 nc; approved 1001 maint1 101; addans 1002 maint1 101 1001 apply; addans 1002 maint1 101 1001 apply; runa
 expect "ignored: a repeated answer row is listed once" "ignored 1002"
 
-nc; addesc 1001 maint1 101 "$TE1"; addans 1002 maint1 101 1001 apply; printf '%s' "2026-09-21T09:01:00Z" >"$cd_/upd/1001"; addrow 1005 maint1 101; printf '%s' "2026-09-21T09:30:00Z" >"$cd_/upd/1005"; runa
+nc; addesc 1001 maint1 101 "$TE1"; addans 1002 maint1 101 1001 apply; setupd 1001 "2026-09-21T09:01:00Z"; addrow 1005 maint1 101; setupd 1005 "2026-09-21T09:30:00Z"; runa
 expect "moved: wins over ignored" "moved 1005"
 
 # answer rows leave find and pending alone
@@ -784,6 +805,74 @@ if grep -q 'issues/comments/' "$cd_/gh.log"; then
 else
   echo "ok - answer: no reaction or second read for escalated and answer rows"
 fi
+
+# --- two or more approved candidates: the newest wins when every older one reads stale (#1374) ---
+nc; approved 1001 maint1 101; approved 1002 maint1 101; sfword 1001 "stale 2"; run
+expect "found: two approved, the older reads stale 2, so the newer is found" "found 1002 $T1"
+assert_eq "found: the freshness check ran on the older comment's file only, with the issue and project file" "check 1001 7 $cd_/project.yml" "$(cat "$cd_/sf.log")"
+
+nc; approved 1002 maint1 101; approved 1001 maint1 101; sfword 1001 "stale 2"; run
+expect "found: the listing order does not matter, the larger id is the newer" "found 1002 $T1"
+
+nc; approved 1001 maint1 101; approved 1002 maint1 101; run
+expect "ambiguous: two approved, both fresh (the stub's default word)" "ambiguous 1001,1002"
+
+nc; approved 1001 maint1 101; approved 1002 maint1 101; sfword 1001 "bad-shape"; run
+expect "ambiguous: the older reads bad-shape" "ambiguous 1001,1002"
+
+nc; approved 1001 maint1 101; approved 1002 maint1 101; sfword 1001 EXIT1; run
+expect "ambiguous: the sibling exits non-zero" "ambiguous 1001,1002"
+
+nc; approved 1001 maint1 101; approved 1002 maint1 101; sfword 1002 "stale 3"; run
+expect "ambiguous: the newer is stale and the older is fresh" "ambiguous 1001,1002"
+
+nc; approved 1001 maint1 101; approved 1002 maint1 101; approved 1003 maint1 101; sfword 1001 "stale 1"; sfword 1002 "stale 4"; run
+expect "found: three approved, the two older read stale, the newest is found" "found 1003 $T1"
+
+nc; approved 1001 maint1 101; approved 1002 maint1 101; approved 1003 maint1 101; sfword 1001 "stale 1"; run
+expect "ambiguous: three approved, only one older reads stale" "ambiguous 1001,1002,1003"
+
+nc; approved 99 maint1 101; approved 100 maint1 101; sfword 99 "stale 1"; run
+expect "found: ids compare as digit strings, 100 is larger than 99" "found 100 $T1"
+
+for w in "stale" "stale 0" "stale 02" "stale 1 extra" "stale 1\nfresh" "fresh\nstale 1" "stale x" " stale 1" "stale  1" "STALE 1" ""; do
+  nc; approved 1001 maint1 101; approved 1002 maint1 101; sfword 1001 "$w"; run
+  expect "ambiguous: the freshness word [$(printf '%s' "$w" | sed 's/\\n/ NL /g')] is not the whole line stale <n>" "ambiguous 1001,1002"
+done
+
+nc; approved 1001 maint1 101; run
+expect "found: one approved candidate" "found 1001 $T1"
+assert_eq "found: one approved candidate makes no freshness call" "" "$(cat "$cd_/sf.log")"
+
+nc; approved 1001 maint1 101; addrow 1002 maint1 101; run
+expect "found: one approved candidate beside an unreacted row" "found 1001 $T1"
+assert_eq "found: an unreacted row is no candidate and makes no freshness call" "" "$(cat "$cd_/sf.log")"
+
+nc; approved 1001 maint1 101; approved 1002 maint1 101; addrow 1003 maint1 101; setupd 1003 "2026-09-21T09:06:00Z"; sfword 1001 "stale 1"; run
+expect "moved: a moved row wins over the freshness preference" "moved 1003"
+assert_eq "moved: no freshness call before the moved decision for every row" "" "$(cat "$cd_/sf.log")"
+
+nc; approved 1001 maint1 101; approved 1002 maint1 101; sfword 1001 "stale 1"
+rc=0; out="$(PATH="$fakebin:$PATH" FX_DIR="$cd_" FX_MARK="$SENTINEL" sh "$cd_/bin/spec-find.sh" find 7 "$cd_/project.yml" 2>"$cd_/err" </dev/null)" || rc=$?
+case "$out$(cat "$cd_/err")" in
+  *"$SENTINEL"*) echo "FAIL - sentinel: a comment body, or the sibling's stderr, reached stdout or stderr" >&2; fail=1 ;;
+  *) echo "ok - sentinel: no comment body reaches stdout or stderr now that the second read fetches the whole JSON, and the sibling's stderr is discarded" ;;
+esac
+assert_eq "sentinel: the run still printed found" "found 1002 $T1|0" "$out|$rc"
+
+# The second read's JSON: a failed read of updated_at is unreadable, as a failed gh read is.
+nc; approved 1001 maint1 101; printf 'not json: {' >"$cd_/cj/1001.json"; run
+expect "unreadable: a second read whose JSON file does not parse" "unreadable"
+nc; approved 1001 maint1 101; printf '{"id": 1001, "body": "x"}\n' >"$cd_/cj/1001.json"; run
+expect "moved: a second read with no updated_at reads as changed" "moved 1001"
+
+# --- pending and answer make no freshness call (#1374) ---
+nc; approved 1001 maint1 101; approved 1002 maint1 101; sfword 1001 "stale 1"; runp 1001
+expect "pending: two approved candidates, no freshness call" "pending none"
+assert_eq "pending: the sibling is never called" "" "$(cat "$cd_/sf.log")"
+nc; approved 1001 maint1 101; approved 1002 maint1 101; sfword 1001 "stale 1"; runa
+expect "answer: two approved candidates, no freshness call" "not-escalated"
+assert_eq "answer: the sibling is never called" "" "$(cat "$cd_/sf.log")"
 
 # --- exit 2, nothing on stdout ---
 nc; approved 1001 maint1 101
@@ -815,6 +904,9 @@ expect "exit 2: a missing spec-reaction.sh" "" 2
 
 nc; approved 1001 maint1 101; rm "$cd_/bin/declared-ids.sh"; run
 expect "exit 2: a missing declared-ids.sh" "" 2
+
+nc; approved 1001 maint1 101; rm "$cd_/bin/spec-fresh.sh"; run
+expect "exit 2: a missing spec-fresh.sh" "" 2
 
 # A helper that fails or misprints gives the finder's own word, never exit 2 and never a pass.
 for stub in 'exit 2' 'exit 1' 'echo unreadable' 'echo "ok 101"' 'echo "ok 101 - "' 'echo "ok 101 -  "' 'echo "ok  - "' 'echo "ok 101 02001"' 'echo "ok 101 x"' 'echo "ok 101 - -"' 'printf "ok 101 -\\nok 101 -\\n"' ': # no output'; do

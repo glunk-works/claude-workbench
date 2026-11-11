@@ -25,6 +25,7 @@ the GitHub release notes.
 
 ### Added
 
+- `/way-of-working:spec-task` refreshes a stale approved spec (`#1374`): under a map it carries the approved text forward onto the base tip through the new `spec-fresh.sh changed` mode, runs no critic round for an unchanged carry-forward (the fixed `Critic gate: none; 0 rounds; carried forward.` line `spec-post.sh` accepts in `post` mode), and `spec-find.sh find` prints the newest approved comment as `found` when every older one reads stale, so the old reaction needs no hand removal.
 - The optional `host_tools` key (a list of `{ name, min, fix }`), validated by `schema-complete.sh`, the new `host-doctor.sh` with a `tools` mode (each declared tool's version against its minimum) and a `plugin` mode (the installed copy's commit against the `.claude/settings.json` pin, the `statusLine` and the `gh pr merge` deny choice), and two report-only lines of `/way-of-working:resume`'s pick-up point, `Host tools:` and `Plugin:` (#1377).
 - The secret scan's ignore list, `.betterleaksignore`: one fingerprint per distinct flagged value in this repo's history (13 test-fixture values and one docs false positive), so `secrets / scan` can pass on PRs whose base includes it (#1352).
 

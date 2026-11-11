@@ -585,6 +585,69 @@ assert_eq "exit 2: paths with a wrong argument count" "|2" "$out|$rc"
 rc=0; out="$(cd "$R" && sh "$script" paths "$D/c.json" 0663 "$D/project.yml" 2>/dev/null)" || rc=$?
 assert_eq "exit 2: paths with a leading-zero issue" "|2" "$out|$rc"
 
+# --- changed (#1374) ---------------------------------------------------------------------
+runc() { # the changed mode in the scratch repo
+  rc=0
+  out="$(cd "$R" && PATH="$fakebin:$PATH" FX_LOG="$LOG" FX_REAL_GIT="$real_git" sh "$script" changed "$D/c.json" "$ISSUE" "$D/project.yml" 2>"$D/err" </dev/null)" || rc=$?
+  err="$(cat "$D/err")"
+}
+tip() { git -C "$O" rev-parse refs/heads/main; }
+
+nc; put f1 changed; bump; mk "$(marker)" '- `f1`
+- `f2`'; runc
+expect "changed: one of two listed paths changed" "changed $SHA $(tip) f1"
+run
+expect "changed: check on the same input still prints stale 1" "stale 1"
+
+nc; put f2 changed; put f1 changed; bump; mk "$(marker)" '- `f2`
+- `doc.md`
+- `f1`'; runc
+expect "changed: two changed paths come back in Shape order" "changed $SHA $(tip) f2 f1"
+
+nc; put dir/x changed; bump; mk "$(marker)" '- `dir/`
+- `f1`'; runc
+expect "changed: a listed directory is named as listed, trailing slash dropped" "changed $SHA $(tip) dir"
+
+nc; put f2 changed; bump; mk "$(marker)" "$S1"; runc
+expect "changed: no checked path changed is fresh" "fresh"
+
+nc; put f1 changed; bump; mk "$(marker)" '- `f1` **(append)**'; runc
+expect "changed: an (append) path outside .github is not listed" "fresh"
+
+nc; put .github/wf.yml changed; bump; mk "$(marker)" '- `.github/wf.yml` **(append)**'; runc
+expect "changed: an (append) path under .github is listed" "changed $SHA $(tip) .github/wf.yml"
+
+nc; put .ai/next-steps.md changed; bump; mk "$(marker)" '- `.ai/next-steps.md`'; runc
+expect "changed: the cursor-sync set is not a change" "fresh"
+
+nc; put f2 changed; bump; mk "$(marker 663 main 0000000000000000000000000000000000000000)" "$S1"; runc
+expect "changed: a commit that is not in the repository" "bad-sha"
+
+nc; mk "no marker here" "$S1"; runc
+expect "changed: a body with no marker" "bad-marker"
+
+nc; mk "$(marker)" '- `../f1`'; runc
+expect "changed: a bad Files touched section" "bad-shape"
+
+nc; put f1 changed; bump; mk "$(marker)" "$S1"
+# The tip printed is the commit the Compare stage used: git is asked for the diff by that 40-hex id,
+# and the base ref is read once.
+runc
+tipsha="$(tip)"
+if grep -q "diff .* $SHA $tipsha" "$LOG" && ! grep -q "diff .* $SHA refs/remotes" "$LOG"; then
+  echo "ok - changed: the diff and the printed tip use the one resolved commit"
+else
+  echo "FAIL - changed: the diff did not use the resolved 40-hex tip" >&2; fail=1
+fi
+n_rev="$(grep -c 'rev-parse --verify refs/remotes/origin/main' "$LOG" || true)"
+assert_eq "changed: the base ref is resolved once" "1" "$n_rev"
+
+nc; mk "$(marker)" "$S1"
+rc=0; out="$(cd "$R" && sh "$script" changed "$D/c.json" 2>/dev/null)" || rc=$?
+assert_eq "exit 2: changed with a wrong argument count" "|2" "$out|$rc"
+rc=0; out="$(cd "$R" && sh "$script" changed "$D/c.json" 0663 "$D/project.yml" 2>/dev/null)" || rc=$?
+assert_eq "exit 2: changed with a leading-zero issue" "|2" "$out|$rc"
+
 # --- exit 2, nothing on stdout -----------------------------------------------------------
 nc; mk "$(marker)" "$S1"
 rc=0; out="$(cd "$R" && sh "$script" check "$D/c.json" 0663 "$D/project.yml" 2>/dev/null)" || rc=$?

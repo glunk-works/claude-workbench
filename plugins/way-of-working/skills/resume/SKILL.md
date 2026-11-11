@@ -289,8 +289,8 @@ edited it. **Default to the full checklist whenever unsure.**
        - `stale <n>` — `Spec approval: waiting — spec comment <CID> on #N is stale (<n> listed
          paths changed on <base> since its commit); if a newer marker comment (<ids>) is already
          posted on #N, react to it if it is a spec-task: draft, while a spec-task-escalated: one
-         waits for a human, who posts a spec-task: comment or deletes it; else draft one with
-         /way-of-working:spec-task <N>; and remove the reaction from <CID>.`
+         waits for a human, who posts a spec-task: comment or deletes it; else refresh the spec with
+         /way-of-working:spec-task <N>, which carries <CID> forward and needs no reaction removed (the finder prefers the newer approved comment, #1374).`
        - `bad-marker` or `bad-sha` — `Spec approval: waiting — spec comment <CID>'s marker does
          not match #N or its commit is not on <base>; draft a new one with
          /way-of-working:spec-task <N> and remove the reaction from <CID>.`

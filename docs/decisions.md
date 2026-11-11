@@ -1897,7 +1897,7 @@ take effect. Full reasoning and the task breakdown that implements them:
       `gh-identity.sh author` test `resume` uses, from the default branch's `identities`.
       *Amended by `WB-D32`: the test is `task-author`, and the declared dev or reviewer App's issue
       is read once a declared maintainer has reacted to it.*
-      It reads no other issue's body and no comments, and treats the body as data. *Amended by `WB-D39`: under a map, an escalated comment and a maintainer's answer to it, only through `spec-answer.sh`.*
+      It reads no other issue's body and no comments, and treats the body as data. *Amended by `WB-D39`: under a map, an escalated comment and a maintainer's answer to it, only through `spec-answer.sh`. Amended by `WB-D48`: under a map, also the approved comment of a refresh, only through `spec-comment.sh`.*
     - It drafts in a fixed shape (goal, files touched, done when, tests, out of scope, restated
       from the issue body), checks every file, function and test it names on `origin/{pr_base}`
       or marks it **(new)**, and prints the draft only after `bin/spec-shape.sh` says `ok`.
@@ -2084,11 +2084,11 @@ take effect. Full reasoning and the task breakdown that implements them:
     - A declared maintainer reacted with approval strictly after `updated_at`, whoever the author.
     - A candidate is a comment that passes every rule above, the fresh reaction included. A marker
       comment with no fresh maintainer reaction is not a candidate.
-    - More than one candidate stops as ambiguous; a reader never picks one.
+    - More than one candidate stops as ambiguous; a reader never picks one. *Amended by `WB-D48`: when every candidate but the one with the largest id reads stale, the finder prints that one as `found`.*
     - *Amended by `WB-D31`: a builder also runs `spec-fresh.sh check` on the found comment, which
       reads the marker's `sha=` and refuses a spec whose listed paths changed on the base since.*
     - To replace an approved spec, the maintainer removes the reaction from the old comment (or
-      deletes it) and reacts to the new one.
+      deletes it) and reacts to the new one. *Amended by `WB-D48`: a stale old comment needs no removal once the newer one is approved.*
   - **The rule.**
     - `scripts/invariants-check.sh` check 18 flips from "no posting form" to "exactly one posting
       form": the skill carries no `gh issue`/`gh pr` write verb, `gh label` or `gh api` write and must name `spec-post.sh post`;
@@ -2178,7 +2178,7 @@ take effect. Full reasoning and the task breakdown that implements them:
   - **The `WB-D30` residuals.**
     1. An approved spec stays a candidate indefinitely.
     2. With two approved specs, deleting or editing one picks the other (an edit moves its
-       `updated_at`, so its reaction goes stale). Any account with Issues write can delete it, and
+       `updated_at`, so its reaction goes stale). *Amended by `WB-D48`: a merge to the base that makes the older spec stale now also picks the newer one.* Any account with Issues write can delete it, and
        the dev App can edit its own comments: the dev App, the reviewer App's host-minted filing token (Issues write since
        `#636`) and any write collaborator. The loop App holds no Issues permission
        (`docs/proposals/sprint-orchestrator-plan-v9.md`, its App grant).
@@ -2188,7 +2188,7 @@ take effect. Full reasoning and the task breakdown that implements them:
        review loads a spec under a map: host mode stops at the `wow-review` line, and container
        mode has no `state.json`. So this applies once the review loads specs again.
        *Amended by `WB-D45`: the container review now loads the found spec, so this residual applies.*
-    6. The reaction alone selects the spec.
+    6. The reaction alone selects the spec. *Amended by `WB-D48`: between two or more approved comments, the base's state decides too (the older ones must read stale).*
     7. **No second party before the build.** `WB-D29`'s first residual is no longer limited by
        the anchor PR's code-owner approval. A session holding a maintainer credential can write
        and approve a spec with no second party before the build. The PR's code-owner approval is
@@ -2301,9 +2301,9 @@ take effect. Full reasoning and the task breakdown that implements them:
       itself rather than trusting a `coder`'s report.
     - `spec-fresh.sh`, `draft-identity.sh` and their tests join `scripts/loop/protected-paths.txt`.
   - **Rejected.**
-    - **A freshness check in the pick-up summary before auto-start.** It runs in the body read only.
+    - **A freshness check in the pick-up summary before auto-start.** It runs in the body read only. *Amended by `WB-D48`: the finder runs `spec-fresh.sh check` on older candidates when two or more are approved, in `find` mode, in every caller, the pick-up summary included; among resume's reads the found spec's own freshness is still checked only in the body read.*
     - **Editing the old comment.** A refreshed draft is a new `spec-task` run from `#N`'s body and
-      the current base.
+      the current base. *Amended by `WB-D48`: a refresh carries the approved text forward onto the tip, as a new comment, not an edit.*
     - **Drafting by any identity other than the declared dev App,** the maintainer's included. Their
       session keeps today's wait line and never reads the issue body.
     - **A schema key listing files to ignore.** The **(append)** marker is the one carve-out.
@@ -2559,7 +2559,7 @@ take effect. Full reasoning and the task breakdown that implements them:
 - **WB-D35 (`#629`) — `/way-of-working:critic-gate` gains a spec mode that `spec-task` runs unattended on
   every draft before it is posted.** Builds on `WB-D29` (the post), `WB-D31` (the freshness check) and `#746`
   (`spec-post.sh escalate`).
-  - **The decision.** Every drafted spec is critic-gated with nobody at a terminal. The critics are chosen by
+  - **The decision.** Every drafted spec is critic-gated with nobody at a terminal. *Amended by `WB-D48`: a refresh that carries an approved spec forward unchanged posts with no critic round.* The critics are chosen by
     rule from the files the spec lists (`architect` always, `security-critic` for a path under `code_paths`,
     `docs-consistency` for a `load_bearing_docs` match or a new `.md` file outside `code_paths`), under the
     existing cap: at most 5 rounds, the initial pass and 4 fix-and-re-run rounds, of at most 3 critics per
@@ -2571,7 +2571,7 @@ take effect. Full reasoning and the task breakdown that implements them:
     pass" reasoning of *Convergence*). Not `WB-D16`'s pick-list mechanism, which the diff mode keeps, and not
     the diff mode's second-opinion offer, which spec mode never makes.
   - **The critic line and its check.** `spec-post.sh` stops `no-critic-line` unless the draft carries exactly
-    one well-formed critic line before `### Goal`, with the stop `converged` for `post` and `cap reached` or
+    one well-formed critic line before `### Goal` (*Amended by `WB-D48`: `post` also takes the exact line `Critic gate: none; 0 rounds; carried forward.`*), with the stop `converged` for `post` and `cap reached` or
     `not converging` for `escalate` (which also needs an `### Open findings` section); `post` refuses a draft with an ATX heading `Open findings` of any level or case anywhere (a filter: setext and indented forms pass). The line is written by
     the posting session itself: the check is a filter against a forgotten gate, not proof that critics ran,
     and the maintainer's reaction stays the only approval.
@@ -2773,6 +2773,16 @@ take effect. Full reasoning and the task breakdown that implements them:
   - **Also decided.** Handoff skips the sync only when `bin/ledger-material.sh` reads `same` on **Now:**, **Next:**, the **HITL Gate** text and the milestone-close line, no critic outcome is to be recorded, and the checkout is a synced `{pr_base}` or the open sync branch at its head; it then reports `Cursor sync: not needed (no material change)` and writes `.ai/state.json` only. When a sync PR is open, handoff pushes onto its branch, after merging `origin/{pr_base}` into it, only when the PR's author is the session's acting identity, with the PR-head checks `/way-of-working:ship` gained in `#1378`. `/way-of-working:ship` never builds on a `docs/sync-cursor-` branch. Park, unpark and plan-sprint keep opening their own PRs.
   - **Options not taken.** Batching the sync per sprint or per N tasks; folding it into the work PR; auto-merge of a sync PR (the approval ruleset has no path-scoped bypass).
   - **Residual.** On a base that does not dismiss stale reviews on push, an approval given before the push still stands over the pushed ledger. Narrative-only edits (Just done, Maintainer actions) wait for the next material sync and are not carried into a later ledger.
+
+- **WB-D48 (`#1374`) — `spec-task` refreshes a stale approved spec by carrying its text forward, and the finder prefers the newer of two approved comments when the older is stale.** Builds on `WB-D31` and `WB-D35`. Amends `WB-D26`'s rule line that `spec-task` reads no comments; `WB-D29`'s binding rules that more than one candidate stops as ambiguous and that replacing an approved spec takes removing the old reaction; `WB-D30` residuals 2 and 6; `WB-D31`'s rejected options that a refreshed draft is a new run from the body and that a freshness check runs in the pick-up summary; and `WB-D35`'s "every drafted spec is critic-gated" and its critic-line rule (`post` takes only `converged`). The amended places carry a back-pointer.
+  - **The decision.** Under a map, when `spec-find.sh find` finds an approved comment and `spec-fresh.sh changed` (a new mode: the marker commit, the base tip it resolved once, and the changed paths) reads it stale, `/way-of-working:spec-task` carries the approved text forward onto the tip and re-checks it only against the diff of the changed paths. The approved comment is read only through `spec-comment.sh`. Where the drafter keeps the approved text unchanged (a compare from the Goal heading on) no critic round runs, and the draft carries the fixed critic line `Critic gate: none; 0 rounds; carried forward.`, which `spec-post.sh` accepts in `post` mode only; otherwise the critics run scoped to the diff and to the lines the drafter changed. The refreshed comment has a new marker commit and is used only after a declared maintainer's approving reaction, as every spec is. The build's freshness refusal is unchanged. `spec-find.sh find` prints `found` for the newest of two or more approved candidates when every older one reads `stale <n>` to `spec-fresh.sh check`; anything else keeps `ambiguous`.
+  - **Why.** A sibling merge made an approved spec in another adopting repo stale, and the only repair was a full redraft through every critic round plus a hand step to remove the old reaction.
+  - **Not taken.** A warning instead of a stop when the changed lines fall outside what a spec cites: specs cite paths, not line ranges, and a warning on the unattended build path would weaken `WB-D31`.
+  - **Residuals.**
+    1. The carried-forward critic line is accepted on any `post` draft, refresh or not, so the critic-line check does not catch a skipped gate whose session writes it.
+    2. A carried-forward spec gets no critic check against the changed paths, so the maintainer's reaction is the only check of it.
+    3. Every `find` caller may now run a `git fetch` of the base in its working directory (through `spec-fresh.sh`, when two or more candidates are approved); where that fails the word stays `ambiguous`.
+    4. An escalated refresh cannot be answered with a `spec-task-answer:` comment while the stale approved comment is still found; the maintainer posts a `spec-task:` comment of their own or deletes the escalation.
 
 ## Status
 
