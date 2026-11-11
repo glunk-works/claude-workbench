@@ -128,3 +128,12 @@ lanes:
 # bullet with the exact **(append)** form spec-fresh.sh skips; spec-post.sh refuses one without.
 append_only:
   - CHANGELOG.md
+
+# ── host tools ───────────────────────────────────────────────────────────────
+# #1377, #1435: the tools the local green gate and plugin scripts need on the dev container's PATH.
+host_tools:
+  - { name: yq, min: "4.54.1", fix: "install mikefarah yq v4.54.1 or newer, or rebuild the dev container" }
+  - { name: jq, min: "1.7", fix: "install jq 1.7 or newer, or rebuild the dev container" }
+  - { name: git, min: "2.36", fix: "install git 2.36 or newer, or rebuild the dev container" }
+  - { name: gh, min: "2.0", fix: "install the GitHub CLI 2.0 or newer, or rebuild the dev container" }
+  - { name: claude, min: "2.0", fix: "install Claude Code 2.0 or newer, or rebuild the dev container" }
