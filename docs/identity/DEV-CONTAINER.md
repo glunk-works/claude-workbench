@@ -154,9 +154,26 @@ that serves the host's git credential (see Hazards that remain).
     `.devcontainer/` has moved since; the launcher prints that commit and warns when `.devcontainer/`
     has changed since, and the container should then be recreated at start of day once the lanes are
     done. Attach still fetches the Reference for the model, so an offline driver restart refuses.
-  - **A live-run check for the maintainer's first run:** `docker inspect` of the recreated container
+  - **A live-run check for the maintainer, after the first start of day and after every start of day
+    that follows a `FROM` bump:** `docker inspect` of the recreated container
     shows only the workspace mount and the `mounts` entries `devcontainer.json` declares, since the pinned base image might
-    declare a `VOLUME`. This is a check for the human, not launcher code.
+    declare a `VOLUME`. The same check witnesses the controls the `FROM` image provides, each once per
+    recreate:
+    - The container's environment, from PowerShell on the host (not cmd, which does not treat single
+      quotes as quoting): `docker inspect -f '{{json .Config.Env}}' <containerId>` lists
+      `GIT_TERMINAL_PROMPT=0`, `DISABLE_UPDATES=1` and `DISABLE_AUTOUPDATER=1`. It reads the container's
+      configuration, not a `docker exec` shell, whose `-e GIT_TERMINAL_PROMPT=0` would mask a missing image `ENV`.
+    - From the `docker exec` shell as `app` in `/workspace` (the *By hand* command),
+      `git config --get commit.gpgsign` and `git config --get tag.gpgsign` each print `false`.
+    - In the same `docker exec` shell, `stat -c '%U %a' /etc/claude-code/managed-settings.json` prints `root 444` (root-owned, not
+      writable by `app`). `jq` on that file shows `.env.DISABLE_UPDATES` and `.env.DISABLE_AUTOUPDATER`
+      are both the string `"1"`, and `.requiredMinimumVersion` and `.requiredMaximumVersion` both equal
+      the leading version number `/usr/local/bin/claude --version` prints (by absolute path, so a
+      `claude` earlier on `PATH` is not the one compared).
+    - In the same shell, `command -v timeout` prints `/usr/local/bin/timeout`, the GNU coreutils link; the fuller check
+      is under *GNU coreutils, not uutils*.
+
+    This is a check for the human, not launcher code.
 - **By hand.** The driver launcher is the only way a container is created: no hand `devcontainer up`,
   no host VS Code Dev Containers, and no host git in a checkout a container mounts. To get a shell in the
   recorded running container, from PowerShell or cmd on the host (not Git Bash):
@@ -252,8 +269,9 @@ Do the steps in order. It documents the steps and performs none.
    ```
    After the first start of day, run the checks this file already gives: in the new container,
    from a `docker exec` shell, the channel check under *Hazards that remain* and the
-   agent-socket check under *What it still carries from the template*; and on the host, the
-   `docker inspect` live-run check under *Opening it*.
+   agent-socket check under *What it still carries from the template*; and the live-run check
+   under *Opening it*, whose `docker inspect` steps run on the host and whose other steps run in
+   that `docker exec` shell.
 
 ## Lanes
 
@@ -606,7 +624,7 @@ removes it. The login lives on the volume; the binary does not.
   `CLAUDE_VERSION` and `CLAUDE_SHA256` (Dependabot does not track them, and
   `tests/review-image.test.sh` holds them equal). Take the sha256 from that version's release
   `manifest.json` (the `linux-x64` entry). A `FROM` bump needs the container recreated too; recreate it: after every lane, every spec session and the driver session have exited, `docker stop` it, then
-  run the driver launcher (start of day).
+  run the driver launcher (start of day), then run the live-run check under *Opening it*.
 - **Clearing a stopgap install.** A copy from the native installer lives on the home volume, and
   `~/.local/bin` leads `PATH`, so it shadows the image's. Remove `~/.local/bin/claude` and
   `~/.local/share/claude`, then check with `command -v claude` (should print
