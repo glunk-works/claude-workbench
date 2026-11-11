@@ -549,7 +549,7 @@ If that check fails, stop and report.
 
 ## Lane rules
 
-- Never run `/way-of-working:resume`, `/way-of-working:handoff`, `/way-of-working:plan-sprint` or `/way-of-working:archive-sprint`. Never write anything under `.ai/`.
+- Never run `/way-of-working:resume`, `/way-of-working:handoff`, `/way-of-working:plan-sprint` or `/way-of-working:archive-sprint`. Never write the `.ai/` cursor: `.ai/state.json`, `.ai/next-steps.md`, `.ai/parked/` or `.ai/archive/`. Write any other path under `.ai/` only when the spec's *Files touched* lists it.
 - Never merge, approve or force-push.
 - Work only in `@LANES@/727`, never in `@TOPLEVEL@`'s working tree.
 - A session that read the issue body or drafted the spec never builds the issue.
