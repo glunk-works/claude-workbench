@@ -168,11 +168,11 @@ read (the approval rule's parameters, the App installations,
 org secrets, fork pull request workflows) or a read that failed or was not conclusive. It also
 reports each environment's admins-bypass setting, which must be off, and says that a secret the
 repo's workflows use needs this repo in its visibility; both are set in the browser. It uses the admin token the repo's container mounts, so run `wow-admin
-<name> --revoke` after the run. A `missing` row is fixed in the order *The order* gives, and in
+<owner/name> --revoke` after the run. A `missing` row is fixed in the order *The order* gives, and in
 its second case the checks ruleset row reads `missing` for the gate's check until the check is
 added after PR 1 merges.
 
-A dev-App session's ruleset check cannot read bypass actors (only an identity that can edit a ruleset sees them), so the full bypass check runs from the host as an admin: `wow-preflight` on the admin token `wow-admin` writes, then `wow-admin NAME --revoke`.
+A dev-App session's ruleset check cannot read bypass actors (only an identity that can edit a ruleset sees them), so the full bypass check runs from the host as an admin: `wow-preflight` on the admin token `wow-admin` writes, then `wow-admin OWNER/NAME --revoke`.
 
 A PR adding, editing or deleting a workflow file is pushed by a code owner or by an App
 holding Workflows write, never the dev App (its registration holds no Workflows permission,

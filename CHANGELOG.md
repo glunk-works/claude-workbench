@@ -21,12 +21,15 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+**⚠️ Migration** — before reinstalling the host tools, rewrite any bare-name entry in `broker.json` as `owner/name` (the new broker mints for no repo while one remains: `-Once` exits 2, the looping broker logs it); `wow-admin` now takes `owner/name` and writes only `tokens/<owner>/<repo>/admin-token`; then reinstall the host tools and restart the broker; then remove each old `tokens/<repo>` directory, only after `wow-admin <owner/name> --revoke` says no readable admin token is on file for it and the directory holds no `admin-token` file (where `<repo>` is also an owner half, so the directory holds the live owner directory, remove only the `admin-token` and `dev-token` files directly in it).
+
 ### Added
 
 - The secret scan's ignore list, `.betterleaksignore`: one fingerprint per distinct flagged value in this repo's history (13 test-fixture values and one docs false positive), so `secrets / scan` can pass on PRs whose base includes it (#1352).
 
 ### Changed
 
+- The bare `tokens/<repo>` layout is retired: the broker writes only `tokens/<owner>/<repo>/dev-token` and refuses a bare-name `broker.json` entry, `wow-admin` takes `owner/name`, writes only `tokens/<owner>/<repo>/admin-token`, reads `broker.json` only on a mint (where it refuses a case-only name match, the same name under another owner, an owner equal to another entry's name and another owner's live admin token for the repo), and `wow-preflight` reads the owner-qualified token; the install creates only owner directories and warns about a bare entry and a leftover top-level `tokens\` directory (#1340, #1348).
 - `declared-ids.sh` prints `no-map` for an explicit `identities: null` (an absent key stays `unreadable`), `spec-find.sh` prints `legacy` under it in every mode, `spec-post.sh` holds as `held legacy`, `lane-state.sh` and `lane-groups.sh` carry `legacy`, and `/way-of-working:resume` decides the mode before it runs the finder; `reference/cutover.md` says when the dev App must exist (`#1375`).
 - `ruleset-drift.sh` keeps reading the rule types and required checks of a ruleset whose bypass actors are not visible, and its single form ends `bypass_actors=unchecked` under an `identities` map; `/way-of-working:resume` reports one plain line for an installation token, drops its scheduled-job claim, and prints the commits ahead of the base when there is no cursor; resume, handoff, ship and `reference/conventions.md` try the installation probe before `gh api user`; `reference/cutover.md` says the full bypass check runs from the host as an admin (`#1371`, `#1259`).
 - This repo's dev container installs its pinned plugin at start: `postStartCommand` ends with the image's `plugin-install.sh`, which installs the `.claude/settings.json` pin at user scope and fails the start when it cannot, and the secret scan and image check workflows move to 603-Identity/devcontainers v1.7. A project-scope install from before is not removed by it: uninstall it once, before the first start with this change.

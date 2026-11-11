@@ -6,8 +6,8 @@
 # and plain for the reviewer App, lives under a throwaway $WOW_HOME laid out like the real one (apps.json); $WOW_TTY points at a file
 # holding the passphrase.
 #
-#   admin mint       token + expires_at land in tokens/<repo>/admin-token; request carries the
-#                    admin installation, the one repo and the default (or given) permissions
+#   admin mint       token + expires_at land in tokens/<owner>/<name>/admin-token and nowhere else; request
+#                    carries the admin installation, the one repo and the default (or given) permissions
 #   passphrase       wrong or empty: exit 1, curl never called, no token file
 #   live token       refused while one is on file (curl uncalled); an expired one is replaced
 #   revoke           DELETE /installation/token with the token as bearer; 204 and 401 remove the
@@ -17,12 +17,16 @@
 #                    second repo to the same request, either flag order); --file sends issues write;
 #                    both are strict (one extra permission, or a missing repo, exits 1 with no token
 #                    file); every usage rule exits 2 before curl with a message naming it
-#   broker.json      a bare-name entry writes only the bare file; an owner/name entry writes the same
-#                    two lines to tokens/<owner>/<repo>/ too (one curl call), and either copy alone
-#                    being live refuses a second mint; revoke sends one DELETE per distinct token and
-#                    removes each copy on its own answer; a dangling bare symlink or a failed second
-#                    write refuses/leaves a state --revoke clears; each malformed broker.json shape
-#                    makes mint and revoke exit 1 before curl, with nothing written (#1340)
+#   owner/name       a bare argument or one with more than one slash exits 2 with nothing written; with no
+#                    broker.json, or an entry equal to the argument, mint writes only the owner file; a mint
+#                    refuses (exit 1, own reason, no curl, no directory) a broker.json breaking the broker's
+#                    rules (a bare-name entry included), a case-only name match, the same name under another
+#                    owner, an owner equal to another entry's name, and another owner's live (or unreadable)
+#                    admin-token for the repo, found by a scan that runs under set -f; a live leftover
+#                    tokens/<name>/admin-token blocks too; revoke reads no broker.json, takes a token under
+#                    any owner by naming it, takes a leftover bare copy and an owner-only copy, and for two
+#                    differing tokens removes what each answer allows (204 then 500: leftover gone, owner
+#                    kept, exit 1) (#1340, #1348)
 #   secrecy          neither token nor passphrase reaches stdout, stderr or argv
 #   usage / config   bad arguments exit 2 and missing config exits 1, before curl is called
 #
@@ -49,7 +53,13 @@ cat >"$tmp/bin/curl" <<'STUB'
 printf '%s\n' "$@" >"$STUB_DIR/argv"
 cat >"$STUB_DIR/stdin"
 echo called >>"$STUB_DIR/calls"
-printf '%s\n%s' "$STUB_BODY" "$STUB_STATUS"
+st=$STUB_STATUS
+if [ -s "$STUB_DIR/statuses" ]; then
+  st=$(sed -n 1p "$STUB_DIR/statuses")
+  sed 1d "$STUB_DIR/statuses" >"$STUB_DIR/statuses.new"
+  mv "$STUB_DIR/statuses.new" "$STUB_DIR/statuses"
+fi
+printf '%s\n%s' "$STUB_BODY" "$st"
 STUB
 chmod +x "$tmp/bin/curl"
 real_openssl=$(command -v openssl)
@@ -87,7 +97,7 @@ export STUB_DIR="$tmp/stub" WOW_HOME="$home"
 STUB_BODY="{\"token\":\"$TOKEN\",\"expires_at\":\"$EXPIRES\"}" STUB_STATUS=201
 export STUB_BODY STUB_STATUS
 
-tokfile="$home/tokens/repo1/admin-token"
+tokfile="$home/tokens/acme/repo1/admin-token"
 
 # run <cmd...>: runs with the stub curl first on PATH; sets rc, out (stdout+stderr).
 run() {
@@ -99,7 +109,7 @@ calls() { if [ -f "$tmp/stub/calls" ]; then wc -l <"$tmp/stub/calls" | tr -d ' '
 sent() { sed -n 's/^data-binary = "\(.*\)"$/\1/p' "$tmp/stub/stdin" | sed 's/\\"/"/g'; }
 
 # --- admin mint
-WOW_TTY="$tmp/tty-good" run sh "$admin" repo1
+WOW_TTY="$tmp/tty-good" run sh "$admin" acme/repo1
 assert_eq "admin mint rc" 0 "$rc"
 assert_eq "admin mint token line" "$TOKEN" "$(sed -n 1p "$tokfile")"
 assert_eq "admin mint expiry line" "$EXPIRES" "$(sed -n 2p "$tokfile")"
@@ -114,32 +124,32 @@ assert_eq "admin mint no passphrase in openssl argv" 0 "$(grep -c 'correct-horse
 assert_eq "admin mint leaves no unlocked key behind" 0 "$(ls -A "$home" | grep -c '^\.unlock' || true)"
 
 # --- a live token blocks a second mint; an expired one does not
-WOW_TTY="$tmp/tty-good" run sh "$admin" repo1
+WOW_TTY="$tmp/tty-good" run sh "$admin" acme/repo1
 assert_eq "live token rc" 1 "$rc"
 assert_eq "live token curl uncalled" 0 "$(calls)"
 printf '%s\n2000-01-01T00:00:00Z\n' "$TOKEN" >"$tokfile"
-WOW_TTY="$tmp/tty-good" run sh "$admin" repo1 --perms contents=read
+WOW_TTY="$tmp/tty-good" run sh "$admin" acme/repo1 --perms contents=read
 assert_eq "expired token replaced rc" 0 "$rc"
 assert_eq "custom perms" '{"contents":"read"}' "$(sent | jq -c .permissions)"
 
 # --- passphrase failures leave nothing behind
 rm -f "$tokfile"
-WOW_TTY="$tmp/tty-bad" run sh "$admin" repo1
+WOW_TTY="$tmp/tty-bad" run sh "$admin" acme/repo1
 assert_eq "wrong passphrase rc" 1 "$rc"
 assert_eq "wrong passphrase curl uncalled" 0 "$(calls)"
 [ ! -e "$tokfile" ] && ok || bad "wrong passphrase" "token file exists"
-WOW_TTY="$tmp/tty-empty" run sh "$admin" repo1
+WOW_TTY="$tmp/tty-empty" run sh "$admin" acme/repo1
 assert_eq "empty passphrase rc" 1 "$rc"
 assert_eq "empty passphrase stopped before unlocking" 1 "$(printf '%s' "$out" | grep -c 'empty passphrase' || true)"
 assert_eq "empty passphrase curl uncalled" 0 "$(calls)"
 [ ! -e "$tokfile" ] && ok || bad "empty passphrase" "token file exists"
-WOW_TTY="$tmp/nonexistent" run sh "$admin" repo1
+WOW_TTY="$tmp/nonexistent" run sh "$admin" acme/repo1
 assert_eq "no terminal rc" 1 "$rc"
 assert_eq "no terminal curl uncalled" 0 "$(calls)"
 
 # --- revoke
 printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$tokfile"
-STUB_BODY= STUB_STATUS=204 run sh "$admin" repo1 --revoke
+STUB_BODY= STUB_STATUS=204 run sh "$admin" acme/repo1 --revoke
 assert_eq "revoke rc" 0 "$rc"
 assert_eq "revoke method" 1 "$(grep -c '^request = "DELETE"' "$tmp/stub/stdin")"
 assert_eq "revoke url" 1 "$(grep -c '^url = "https://api.github.com/installation/token"' "$tmp/stub/stdin")"
@@ -148,17 +158,17 @@ assert_eq "revoke token not in argv" 0 "$(grep -c "$TOKEN" "$tmp/stub/argv" || t
 [ ! -e "$tokfile" ] && ok || bad "revoke 204" "token file kept"
 
 printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$tokfile"
-STUB_BODY='{"message":"Bad credentials"}' STUB_STATUS=401 run sh "$admin" repo1 --revoke
+STUB_BODY='{"message":"Bad credentials"}' STUB_STATUS=401 run sh "$admin" acme/repo1 --revoke
 assert_eq "revoke 401 rc" 0 "$rc"
 [ ! -e "$tokfile" ] && ok || bad "revoke 401" "token file kept"
 
 printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$tokfile"
-STUB_BODY='{"message":"boom"}' STUB_STATUS=500 run sh "$admin" repo1 --revoke
+STUB_BODY='{"message":"boom"}' STUB_STATUS=500 run sh "$admin" acme/repo1 --revoke
 assert_eq "revoke 500 rc" 1 "$rc"
 [ -e "$tokfile" ] && ok || bad "revoke 500" "token file removed"
 
 rm -f "$tokfile"
-run sh "$admin" repo1 --revoke
+run sh "$admin" acme/repo1 --revoke
 assert_eq "revoke without a token rc" 1 "$rc"
 assert_eq "revoke without a token curl uncalled" 0 "$(calls)"
 
@@ -166,7 +176,7 @@ assert_eq "revoke without a token curl uncalled" 0 "$(calls)"
 rtok="$home/review-tokens/repo1/reviewer-token"
 run sh "$review" repo1
 assert_eq "reviewer rc" 0 "$rc"
-[ ! -e "$home/tokens/repo1/reviewer-token" ] && ok || bad "reviewer token location" "written under the container-mounted tokens/"
+[ ! -e "$home/tokens/acme/repo1/reviewer-token" ] && ok || bad "reviewer token location" "written under the container-mounted tokens/"
 assert_eq "reviewer default path" "$TOKEN" "$(sed -n 1p "$rtok")"
 assert_eq "reviewer installation" 1 "$(grep -c '/app/installations/222/access_tokens' "$tmp/stub/stdin")"
 assert_eq "reviewer perms" \
@@ -253,7 +263,7 @@ assert_eq "--file refusal prints no token" 0 "$(printf '%s' "$out" | grep -c "$T
 # neither new shape writes anywhere but --out
 [ ! -e "$rtok" ] && ok || bad "new shapes" "wrote the default post-token path"
 assert_eq "new shapes wrote nothing else beside the post token" "" "$(ls -A "$home/review-tokens/repo1" || true)"
-assert_eq "new shapes wrote nothing under tokens/" "" "$(ls -A "$home/tokens/repo1" | grep -v '^admin-token$' || true)"
+assert_eq "new shapes wrote nothing under tokens/" "" "$(ls -A "$home/tokens/acme/repo1" | grep -v '^admin-token$' || true)"
 STUB_BODY="{\"token\":\"$TOKEN\",\"expires_at\":\"$EXPIRES\"}"
 
 # usage errors: exit 2, curl uncalled, and the message names the rule that fired
@@ -286,53 +296,54 @@ JWT_TOKEN=ghs_12345_eyJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NjAwMDAwMDB9-abc_DEF.c2lnbm
 printf '%s
 %s
 ' "$JWT_TOKEN" "$EXPIRES" >"$tokfile"
-STUB_BODY= STUB_STATUS=204 run sh "$admin" repo1 --revoke
+STUB_BODY= STUB_STATUS=204 run sh "$admin" acme/repo1 --revoke
 assert_eq "revoke JWT-format token rc" 0 "$rc"
 assert_eq "revoke JWT-format bearer" 1 "$(grep -c "^header = \"Authorization: Bearer $JWT_TOKEN\"" "$tmp/stub/stdin")"
 [ ! -e "$tokfile" ] && ok || bad "revoke JWT-format token" "token file kept"
 
 # --- guards: malformed token file, concurrent run, a key that is not encrypted
 printf 'bad token!\n' >"$tokfile"
-WOW_TTY="$tmp/tty-good" run sh "$admin" repo1
+WOW_TTY="$tmp/tty-good" run sh "$admin" acme/repo1
 assert_eq "malformed token file blocks mint rc" 1 "$rc"
 assert_eq "malformed token file blocks mint curl uncalled" 0 "$(calls)"
-run sh "$admin" repo1 --revoke
+run sh "$admin" acme/repo1 --revoke
 assert_eq "malformed token file revoke rc" 1 "$rc"
 assert_eq "malformed token file revoke curl uncalled" 0 "$(calls)"
 [ -e "$tokfile" ] && ok || bad "malformed token file" "removed"
 rm -f "$tokfile"
-mkdir "$home/tokens/repo1/.lock"
-WOW_TTY="$tmp/tty-good" run sh "$admin" repo1
+mkdir "$home/.admin-lock.repo1"
+WOW_TTY="$tmp/tty-good" run sh "$admin" acme/repo1
 assert_eq "held lock rc" 1 "$rc"
 assert_eq "held lock curl uncalled" 0 "$(calls)"
-[ -d "$home/tokens/repo1/.lock" ] && ok || bad "held lock" "removed by the run that did not take it"
-rmdir "$home/tokens/repo1/.lock"
+[ -d "$home/.admin-lock.repo1" ] && ok || bad "held lock" "removed by the run that did not take it"
+rmdir "$home/.admin-lock.repo1"
 printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$tokfile"
-mkdir "$home/tokens/repo1/.lock"
-run sh "$admin" repo1 --revoke
+mkdir "$home/.admin-lock.repo1"
+run sh "$admin" acme/repo1 --revoke
 assert_eq "revoke under a held lock rc" 1 "$rc"
 assert_eq "revoke under a held lock curl uncalled" 0 "$(calls)"
 [ -e "$tokfile" ] && ok || bad "revoke under a held lock" "token file removed"
-rmdir "$home/tokens/repo1/.lock"
+rmdir "$home/.admin-lock.repo1"
 rm -f "$tokfile"
-run sh "$admin" freshrepo --revoke
+run sh "$admin" acme/freshrepo --revoke
 assert_eq "revoke of an unknown repo rc" 1 "$rc"
-[ ! -e "$home/tokens/freshrepo" ] && ok || bad "revoke of an unknown repo" "created a tokens/ directory"
+[ ! -e "$home/tokens/acme/freshrepo" ] && ok || bad "revoke of an unknown repo" "created a tokens/ directory"
 mv "$home/admin.enc.pem" "$tmp/admin.enc.bak"
 cp "$tmp/key.pem" "$home/admin.enc.pem"
-WOW_TTY="$tmp/tty-bad" run sh "$admin" repo1
+WOW_TTY="$tmp/tty-bad" run sh "$admin" acme/repo1
 assert_eq "plaintext admin key rc" 1 "$rc"
 assert_eq "plaintext admin key curl uncalled" 0 "$(calls)"
 mv "$tmp/admin.enc.bak" "$home/admin.enc.pem"
 assert_eq "no unlocked key left after any admin run" 0 "$(ls -A "$home" | grep -c '^\.unlock' || true)"
-[ ! -e "$home/tokens/repo1/.lock" ] && ok || bad "lock" "left behind after the runs"
+[ ! -e "$home/.admin-lock.repo1" ] && ok || bad "lock" "left behind after the runs"
 
 # --- usage and config, all before any curl call
-for args in "" "--revoke" "a b" "../x" "-x" "a/b" "repo1 --bogus" "repo1 --perms" "repo1 --revoke --perms contents=read" "repo1 --revoke --perms administration=write,contents=write,pull_requests=write"; do
+for args in "" "--revoke" "a b" "../x" "-x" "repo1" "repo1 --revoke" "a/b/c" "acme/" "/repo1" "acme/.." "../repo1" "-acme/repo1" ".acme/repo1" "acme./repo1" "acme/-x" "acme/a b" "acme/repo1 --bogus" "acme/repo1 --perms" "acme/repo1 --revoke --perms contents=read" "acme/repo1 --revoke --perms administration=write,contents=write,pull_requests=write"; do
   # shellcheck disable=SC2086
   run sh "$admin" $args
   assert_eq "admin usage rc [$args]" 2 "$rc"
   assert_eq "admin usage curl uncalled [$args]" 0 "$(calls)"
+  [ ! -e "$home/tokens/repo1" ] && [ ! -e "$home/tokens/a" ] && [ ! -e "$home/tokens/-acme" ] && [ ! -e "$home/tokens/.acme" ] && ok || bad "admin usage [$args]" "created a directory"
 done
 for args in "" "a b" ".." "repo1 --out" "repo1 --bogus"; do
   # shellcheck disable=SC2086
@@ -342,7 +353,7 @@ for args in "" "a b" ".." "repo1 --out" "repo1 --bogus"; do
 done
 assert_eq "usage curl uncalled" 0 "$(calls)"
 
-# --- broker.json: the owner-qualified second copy (#1340)
+# --- owner/name: the one token directory, and what mint refuses before it creates anything (#1340)
 TOKEN2=ghs_ZyXwVu9876543210ZyXwVu9876543210ZyXwVu
 # newhome <name> [broker.json text]: a throwaway $WOW_HOME with the same apps.json and keys
 newhome() {
@@ -352,79 +363,249 @@ newhome() {
   if [ $# -ge 2 ]; then printf '%s' "$2" >"$h/broker.json"; fi
   printf '%s' "$h"
 }
-mint_in() { WOW_HOME="$1" WOW_TTY="$tmp/tty-good" run sh "$admin" repo1; }
-revoke_in() { WOW_HOME="$1" run sh "$admin" repo1 --revoke; }
-only_admin() { assert_eq "$1" admin-token "$(ls -A "$2")"; }
+mint_in() { WOW_HOME="$1" WOW_TTY="$tmp/tty-good" run sh "$admin" "${2:-acme/repo1}"; }
+revoke_in() { WOW_HOME="$1" run sh "$admin" "${2:-acme/repo1}" --revoke; }
+# put_tok <file> [token] [expires]: a token file, with its directory
+put_tok() { mkdir -p "$(dirname "$1")"; printf '%s\n%s\n' "${2:-$TOKEN}" "${3:-$EXPIRES}" >"$1"; }
+# untouched <home> <label>: nothing under tokens/ and no unlock directory
+untouched() {
+  [ ! -e "$1/tokens" ] && ok || bad "$2" "created tokens/"
+  assert_eq "$2: no unlocked key left" 0 "$(ls -A "$1" | grep -c '^\.unlock' || true)"
+}
+has_msg() { case "$out" in *"$2"*) ok ;; *) bad "$1" "'$2' not in: $out" ;; esac; }
 
-# a bare-name entry: today's layout, no other directory under tokens/
-h=$(newhome bare '{"repos": ["repo1"]}')
+# no broker.json, and an entry equal to the argument: only the owner file, no tokens/<name>
+for case_name in none exact; do
+  if [ "$case_name" = none ]; then h=$(newhome "own-$case_name"); else h=$(newhome "own-$case_name" '{"repos": ["acme/repo1", "acme/other"]}'); fi
+  mint_in "$h"
+  assert_eq "mint [$case_name] rc" 0 "$rc"
+  assert_eq "mint [$case_name] one curl call" 1 "$(calls)"
+  assert_eq "mint [$case_name] repo requested" '["repo1"]' "$(sent | jq -c .repositories)"
+  assert_eq "mint [$case_name] token line" "$TOKEN" "$(sed -n 1p "$h/tokens/acme/repo1/admin-token")"
+  assert_eq "mint [$case_name] expiry line" "$EXPIRES" "$(sed -n 2p "$h/tokens/acme/repo1/admin-token")"
+  assert_eq "mint [$case_name] tokens/ holds only the owner directory" acme "$(ls -A "$h/tokens")"
+  assert_eq "mint [$case_name] owner directory holds only the repo" repo1 "$(ls -A "$h/tokens/acme")"
+  only_admin() { assert_eq "$1" admin-token "$(ls -A "$2")"; }
+  only_admin "mint [$case_name] repo directory holds only admin-token" "$h/tokens/acme/repo1"
+  assert_eq "mint [$case_name] output names the owner file" 1 "$(printf '%s' "$out" | grep -c "$h/tokens/acme/repo1/admin-token" || true)"
+  assert_eq "mint [$case_name] output names the owner/name revoke" 1 "$(printf '%s' "$out" | grep -c 'wow-admin acme/repo1 --revoke' || true)"
+  assert_eq "mint [$case_name] no token in output" 0 "$(printf '%s' "$out" | grep -c "$TOKEN" || true)"
+  assert_eq "mint [$case_name] no passphrase in output" 0 "$(printf '%s' "$out" | grep -c 'correct-horse' || true)"
+  assert_eq "mint [$case_name] no token in argv" 0 "$(grep -c "$TOKEN" "$tmp/stub/argv" || true)"
+done
+# the live owner copy refuses a second mint
 mint_in "$h"
-assert_eq "bare entry mint rc" 0 "$rc"
-assert_eq "bare entry token" "$TOKEN" "$(sed -n 1p "$h/tokens/repo1/admin-token")"
-assert_eq "bare entry tokens/ holds only repo1" repo1 "$(ls -A "$h/tokens")"
+assert_eq "owner copy live rc" 1 "$rc"
+assert_eq "owner copy live curl uncalled" 0 "$(calls)"
 
-# an owner/name entry: one curl call, the same two lines in both directories
-h=$(newhome own '{"repos": ["acme/repo1", "acme/other"]}')
-mint_in "$h"
-assert_eq "owner mint rc" 0 "$rc"
-assert_eq "owner mint one curl call" 1 "$(calls)"
-assert_eq "owner mint one repo requested" '["repo1"]' "$(sent | jq -c .repositories)"
-assert_eq "owner mint copies identical" "$(cat "$h/tokens/acme/repo1/admin-token")" "$(cat "$h/tokens/repo1/admin-token")"
-assert_eq "owner mint token line" "$TOKEN" "$(sed -n 1p "$h/tokens/acme/repo1/admin-token")"
-assert_eq "owner mint expiry line" "$EXPIRES" "$(sed -n 2p "$h/tokens/repo1/admin-token")"
-assert_eq "owner mint output names the owner file" 1 "$(printf '%s' "$out" | grep -c "$h/tokens/acme/repo1/admin-token" || true)"
-assert_eq "owner mint output names the bare file" 1 "$(printf '%s' "$out" | grep -c "$h/tokens/repo1/admin-token" || true)"
-assert_eq "owner mint no token in output" 0 "$(printf '%s' "$out" | grep -c "$TOKEN" || true)"
-assert_eq "owner mint no passphrase in output" 0 "$(printf '%s' "$out" | grep -c 'correct-horse' || true)"
-assert_eq "owner mint no token in argv" 0 "$(grep -c "$TOKEN" "$tmp/stub/argv" || true)"
-only_admin "owner mint owner dir holds only admin-token" "$h/tokens/acme/repo1"
-only_admin "owner mint bare dir holds only admin-token" "$h/tokens/repo1"
+# an owner equal to its own entry's name is accepted, and the owner directory is the whole result
+h=$(newhome ownname '{"repos": ["acme/acme"]}')
+mint_in "$h" acme/acme
+assert_eq "acme/acme with its own entry: rc" 0 "$rc"
+assert_eq "acme/acme: token written" "$TOKEN" "$(sed -n 1p "$h/tokens/acme/acme/admin-token")"
+assert_eq "acme/acme: tokens/acme holds only the repo directory" acme "$(ls -A "$h/tokens/acme")"
 
-# a live token in either copy alone refuses a second mint
+# usage: bare or malformed arguments leave nothing, mint and revoke alike
+for arg in repo1 a/b/c acme/ /repo1 ../x acme/.. .acme/repo1 acme./repo1; do
+  h=$(newhome "usage-$(printf '%s' "$arg" | tr -c 'A-Za-z0-9\n' _)")
+  mint_in "$h" "$arg"
+  assert_eq "mint [$arg] usage rc" 2 "$rc"
+  assert_eq "mint [$arg] usage curl uncalled" 0 "$(calls)"
+  untouched "$h" "mint [$arg] usage"
+  revoke_in "$h" "$arg"
+  assert_eq "revoke [$arg] usage rc" 2 "$rc"
+  assert_eq "revoke [$arg] usage curl uncalled" 0 "$(calls)"
+  untouched "$h" "revoke [$arg] usage"
+done
+
+# a mint refusal: exit 1, a reason of its own, no curl, no directory, no unlocked key
+refused() { # refused <label> <broker.json text> <needle> [arg]
+  h=$(newhome "ref-$1" "$2")
+  mint_in "$h" "${4:-acme/repo1}"
+  assert_eq "refusal [$1] rc" 1 "$rc"
+  assert_eq "refusal [$1] curl uncalled" 0 "$(calls)"
+  has_msg "refusal [$1] reason" "$3"
+  untouched "$h" "refusal [$1]"
+}
+refused bare '{"repos": ["repo1"]}' 'bare-name entry'
+refused bare-beside '{"repos": ["acme/repo1", "other"]}' 'bare-name entry'
+refused case-only '{"repos": ["acme/REPO1"]}' 'only ignoring case'
+refused other-owner '{"repos": ["beta/repo1"]}' 'under another owner'
+refused owner-is-a-name '{"repos": ["zed/acme"]}' 'owner acme is the name half'
+
+# revoke ignores broker.json: the same files, a token on file, and the revoke still lands
+revoke_ignores() { # revoke_ignores <label> <broker.json text>
+  h=$(newhome "rv-$1" "$2")
+  put_tok "$h/tokens/acme/repo1/admin-token"
+  STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+  assert_eq "revoke [$1] rc" 0 "$rc"
+  assert_eq "revoke [$1] one DELETE" 1 "$(calls)"
+  [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke [$1]" "token kept"
+}
+revoke_ignores bare-entry '{"repos": ["repo1"]}'
+revoke_ignores same-name-other-owner '{"repos": ["beta/repo1"]}'
+revoke_ignores case-variant '{"repos": ["acme/REPO1"]}'
+revoke_ignores notjson 'not json'
+revoke_ignores emptyrepos '{"repos": []}'
+
+# every malformed broker.json refuses mint before curl with nothing created; revoke revokes
+badcase() {
+  name=$1 text=$2
+  h=$(newhome "bad-$name" "$text")
+  mint_in "$h"
+  assert_eq "broker.json $name: mint rc" 1 "$rc"
+  assert_eq "broker.json $name: mint curl uncalled" 0 "$(calls)"
+  assert_eq "broker.json $name: mint names broker.json" 1 "$(printf '%s' "$out" | grep -c 'broker.json' || true)"
+  untouched "$h" "broker.json $name: mint"
+  put_tok "$h/tokens/acme/repo1/admin-token"
+  STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+  assert_eq "broker.json $name: revoke rc" 0 "$rc"
+  assert_eq "broker.json $name: revoke one DELETE" 1 "$(calls)"
+  [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "broker.json $name" "revoke kept the token"
+}
+badcase notjson 'not json'
+badcase emptyrepos '{"repos": []}'
+badcase nonstring '{"repos": ["acme/repo1", 5]}'
+badcase twoslashes '{"repos": ["a/b/repo1"]}'
+badcase dotstart '{"repos": [".acme/repo1"]}'
+badcase trailingnewline '{"repos": ["acme/repo1\n"]}'
+badcase casevariant '{"repos": ["acme/repo1", "beta/REPO1"]}'
+badcase twovalues '{"repos": ["acme/repo1"]} {"repos": []}'
+badcase ownerisname '{"repos": ["repo1", "repo1/other"]}'
+badcase ownerisname2 '{"repos": ["acme/repo1", "beta/acme"]}'
+
+# another owner's live admin token for the same repo refuses a mint, with or without a broker.json.
+# The scan runs under `set -f`; a scan that finds nothing would mint here, so rc 1 and the named
+# owner/name are the proof that it expanded tokens/*/repo1/admin-token.
+for bj in none present; do
+  if [ "$bj" = none ]; then h=$(newhome "oo-$bj"); else h=$(newhome "oo-$bj" '{"repos": ["acme/repo1"]}'); fi
+  put_tok "$h/tokens/beta/repo1/admin-token"
+  put_tok "$h/tokens/gamma/unrelated/admin-token"
+  mint_in "$h"
+  assert_eq "other owner live [$bj] rc" 1 "$rc"
+  assert_eq "other owner live [$bj] curl uncalled" 0 "$(calls)"
+  has_msg "other owner live [$bj] names owner/name" "beta/repo1 --revoke"
+  [ ! -e "$h/tokens/acme" ] && ok || bad "other owner live [$bj]" "created tokens/acme"
+  assert_eq "other owner live [$bj] no unlocked key left" 0 "$(ls -A "$h" | grep -c '^\.unlock' || true)"
+  # revoking the owner it names clears the block, and the mint then goes through
+  STUB_BODY= STUB_STATUS=204 revoke_in "$h" beta/repo1
+  assert_eq "other owner live [$bj] revoke by naming that owner rc" 0 "$rc"
+  [ ! -e "$h/tokens/beta/repo1/admin-token" ] && ok || bad "other owner live [$bj]" "revoke kept the token"
+  mint_in "$h"
+  assert_eq "other owner live [$bj] mint after the revoke rc" 0 "$rc"
+done
+# a token for another repo under another owner, an expired one for this repo and the repo's own
+# directory under a different owner's name do not block; an unreadable expiry does
+h=$(newhome oo-other-repo)
+put_tok "$h/tokens/beta/repo2/admin-token"
 mint_in "$h"
-assert_eq "both live rc" 1 "$rc"
-assert_eq "both live curl uncalled" 0 "$(calls)"
-rm -f "$h/tokens/repo1/admin-token"
+assert_eq "another owner's token for another repo does not block: rc" 0 "$rc"
+h=$(newhome oo-expired)
+put_tok "$h/tokens/beta/repo1/admin-token" "$TOKEN" 2000-01-01T00:00:00Z
 mint_in "$h"
-assert_eq "owner copy alone live rc" 1 "$rc"
-assert_eq "owner copy alone live curl uncalled" 0 "$(calls)"
-printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
-rm -f "$h/tokens/acme/repo1/admin-token"
+assert_eq "another owner's expired token does not block: rc" 0 "$rc"
+h=$(newhome oo-unreadable)
+mkdir -p "$h/tokens/beta/repo1"; printf 'junk\n' >"$h/tokens/beta/repo1/admin-token"
 mint_in "$h"
-assert_eq "bare copy alone live rc" 1 "$rc"
-assert_eq "bare copy alone live curl uncalled" 0 "$(calls)"
+assert_eq "another owner's unreadable token blocks: rc" 1 "$rc"
+assert_eq "another owner's unreadable token blocks: curl uncalled" 0 "$(calls)"
+has_msg "another owner's unreadable token names owner/name" "beta/repo1 --revoke"
+# a second live owner among several still blocks (the scan reads every match, not the first)
+h=$(newhome oo-several)
+put_tok "$h/tokens/aaa/repo1/admin-token" "$TOKEN" 2000-01-01T00:00:00Z
+put_tok "$h/tokens/zzz/repo1/admin-token"
+mint_in "$h"
+assert_eq "an expired first match does not hide a live later one: rc" 1 "$rc"
+has_msg "an expired first match does not hide a live later one" "zzz/repo1 --revoke"
+
+# a live leftover bare copy (the layout before #1340) blocks a mint and is revoked by naming the repo
+h=$(newhome leftover-live)
+put_tok "$h/tokens/repo1/admin-token"
+mint_in "$h"
+assert_eq "leftover bare copy live rc" 1 "$rc"
+assert_eq "leftover bare copy live curl uncalled" 0 "$(calls)"
+has_msg "leftover bare copy live names the revoke" "wow-admin acme/repo1 --revoke"
+[ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "leftover bare copy live" "wrote the owner file"
+STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+assert_eq "revoke of a leftover bare copy rc" 0 "$rc"
+assert_eq "revoke of a leftover bare copy one DELETE" 1 "$(calls)"
+[ ! -e "$h/tokens/repo1/admin-token" ] && ok || bad "revoke of a leftover bare copy" "copy kept"
+[ -d "$h/tokens/repo1" ] && ok || bad "revoke of a leftover bare copy" "removed the leftover directory itself"
+[ ! -e "$h/.admin-lock.repo1" ] && ok || bad "revoke of a leftover bare copy" "left a lock"
+
+# a missing identity home is named as such, not as a held lock
+WOW_HOME="$tmp/no-such-home" run sh "$admin" acme/repo1 --revoke
+assert_eq "missing home rc" 1 "$rc"
+has_msg "missing home reason" "no identity home"
+
+# the lock is per repo name: a run for the same name under another owner (or in another case) is refused while it is held
+h=$(newhome name-lock)
+mkdir "$h/.admin-lock.repo1"
+mint_in "$h" typo/repo1
+assert_eq "name lock held, other owner: mint rc" 1 "$rc"
+assert_eq "name lock held, other owner: curl uncalled" 0 "$(calls)"
+mint_in "$h" typo/REPO1
+assert_eq "name lock held, other case: mint rc" 1 "$rc"
+put_tok "$h/tokens/typo/repo1/admin-token"
+revoke_in "$h" typo/repo1
+assert_eq "name lock held, other owner: revoke rc" 1 "$rc"
+assert_eq "name lock held, other owner: revoke curl uncalled" 0 "$(calls)"
+[ -d "$h/.admin-lock.repo1" ] && ok || bad "name lock" "removed by a run that did not take it"
+rmdir "$h/.admin-lock.repo1"
+# a live leftover with a mistyped owner refuses the mint and creates no directory for it
+h=$(newhome leftover-typo)
+put_tok "$h/tokens/repo1/admin-token"
+mint_in "$h" typo/repo1
+assert_eq "leftover live, typo owner: rc" 1 "$rc"
+[ ! -e "$h/tokens/typo" ] && ok || bad "leftover live, typo owner" "created tokens/typo"
 
 # revoke of identical copies: one DELETE, both removed (204 and 401)
+h=$(newhome revoke-copies)
 for st in 204 401; do
-  printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
-  printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/acme/repo1/admin-token"
+  put_tok "$h/tokens/repo1/admin-token"
+  put_tok "$h/tokens/acme/repo1/admin-token"
   STUB_BODY= STUB_STATUS=$st revoke_in "$h"
   assert_eq "revoke identical $st rc" 0 "$rc"
   assert_eq "revoke identical $st one DELETE" 1 "$(calls)"
   [ ! -e "$h/tokens/repo1/admin-token" ] && [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke identical $st" "a copy was kept"
 done
 
-# differing copies: two DELETEs; a 500 keeps the copies and exits 1
-printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
-printf '%s\n%s\n' "$TOKEN2" "$EXPIRES" >"$h/tokens/acme/repo1/admin-token"
+# #1348 finding 3: only the owner copy on file
+h=$(newhome owner-only)
+put_tok "$h/tokens/acme/repo1/admin-token"
+STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+assert_eq "revoke owner copy only rc" 0 "$rc"
+assert_eq "revoke owner copy only one DELETE" 1 "$(calls)"
+[ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke owner copy only" "copy kept"
+[ ! -e "$h/tokens/repo1" ] && ok || bad "revoke owner copy only" "created tokens/repo1"
+
+h=$(newhome differing)
+# #1348 finding 3: two differing tokens, the first DELETE answers 204 and the second 500. The
+# leftover copy is revoked first: it is removed, the owner copy is kept, the exit is 1.
+put_tok "$h/tokens/repo1/admin-token" "$TOKEN"
+put_tok "$h/tokens/acme/repo1/admin-token" "$TOKEN2"
+printf '204\n500\n' >"$tmp/stub/statuses"
+STUB_BODY= revoke_in "$h"
+rm -f "$tmp/stub/statuses"
+assert_eq "revoke differing 204 then 500 rc" 1 "$rc"
+assert_eq "revoke differing 204 then 500 two DELETEs" 2 "$(calls)"
+[ ! -e "$h/tokens/repo1/admin-token" ] && ok || bad "revoke differing 204 then 500" "the leftover copy was kept"
+[ -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke differing 204 then 500" "the owner copy was removed"
+assert_eq "revoke differing 204 then 500 kept the owner token" "$TOKEN2" "$(sed -n 1p "$h/tokens/acme/repo1/admin-token")"
+# all 500: both kept
+put_tok "$h/tokens/repo1/admin-token" "$TOKEN"
 STUB_BODY= STUB_STATUS=500 revoke_in "$h"
 assert_eq "revoke differing 500 rc" 1 "$rc"
 [ -e "$h/tokens/repo1/admin-token" ] && [ -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke differing 500" "a copy was removed"
+# both answer 204: both removed, two DELETEs
 STUB_BODY= STUB_STATUS=204 revoke_in "$h"
 assert_eq "revoke differing rc" 0 "$rc"
 assert_eq "revoke differing two DELETEs" 2 "$(calls)"
 [ ! -e "$h/tokens/repo1/admin-token" ] && [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke differing" "a copy was kept"
 
-# a bare-only copy is removed
-printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
-STUB_BODY= STUB_STATUS=204 revoke_in "$h"
-assert_eq "revoke bare-only rc" 0 "$rc"
-assert_eq "revoke bare-only one DELETE" 1 "$(calls)"
-[ ! -e "$h/tokens/repo1/admin-token" ] && ok || bad "revoke bare-only" "copy kept"
-
 # a malformed copy stops revoke before curl and keeps every file
-printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
-printf 'junk\n' >"$h/tokens/acme/repo1/admin-token"
+put_tok "$h/tokens/repo1/admin-token"
+mkdir -p "$h/tokens/acme/repo1"; printf 'junk\n' >"$h/tokens/acme/repo1/admin-token"
 STUB_BODY= STUB_STATUS=204 revoke_in "$h"
 assert_eq "revoke malformed copy rc" 1 "$rc"
 assert_eq "revoke malformed copy curl uncalled" 0 "$(calls)"
@@ -434,76 +615,21 @@ assert_eq "revoke malformed copy curl uncalled" 0 "$(calls)"
 h=$(newhome nothing '{"repos": ["acme/repo1"]}')
 revoke_in "$h"
 assert_eq "revoke nothing rc" 1 "$rc"
-[ ! -e "$h/tokens" ] && ok || bad "revoke nothing" "created tokens/"
+untouched "$h" "revoke nothing"
 
-# a dangling symlink at the bare path: refused before curl, nothing written through it
-h=$(newhome link '{"repos": ["acme/repo1"]}')
-mkdir -p "$h/tokens/repo1"
-ln -s "$tmp/linktarget" "$h/tokens/repo1/admin-token"
+# a dangling symlink at the owner path: refused before curl, nothing written through it
+h=$(newhome link)
+mkdir -p "$h/tokens/acme/repo1"
+ln -s "$tmp/linktarget" "$h/tokens/acme/repo1/admin-token"
 mint_in "$h"
 assert_eq "symlink rc" 1 "$rc"
 assert_eq "symlink curl uncalled" 0 "$(calls)"
-[ ! -e "$tmp/linktarget" ] && [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "symlink" "something was written"
-
-# the second write fails: exit 1 naming the owner file, no staged file, --revoke clears both
-mkdir "$tmp/mvbin"
-real_mv=$(command -v mv)
-cat >"$tmp/mvbin/mv" <<'STUB'
-#!/bin/sh
-for a; do last=$a; done
-[ "$last" != "$STUB_FAIL_MV" ] || exit 1
-exec "$REAL_MV" "$@"
-STUB
-chmod +x "$tmp/mvbin/mv"
-REAL_MV=$real_mv; export REAL_MV
-h=$(newhome mvfail '{"repos": ["acme/repo1"]}')
-mkdir -p "$h/tokens/repo1"
-printf '%s\n2000-01-01T00:00:00Z\n' "$TOKEN2" >"$h/tokens/repo1/admin-token"
-STUB_FAIL_MV="$h/tokens/repo1/admin-token" PATH="$tmp/mvbin:$PATH" mint_in "$h"
-assert_eq "second write fails rc" 1 "$rc"
-assert_eq "second write fails names the owner file" 1 "$(printf '%s' "$out" | grep -c "$h/tokens/acme/repo1/admin-token" || true)"
-assert_eq "second write fails names --revoke" 1 "$(printf '%s' "$out" | grep -c -e '--revoke' || true)"
-assert_eq "second write fails leaves no .mint file (bare)" 0 "$(ls -A "$h/tokens/repo1" | grep -c '^\.mint' || true)"
-assert_eq "second write fails leaves no .mint file (owner)" 0 "$(ls -A "$h/tokens/acme/repo1" | grep -c '^\.mint' || true)"
-STUB_BODY= STUB_STATUS=204 revoke_in "$h"
-assert_eq "revoke after failed second write rc" 0 "$rc"
-assert_eq "revoke after failed second write two DELETEs" 2 "$(calls)"
-[ ! -e "$h/tokens/repo1/admin-token" ] && [ ! -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke after failed second write" "a copy was kept"
-
-# every malformed broker.json refuses mint and revoke before curl: nothing written, no lock left
-badcase() {
-  name=$1 text=$2
-  h=$(newhome "bad-$name" "$text")
-  mint_in "$h"
-  assert_eq "broker.json $name: mint rc" 1 "$rc"
-  assert_eq "broker.json $name: mint curl uncalled" 0 "$(calls)"
-  assert_eq "broker.json $name: mint names broker.json" 1 "$(printf '%s' "$out" | grep -c 'broker.json' || true)"
-  revoke_in "$h"
-  assert_eq "broker.json $name: revoke rc" 1 "$rc"
-  assert_eq "broker.json $name: revoke curl uncalled" 0 "$(calls)"
-  [ ! -e "$h/tokens" ] && ok || bad "broker.json $name" "created tokens/"
-  # with a token on file, revoke must refuse on broker.json itself, not on "nothing on file"
-  mkdir -p "$h/tokens/repo1"
-  printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$h/tokens/repo1/admin-token"
-  STUB_BODY= STUB_STATUS=204 revoke_in "$h"
-  assert_eq "broker.json $name: revoke with a token rc" 1 "$rc"
-  assert_eq "broker.json $name: revoke with a token curl uncalled" 0 "$(calls)"
-  assert_eq "broker.json $name: revoke with a token names broker.json" 1 "$(printf '%s' "$out" | grep -c 'broker.json' || true)"
-  [ -e "$h/tokens/repo1/admin-token" ] && ok || bad "broker.json $name" "revoke removed the token"
-}
-badcase notjson 'not json'
-badcase emptyrepos '{"repos": []}'
-badcase nonstring '{"repos": ["repo1", 5]}'
-badcase twoslashes '{"repos": ["a/b/repo1"]}'
-badcase dotstart '{"repos": [".acme/repo1"]}'
-badcase trailingnewline '{"repos": ["acme/repo1\n"]}'
-badcase casevariant '{"repos": ["acme/repo1", "acme/REPO1"]}'
-badcase twovalues '{"repos": ["acme/repo1"]} {"repos": []}'
-badcase ownerisname '{"repos": ["repo1", "repo1/other"]}'
+[ ! -e "$tmp/linktarget" ] && ok || bad "symlink" "something was written through it"
+[ ! -e "$h/.admin-lock.repo1" ] && ok || bad "symlink" "left a lock"
 
 empty="$tmp/empty"
 mkdir "$empty"
-WOW_HOME="$empty" WOW_TTY="$tmp/tty-good" run sh "$admin" repo1
+WOW_HOME="$empty" WOW_TTY="$tmp/tty-good" run sh "$admin" acme/repo1
 assert_eq "admin missing config rc" 1 "$rc"
 assert_eq "admin missing config curl uncalled" 0 "$(calls)"
 WOW_HOME="$empty" run sh "$review" repo1
@@ -517,7 +643,7 @@ printf '{"glunk-admin": {"client_id": "x", "installation_id": 1, "key": "k.pem"}
 # real key files, so a fallback to the org-keyed entries would get past the key checks and reach curl
 cp "$home/admin.enc.pem" "$oldkeys/k.pem"
 cp "$home/review.pem" "$oldkeys/r.pem"
-WOW_HOME="$oldkeys" WOW_TTY="$tmp/tty-good" run sh "$admin" repo1
+WOW_HOME="$oldkeys" WOW_TTY="$tmp/tty-good" run sh "$admin" acme/repo1
 assert_eq "admin old-keys config rc" 1 "$rc"
 assert_eq "admin old-keys config curl uncalled" 0 "$(calls)"
 assert_eq "admin old-keys config names the role keys" 1 "$(printf '%s' "$out" | grep -c 'keyed by role' || true)"

@@ -20,14 +20,13 @@ that serves the host's git credential (see Hazards that remain).
   (`glunk-works/claude-workbench`, owner-qualified, as the shared template requires and matched
   case-sensitively against `github.repository`), not the checkout folder, so a clone folder with
   another name still mounts the right directory; it must exist, which `install-host-tools.ps1`
-  ensures for each repo in `broker.json`. For an `owner/name` entry the broker writes the token to
-  both `tokens/<repo>/dev-token` and `tokens/<owner>/<repo>/dev-token` (`WB-D42`, `#1276`); this
-  container reads the second, and the first stays until the old layout is retired. The
+  ensures for each repo in `broker.json`. The broker writes the dev token only to
+  `tokens/<owner>/<repo>/dev-token` (`WB-D42`, `#1276`, `#1340`); a bare `tokens/<repo>` directory is a
+  leftover the maintainer removes. The
   `dev-token` script reads the `dev-token` file there, and the plugin's SessionStart banner reads `admin-token` there
-  (`/run/wow/admin-token`, the fixed path it looks at); `wow-admin` writes the admin token into the same
-  host directory (when `WOW_HOME` is the default directory, as *Opening it* already requires); for an `owner/name`
-  entry in `broker.json` it writes both `tokens/<repo>/admin-token` and `tokens/<owner>/<repo>/admin-token`, as the
-  broker does with the dev token (`#1340`). The change
+  (`/run/wow/admin-token`, the fixed path it looks at); `wow-admin <owner/name>` writes the admin token into the same
+  host directory (when `WOW_HOME` is the default directory, as *Opening it* already requires),
+  `tokens/<owner>/<repo>/admin-token`, and nowhere else (`#1340`). The change
   takes effect when the driver launcher's start-of-day path recreates the container.
 - The reader, the wrapper and the credential helper are the base image flavour's
   (603-Identity/devcontainers, `FROM` in `.devcontainer/Dockerfile`), at the paths named here;
@@ -216,7 +215,7 @@ Do the steps in order. It documents the steps and performs none.
    Nothing else differs from the template.
 4. **Add the repo to the broker (the operator, on the host), only after step 1.** Add it, or replace any
    bare entry for it, as an `owner/name` entry, in GitHub's canonical case, to the identity home's `broker.json` and
-   `review-poll.json`, never a bare name: only an `owner/name` entry makes the broker write
+   `review-poll.json`, never a bare name: the broker and a `wow-admin` mint refuse a bare entry, and only an `owner/name` entry makes the broker write
    `tokens/<owner>/<repo>`, the directory the template mounts at `/run/wow`. Then rerun
    `install-host-tools.ps1` through `register-broker-task.ps1`, from a claude-workbench clone no
    container opens, at origin's `main` (it stops the broker task around the swap). That creates

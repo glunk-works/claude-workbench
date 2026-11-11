@@ -1,32 +1,45 @@
 #!/bin/sh
 # Host command: a one-hour admin token for one repo's container, or its revocation (WB-D24, #374).
 #
-#   wow-admin <repo> [--perms perm=level[,perm=level...]]
-#   wow-admin <repo> --revoke
+#   wow-admin <owner/name> [--perms perm=level[,perm=level...]]
+#   wow-admin <owner/name> --revoke
 #
 # Run it by its path, not through a symlink: it finds wow-common.sh and mint.sh beside itself.
 #
 # Mint: asks for the admin key's passphrase on the terminal (echo off, read from /dev/tty, never
 # an argument or an environment variable), unlocks the admin key into a private .unlock.*
 # directory under $WOW_HOME for the length of one mint.sh call, and writes the token and its
-# expires_at to $WOW_HOME/tokens/<repo>/admin-token -- a directory a repo's container may mount
-# read-only. When $WOW_HOME/broker.json holds an "owner/name" entry whose name half is exactly
-# <repo>, the same two lines are also written to tokens/<owner>/<repo>/admin-token, as the broker
-# does with the dev token (#1276, #1340); with no broker.json, no such entry or a bare-name entry
-# only the first file is written. A broker.json that breaks the broker's own rules (not JSON, empty
-# or non-string repos, more than one slash, a half failing the name rule, two name halves equal
-# ignoring case, an owner equal to another entry's name) is refused by mint and revoke alike before
-# anything else runs; reading it needs jq. The token is scoped to <repo> and to --perms (default: administration, contents and
-# pull_requests, all write). It refuses a key file that is not passphrase-encrypted (the
-# passphrase would guard nothing), refuses to run beside another wow-admin for the same repo, and
-# refuses while a live (or unreadable) token is on file: an overwritten token could no longer be
-# revoked, so --revoke it first (or delete a malformed file by hand). An expired token is simply
-# replaced. The live-token check looks at both copies.
+# expires_at to $WOW_HOME/tokens/<owner>/<name>/admin-token -- the directory the repo's dev
+# container mounts read-only (#1340). That is the only file mint writes. The token is scoped to
+# <name> and to --perms (default: administration, contents and pull_requests, all write). It
+# refuses a key file that is not passphrase-encrypted (the passphrase would guard nothing),
+# refuses to run beside another wow-admin for the same repo name (any owner), and refuses while a live (or
+# unreadable) token is on file: an overwritten token could no longer be revoked, so --revoke it
+# first (or delete a malformed file by hand). An expired token is simply replaced.
 #
-# --revoke: under the same per-repo lock, DELETE /installation/token once for each distinct token
-# on file (both copies, for an owner/name entry), then remove each copy on its own token's answer.
-# HTTP 401 means the token was already expired or revoked; the copy goes and the exit is 0. Any
-# other status keeps that token's copies and the exit is 1. A lock left by a killed run blocks mint and revoke alike: rmdir it by hand.
+# Only mint reads $WOW_HOME/broker.json, and it is not required. When it exists, mint checks it by
+# the broker's own rules first (not JSON, empty or non-string repos, a bare-name entry, more than
+# one slash, a half failing the name rule, two name halves equal ignoring case, an owner equal to
+# another entry's name), then refuses an entry whose name half matches <name> only ignoring case,
+# an entry with the same name half under another owner, and an <owner> equal to the name half of
+# an entry other than the argument's own. Reading it needs jq. Mint then reads every
+# tokens/*/<name>/admin-token under another owner and the leftover tokens/<name>/admin-token, and
+# refuses while one is live, so a mistyped owner cannot leave a second live admin token for the
+# repo. All of that happens under the per-name lock and before any token directory, passphrase or curl request.
+#
+# --revoke reads no broker.json and makes none of those refusals. Under the same per-name lock
+# it acts only on tokens/<owner>/<name>/admin-token (the argument's path) and on a leftover
+# tokens/<name>/admin-token from before #1340: DELETE /installation/token once for each distinct
+# token on file, the leftover copy first, then remove each copy on its own token's answer. HTTP
+# 401 means the token was already expired or revoked; the copy goes and the exit is 0. Any other
+# status keeps that token's copies and the exit is 1. The lock is the directory
+# $WOW_HOME/.admin-lock.<name, lowercased>; one left by a killed run blocks mint and revoke alike: rmdir it by hand.
+#
+# The owner half is a label: wow-admin does not check it against the admin App's installation.
+# The token is minted for <name> on that one installation, and the typed owner alone picks the
+# directory it lands in, with no broker.json entry needed. An owner whose tokens/<owner>/<name>
+# another org's container mounts would put the admin token in that container; the only guard is
+# the rule that one identity home serves one org (docs/identity/DEV-CONTAINER.md, WB-D42).
 #
 # $WOW_TTY names the terminal to read (default /dev/tty); the fixtures point it at a file, and
 # only then is a terminal that cannot hide echo accepted. It can only supply a passphrase the
@@ -39,83 +52,120 @@ here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
 . "$here/wow-common.sh"
 
 default_perms=administration=write,contents=write,pull_requests=write
-usage() { die "usage: wow-admin <repo> [--perms p=l,...] | wow-admin <repo> --revoke" 2; }
+usage() { die "usage: wow-admin <owner/name> [--perms p=l,...] | wow-admin <owner/name> --revoke" 2; }
 
-repo= perms=$default_perms perms_given= revoke=
+arg= perms=$default_perms perms_given= revoke=
 while [ $# -gt 0 ]; do
   case "$1" in
     --revoke) revoke=1 ;;
     --perms) [ $# -ge 2 ] || usage; perms=$2; perms_given=1; shift ;;
     -*) usage ;;
-    *) [ -z "$repo" ] || usage; repo=$1 ;;
+    *) [ -z "$arg" ] || usage; arg=$1 ;;
   esac
   shift
 done
-[ -n "$repo" ] || usage
+[ -n "$arg" ] || usage
+case "$arg" in */*/* | */ | /*) usage ;; */*) ;; *) usage ;; esac
+owner=${arg%%/*} repo=${arg#*/}
+case "$owner" in . | ..) usage ;; esac
+check_repo "$owner"
+case "$owner" in .* | *.) die "the owner half must not begin or end with a dot" 2 ;; esac
 check_repo "$repo"
 [ -z "$revoke" ] || [ -z "$perms_given" ] || usage
 
-tokdir=$wow_home/tokens/$repo
-tokfile=$tokdir/admin-token
-lock=$tokdir/.lock
-owner= ownfile=
+owndir=$wow_home/tokens/$owner/$repo
+ownfile=$owndir/admin-token
+# the layout before #1340: only read, to refuse beside a live one and to revoke it
+tokfile=$wow_home/tokens/$repo/admin-token
+# one lock per repo NAME (any owner, any case), outside every directory a container mounts
+lock=$wow_home/.admin-lock.$(printf '%s' "$repo" | tr A-Z a-z)
 tty=${WOW_TTY:-/dev/tty}
 tmpd=
 restore=
 locked=
-staged=
 cleanup() {
-  [ -z "$staged" ] || rm -f -- "$staged" || true
   [ -z "$restore" ] || stty echo <"$tty" 2>/dev/null || true
   [ -z "$tmpd" ] || rm -rf -- "$tmpd" || true
   [ -z "$locked" ] || rmdir -- "$lock" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 1' INT TERM HUP
-# One lock per repo, taken by mint and revoke alike, so a revoke cannot delete the file a
-# concurrent mint has just replaced. A SIGKILL leaves it behind: the message says to remove it.
+# One lock per repo name, taken by mint and revoke alike before anything is read, so two runs for
+# one name under different owners cannot both pass the other-owner check, and a revoke cannot
+# delete the file a concurrent mint has just replaced. A SIGKILL leaves it behind: the message says to remove it.
 take_lock() {
-  mkdir -- "$lock" 2>/dev/null || die "another wow-admin is running for $repo (or left $lock behind; remove it)"
+  [ -d "$wow_home" ] || die "no identity home at $wow_home"
+  mkdir -- "$lock" 2>/dev/null || die "another wow-admin is running for the repo name $repo (or left $lock behind; remove it)"
   locked=1
 }
 
-# broker.json (when present) is checked by the broker's own rules before anything is locked,
-# unlocked or sent; the owner of the entry whose name half is exactly <repo> picks the second copy.
-if [ -e "$wow_home/broker.json" ] || [ -L "$wow_home/broker.json" ]; then
-  command -v jq >/dev/null 2>&1 || die "jq not on PATH"
-  bj=$(jq -rs --arg repo "$repo" '
-    def good: type == "string" and test("\\A[A-Za-z0-9._-]+\\z") and (test("\\A[-.]") | not) and (test("\\.\\z") | not);
-    if length != 1 then "bad" else .[0] | if type != "object" or (.repos | type) != "array" or (.repos | length) == 0 then "bad"
-    elif (.repos | map(type == "string") | all | not) then "bad"
-    else
-      (.repos | map(split("/"))) as $p
-      | if ($p | map(length < 1 or length > 2) | any) then "bad"
-        elif ($p | map(all(.[]; good)) | all | not) then "bad"
-        else
-          ($p | map({n: .[-1], o: (if length == 2 then .[0] else null end)})) as $e
-          | ($e | map(.n | ascii_downcase)) as $ns
-          | if ($ns | length) != ($ns | unique | length) then "bad"
-            elif ([range(0; $e | length) as $i | select($e[$i].o != null)
-                   | range(0; $e | length) as $k | select($k != $i and $ns[$k] == ($e[$i].o | ascii_downcase))] | length) > 0 then "bad"
-            else "ok\t" + ([$e[] | select(.n == $repo) | .o // ""] | first // "")
-            end
-        end
-    end end' "$wow_home/broker.json" 2>/dev/null) || bj=bad
-  case "$bj" in
-    ok|ok"	"*) owner=${bj#ok}; owner=${owner#"	"} ;;
-    *) die "$wow_home/broker.json is not a valid broker config; fix it and run wow-admin again" ;;
+# live_check <file> <owner/name to revoke>: refuse while a live or unreadable token is on file; an expired one passes.
+live_check() {
+  [ -e "$1" ] || [ -L "$1" ] || return 0
+  exp=$(sed -n 2p "$1" 2>/dev/null || true)
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  case "$exp" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) [ "$exp" \< "$now" ] || die "a live admin token for $repo is on file in $1 (expires $exp); run: wow-admin $2 --revoke" ;;
+    *) die "unreadable expiry in $1; run: wow-admin $2 --revoke, or delete the file by hand" ;;
   esac
-fi
-if [ -n "$owner" ]; then
-  owndir=$wow_home/tokens/$owner/$repo
-  ownfile=$owndir/admin-token
-fi
-
-# The bare path must not be a directory or a symlink: mv would replace a link, and a live token
-# could be written where it cannot be revoked. Same rule as mint.sh makes on its own --out.
-bare_ok() {
-  [ ! -d "$tokfile" ] && [ ! -L "$tokfile" ] || die "$tokfile is a directory or a symlink; remove it by hand"
 }
+
+take_lock
+
+# Mint only: broker.json (when present) is checked by the broker's own rules and against the
+# argument, under the lock and before anything is created, unlocked or sent.
+if [ -z "$revoke" ]; then
+  if [ -e "$wow_home/broker.json" ] || [ -L "$wow_home/broker.json" ]; then
+    command -v jq >/dev/null 2>&1 || die "jq not on PATH"
+    bj=$(jq -rs --arg owner "$owner" --arg name "$repo" '
+      def good: type == "string" and test("\\A[A-Za-z0-9._-]+\\z") and (test("\\A[-.]") | not) and (test("\\.\\z") | not);
+      if length != 1 then "bad" else .[0] | if type != "object" or (.repos | type) != "array" or (.repos | length) == 0 then "bad"
+      elif (.repos | map(type == "string") | all | not) then "bad"
+      else
+        (.repos | map(split("/"))) as $p
+        | if ($p | map(length < 1 or length > 2) | any) then "bad"
+          elif ($p | map(all(.[]; good)) | all | not) then "bad"
+          elif ($p | map(length == 1) | any) then "bare"
+          else
+            ($p | map({n: .[1], o: .[0]})) as $e
+            | ($e | map(.n | ascii_downcase)) as $ns
+            | if ($ns | length) != ($ns | unique | length) then "bad"
+              elif ([range(0; $e | length) as $i | select($e[$i].o != null)
+                     | range(0; $e | length) as $k | select($k != $i and $ns[$k] == ($e[$i].o | ascii_downcase))] | length) > 0 then "bad"
+              elif ([$e[] | select(.n != $name and (.n | ascii_downcase) == ($name | ascii_downcase))] | length) > 0
+                then "case\t" + ([$e[] | select(.n != $name and (.n | ascii_downcase) == ($name | ascii_downcase)) | .o + "/" + .n] | first)
+              elif ([$e[] | select(.n == $name and .o != $owner)] | length) > 0
+                then "other\t" + ([$e[] | select(.n == $name and .o != $owner) | .o + "/" + .n] | first)
+              elif ([$e[] | select((.n | ascii_downcase) == ($owner | ascii_downcase) and (.o != $owner or .n != $name))] | length) > 0
+                then "ownername\t" + ([$e[] | select((.n | ascii_downcase) == ($owner | ascii_downcase) and (.o != $owner or .n != $name)) | .o + "/" + .n] | first)
+              else "ok"
+              end
+          end
+      end end' "$wow_home/broker.json" 2>/dev/null | tr -d '\r') || bj=bad
+    ent=${bj#*"	"}
+    case "$bj" in
+      ok) ;;
+      bare) die "$wow_home/broker.json has a bare-name entry, which is no longer accepted; rewrite it as owner/name and run wow-admin again" ;;
+      case"	"*) die "broker.json entry $ent matches $repo only ignoring case; refusing $arg (name it exactly as the entry does)" ;;
+      other"	"*) die "broker.json names $ent for $repo; refusing $arg under another owner" ;;
+      ownername"	"*) die "the owner $owner is the name half of broker.json entry $ent, whose tokens/$owner directory would then hold this admin token; refusing $arg" ;;
+      *) die "$wow_home/broker.json is not a valid broker config; fix it and run wow-admin again" ;;
+    esac
+  fi
+  # Every other owner's copy for this repo, read with globbing on for this one expansion only
+  # (this script runs with set -f). A pattern that matches nothing stays literal and is skipped.
+  set +f
+  set -- "$wow_home"/tokens/*/"$repo"/admin-token
+  set -f
+  for f in "$@"; do
+    [ "$f" != "$ownfile" ] || continue
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    d=${f%/*}; d=${d%/*}; o=${d##*/}
+    live_check "$f" "$o/$repo"
+  done
+  # a live leftover from before #1340 blocks a mint too; --revoke clears it
+  live_check "$tokfile" "$arg"
+fi
 
 # tok_of <file>: the token on its first line, only if token-shaped; else die.
 tok_of() {
@@ -141,26 +191,12 @@ delete_token() {
 }
 }
 
-# live_check <file>: refuse while a live or unreadable token is on file; an expired one passes.
-live_check() {
-  [ ! -e "$1" ] || {
-    exp=$(sed -n 2p "$1" 2>/dev/null || true)
-    now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    case "$exp" in
-      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) [ "$exp" \< "$now" ] || die "a live admin token for $repo is on file in $1 (expires $exp); run: wow-admin $repo --revoke" ;;
-      *) die "unreadable expiry in $1; run: wow-admin $repo --revoke, or delete the file by hand" ;;
-    esac
-  }
-}
-
 if [ -n "$revoke" ]; then
   command -v curl >/dev/null 2>&1 || die "curl not on PATH"
   have_bare= have_own=
   [ ! -r "$tokfile" ] || have_bare=1
-  [ -z "$ownfile" ] || [ ! -r "$ownfile" ] || have_own=1
-  [ -n "$have_bare$have_own" ] || die "no readable admin token on file for $repo"
-  token_dir tokens "$repo" >/dev/null
-  take_lock
+  [ ! -r "$ownfile" ] || have_own=1
+  [ -n "$have_bare$have_own" ] || die "no readable admin token on file for $arg"
   t1= t2=
   [ -z "$have_bare" ] || t1=$(tok_of "$tokfile")
   [ -z "$have_own" ] || t2=$(tok_of "$ownfile")
@@ -168,8 +204,8 @@ if [ -n "$revoke" ]; then
   failed=
   settle() {
     case "$code" in
-      204) rm -f -- "$@"; echo "revoked the admin token for $repo" ;;
-      401) rm -f -- "$@"; echo "the admin token for $repo was already expired or revoked" ;;
+      204) rm -f -- "$@"; echo "revoked the admin token for $arg" ;;
+      401) rm -f -- "$@"; echo "the admin token for $arg was already expired or revoked" ;;
       *) failed="GitHub answered HTTP $code; the token file is kept" ;;
     esac
   }
@@ -196,15 +232,8 @@ head -n 3 "$adminkey" | grep -q 'ENCRYPTED' || die "the admin key is not passphr
 
 [ -r "$tty" ] || die "no terminal to ask for the passphrase on"
 
-token_dir tokens "$repo" >/dev/null
-take_lock
-
-live_check "$tokfile"
-if [ -n "$owner" ]; then
-  live_check "$ownfile"
-  bare_ok
-  token_dir tokens "$owner/$repo" >/dev/null
-fi
+token_dir tokens "$owner/$repo" >/dev/null
+live_check "$ownfile" "$arg"
 
 printf 'Admin key passphrase: ' >&2
 if stty -echo <"$tty" 2>/dev/null; then
@@ -223,20 +252,6 @@ printf '%s\n' "$pass" | openssl pkey -in "$adminkey" -passin stdin -out "$tmpd/k
   || die "could not unlock the admin key (wrong passphrase?)"
 pass=
 
-if [ -z "$owner" ]; then
-  sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_id" --key "$tmpd/key.pem" \
-    --repos "$repo" --perms "$perms" --out "$tokfile"
-  echo "admin token for $repo written to $tokfile (read-only mount target); revoke with: wow-admin $repo --revoke"
-  exit 0
-fi
-
 sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_id" --key "$tmpd/key.pem" \
   --repos "$repo" --perms "$perms" --out "$ownfile"
-# the bare copy is staged in its own directory and renamed, so a mount never sees half a file
-bare_ok
-staged=$(umask 077 && mktemp -- "$tokdir/.mint.XXXXXX") || die "cannot stage $tokfile; $ownfile was written: run wow-admin $repo --revoke"
-{ sed -n 1p "$ownfile" && sed -n 2p "$ownfile"; } >"$staged" || die "cannot stage $tokfile; $ownfile was written: run wow-admin $repo --revoke"
-bare_ok
-mv -f -- "$staged" "$tokfile" || die "cannot write $tokfile; $ownfile was written: run wow-admin $repo --revoke"
-staged=
-echo "admin token for $repo written to $ownfile and $tokfile (read-only mount targets); revoke with: wow-admin $repo --revoke"
+echo "admin token for $arg written to $ownfile (read-only mount target); revoke with: wow-admin $arg --revoke"

@@ -8,20 +8,20 @@
 .DESCRIPTION
   Runs on the host, where the App keys live; no key is ever copied into a container.
 
-  Dev tokens. For every repo named in $WowHome\broker.json ({"repos": ["name", "owner/name", ...]})
-  the broker keeps $WowHome\tokens\<repo>\dev-token current: the token on one line, its expires_at on the
-  next, the format token-check.sh and the container's gh shim read. An "owner/name" entry also
-  gets the same token at $WowHome\tokens\<owner>\<repo>\dev-token, the owner-qualified layout of
-  the shared dev-container template (WB-D42, #1276); the old tokens\<repo> copy is kept until it is retired
-  after #1226, so a container still mounting it keeps working. Each half of an entry is a
+  Dev tokens. For every repo named in $WowHome\broker.json ({"repos": ["owner/name", ...]})
+  the broker keeps $WowHome\tokens\<owner>\<repo>\dev-token current: the token on one line, its
+  expires_at on the next, the format token-check.sh and the container's gh shim read. That is the
+  owner-qualified layout of the shared dev-container template (WB-D42, #1276, #1340); nothing is
+  written to tokens\<repo> any more. A bare-name entry is a configuration error, refused with its
+  reason (under -Once the broker exits 2; the looping broker logs it and mints for no repo). Each half of an entry is a
   repository name (ASCII letters, digits, dot, underscore, hyphen; not starting with a dot or
   hyphen, not ending in a dot), and the owner half is a label: it is not checked against the dev
   installation, which is the one org this home serves. Two entries with the same name half (any
-  case) are a configuration error too, since they would share tokens\<repo>. An entry whose owner half equals another
-  entry's name (any case) is a configuration error, since tokens\<owner> would then be that
-  repo's old-layout mount source. The mint asks for the bare name. An "owner/name" entry is current
-  only when both copies are, so a missing or stale one triggers a mint that refreshes both. A bare
-  entry writes only tokens\<repo>. A token is minted when the
+  case) are a configuration error too, since they would mint for one repo under two owners. An
+  entry whose owner half equals another entry's name (any case) is a configuration error, since
+  tokens\<owner> would then be that repo's directory of an earlier layout, which a leftover
+  tokens\<repo> directory may still be. The mint asks for the bare name. An entry is current
+  only when its one dev-token is, so a missing or stale file triggers a mint. A token is minted when the
   file is missing, malformed, expired, or has 30 minutes or less left (-RefreshMinutes). Dev
   tokens live an hour, so that is a new token every ~30 minutes, and it is a property of the
   file, not of a timer: a token that expired while the machine slept is replaced on the first
@@ -30,7 +30,7 @@
   it can run unattended, like review.pem) and the dev App's permissions only.
 
   Atomic write. mint.sh writes to $WowHome\staging\<repo>\, the broker checks the result is
-  token-shaped and still live, then publishes it (each copy from its own staged file) with
+  token-shaped and still live, then publishes it with
   [IO.File]::Move(src, dst, overwrite) on the same volume, so a reader sees the old token or the
   new one, never a partial file. No staged file is left behind. A failed mint
   leaves the old token in place (it stays valid until it expires) and is retried after
@@ -158,13 +158,11 @@ function Invoke-Sh([string[]]$shArgs) {
   @{ Code = $code; Text = $text }
 }
 
-# Update-DevToken <entry>: entry is @{ Label; Name; Owner }, Owner $null for a bare name. Keeps tokens/<Name>/dev-token
-# and, for an owner/name entry, tokens/<Owner>/<Name>/dev-token current from one mint.
+# Update-DevToken <entry>: entry is @{ Label; Name; Owner }. Keeps tokens/<Owner>/<Name>/dev-token current.
 function Update-DevToken($entry) {
   $label = $entry.Label
   $repo = $entry.Name
-  $dsts = @(Join-Path $WowHome "tokens/$repo/dev-token")
-  if ($entry.Owner) { $dsts += Join-Path $WowHome "tokens/$($entry.Owner)/$repo/dev-token" }
+  $dsts = @(Join-Path $WowHome "tokens/$($entry.Owner)/$repo/dev-token")
   $now = [DateTimeOffset]::UtcNow
   $allCurrent = $true
   foreach ($d in $dsts) {
@@ -190,7 +188,6 @@ function Update-DevToken($entry) {
   $null = New-Item -ItemType Directory -Force -Path $stageDir
   $stage = Join-Path $stageDir 'dev-token'
   $stages = @($stage)
-  if ($entry.Owner) { $stages += Join-Path $stageDir 'dev-token.owner' }
   foreach ($f in $stages) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
 
   try {
@@ -206,8 +203,7 @@ function Update-DevToken($entry) {
       Write-Log "dev $label`: minted file is not a live token; keeping the old one"
       return $false
     }
-    if ($entry.Owner) { Copy-Item -LiteralPath $stage -Destination $stages[1] -Force }
-    # Each copy is published on its own: one that cannot be written is logged and fails the pass, the other still lands.
+    # A copy that cannot be written is logged and fails the pass.
     $published = $true
     for ($i = 0; $i -lt $dsts.Count; $i++) {
       try {
@@ -215,7 +211,7 @@ function Update-DevToken($entry) {
         [IO.File]::Move($stages[$i], $dsts[$i], $true)
       } catch {
         $published = $false
-        Write-Log "dev $label`: could not publish tokens/$(if ($i -eq 0) { $repo } else { "$($entry.Owner)/$repo" })/dev-token: $($_.Exception.Message)"
+        Write-Log "dev $label`: could not publish tokens/$($entry.Owner)/$repo/dev-token: $($_.Exception.Message)"
       }
     }
     if (-not $published) { return $false }
@@ -313,9 +309,10 @@ function Get-Repos {
     $parts = $r.Split('/')
     if ($parts.Count -gt 2) { throw "broker.json: bad repository name '$r'" }
     foreach ($p in $parts) { if (-not (Test-RepoName $p)) { throw "broker.json: bad repository name '$r'" } }
-    $entries += @{ Label = $r; Name = $parts[-1]; Owner = $(if ($parts.Count -eq 2) { $parts[0] } else { $null }) }
+    if ($parts.Count -ne 2) { throw "broker.json: '$r' is a bare name, which is no longer accepted; write it as owner/name" }
+    $entries += @{ Label = $r; Name = $parts[1]; Owner = $parts[0] }
   }
-  # Two entries with one name half (any case) would share tokens/<name> and mint for the same repo under two owners.
+  # Two entries with one name half (any case) would mint for the same repo under two owners.
   for ($i = 0; $i -lt $entries.Count; $i++) {
     for ($k = $i + 1; $k -lt $entries.Count; $k++) {
       if ($entries[$k].Name -ieq $entries[$i].Name) {
@@ -323,9 +320,8 @@ function Get-Repos {
       }
     }
   }
-  # tokens/<owner>/ must never be some repo's old-layout mount source (tokens/<name>), where it would hold another repo's token.
+  # tokens/<owner>/ must never be a leftover tokens/<name> directory, where it would hold another repo's token.
   for ($i = 0; $i -lt $entries.Count; $i++) {
-    if (-not $entries[$i].Owner) { continue }
     for ($k = 0; $k -lt $entries.Count; $k++) {
       if ($k -ne $i -and $entries[$k].Name -ieq $entries[$i].Owner) {
         throw "broker.json: the owner of '$($entries[$i].Label)' is the name of another entry, '$($entries[$k].Label)'"
