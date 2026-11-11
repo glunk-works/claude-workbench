@@ -1,8 +1,9 @@
 #!/bin/sh
 # Is the spec comment the one a declared maintainer or the declared dev App wrote, on the task it claims, unedited
-# since the pair the caller holds (the anchor's, or under a map the finder's `found` pair)? One implementation of those checks, shared by the three readers that print
-# the comment: /way-of-working:resume's *body read (TOCTOU closure)* rule, the coder agent's *fetch the task once* step and
-# /way-of-working:architect-review's *Load context lean* step (#614). Before this each carried the checks in its
+# since the pair the caller holds (the anchor's, or under a map the finder's `found` pair)? One implementation of those checks, shared by the four readers that print
+# the comment: /way-of-working:resume's *body read (TOCTOU closure)* rule, the coder agent's *fetch the task once* step,
+# /way-of-working:architect-review's *Load context lean* step (#614) and /way-of-working:spec-task's *Refresh branch*
+# step (#1374), through `body`. Before this each carried the checks in its
 # own prose, and a reader that skipped one (or fetched the comment to the transcript before
 # checking it) put unchecked text in context with nothing to say so.
 #
@@ -44,7 +45,7 @@
 #                   `.author_association` is OWNER, MEMBER or COLLABORATOR; `reviewer_app`,
 #                   `loop_app`, `undeclared`, an exit of 2 and any other word fail
 #   unreacted    -- under a map, the author is a declared maintainer or the declared dev App and no
-#                   declared maintainer has approved the text. A spec is never used, by any of the three readers above,
+#                   declared maintainer has approved the text. A spec is never used, by any of the four readers above,
 #                   without a declared maintainer's approving reaction (the four spec-reaction.sh
 #                   accepts) created strictly after its last edit (WB-D24 item 6, WB-D30): the dev
 #                   App can write a spec but cannot approve one, since an App cannot react as another

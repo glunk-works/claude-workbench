@@ -667,6 +667,13 @@ cl_case "a missing final period" post 'Critic gate: architect; 2 rounds; converg
 cl_case "trailing text after the period" post 'Critic gate: architect; 2 rounds; converged. ok'
 cl_case "an unknown stop word" post 'Critic gate: architect; 2 rounds; finished.'
 cl_case "an empty critic list" post 'Critic gate: ; 2 rounds; converged.'
+CL_CARRIED='Critic gate: none; 0 rounds; carried forward.'
+cl_case "escalate with the carried-forward line (#1374)" escalate "$CL_CARRIED"
+cl_case "the carried-forward line after ### Goal" post "$CL_CARRIED" late
+cl_case "another critic list with 0 rounds; carried forward." post 'Critic gate: architect; 0 rounds; carried forward.'
+cl_case "the carried-forward line with trailing text" post "$CL_CARRIED ok"
+cl_case "the carried-forward line without its period" post 'Critic gate: none; 0 rounds; carried forward'
+cl_case "none with 1 round; carried forward." post 'Critic gate: none; 1 round; carried forward.'
 
 desc="stop: no-critic-line, two critic lines"
 dcl="$(newdir)"
@@ -732,6 +739,21 @@ o="$(newdir)"
 post "$dcl/draft.md" "$o"
 assert_eq "$desc (posted)" posted "$(printf '%s' "$out" | cut -d' ' -f1)"
 assert_eq "$desc (one POST)" 1 "$(writes)"
+
+desc="pass: post with the carried-forward critic line (#1374)"
+dcl="$(newdir)"
+_mk "$dcl/draft.md" "$CL_CARRIED" '' '' ''
+o="$(newdir)"
+post "$dcl/draft.md" "$o"
+assert_eq "$desc (posted)" posted "$(printf '%s' "$out" | cut -d' ' -f1)"
+assert_eq "$desc (one POST)" 1 "$(writes)"
+
+desc="stop: no-critic-line, the carried-forward line with an Open findings section"
+dcl="$(newdir)"
+_mk "$dcl/draft.md" "$CL_CARRIED" '' '' 'A finding.'
+o="$(newdir)"
+post "$dcl/draft.md" "$o"
+stop_is no-critic-line
 
 desc="pass: post with a draft that is CRLF throughout"
 dcl="$(newdir)"

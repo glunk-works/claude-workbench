@@ -129,6 +129,10 @@
 # mode it must be `cap reached` or `not converging`, and an `### Open findings` heading must follow
 # the `### Restated from the issue body` heading with a non-blank line before the next heading.
 # In `post` mode no ATX heading (`#`s, a space, then `Open findings` in any case) may appear anywhere.
+# Outside that grammar (#1374), `post` mode also takes the exact line `Critic gate: none; 0 rounds; carried
+# forward.`, the line /way-of-working:spec-task's refresh branch writes on a draft it carried forward unchanged;
+# it follows the same one-line count and placement rules, and `escalate` mode refuses it. Every other line with
+# `0 rounds` stays refused.
 #
 # What it never prints: the draft, the body, or `gh`'s output or error text. The POST is never
 # retried.
@@ -141,7 +145,9 @@
 #     `post-unknown`;
 #   - the leak shapes are a filter, not a boundary;
 #   - the critic line is written by the posting session itself, so its check is a filter against a
-#     forgotten gate, not proof that critics ran; the maintainer's reaction stays the only approval;
+#     forgotten gate, not proof that critics ran; the maintainer's reaction stays the only approval. The
+#     carried-forward form is accepted on any `post` draft, refresh or not, so the check does not catch a
+#     skipped gate whose session writes that line (#1374);
 #   - the work-tree checks compare lowercased paths on every platform, so a differently cased alias is refused (it
 #     fails closed); an 8.3 short name is not recognised. A <draft-file> or <out-dir> must be the
 #     caller's own fresh mktemp -d: a planted entry or a linked worktree's git data is not checked;
@@ -342,13 +348,14 @@ sh "$shape" check "$tmp/draft.md" "$tmp/def.yml" >"$tmp/shape" 2>/dev/null || st
 [ "$(rd "$tmp/shape")" = ok ] || stop bad-shape
 
 # The critic line (#629): exactly one line begins `Critic gate:`, before the first `### Goal`
-# heading, in the grammar of the header; `post` takes `converged`, `escalate` takes `cap reached`
+# heading, in the grammar of the header; `post` takes `converged` (or the carried-forward line, #1374), `escalate` takes `cap reached`
 # or `not converging` and an `### Open findings` section after the restated section. One awk
 # program over the copy, whose result goes to a file (never a pipe) and is one of two words.
 LC_ALL=C CG_MODE="$mode" awk '
   BEGIN {
     mode = ENVIRON["CG_MODE"]
     re = "^Critic gate: [A-Za-z0-9][A-Za-z0-9_-]*(, [A-Za-z0-9][A-Za-z0-9_-]*)*; (1 round|([2-9]|[1-9][0-9]+) rounds); (converged|cap reached|not converging)\\.$"
+    carried = "Critic gate: none; 0 rounds; carried forward."
     count = 0; anyof = 0; goal = 0; rest = 0; of = 0; ofbody = 0; inof = 0
   }
   {
@@ -366,8 +373,9 @@ LC_ALL=C CG_MODE="$mode" awk '
     if (inof && line ~ /[^ \t]/) ofbody = 1
   }
   END {
-    ok = (count == 1 && goal && cnr < goal && cline ~ re)
-    if (ok && mode == "post") ok = ((cline ~ /; converged\.$/) && !anyof)
+    iscarried = (mode == "post" && cline == carried)
+    ok = (count == 1 && goal && cnr < goal && (cline ~ re || iscarried))
+    if (ok && mode == "post") ok = ((iscarried || cline ~ /; converged\.$/) && !anyof)
     if (ok && mode == "escalate") ok = ((cline ~ /; (cap reached|not converging)\.$/) && of && ofbody)
     print (ok ? "critic-ok" : "critic-bad")
   }

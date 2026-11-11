@@ -3,7 +3,7 @@
 # WB-D29's binding rules for marker readers set out, so the readers do not each carry it in
 # prose (#662). Its callers: /way-of-working:resume, the coder agent,
 # bin/lane.sh, bin/lane-state.sh, bin/lane-groups.sh, /way-of-working:architect-review and
-# /way-of-working:spec-task (the `answer` mode, #790); each runs it in the Bash call that uses its result.
+# /way-of-working:spec-task (the `answer` mode, #790, and, in its refresh branch, `find`, #1374); each runs it in the Bash call that uses its result.
 #
 # Usage: spec-find.sh find <issue> <project.yml>
 #        spec-find.sh pending <issue> <project.yml> <after-id>
@@ -42,7 +42,9 @@
 #
 # It makes its own `gh` calls: one paginated listing of the issue's comments, then, for each
 # `spec-task:` comment that clears the static and role checks, that comment's reactions and a second
-# read of its `updated_at`. An escalated comment gets the role check only (#746). Every `gh` call's stderr goes to /dev/null. It never prints comment text,
+# read of the whole comment JSON, to a file in this script's own temp directory (never to stdout), from which
+# its `updated_at` is read with yq (#1374); a failed fetch or an unparseable file is `unreadable`, and a missing `updated_at` reads as changed (`moved`).
+# An escalated comment gets the role check only (#746). Every `gh` call's stderr goes to /dev/null. It never prints comment text,
 # on stdout or stderr, and it writes only its own fixed diagnostics to stderr.
 #
 # A comment is a candidate only when ALL of these hold:
@@ -50,7 +52,7 @@
 #     or the escalated marker (`spec-task-escalated: ...`, the same fields; such a comment is
 #     never a candidate whatever its reactions, see `escalated` below), matched inside gh's own --jq on the raw first line, so the check and the use see the same
 #     bytes. A body that breaks lines with CR alone, or carries a character the pattern does
-#     not allow, does not match. `sha=` is checked for shape only and never passed to git.
+#     not allow, does not match. `sha=` is checked for shape only and never passed to git by this script (the sibling spec-fresh.sh, run on older candidates, re-reads it after its own 40-hex check).
 #   - the marker's `issue=` is <issue> and its `base=` is the project file's `pr_base`, and the
 #     comment's `issue_url` is the backlog repo's URL for <issue>
 #   - its author's numeric id is a declared maintainer's or the declared dev App's, compared
@@ -61,6 +63,12 @@
 #     (never the dev App's) and the comment's reactions. The comment's `updated_at` is read
 #     again after the reactions; a changed value is `moved`.
 # Rows are de-duplicated on id first (pagination can repeat one), keeping the first.
+#
+# `find` with two or more approved candidates (#1374, WB-D30 residual 6) judges them only after every row is
+# judged and no row is `moved`: it runs the sibling `spec-fresh.sh check` (stderr discarded) on each candidate's
+# comment file but the one with the largest id (compared as digit strings, the `gt` helper). Only when every one
+# prints a whole line `stale <n>` (`^stale [1-9][0-9]*$`) does it print `found` for the largest id; any other
+# word, an extra line or a non-zero exit keeps `ambiguous`. `pending` and `answer` make no freshness call.
 #
 # Read from <project.yml> with yq, aliases expanded: `pr_base` (a plain branch name) and the
 # backlog repo (`backlog.repo`, or `repo` when that is null; owner/name). The rest, which declared-ids.sh
@@ -82,8 +90,12 @@
 #                                   finder applies, and no `gh` call is made
 #   moved <id>                   -- the first row, in listing order, whose `updated_at` changed
 #                                   between the listing and the second read
-#   ambiguous <id>,<id>[,...]    -- two or more candidates; the finder never picks one
-#   found <id> <updated_at>      -- exactly one candidate
+#   ambiguous <id>,<id>[,...]    -- two or more candidates, unless every candidate but the one with the largest id
+#                                   reads `stale <n>` to spec-fresh.sh (then `found`, below); where the sibling
+#                                   cannot run its fetch (it runs `git fetch` of the base in the working
+#                                   directory), the word stays `ambiguous`
+#   found <id> <updated_at>      -- exactly one candidate, or the newest of several approved ones whose older
+#                                   siblings all read stale
 #   unreacted <id>[,<id>...]     -- no candidate, but these `spec-task:` rows passed the role check
 #   escalated <id>[,<id>...]     -- no `spec-task:` row passed the role check, but these
 #                                   `spec-task-escalated:` rows did (listing order); no reactions
@@ -95,12 +107,12 @@
 # Exits 2, printing nothing to stdout, when an argument is bad (the wrong count, a mode other
 # than `find`, `pending` or `answer`, an issue or <after-id> that is not digits with no leading zero),
 # <project.yml> is unreadable,
-# `$0` has no slash, or a sibling gh-identity.sh, spec-reaction.sh or declared-ids.sh is not beside this script.
+# `$0` has no slash, or a sibling gh-identity.sh, spec-reaction.sh, spec-fresh.sh or declared-ids.sh is not beside this script.
 # Like spec-comment.sh it uses only the SIBLING copies: a slash-less `$0` would resolve
 # `dirname` to the current directory, where a branch under review could supply one that
 # prints `maintainer` or `approved`.
 #
-# Permitted toolset: POSIX sh, gh, yq (mikefarah v4), awk and mktemp. Runs under LC_ALL=C.
+# Permitted toolset: POSIX sh, gh, yq (mikefarah v4), awk and mktemp, and git through the sibling spec-fresh.sh. Runs under LC_ALL=C.
 set -eu
 LC_ALL=C
 export LC_ALL
@@ -127,12 +139,13 @@ if [ ! -f "$yml" ] || ! yq -o=yaml '.' "$yml" >/dev/null 2>&1; then
   exit 2
 fi
 case "$0" in
-  */*) gi="$(dirname "$0")/gh-identity.sh" sr="$(dirname "$0")/spec-reaction.sh" di="$(dirname "$0")/declared-ids.sh" ;;
+  */*) gi="$(dirname "$0")/gh-identity.sh" sr="$(dirname "$0")/spec-reaction.sh" di="$(dirname "$0")/declared-ids.sh" sf="$(dirname "$0")/spec-fresh.sh" ;;
   *) echo "spec-find.sh: must be run by path (a slash-less \$0 cannot locate its siblings)" >&2; exit 2 ;;
 esac
 [ -f "$gi" ] || { echo "spec-find.sh: gh-identity.sh not beside this script" >&2; exit 2; }
 [ -f "$sr" ] || { echo "spec-find.sh: spec-reaction.sh not beside this script" >&2; exit 2; }
 [ -f "$di" ] || { echo "spec-find.sh: declared-ids.sh not beside this script" >&2; exit 2; }
+[ -f "$sf" ] || { echo "spec-find.sh: spec-fresh.sh not beside this script" >&2; exit 2; }
 
 tmp="$(mktemp -d)" || { echo "spec-find.sh: no temp directory" >&2; exit 2; }
 trap 'rm -rf "$tmp"' EXIT
@@ -202,6 +215,7 @@ moved_id=
 cand_ids=
 cand_n=0
 cand_updated=
+: >"$tmp/cands"
 role_ids=
 esc_ids=
 esc_target=
@@ -234,7 +248,9 @@ while IFS="$US" read -r c_id c_login c_uid c_kind c_updated; do
 
   rx="$tmp/rx.$n"
   gh api "repos/$backlog/issues/comments/$c_id/reactions" --paginate --jq '.[] | [(.user.id|tostring), .content, .created_at] | @tsv' >"$rx" 2>/dev/null </dev/null || out unreadable
-  again="$(gh api "repos/$backlog/issues/comments/$c_id" --jq .updated_at 2>/dev/null </dev/null)" || out unreadable
+  cj="$tmp/cj.$n"
+  gh api "repos/$backlog/issues/comments/$c_id" >"$cj" 2>/dev/null </dev/null || out unreadable
+  again="$(yq -p=json -r '.updated_at' "$cj" 2>/dev/null </dev/null)" || out unreadable
   if [ "$again" != "$c_updated" ]; then
     [ -n "$moved_id" ] || moved_id="$c_id"
     continue
@@ -244,6 +260,7 @@ while IFS="$US" read -r c_id c_login c_uid c_kind c_updated; do
     cand_ids="${cand_ids:+$cand_ids,}$c_id"
     cand_n=$((cand_n + 1))
     cand_updated="$c_updated"
+    printf '%s%s%s%s%s\n' "$c_id" "$US" "$c_updated" "$US" "$cj" >>"$tmp/cands"
   elif [ "$mode" = pending ]; then
     if [ "$(gt "$c_id" "$after")" = yes ]; then
       pend_ids="${pend_ids:+$pend_ids,}$c_id"
@@ -320,7 +337,26 @@ fi
 if [ "$mode" = pending ]; then
   out "pending ${pend_ids:-none}"
 fi
-[ "$cand_n" -lt 2 ] || out "ambiguous $cand_ids"
+if [ "$cand_n" -ge 2 ]; then
+  # Every row is judged and none moved (above) before any freshness call. The newest candidate wins only
+  # when every older one reads stale: the whole line `stale <n>`, n digits with no leading zero.
+  newest= newest_updated=
+  while IFS="$US" read -r k_id k_updated k_file; do
+    if [ -z "$newest" ] || [ "$(gt "$k_id" "$newest")" = yes ]; then newest="$k_id" newest_updated="$k_updated"; fi
+  done <"$tmp/cands"
+  all_stale=yes
+  while IFS="$US" read -r k_id k_updated k_file; do
+    [ "$k_id" != "$newest" ] || continue
+    w="$(sh "$sf" check "$k_file" "$issue" "$yml" 2>/dev/null </dev/null)" || { all_stale=no; break; }
+    case "$w" in
+      "stale "*) cnt="${w#stale }" ;;
+      *) all_stale=no; break ;;
+    esac
+    case "$cnt" in '' | 0* | *[!0-9]*) all_stale=no; break ;; esac
+  done <"$tmp/cands"
+  [ "$all_stale" = yes ] || out "ambiguous $cand_ids"
+  cand_ids="$newest" cand_updated="$newest_updated" cand_n=1
+fi
 if [ "$cand_n" -eq 1 ]; then
   case "$cand_ids" in '' | *[!0-9]*) out unreadable ;; esac
   case "$cand_updated" in
