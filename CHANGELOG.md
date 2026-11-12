@@ -28,6 +28,7 @@ the GitHub release notes.
 
 ### Changed
 
+- The lane and spec first messages lead with the role and the issue number or numbers, then the repository, so a terminal tab's title shows the number (#1465).
 - The launchers' help is now read by `Get-Help` (a blank line between `#Requires` and the help block, with a test); their `.SYNOPSIS` names the identity home the org is read from, and the driver help and `docs/identity/DEV-CONTAINER.md` say that the commit binding is to the Reference clone's configured origin, so a Reference whose origin is a fork binds to the fork's base branch (#1386, #1346). The test docker stub logs its working directory like the gh and devcontainer stubs (#1346).
 - Correction to the released v0.31.0 `#1380` entry: its "within the one limit their `.SYNOPSIS` states" should read "within the limits"; the released entry is not edited (#1391).
 - The approval ruleset's read-back in `reference/cutover.md` now also requires the `deletion` and `non_fast_forward` rules item 2 names, not only the `pull_request` rule (#1287).

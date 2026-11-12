@@ -850,7 +850,7 @@ lane_setup; run_lane -Issue 5 -Hash "$(echo "$PH" | tr 0-9a-f 1-9a-f0)"; probe_r
 sec_lanec() {
 # lane happy path
 lane_setup; run_lane -Issue 5 -Hash "$PH"
-lane_msg="Lane for acme/widgets issue #5. In one Bash call, run: T=\$(mktemp -d); cp /tmp/lanes/5-prompt.md \$T/p.md; sha256sum \$T/p.md; echo \$T/p.md. Stop unless that call printed the hash $PH. If it did, read only that copy and follow it."
+lane_msg="Lane: #5 in acme/widgets. In one Bash call, run: T=\$(mktemp -d); cp /tmp/lanes/5-prompt.md \$T/p.md; sha256sum \$T/p.md; echo \$T/p.md. Stop unless that call printed the hash $PH. If it did, read only that copy and follow it."
 check "wow-lane lane: exits with the session's code" test "$rc" -eq 7
 check "wow-lane lane: the interactive argv is exactly the declared one" test "$(non_ps | tail -1)" = "docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /tmp/lanes/5 $ID1 /usr/local/bin/claude --model sonnet $lane_msg"
 check "wow-lane lane: relay probe, in-container probe, then the session, and nothing else" test "$(exec_shape)" = "exec -u root,exec -u app,exec -it -u,"
@@ -875,7 +875,7 @@ for w in "$STUB_LANES"/spec-*; do
 done
 HOOK
 spec_setup; cp "$tmp/hook.ok" "$stubdir/it.hook"; run_lane -Spec 12,7,30
-spec_line="docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /tmp/lanes/spec-[a-z0-9]{6} $ID1 /usr/local/bin/claude --model opus --effort high Spec session for acme/widgets. Run /way-of-working:spec-task for each of these issues, one at a time, in this order: 12, 7, 30. Build nothing, and start no build for any of them.\$"
+spec_line="docker exec -it -u app -e GIT_TERMINAL_PROMPT=0 -w /tmp/lanes/spec-[a-z0-9]{6} $ID1 /usr/local/bin/claude --model opus --effort high Spec: #12, #7, #30 in acme/widgets. Run /way-of-working:spec-task for each of these issues, one at a time, in this order: 12, 7, 30. Build nothing, and start no build for any of them.\$"
 check "wow-lane spec: exits with the session's code" test "$rc" -eq 7
 spec_it_ok() { it_line | grep -E -q -e "^$spec_line"; }
 spec_seen() { # the hook saw a detached worktree at the Reference's commit, under the leaf the argv names
@@ -1550,7 +1550,7 @@ lane_setup; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/
 rm -rf "$lanes/5" "$lanes/5-prompt.md"; $real_git -C "$crepo" worktree prune
 run_repo_lane -Repo acme/widgets -Spec 12,7
 check "-Repo lane -Spec: exits with the session's code" test "$rc" -eq 7
-check "-Repo lane -Spec: the session names the repository and the issues in order" sh -c "grep -q 'claude --model opus --effort high Spec session for acme/widgets. Run /way-of-working:spec-task for each of these issues, one at a time, in this order: 12, 7\\.' '$stubdir/calls.log'"
+check "-Repo lane -Spec: the session leads with the issues in order, then names the repository" sh -c "grep -q 'claude --model opus --effort high Spec: #12, #7 in acme/widgets. Run /way-of-working:spec-task for each of these issues, one at a time, in this order: 12, 7\\.' '$stubdir/calls.log'"
 lane_setup; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
 run_repo_lane -Repo acme/widgets -SpecSweep
 check "-Repo lane -SpecSweep: lists, exit 0" sh -c "test $rc -eq 0 && grep -q 'no spec sessions' '$tmp/out'"

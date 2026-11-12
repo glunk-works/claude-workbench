@@ -379,7 +379,7 @@ only `/workspace`, and its `.git` file names a host path.
   never writes the record. It then enters the container with `docker exec -it -u app -e
   GIT_TERMINAL_PROMPT=0 -w <lanes.dir>/N`, into `/usr/local/bin/claude --model <models.coder>`, and sends the lane
   this first message:
-  > Lane for <owner>/<name> issue #N. In one Bash call, run: T=$(mktemp -d); cp <lanes.dir>/N-prompt.md $T/p.md;
+  > Lane: #N in <owner>/<name>. In one Bash call, run: T=$(mktemp -d); cp <lanes.dir>/N-prompt.md $T/p.md;
   > sha256sum $T/p.md; echo $T/p.md. Stop unless that call printed the hash HASH. If it did, read only that copy and
   > follow it.
 
@@ -395,7 +395,7 @@ only `/workspace`, and its `.git` file names a host path.
   Up to ten issue numbers, in order. It makes a detached worktree at the Reference's base commit
   under `<lanes.dir>/spec-XXXXXX` (refusing if the container clone's `origin/<Base>`
   is another commit than the Reference's), starts a session there on `models.architect` at `--effort high`, and sends it a
-  first message that names the origin repository and asks it to
+  first message that leads with the role and the issue numbers, then names the origin repository, and asks it to
   run `/way-of-working:spec-task` for each issue in turn and build nothing. When the session exits it
   removes the worktree, without `--force`, only if it is still that detached worktree at that
   commit. Otherwise it keeps it, prints its path and exits 1. The likely cause is an untracked file
