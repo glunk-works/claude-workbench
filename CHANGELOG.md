@@ -56,7 +56,7 @@ the GitHub release notes.
 
 **⚠️ Migration** — once the host tools are reinstalled, `wow-driver.ps1` needs `gh` on PowerShell's PATH on both paths (it refuses without it) and, for a start of day, a `gh` login that can read the origin repository.
 
-**⚠️ Migration** — before the dev container is recreated, change this repo's entry in `broker.json` to `glunk-works/claude-workbench`, then reinstall the host tools (which creates the owner-qualified token directory; a missing bind source fails `devcontainer up`) and restart the broker.
+**⚠️ Migration (this repository only)** — before the dev container is recreated, change this repo's entry in `broker.json` to `glunk-works/claude-workbench`, then reinstall the host tools (which creates the owner-qualified token directory; a missing bind source fails `devcontainer up`) and restart the broker. This step is for this repository's own `.devcontainer/` and its own `broker.json` entry, which the plugin does not ship, so a consuming repo bumping its pin skips it.
 
 ### Changed
 
