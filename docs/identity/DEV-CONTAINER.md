@@ -57,6 +57,17 @@ that serves the host's git credential (see Hazards that remain).
   ```powershell
   pwsh -File $env:WOW_HOME\bin\wow-driver.ps1 -Clone <clone> -Reference <other clone>
   ```
+  Once a start of day with explicit paths has written a five-field record for the repository, the
+  same launcher takes `-Repo <owner/name>` in place of both paths:
+  ```powershell
+  pwsh -File $env:WOW_HOME\bin\wow-driver.ps1 -Repo <owner/name>
+  ```
+  `-Repo` reads the clone and Reference paths from the one record whose `origin` is that repository
+  and runs them through the same checks as given ones. Nothing a container can write supplies them,
+  since `driver\` is never mounted. The first start of day for a repository takes `-Clone` and
+  `-Reference`; `-Repo` refuses (exit 1, before any docker call) when no record or more than one
+  names the repository, when the match has no `reference` (an older record), or when a file in
+  `driver\` does not read, and exits 2 combined with `-Clone` or `-Reference`.
   The path is `$env:WOW_HOME\bin`, or `$HOME\.config\glunk-identity\bin` when `WOW_HOME` is unset.
   Set `WOW_HOME` once as a user-level environment variable (not only in one shell's profile),
   written as a drive letter, a colon, then forward slashes throughout, with no backslash and no
@@ -103,20 +114,25 @@ that serves the host's git credential (see Hazards that remain).
     bytes, no link anywhere; a CRLF checkout is refused as intended). The Reference names the commit at
     `<Remote>/<Base>`, but the copy is read through the API with the host `gh`, and only after the compare
     API reports that commit `identical` with or `behind` the origin's `<Base>`, so a commit that exists only
-    in the Reference or in a fork refuses. The committed tree must hold `.devcontainer/devcontainer.json`.
+    in the Reference or in a fork of that origin refuses. The committed tree must hold `.devcontainer/devcontainer.json`.
     An older commit on `<Base>` still passes (a downgrade), and the binding is only as strong as `<Base>`'s
-    protection against the dev App. It then recreates the container with `devcontainer up --skip-post-attach
+    protection against the dev App. The binding is to the Reference clone's configured origin: nothing checks
+    that origin against the repository the clone is for, so a Reference whose origin is a fork binds to the
+    fork's base branch, and `-Repo` picks a record by the origin recorded from that same configured url, so
+    it adds no such check. It then recreates the container with `devcontainer up --skip-post-attach
     --remove-existing-container`, checks that exactly the container `up` reported is running, writes
     the record, and enters it. Before the fetch it reads the Reference's `<Remote>` repository (one
     github.com url, kept as lowercase `owner/name`) and refuses when the record names this clone and
     a different origin: a Reference of another repository was given. The limit: a start of day with no
-    readable four-field record for the clone checks nothing and records whatever origin the Reference
+    readable record with an origin for the clone checks nothing and records whatever origin the Reference
     has, so the check catches a Reference that differs from the first one recorded, not a wrong first one. A clone behind `main` after a `.devcontainer/` merge is brought forward
     without running git on the host: `docker start <id>`, then `docker exec -u app -e
     GIT_TERMINAL_PROMPT=0 -w /workspace <id> git pull --ff-only`, then `docker stop <id>`, then rerun.
   - **The record** is `<WowHome>\driver\<leaf>.json`: `id` (the container, 64 hex digits), `commit`
-    (the commit compared against, 40), `clone` (the canonical clone path) and `origin` (the Reference's
-    repository as lowercase `owner/name`, never a raw url). Unlike
+    (the commit compared against, 40), `clone` (the canonical clone path), `origin` (the Reference's
+    repository as lowercase `owner/name`, never a raw url) and `reference` (the canonical Reference path).
+    A three- or four-field record from an older launcher still reads, with the missing fields null, and is
+    replaced at the next start of day. Unlike
     the token directory the dev container mounts, it is never mounted into a container. It is written only after the re-list passes, to a
     temp file in the same directory and then renamed.
   - **Why recreate, then `docker exec`.** `WB-D33` requires the compare before every `up` and every
@@ -267,6 +283,9 @@ Do the steps in order. It documents the steps and performs none.
    ```powershell
    pwsh -File $env:WOW_HOME\bin\wow-driver.ps1 -Clone <clone> -Reference <second clone>
    ```
+   This first start of day for the repo takes `-Clone` and `-Reference`, and records both. Later ones, and the
+   repo's spec and lane commands, can use `-Repo <owner/name>` instead of the two paths. End of day is
+   `wow-lane.ps1 -Repo <owner/name> -EndDay`.
    After the first start of day, run the checks this file already gives: in the new container,
    from a `docker exec` shell, the channel check under *Hazards that remain* and the
    agent-socket check under *What it still carries from the template*; and the live-run check
@@ -335,7 +354,7 @@ only `/workspace`, and its `.git` file names a host path.
   repositories sharing a backlog can each hold a lane `N`, which is why the repository and the
   backlog number are both printed. `/way-of-working:pr-checks` stays the merge verdict.
 - **Another repo on the same host.** The same installed `wow-lane.ps1` starts a lane for another
-  repository, given that repository's `-Clone` and `-Reference`. The command carries the hash that
+  repository, given that repository's `-Clone` and `-Reference`, or its `-Repo`. The command carries the hash that
   `prep` printed in that repository's container, that repository's issue, and the model from that
   repository's `models.coder`. A lane belongs to its container, so `prep`, `status`, `done` and `groups` run in
   the container of the repository the lane is for.
@@ -343,15 +362,17 @@ only `/workspace`, and its `.git` file names a host path.
   copy beside the driver launcher:
   ```powershell
   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Issue N -Hash HASH
+  pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -Issue N -Hash HASH
   ```
-  `HASH` is the `prompt-sha256` that `prep` printed. It takes `wow-driver.ps1`'s `-Clone`,
+  The second form reads both paths from the driver record (see *Opening it*). `HASH` is the `prompt-sha256` that `prep` printed, and
+  stays in the short form, since it binds the prompt file. It takes `wow-driver.ps1`'s `-Clone`,
   `-Reference`, `-WowHome` and `-Base`, and `-Remote` names the remote in the Reference only. Before
   any interactive `docker exec` it checks the installed copy (the MANIFEST), the arguments, that
   the clone has exactly one container, running, and the Reference none, that the driver
-  record names that container and the clone, and the relay probe; for all three modes it refuses a
+  record names that container and the clone, and the relay probe; for every mode it refuses a
   record with no origin and one whose origin differs from the Reference's, then reads the model
-  (`models.coder`, not for `-SpecSweep`) and the lanes directory (`lanes.dir`) from the Reference at
-  `-Base`, refusing all three modes when `lanes` is not declared or its `dir` is bad (the directory
+  (`models.coder`, not for `-SpecSweep` or `-EndDay`) and the lanes directory (`lanes.dir`) from the Reference at
+  `-Base`, refusing every mode when `lanes` is not declared or its `dir` is bad (the directory
   can differ from what `lane.sh` reads when `-Base` is not the default branch), then checks in the
   container, as `app`, that the lanes directory is safe, `<lanes.dir>/N` is a worktree, `<lanes.dir>/N-prompt.md` is a regular file and
   its sha256 is `HASH`. It needs the driver's start of day to have recorded the container, and it
@@ -369,6 +390,7 @@ only `/workspace`, and its `.git` file names a host path.
 - **Start a spec session** (#762), the same way:
   ```powershell
   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Spec N[,N...]
+  pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -Spec N[,N...]
   ```
   Up to ten issue numbers, in order. It makes a detached worktree at the Reference's base commit
   under `<lanes.dir>/spec-XXXXXX` (refusing if the container clone's `origin/<Base>`
@@ -393,6 +415,7 @@ only `/workspace`, and its `.git` file names a host path.
 - **List spec sessions** (#891):
   ```powershell
   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -SpecSweep
+  pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -SpecSweep
   ```
   It lists every spec worktree directory, spec record and running spec-session process under
   the lanes directory, one line per running session and per leaf with none, with the issues and the launch time from the record (`unknown`
@@ -403,6 +426,20 @@ only `/workspace`, and its `.git` file names a host path.
   origin or another repository's, and needs the Reference to fetch. The sweep refuses, listing
   nothing, when the lanes directory in the container is a link, not a directory, or
   not owned by the container user, as the lane and spec modes do; a missing lanes directory is not refused.
+- **End of day** (#1381):
+  ```powershell
+  pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -EndDay
+  ```
+  Stops the repo's recorded container (`docker stop`) unless a lane or spec session is still running in it.
+  It runs the same checks as the sweep, the relay probe included, without the model read, then one
+  non-interactive `docker exec -u app` asks whether any `claude` process the container user owns has a
+  working directory under the lanes directory (a lane's `<lanes.dir>/N` or a spec session's `spec-` leaf,
+  also one whose directory was removed). If one does, it refuses and runs no `docker stop`; if the walk of
+  `/proc` finds no such process and saw its own process id, it stops the container, prints `stopped <id>` and
+  exits 0; any other answer refuses, so a walk that sees nothing never reads as idle. It does nothing else: no handoff check and no cleanup. The
+  driver session running in `/workspace` does not count as busy, so the stop also ends that driver session.
+  It is exclusive with `-Issue`, `-Hash`, `-Spec` and `-SpecSweep` (exit 2). A session started between the
+  check and the stop is not caught.
 - **Driver handoff points** (#729). The driver runs `/way-of-working:handoff` after each lane PR
   merges and its `lane.sh done N` has run, after each batch of spec sessions, and whenever the
   status line shows `handoff` (60% or more of context used), rather than only when the context runs low.

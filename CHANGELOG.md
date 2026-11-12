@@ -21,6 +21,16 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- `wow-driver.ps1` and `wow-lane.ps1` take `-Repo owner/name` in place of `-Clone` and `-Reference`, reading both paths from the one driver record whose origin is that repository (the driver record gains a fifth field, `reference`, written at start of day; a three- or four-field record still reads and is replaced at the next start of day); the first start of day for a repository still takes the paths. `/way-of-working:lanes` prints its host commands in the `-Repo <owner/name>` form (#1381).
+- `wow-lane.ps1 -Repo owner/name -EndDay` stops the repository's recorded container unless a lane or spec session still runs in it, and does nothing else; the driver session in `/workspace` does not count as busy, so the stop also ends it (#1381).
+
+### Changed
+
+- The launchers' help is now read by `Get-Help` (a blank line between `#Requires` and the help block, with a test); their `.SYNOPSIS` names the identity home the org is read from, and the driver help and `docs/identity/DEV-CONTAINER.md` say that the commit binding is to the Reference clone's configured origin, so a Reference whose origin is a fork binds to the fork's base branch (#1386, #1346). The test docker stub logs its working directory like the gh and devcontainer stubs (#1346).
+- Correction to the released v0.31.0 `#1380` entry: its "within the one limit their `.SYNOPSIS` states" should read "within the limits"; the released entry is not edited (#1391).
+
 ## [0.32.0] — 2026-11-12
 
 **⚠️ Migration** — before reinstalling the host tools, rewrite any bare-name entry in `broker.json` as `owner/name` (the new broker mints for no repo while one remains: `-Once` exits 2, the looping broker logs it); `wow-admin` now takes `owner/name` and writes only `tokens/<owner>/<repo>/admin-token`; then reinstall the host tools and restart the broker; then remove each old `tokens/<repo>` directory, only after `wow-admin <owner/name> --revoke` says no readable admin token is on file for it and the directory holds no `admin-token` file (where `<repo>` is also an owner half, so the directory holds the live owner directory, remove only the `admin-token` and `dev-token` files directly in it).

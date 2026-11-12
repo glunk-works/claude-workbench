@@ -63,6 +63,12 @@
   The lane and spec launcher, wow-lane.ps1, runs the same way, beside the driver's container (#762):
     pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Issue N -Hash HASH
     pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Spec N[,N...]
+  The first start of day for a repository takes the two paths; it records them in the driver record, and the
+  installed launchers' own -Repo owner/name form then reads them, so a day's commands carry no paths:
+    pwsh -File $env:WOW_HOME\bin\wow-driver.ps1 -Repo <owner/name>
+    pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -Spec N[,N...]
+    pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -Issue N -Hash HASH
+    pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -EndDay
   With an MSYS-form WOW_HOME (/c/...) the $env:WOW_HOME script path in those commands does not resolve in
   pwsh, so give the installed copy's path in Windows form; the launchers convert their own default -WowHome.
   yq (mikefarah v4, v4.54.1 or newer; the launchers refuse an older or unidentifiable yq) must be on PowerShell's PATH too. It runs only from there: it checks the MANIFEST.
