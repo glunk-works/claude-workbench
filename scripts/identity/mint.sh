@@ -4,6 +4,7 @@
 #   mint.sh --client-id ID --installation-id ID --key PEM_FILE \
 #           --repos name[,name...] --perms perm=level[,perm=level...] \
 #           --out FILE [--strict]
+#   mint.sh --client-id ID --installation-id ID --key PEM_FILE --print-account
 #
 # --client-id is the App's Client ID (Iv...), which GitHub uses as the JWT `iss` in place of the
 # numeric App ID.
@@ -32,8 +33,16 @@
 # written to a file, printed or placed on a command line. Any failed mint, strict or not, leaves
 # an existing --out file as it was, so a caller treats a non-zero exit as "no token".
 #
+# --print-account (#1425) is the read-only mode: it signs the same JWT, sends GET
+# https://api.github.com/app/installations/{id} (the host fixed, the JWT only in the curl config
+# on stdin) and, on HTTP 200, prints the installation's `.account.login` as one line on stdout and
+# nothing else. It needs --client-id, --installation-id and --key, and refuses --repos, --perms,
+# --out and --strict (exit 2, before curl). A non-200 status exits 1 as a failed mint does; a 200
+# whose login is missing, not a string, empty, begins with a dash or holds a character outside
+# letters, digits and `-` exits 1 with `response lacks an account login`. It writes no file.
+#
 # Run on the host, where the App key lives; no key is ever copied into a container. Exit 0 on
-# success, 1 on a failed mint (API error, bad response, strict refusal), 2 on bad usage.
+# success, 1 on a failed mint or account read (API error, bad response, strict refusal), 2 on bad usage.
 #
 # Toolset: POSIX sh, openssl, curl, jq.
 set -eu
@@ -41,13 +50,14 @@ set -f # --repos / --perms are split unquoted below; never let a `*` glob into f
 LC_ALL=C; export LC_ALL # so [!A-Za-z0-9] means ASCII only in every shell and locale
 
 die() { echo "mint.sh: $1" >&2; exit "${2:-1}"; }
-usage() { die "usage: mint.sh --client-id ID --installation-id ID --key PEM --repos a,b --perms p=l,... --out FILE [--strict]" 2; }
+usage() { die "usage: mint.sh --client-id ID --installation-id ID --key PEM --repos a,b --perms p=l,... --out FILE [--strict] | mint.sh --client-id ID --installation-id ID --key PEM --print-account" 2; }
 
-# --strict is a bare flag, anywhere. Every other flag takes one value, which may not begin with
+# --strict and --print-account are bare flags, anywhere. Every other flag takes one value, which may not begin with
 # `-` (so `--out --strict` is a usage error, never a file named --strict); a repeat keeps the last.
-client_id= inst_id= key= repos= perms= out= strict=0
+client_id= inst_id= key= repos= perms= out= strict=0 print_account=0
 while [ $# -gt 0 ]; do
   if [ "$1" = --strict ]; then strict=1; shift; continue; fi
+  if [ "$1" = --print-account ]; then print_account=1; shift; continue; fi
   [ $# -ge 2 ] || usage
   case "$2" in -*) usage ;; esac
   case "$1" in
@@ -67,15 +77,20 @@ is_num() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 case "$client_id" in ""|*[!A-Za-z0-9]*) die "--client-id must be the App's Client ID (letters and digits)" 2 ;; esac
 is_num "$inst_id" || die "--installation-id must be a number" 2
 [ -n "$key" ] && [ -r "$key" ] || die "--key must name a readable PEM file" 2
+if [ "$print_account" -eq 1 ]; then
+  [ -z "$repos$perms$out" ] && [ "$strict" -eq 0 ] || die "--print-account takes no --repos, --perms, --out or --strict" 2
+else
 [ -n "$out" ] || die "--out is required" 2
 [ ! -d "$out" ] && [ ! -L "$out" ] || die "--out must not be a directory or a symlink" 2
 outdir=$(dirname -- "$out")
 [ -d "$outdir" ] || die "--out: directory $outdir does not exist" 2
+fi
 
 # Every element is validated against a closed character set before it is spliced into JSON.
 repos_json= perms_json= seen=,
 old_ifs=$IFS
 IFS=,
+if [ "$print_account" -eq 0 ]; then
 for r in $repos; do
   case "$r" in ''|*[!A-Za-z0-9._-]*) IFS=$old_ifs; die "--repos: bad repository name '$r'" 2 ;; esac
   repos_json="${repos_json:+$repos_json,}\"$r\""
@@ -92,6 +107,7 @@ done
 IFS=$old_ifs
 [ -n "$repos_json" ] || die "--repos must name at least one repository" 2
 [ -n "$perms_json" ] || die "--perms must name at least one permission" 2
+fi
 
 for tool in jq openssl curl; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool not on PATH"
@@ -111,6 +127,30 @@ sig=$(printf '%s.%s' "$header" "$claims" | openssl dgst -sha256 -sign "$key" -bi
   || die "openssl could not sign with $key"
 [ -n "$sig" ] || die "openssl produced no signature"
 jwt="$header.$claims.$sig"
+
+if [ "$print_account" -eq 1 ]; then
+  # Same stdin-config discipline as the mint below; a GET, so no request or data-binary line.
+  reply=$(
+    {
+      printf 'url = "https://api.github.com/app/installations/%s"\n' "$inst_id"
+      printf 'header = "Authorization: Bearer %s"\n' "$jwt"
+      printf 'header = "Accept: application/vnd.github+json"\n'
+      printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
+    } | curl -q -sS --max-time 30 -K - -w '\n%{http_code}'
+  ) || die "curl failed"
+  code=${reply##*
+}
+  resp=${reply%
+*}
+  if [ "$code" != 200 ]; then
+    msg=$(printf '%s' "$resp" | jq -r '.message // empty' 2>/dev/null | tr -d '[:cntrl:]' | cut -c1-200 || true)
+    die "GitHub answered HTTP $code${msg:+: $msg}"
+  fi
+  login=$(printf '%s' "$resp" | jq -r 'if (.account.login | type) == "string" then .account.login else empty end' 2>/dev/null) || login=
+  case "$login" in ''|-*|*[!A-Za-z0-9-]*) die "response lacks an account login" ;; esac
+  printf '%s\n' "$login"
+  exit 0
+fi
 
 # The body is a quoted config string: its only special characters are the double quotes.
 body=$(printf '{"repositories":[%s],"permissions":{%s}}' "$repos_json" "$perms_json" | sed 's/"/\\"/g')

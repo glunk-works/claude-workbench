@@ -22,6 +22,11 @@
 #                    document is refused, whichever document is good
 #   jq argv          a wrapper records every jq call per run: each strict run made a `-e` call, and no
 #                    token is ever in any recorded argv
+#   --print-account  GET /app/installations/<id> (no access_tokens, no data-binary), JWT in the stdin
+#                    config only; a 200 prints exactly the account login and exits 0; a 401 or 500, and a 200
+#                    whose login is missing, not a string, empty, begins with a dash or holds a slash, exit 1
+#                    with nothing on stdout; mixing it with --repos, --perms, --out or --strict, or leaving
+#                    out --client-id, --installation-id or --key, exits 2 before curl (#1425)
 #   usage            missing/odd arguments exit 2 before curl is ever called
 #
 # Permitted toolset: POSIX sh, its standard utilities, openssl and jq (the script's own
@@ -461,6 +466,55 @@ base="--client-id Iv23liTestClient0001 --installation-id 678 --key $tmp/key.pem 
   usage_case "strict, then a flag missing its value" --strict $base --repos a --perms
   usage_case "value beginning with a dash" $base --repos a --perms -contents=read
   usage_case "out dir is missing" --client-id 1 --installation-id 2 --key "$tmp/key.pem" --repos a --perms contents=read --out "$tmp/nodir/token"
+}
+
+# --- --print-account (#1425) -----------------------------------------------------------------
+pa="--client-id Iv23liTestClient0001 --installation-id 678 --key $tmp/key.pem --print-account"
+# shellcheck disable=SC2086
+{
+  run 200 '{"account":{"login":"acme"}}' $pa
+  assert_eq "print-account exits 0" 0 "$rc"
+  assert_eq "print-account prints only the login" acme "$so"
+  assert_eq "print-account prints nothing on stderr" "" "$se"
+  assert_eq "print-account one curl call" 1 "$(wc -l <"$tmp/calls" | tr -d ' ')"
+  assert_eq "print-account GETs the installation" 1 "$(grep -c '^url = "https://api.github.com/app/installations/678"$' "$tmp/stdin")"
+  assert_eq "print-account has no access_tokens segment" 0 "$(grep -c 'access_tokens' "$tmp/stdin" || true)"
+  assert_eq "print-account has no data-binary line" 0 "$(grep -c '^data-binary' "$tmp/stdin" || true)"
+  assert_eq "print-account has no request line" 0 "$(grep -c '^request' "$tmp/stdin" || true)"
+  jwt=$(sed -n 's/^header = "Authorization: Bearer \(.*\)"$/\1/p' "$tmp/stdin")
+  assert_eq "print-account JWT is in the stdin config" 2 "$(printf '%s' "$jwt" | tr -cd . | wc -c | tr -d ' ')"
+  assert_eq "print-account JWT not in argv" 0 "$(grep -cF -- "$jwt" "$tmp/argv" || true)"
+  assert_absent "print-account JWT not on stdout" "$so" "$jwt"
+  assert_absent "print-account JWT not on stderr" "$se" "$jwt"
+  [ ! -e "$tmp/token" ] && ok || bad "print-account writes no file" "$tmp/token exists"
+
+  run 200 '{"account":{"login":"Acme-Org-1"}}' $pa
+  assert_eq "print-account mixed-case login" Acme-Org-1 "$so"
+
+  for st in 401 500; do
+    run "$st" '{"message":"Bad credentials"}' $pa
+    assert_eq "print-account HTTP $st exits 1" 1 "$rc"
+    assert_eq "print-account HTTP $st stdout empty" "" "$so"
+    assert_contains "print-account HTTP $st message" "$se" "GitHub answered HTTP $st: Bad credentials"
+  done
+
+  for badbody in '{}' '{"account":null}' '{"account":"acme"}' '{"account":{"login":7}}' '{"account":{"login":""}}' \
+                 '{"account":{"login":"-acme"}}' '{"account":{"login":"ac/me"}}' '{"account":{"login":"ac me"}}' 'not json'; do
+    run 200 "$badbody" $pa
+    assert_eq "print-account [$badbody] exits 1" 1 "$rc"
+    assert_eq "print-account [$badbody] stdout empty" "" "$so"
+    assert_contains "print-account [$badbody] message" "$se" "response lacks an account login"
+  done
+
+  usage_case "print-account with --repos"  $pa --repos a
+  usage_case "print-account with --perms"  $pa --perms contents=read
+  usage_case "print-account with --out"    $pa --out "$tmp/token"
+  usage_case "print-account with --strict" $pa --strict
+  usage_case "print-account without --key" --client-id Iv23liTestClient0001 --installation-id 678 --print-account
+  usage_case "print-account without --client-id" --installation-id 678 --key "$tmp/key.pem" --print-account
+  usage_case "print-account without --installation-id" --client-id Iv23liTestClient0001 --key "$tmp/key.pem" --print-account
+  usage_case "print-account with a non-numeric installation" --client-id Iv23liTestClient0001 --installation-id x --key "$tmp/key.pem" --print-account
+  usage_case "print-account with a dash-led value" $pa --client-id -x
 }
 
 if [ "$fail" -eq 0 ]; then

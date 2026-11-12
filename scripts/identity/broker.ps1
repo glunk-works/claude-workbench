@@ -162,14 +162,10 @@ function Invoke-Sh([string[]]$shArgs) {
 function Update-DevToken($entry) {
   $label = $entry.Label
   $repo = $entry.Name
-  $dsts = @(Join-Path $WowHome "tokens/$($entry.Owner)/$repo/dev-token")
+  $dst = Join-Path $WowHome "tokens/$($entry.Owner)/$repo/dev-token"
   $now = [DateTimeOffset]::UtcNow
-  $allCurrent = $true
-  foreach ($d in $dsts) {
-    $cur = Read-Token $d
-    if (-not $cur -or ($cur.Expires - $now).TotalMinutes -le $RefreshMinutes) { $allCurrent = $false }
-  }
-  if ($allCurrent) { return $true }
+  $cur = Read-Token $dst
+  if ($cur -and ($cur.Expires - $now).TotalMinutes -gt $RefreshMinutes) { return $true }
 
   $cid = Get-AppField 'dev' 'client_id'
   $iid = Get-AppField 'dev' 'installation_id'
@@ -187,8 +183,7 @@ function Update-DevToken($entry) {
   $stageDir = Join-Path $WowHome "staging/$repo"
   $null = New-Item -ItemType Directory -Force -Path $stageDir
   $stage = Join-Path $stageDir 'dev-token'
-  $stages = @($stage)
-  foreach ($f in $stages) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+  Remove-Item -LiteralPath $stage -Force -ErrorAction SilentlyContinue
 
   try {
     $r = Invoke-Sh @((ToSh (Join-Path $ScriptsDir 'mint.sh')),
@@ -204,21 +199,17 @@ function Update-DevToken($entry) {
       return $false
     }
     # A copy that cannot be written is logged and fails the pass.
-    $published = $true
-    for ($i = 0; $i -lt $dsts.Count; $i++) {
-      try {
-        $null = New-Item -ItemType Directory -Force -Path (Split-Path $dsts[$i])
-        [IO.File]::Move($stages[$i], $dsts[$i], $true)
-      } catch {
-        $published = $false
-        Write-Log "dev $label`: could not publish tokens/$($entry.Owner)/$repo/dev-token: $($_.Exception.Message)"
-      }
+    try {
+      $null = New-Item -ItemType Directory -Force -Path (Split-Path $dst)
+      [IO.File]::Move($stage, $dst, $true)
+    } catch {
+      Write-Log "dev $label`: could not publish tokens/$($entry.Owner)/$repo/dev-token: $($_.Exception.Message)"
+      return $false
     }
-    if (-not $published) { return $false }
     Write-Log "dev $label`: token rotated, expires $($new.Expires.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
     $true
   } finally {
-    foreach ($f in $stages) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $stage -Force -ErrorAction SilentlyContinue
   }
 }
 

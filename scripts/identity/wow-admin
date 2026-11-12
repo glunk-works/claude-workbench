@@ -8,7 +8,7 @@
 #
 # Mint: asks for the admin key's passphrase on the terminal (echo off, read from /dev/tty, never
 # an argument or an environment variable), unlocks the admin key into a private .unlock.*
-# directory under $WOW_HOME for the length of one mint.sh call, and writes the token and its
+# directory under $WOW_HOME for the length of its two mint.sh calls (the account read, then the mint), and writes the token and its
 # expires_at to $WOW_HOME/tokens/<owner>/<name>/admin-token -- the directory the repo's dev
 # container mounts read-only (#1340). That is the only file mint writes. The token is scoped to
 # <name> and to --perms (default: administration, contents and pull_requests, all write). It
@@ -35,11 +35,12 @@
 # status keeps that token's copies and the exit is 1. The lock is the directory
 # $WOW_HOME/.admin-lock.<name, lowercased>; one left by a killed run blocks mint and revoke alike: rmdir it by hand.
 #
-# The owner half is a label: wow-admin does not check it against the admin App's installation.
-# The token is minted for <name> on that one installation, and the typed owner alone picks the
-# directory it lands in, with no broker.json entry needed. An owner whose tokens/<owner>/<name>
-# another org's container mounts would put the admin token in that container; the only guard is
-# the rule that one identity home serves one org (docs/identity/DEV-CONTAINER.md, WB-D42).
+# A mint checks the typed owner against the account login of the installation the admin App mints
+# on, ignoring case, after the unlock and before any token directory or mint request (#1425): it
+# reads GET /app/installations/<id> through mint.sh --print-account and refuses a different
+# login. --revoke makes no such read, so a stray token under a mistyped owner can still be revoked.
+# An owner whose tokens/<owner>/<name> another org's container mounts would otherwise put the admin
+# token in that container; one identity home still serves one org (docs/identity/DEV-CONTAINER.md, WB-D42).
 #
 # $WOW_TTY names the terminal to read (default /dev/tty); the fixtures point it at a file, and
 # only then is a terminal that cannot hide echo accepted. It can only supply a passphrase the
@@ -71,6 +72,7 @@ case "$owner" in . | ..) usage ;; esac
 check_repo "$owner"
 case "$owner" in .* | *.) die "the owner half must not begin or end with a dot" 2 ;; esac
 check_repo "$repo"
+case "$repo" in .* | *.) die "the name half must not begin or end with a dot" 2 ;; esac
 [ -z "$revoke" ] || [ -z "$perms_given" ] || usage
 
 owndir=$wow_home/tokens/$owner/$repo
@@ -130,7 +132,7 @@ if [ -z "$revoke" ]; then
             ($p | map({n: .[1], o: .[0]})) as $e
             | ($e | map(.n | ascii_downcase)) as $ns
             | if ($ns | length) != ($ns | unique | length) then "bad"
-              elif ([range(0; $e | length) as $i | select($e[$i].o != null)
+              elif ([range(0; $e | length) as $i
                      | range(0; $e | length) as $k | select($k != $i and $ns[$k] == ($e[$i].o | ascii_downcase))] | length) > 0 then "bad"
               elif ([$e[] | select(.n != $name and (.n | ascii_downcase) == ($name | ascii_downcase))] | length) > 0
                 then "case\t" + ([$e[] | select(.n != $name and (.n | ascii_downcase) == ($name | ascii_downcase)) | .o + "/" + .n] | first)
@@ -232,7 +234,6 @@ head -n 3 "$adminkey" | grep -q 'ENCRYPTED' || die "the admin key is not passphr
 
 [ -r "$tty" ] || die "no terminal to ask for the passphrase on"
 
-token_dir tokens "$owner/$repo" >/dev/null
 live_check "$ownfile" "$arg"
 
 printf 'Admin key passphrase: ' >&2
@@ -252,6 +253,15 @@ printf '%s\n' "$pass" | openssl pkey -in "$adminkey" -passin stdin -out "$tmpd/k
   || die "could not unlock the admin key (wrong passphrase?)"
 pass=
 
+# The typed owner must be the account of the installation the admin App mints on (#1425): GitHub
+# compares logins without case. This needs a JWT signed with the unlocked key, so it runs here,
+# before any token directory or mint request.
+account=$(sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_id" --key "$tmpd/key.pem" --print-account) \
+  || die "could not read the admin App's installation account; refusing $arg"
+[ "$(printf '%s' "$account" | tr A-Z a-z)" = "$(printf '%s' "$owner" | tr A-Z a-z)" ] \
+  || die "the admin App's installation belongs to $account, not $owner; refusing $arg"
+
+token_dir tokens "$owner/$repo" >/dev/null
 sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_id" --key "$tmpd/key.pem" \
   --repos "$repo" --perms "$perms" --out "$ownfile"
 echo "admin token for $arg written to $ownfile (read-only mount target); revoke with: wow-admin $arg --revoke"
