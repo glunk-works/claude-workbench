@@ -88,7 +88,7 @@ the draft* step) and relays its findings to the drafter.
    here as the digits themselves (`N=611`), never as an expansion.
    ```bash
    N=<digits> &&
-   D= T= L= Y= W= &&
+   D= T= L= Y= W= R= &&
    D=$(mktemp -d) && [ -n "$D" ] && [ -d "$D" ] &&
    T=$(cd -P "$D" && pwd -P) && [ -n "$T" ] && [ -d "$T" ] &&
    L=$(spec-issue.sh fetch "$N" "$T") &&
@@ -99,10 +99,10 @@ the draft* step) and relays its findings to the drafter.
      DEF=$(gh repo view "$(git -C "$TOPLEVEL" remote get-url origin)" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') &&
      case "$DEF" in ''|-*|*[!A-Za-z0-9._/-]*) false ;; esac &&
      git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$DEF:refs/remotes/origin/$DEF" &&
-     git -C "$TOPLEVEL" show "refs/remotes/origin/$DEF:./.ai/project.yml" >"$Y" &&
+     git -C "$TOPLEVEL" show "refs/remotes/origin/$DEF:./.ai/project.yml" >"$Y" && R=1 &&
      W=$(spec-find.sh answer "$N" "$Y") && [ -n "$W" ]
      rc=$?; if [ -n "$Y" ] && [ -f "$Y" ]; then rm -f "$Y"; fi
-     [ "$rc" -eq 0 ] || { L="answer no word"; false; }
+     [ "$rc" -eq 0 ] || { if [ -n "$R" ]; then L="answer no word"; else L="answer no project file"; fi; false; }
    } &&
    printf 'T=%s %s ANSWER=%s\n' "$T" "${L#ok }" "$W" ||
    { echo "stopped: ${L:-no word}" >&2; if [ -n "$D" ] && [ -d "$D" ]; then rm -rf "$D"; fi; false; }
@@ -115,12 +115,17 @@ the draft* step) and relays its findings to the drafter.
    branch removes only the non-empty `D` that `mktemp -d` printed, never `T`. Each stop prints
    `stopped: <word>`, the word being one of the following, or `no word` when the script printed
    none (a usage error, or `mktemp` failed):
-   - **No answer word** (`answer no word`). After the author check, the same call reads the default
+   - **No answer word** (`answer no project file`, `answer no word`). After the author check, the same call reads the default
      branch's committed `.ai/project.yml` into a temp file the way the *Answer branch* step does and runs
-     `spec-find.sh answer`; a failed read or a finder that printed nothing stops, and the temp file is
-     removed on every path. The `ANSWER=` word ends the printed line (an `answer` line has spaces: everything
+     `spec-find.sh answer`. `answer no project file` is the default-branch read failing (the temp file, the
+     toplevel lookup, `gh repo view`, the default-branch name check, the `git fetch` or the `git show`), which
+     the same access reasons the *Reach* bullet names can cause; `answer no word` is the finder exiting non-zero
+     or printing nothing. On success `L` stays the `ok` line. The temp file is removed on every path.
+     The `ANSWER=` word ends the printed line (an `answer` line has spaces: everything
      after `ANSWER=` is the word) and is printed before the body is read. It carries ids, times and a
-     fixed word, never comment text. Under `identities: null` the finder prints `legacy` and makes no `gh` call.
+     fixed word, never comment text. Under `identities: null` the finder prints `legacy` and makes no `gh` call of
+     its own, but the call's default-branch read (`gh repo view` and a `git fetch`) still runs on every run whose
+     author check passed, legacy included.
    - **Reach** (`unreachable`). A repo this identity cannot reach fails the `.permissions` read or
      the issue fetch (for an App-filed issue also the reactions read, the second fetch or the content-time query), and that failure is the stop, reported as *"couldn't read the issue (as
      `<actor>`)"* (`reference/conventions.md` § *Acting identity and reach*, which also covers an all-`false` `.permissions` under an installation token).
