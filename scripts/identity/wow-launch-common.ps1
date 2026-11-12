@@ -14,8 +14,8 @@
   argument, never a joined string); the commit and model read from the Reference clone; the in-process
   git blob id; the base-branch check and the committed .devcontainer/ tree, read through the host gh from the API
   (Get-GhJson, Assert-CommitOnBase, Get-CommittedDevTree); the Reference's origin repository (the one configured url, as lowercase owner/name,
-  never echoed); the strict record read (four fields: id, commit, clone, origin; the old three-field shape reads with no origin) and the atomic
-  record write; the two container listings; the relay probe. The launcher sets $script:LaunchProg and $script:LaunchUsage before calling any of it.
+  never echoed); the strict record read (five fields: id, commit, clone, origin, reference; the old three- and four-field shapes read with the missing fields null),
+  the lookup of a record by its origin (Find-RecordByRepo, for -Repo) and the atomic record write; the two container listings; the relay probe. The launcher sets $script:LaunchProg and $script:LaunchUsage before calling any of it.
   wow-driver.ps1 also sets $script:LaunchWorkDir, the working directory of every process Invoke-Tool and
   Invoke-Session start from then on; wow-lane.ps1 never sets it.
 
@@ -431,7 +431,8 @@ function Get-ReferenceOrigin([string]$Git, [string]$Reference, [string]$Remote) 
 function Test-OriginShape([string]$Value) { $Value -cmatch '\A[a-z0-9._-]+/[a-z0-9._-]+\z' }
 
 # Get-RecordResult: { Record; Error }. Record is $null with Error $null when the file is absent. A record in the
-# old three-field shape reads with origin $null; anything else outside the four fields in their shapes is an Error.
+# old three-field shape reads with origin and reference $null, one in the four-field shape with reference $null; anything
+# else outside the five fields in their shapes is an Error.
 function Get-RecordResult([string]$Path) {
   $bad = { param($m) [pscustomobject]@{ Record = $null; Error = $m } }
   if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Record = $null; Error = $null } }
@@ -442,20 +443,26 @@ function Get-RecordResult([string]$Path) {
   $names = @($o.PSObject.Properties.Name | Sort-Object -CaseSensitive)
   $want3 = $names.Count -eq 3 -and $names[0] -ceq 'clone' -and $names[1] -ceq 'commit' -and $names[2] -ceq 'id'
   $want4 = $names.Count -eq 4 -and $names[0] -ceq 'clone' -and $names[1] -ceq 'commit' -and $names[2] -ceq 'id' -and $names[3] -ceq 'origin'
-  if (-not $want3 -and -not $want4) { return & $bad 'the driver record must hold exactly id, commit, clone and origin' }
+  $want5 = $names.Count -eq 5 -and $names[0] -ceq 'clone' -and $names[1] -ceq 'commit' -and $names[2] -ceq 'id' -and $names[3] -ceq 'origin' -and $names[4] -ceq 'reference'
+  if (-not $want3 -and -not $want4 -and -not $want5) { return & $bad 'the driver record must hold exactly id, commit, clone, origin and reference' }
   foreach ($n in $names) { if ($o.$n -isnot [string]) { return & $bad "the driver record's $n is not a string" } }
   if (-not (Test-Hex $o.id 64)) { return & $bad "the driver record's id is not 64 lowercase hex digits" }
   if (-not (Test-Hex $o.commit 40)) { return & $bad "the driver record's commit is not 40 lowercase hex digits" }
   $origin = $null
-  if ($want4) {
+  $reference = $null
+  if ($want4 -or $want5) {
     if (-not (Test-OriginShape $o.origin)) { return & $bad "the driver record's origin is not a lowercase owner/name" }
     $origin = $o.origin
   }
-  [pscustomobject]@{ Record = [pscustomobject]@{ id = $o.id; commit = $o.commit; clone = $o.clone; origin = $origin }; Error = $null }
+  if ($want5) {
+    if ($o.reference -eq '') { return & $bad "the driver record's reference is empty" }
+    $reference = $o.reference
+  }
+  [pscustomobject]@{ Record = [pscustomobject]@{ id = $o.id; commit = $o.commit; clone = $o.clone; origin = $origin; reference = $reference }; Error = $null }
 }
 
-# Read-Record: $null when absent; refuses on anything but the four fields in their shapes. A record in the
-# old three-field shape is returned with origin $null, for the caller to refuse or replace. With -NoRefuse
+# Read-Record: $null when absent; refuses on anything but the five fields in their shapes. A record in the
+# old three- or four-field shape is returned with origin or reference $null, for the caller to refuse or replace. With -NoRefuse
 # anything the strict read would refuse returns $null instead (start of day only).
 function Read-Record([string]$Path, [switch]$NoRefuse) {
   $r = Get-RecordResult $Path
@@ -464,19 +471,49 @@ function Read-Record([string]$Path, [switch]$NoRefuse) {
 }
 
 # Write-Record: a temp file in the same directory, then a rename over the old record.
-function Write-Record([string]$Path, [string]$Id, [string]$Commit, [string]$Clone, [string]$Origin) {
+function Write-Record([string]$Path, [string]$Id, [string]$Commit, [string]$Clone, [string]$Origin, [string]$Reference) {
   if (-not (Test-Hex $Id 64) -or -not (Test-Hex $Commit 40)) { Stop-Launch 'refusing to record a malformed id or commit' }
   if (-not (Test-OriginShape $Origin)) { Stop-Launch 'refusing to record a malformed origin' }
+  if ([string]::IsNullOrEmpty($Reference)) { Stop-Launch 'refusing to record an empty Reference path' }
   $dir = Split-Path -Parent $Path
   if (Test-Path -LiteralPath $dir) {
     if (-not (Test-Path -LiteralPath $dir -PathType Container) -or (Test-ReparsePoint $dir)) { Stop-Launch 'driver/ under WowHome is not a plain directory' }
   } else { $null = New-Item -ItemType Directory -Path $dir }
   $tmp = Join-Path $dir ".$([IO.Path]::GetFileName($Path)).$([guid]::NewGuid().ToString('N')).tmp"
   try {
-    $json = [ordered]@{ id = $Id; commit = $Commit; clone = $Clone; origin = $Origin } | ConvertTo-Json -Compress
+    $json = [ordered]@{ id = $Id; commit = $Commit; clone = $Clone; origin = $Origin; reference = $Reference } | ConvertTo-Json -Compress
     [IO.File]::WriteAllText($tmp, $json + "`n")
     [IO.File]::Move($tmp, $Path, $true)
   } finally { if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } }
+}
+
+# Assert-RepoArgument <value>: the shape of -Repo, owner/name with each half A-Za-z0-9._- and non-empty; exit 2.
+function Assert-RepoArgument([string]$Value) {
+  if ($Value -cnotmatch '\A[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\z') { Stop-BadArgument '-Repo is not owner/name (each half letters, digits, . _ -)' }
+}
+
+# Find-RecordByRepo <WowHome> <-Repo value>: the clone and Reference paths of the one driver record whose origin is
+# the lowercased -Repo. Every regular file <leaf>.json directly in <WowHome>/driver (a name starting with . is the
+# write's temp file and is skipped) is read with the strict read, and one that does not read refuses naming that
+# file. None matching, more than one, and a match with no reference (an older record) refuse; exit 1.
+function Find-RecordByRepo([string]$WowHome, [string]$Repo) {
+  $dir = Join-Path $WowHome 'driver'
+  $want = $Repo.ToLowerInvariant()
+  $hits = @()
+  if (Test-Path -LiteralPath $dir -PathType Container) {
+    foreach ($e in @([IO.Directory]::EnumerateFileSystemEntries($dir) | Sort-Object)) {
+      $name = [IO.Path]::GetFileName($e)
+      if ($name -cnotmatch '\A[^.].*\.json\z') { continue }
+      if ((Test-Path -LiteralPath $e -PathType Container) -and -not (Test-ReparsePoint $e)) { continue }
+      $r = Get-RecordResult $e
+      if ($null -ne $r.Error) { Stop-Launch "${name}: $($r.Error)" }
+      if ($null -ne $r.Record -and $null -ne $r.Record.origin -and $r.Record.origin -ceq $want) { $hits += , [pscustomobject]@{ Name = $name; Record = $r.Record } }
+    }
+  }
+  if ($hits.Count -eq 0) { Stop-Launch "no driver record names ${want}: run wow-driver.ps1 with -Clone and -Reference once" }
+  if ($hits.Count -gt 1) { Stop-Launch "more than one driver record names ${want}: $((@($hits | ForEach-Object { $_.Name })) -join ', ')" }
+  if ($null -eq $hits[0].Record.reference) { Stop-Launch "the driver record $($hits[0].Name) for ${want} holds no Reference path (written by an older launcher): the next start of day with -Clone and -Reference writes it" }
+  [pscustomobject]@{ Clone = $hits[0].Record.clone; Reference = $hits[0].Record.reference }
 }
 
 # --- containers --------------------------------------------------------------------------------

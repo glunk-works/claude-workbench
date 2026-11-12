@@ -1,9 +1,11 @@
 #Requires -Version 7.2
+
 <#
 .SYNOPSIS
   Start the driver session in the dev container of -Clone, for the repository of -Reference's origin,
   after the checks that must come first (WB-D24, WB-D33, issue #728).
-  Any repository of the org works, chosen by -Clone and -Reference, if it is set up as the
+  Any repository of the org the -WowHome identity home serves works, chosen by -Clone and -Reference,
+  or by -Repo once a start of day has recorded both, if it is set up as the
   "Adding a repo to this host" section of claude-workbench's docs/identity/DEV-CONTAINER.md describes
   and its .ai/project.yml at -Base holds the keys the -Reference help names.
   Run it from pwsh 7.2+ on the host, from the installed copy in
@@ -18,18 +20,29 @@
        anywhere. The Reference clone names the commit (<Remote>/<Base>), but the copy is read through the
        host gh from the API, and only after GitHub's compare API reports that commit identical with or
        behind <Base> of the Reference's origin repository, so a commit that exists only in the Reference
-       or in a fork never passes (an older commit on <Base> still does: a downgrade, and the binding is
+       or in a fork of that origin never passes (an older commit on <Base> still does: a downgrade, and the binding is
        only as strong as <Base>'s protection against the dev App). The committed tree must hold
        .devcontainer/devcontainer.json, which the devcontainer CLI reads before a root .devcontainer.json;
     2. recreates the container: devcontainer up --skip-post-attach --remove-existing-container;
     3. checks that exactly the container up reported is running;
-    4. records its id, the commit compared against, the clone's path and the Reference's origin
-       repository (lowercase owner/name) in <WowHome>\driver\<leaf>.json (never mounted into a
+    4. records its id, the commit compared against, the clone's path, the Reference's origin
+       repository (lowercase owner/name) and the Reference's path in <WowHome>\driver\<leaf>.json (never mounted into a
        container);
     5. enters it with docker exec, into /usr/local/bin/claude --model <models.architect> --effort medium
        in /workspace, with the first message "Driver for <owner>/<name>." naming the Reference's origin
        repository. It names no command; any first message gives the session one turn before the
        human types, in which the repo's CLAUDE.md may lead it to run resume.
+
+  The binding is to the Reference clone's configured origin. Nothing checks that origin against the
+  repository the clone is for: a Reference whose origin is a fork binds to the fork's base branch.
+  -Repo picks a record by the origin recorded from that same configured url, so it adds no such check.
+
+  -Repo owner/name takes the place of -Clone and -Reference: both paths are read from the one driver
+  record in <WowHome>\driver whose origin is that repository, and then go through the checks a given
+  -Clone and -Reference go through. It works once a start of day with -Clone and -Reference has
+  written a record holding the Reference path; the first start of day for a repository takes both
+  paths. It refuses when no record, or more than one, names the repository, when the match has no
+  Reference path (an older record), and when any file in driver\ does not read.
 
   Before the fetch, both paths read the Reference's <Remote> repository and the driver record. A start
   of day whose record names this clone and a different origin refuses (a Reference of another
@@ -55,6 +68,8 @@
 
   Exit codes: 2 for a bad or missing argument (a usage line on stderr, before any external call, except the
   sh run that converts an MSYS-form -WowHome);
+  with -Repo the record lookup (exit 1 when it refuses) runs before the checks of -Remote and -Base,
+  so those exit 2 only once a record is found;
   1 for every refusal (a one-line reason on stderr); otherwise the session's own exit code.
   PowerShell's own binding errors (an unknown parameter, a stray positional argument) exit 1 with
   PowerShell's message.
@@ -64,6 +79,10 @@
   Reference clone can plant git config or hooks that run when this script runs git there, which is
   host code execution beside the App keys; the Reference must be a clone no container opens. git
   never runs in the Clone, whose .git a container can write.
+
+.PARAMETER Repo
+  owner/name, each half letters, digits, . _ -: the repository whose driver record supplies -Clone and
+  -Reference. Exclusive with both (exit 2); without it both are required.
 
 .PARAMETER Clone
   The clone the container opens: an absolute existing directory, not a link, whose leaf is the
@@ -88,6 +107,7 @@
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
+  [string]$Repo,
   [string]$Clone,
   [string]$Reference,
   [string]$WowHome = $(if ($env:WOW_HOME) { $env:WOW_HOME } else { Join-Path $HOME '.config/glunk-identity' }),
@@ -119,18 +139,28 @@ try {
 } catch { & $notInstalled }
 
 $script:LaunchProg = 'wow-driver'
-$script:LaunchUsage = 'usage: wow-driver.ps1 -Clone <path> -Reference <path> [-WowHome <path>] [-Remote <name>] [-Base <name>]'
+$script:LaunchUsage = 'usage: wow-driver.ps1 (-Clone <path> -Reference <path> | -Repo <owner/name>) [-WowHome <path>] [-Remote <name>] [-Base <name>]'
 . (Join-Path $PSScriptRoot 'wow-launch-common.ps1')
 
 try {
   # --- arguments: exit 2, before any external call (the one exception: the sh run for an MSYS-form -WowHome) ---
+  # -Repo: the two paths come from the driver record, then go through the checks a given pair goes through.
+  $wowP = $null
+  if ($PSBoundParameters.ContainsKey('Repo')) {
+    Assert-RepoArgument $Repo
+    if ($PSBoundParameters.ContainsKey('Clone') -or $PSBoundParameters.ContainsKey('Reference')) { Stop-BadArgument '-Repo cannot be combined with -Clone or -Reference' }
+    $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain
+    $found = Find-RecordByRepo $wowP $Repo
+    $Clone = $found.Clone
+    $Reference = $found.Reference
+  }
   $cloneP = Resolve-LaunchDir '-Clone' $Clone
   $refP = Resolve-LaunchDir '-Reference' $Reference
   $gitDir = Join-Path $refP '.git'
   if (-not (Test-Path -LiteralPath $gitDir -PathType Container)) { Stop-BadArgument '-Reference needs a .git directory (not a file, so not a worktree)' }
   if (Test-ReparsePoint $gitDir) { Stop-BadArgument "-Reference's .git is a link or reparse point" }
   if ((Test-PathInside $cloneP $refP) -or (Test-PathInside $refP $cloneP)) { Stop-BadArgument '-Clone and -Reference may not be, or contain, one another' }
-  $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain
+  if ($null -eq $wowP) { $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain }
   if ((Test-PathInside $cloneP $wowP) -or (Test-PathInside $wowP $cloneP)) { Stop-BadArgument '-Clone may not be, contain or sit inside -WowHome' }
   if (Test-PathInside $refP $wowP) { Stop-BadArgument '-WowHome may not be, or sit inside, -Reference' }
   if (-not (Test-RefName $Remote)) { Stop-BadArgument '-Remote is not a plain ref name' }
@@ -210,7 +240,7 @@ try {
       Stop-Launch "after up, expected only $id running, found: $(if ($ids) { $ids } else { 'none' }). docker stop the new container ($id) and docker rm any other, then rerun"
     }
     # 4. record
-    Write-Record $record $id $commit $cloneP $refOrigin
+    Write-Record $record $id $commit $cloneP $refOrigin $refP
     Write-LaunchLine "started $id from $commit"
   } else {
     # attach
