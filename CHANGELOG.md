@@ -39,6 +39,10 @@ the GitHub release notes.
 - `/way-of-working:spec-task`'s *Fetch and check* call stops as `answer no project file` when its default-branch read fails and keeps `answer no word` for a failed or silent finder; its legacy sentence now says the call's default-branch read still runs under `identities: null`. Invariants check 28 now anchors the `printf` line that prints `ANSWER=`, the *Answer branch* step's opening gate on that word, and the *Draft* step's opening condition (#1454, #1456).
 - `ruleset-drift.sh`'s list form prints `approval_params=[..]` on its line that carries `approval=`, which `wow-preflight` judges and resume reports; `wow-preflight` reads a team or email CODEOWNERS owner as `check in the UI`, and a ruleset row as `ok` only when its approval count matches its declared rule types (#1405).
 
+### Fixed
+
+- Skill awk fields and shell positionals are written `$(N)` and `${N}`, forms the skill loader leaves unchanged whatever argument the skill is run with (a bare `$N` is replaced by the Nth argument, counting from 0, when it exists); spec-task's refresh compare, run with the loader's `$0` substitution simulated, reads changed text as different; invariants check 29 refuses a bare `$<digit>` in a `SKILL.md` (#1470).
+
 ## [0.32.0] — 2026-11-12
 
 **⚠️ Migration** — before reinstalling the host tools, rewrite any bare-name entry in `broker.json` as `owner/name` (the new broker mints for no repo while one remains: `-Once` exits 2, the looping broker logs it); `wow-admin` now takes `owner/name` and writes only `tokens/<owner>/<repo>/admin-token`; then reinstall the host tools and restart the broker; then remove each old `tokens/<repo>` directory, only after `wow-admin <owner/name> --revoke` says no readable admin token is on file for it and the directory holds no `admin-token` file (where `<repo>` is also an owner half, so the directory holds the live owner directory, remove only the `admin-token` and `dev-token` files directly in it).

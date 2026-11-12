@@ -95,7 +95,7 @@ re-verifies it before `/way-of-working:resume` may run it unattended.
    *Restore* step wrote them:
    ```bash
    G1=$(jq -r '.hitl_gate // ""' .ai/state.json) && hitl-gate-closed.sh "$G1"
-   G2=$(awk '{sub(/\r$/,"")} /^\*\*HITL Gate:/{f=1} f&&/^$/{exit} f{printf "%s ", $0}' .ai/next-steps.md |
+   G2=$(awk '{sub(/\r$/,"")} /^\*\*HITL Gate:/{f=1} f&&/^$/{exit} f{printf "%s ", $(0)}' .ai/next-steps.md |
      sed 's/^\*\*HITL Gate:[[:space:]]*//') && hitl-gate-closed.sh "$G2"
    ```
    (the awk joins a wrapped line with spaces; no apostrophe may appear in that program). If
