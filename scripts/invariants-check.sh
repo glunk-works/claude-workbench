@@ -32,7 +32,7 @@ report() {
 # the tests/invariants-*.test.sh fixtures, which copy the tree and look for one check's message.
 # It is an argument on purpose, never an environment variable, so nothing ambient can narrow a
 # gate run; the gate (CI, release, gates.green) never passes it.
-ALL_IDS=(1 2 2b 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27)
+ALL_IDS=(1 2 2b 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28)
 only=
 only_set=0
 usage() {
@@ -1692,6 +1692,58 @@ if [ -n "$mfskills_hits" ]; then
   report "a skill is missing from a manifest description (#1249)" \
     "$mfskills_hits" \
     "Name the skill as /PLUGIN:SKILL in both the plugin.json description and the marketplace.json entry's description."
+fi
+fi
+
+# --- 28. spec-task prints the answer word before it drafts (#1416) ----------------------------
+if want 28; then
+#
+# Two spec-task runs in a row skipped the Answer branch step and redrafted over a maintainer's
+# `spec-task-answer:` comment, because nothing printed before drafting said an answer existed. The
+# Fetch and check step's first fenced block must now fetch (`L=$(spec-issue.sh fetch`), later run
+# `$(spec-find.sh answer`, and later still print `ANSWER=`; the Draft against the base step must name
+# both `ANSWER=` and `ANSWERCHECK=ok`. A step line is a column-0 line of digits, an optional
+# lower-case letter, a period, a space and `**`; steps are found by bold name, never by number. Only
+# the first fenced block counts, so prose after it cannot satisfy the order. A spec-task SKILL.md
+# that is missing, or lacks either step, is a hit: a check that cannot look must not pass (as checks
+# 13, 23 and 25).
+ansord_hits=""
+ansord_seen=0
+for f in plugins/*/skills/spec-task/SKILL.md; do
+  [ -f "$f" ] || continue
+  ansord_seen=1
+  ansord_res=$(awk '
+    function isstep(l) { return l ~ /^[0-9]+[a-z]?\. \*\*/ }
+    isstep($0) {
+      cur = ""
+      if ($0 ~ /^[0-9]+[a-z]?\. \*\*Fetch and check/) { cur = "f"; fseen = 1 }
+      else if ($0 ~ /^[0-9]+[a-z]?\. \*\*Draft against the base/) { cur = "d"; dseen = 1 }
+      next
+    }
+    cur == "d" { if (index($0, "ANSWER=")) da = 1; if (index($0, "ANSWERCHECK=ok")) dc = 1 }
+    cur == "f" && fdone == 0 {
+      if ($0 ~ /^ *```/) { if (fopen) fdone = 1; else fopen = 1; next }
+      if (fopen) {
+        if (index($0, "L=$(spec-issue.sh fetch") && !fl) fl = NR
+        else if (fl && index($0, "$(spec-find.sh answer") && !fa) fa = NR
+        else if (fa && index($0, "ANSWER=") && !fp) fp = NR
+      }
+    }
+    END {
+      if (!fseen) print "no Fetch and check step"
+      else if (!fl) print "Fetch and check block has no spec-issue.sh fetch line"
+      else if (!fa) print "Fetch and check block has no spec-find.sh answer line after the fetch"
+      else if (!fp) print "Fetch and check block does not print ANSWER= after the answer finder"
+      if (!dseen) print "no Draft against the base step"
+      else if (!da || !dc) print "Draft against the base step does not wait on ANSWER= and ANSWERCHECK=ok"
+    }' "$f")
+  [ -z "$ansord_res" ] || ansord_hits+="  $f: ${ansord_res//$'\n'/; }"$'\n'
+done
+[ "$ansord_seen" -eq 1 ] || ansord_hits+="  (no plugins/*/skills/spec-task/SKILL.md found)"$'\n'
+if [ -n "$ansord_hits" ]; then
+  report "spec-task does not print the answer word before it drafts (#1416)" \
+    "$ansord_hits" \
+    "Keep the answer finder and its ANSWER= print in the Fetch and check block, and the Draft step waiting on them."
 fi
 fi
 
