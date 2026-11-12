@@ -472,7 +472,9 @@ edited it. **Default to the full checklist whenever unsure.**
    - Weakened or missing → impossible to miss; name exactly what is absent. `missing` is
      "weakened or missing"; a non-empty `missing_types` or `missing_checks` is weakened. **`approval=1`
      (a `pull_request` rule) with `bypass_actors` above `0` is drift:** name the ruleset and
-     say the approval gate has a standing bypass. Everything else is healthy. Report per ruleset
+     say the approval gate has a standing bypass. **A non-empty `approval_params`** (the list form's last
+     field) **is drift too:** report the approval rule as not at the cutover value, naming the
+     parameters it lists. Everything else is healthy. Report per ruleset
      only when something is wrong (`Ruleset check: healthy (2 rulesets, 4 rule types, 3 required
      checks).`).
    - **The one exception, on the reach exception above** (`.permissions` all `false` and the
@@ -491,10 +493,12 @@ edited it. **Default to the full checklist whenever unsure.**
      `missing_types` and `missing_checks`; the report names any type or check it lists as absent.
 
    It is still a report, not a gate. The check confirms that the declared rule types, check
-   names and (lack of) bypass actors are there; it does not read the approval rule's parameters
-   (approval count, code-owner review), and it does not judge the `unpinned_checks` field the
-   list form prints (which App a check is pinned to is not read at all), so a ruleset weakened
-   only in those still reads healthy.
+   names and (lack of) bypass actors are there; the approval rule's parameters are judged only on
+   the list form's line that carries `approval=`; the single form's line and the not-visible line (the
+   one an identity that cannot see bypass actors gets) do not carry them, so on those a ruleset
+   weakened only in its parameters is not reported as drift; and the `unpinned_checks` field is still
+   not judged (which App a check is pinned to is not read at all), so a ruleset weakened only in a
+   pin still reads healthy.
 
    **When a migration is live, also check the default branch.** `/way-of-working:architect-review`
    accepts a non-default PR base only because the **default branch's own** `.ai/project.yml`

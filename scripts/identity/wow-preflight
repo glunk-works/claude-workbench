@@ -131,18 +131,33 @@ else
         row "ruleset #$i" "$UI" 'the entry has no readable name'
       elif [ "$src" = org ]; then
         row "ruleset $nm" "$UI" 'an org ruleset: a repo-scoped admin token cannot read it'
+      elif ! printf '%s' "$ent" | jq -e '.rule_types | arrays' >/dev/null 2>&1; then
+        # A map would pass ruleset-drift.sh's join, so the list form is checked here.
+        row "ruleset $nm" "$UI" 'the entry'"'"'s rule types could not be read as a list'
       else
+        decl=0
+        printf '%s' "$ent" | jq -e '.rule_types | any(.[]; . == "pull_request")' >/dev/null 2>&1 && decl=1
         pre="ruleset $nm missing_types=[] missing_checks=[] approval="
-        okfmt=0
+        okfmt=0 undeclared=0
         case "$line" in
           "$pre"*)
             rest=${line#"$pre"}
             ap=${rest%% *}
-            case "$ap" in '' | *[!0-9]*) ;; *) [ "$rest" = "$ap bypass_actors=0 unpinned_checks=[]" ] && okfmt=1 ;; esac
+            tail=" bypass_actors=0 unpinned_checks=[] approval_params=[]"
+            case "$ap" in
+              '' | *[!0-9]*) ;;
+              *)
+                if [ "$rest" = "$ap$tail" ]; then
+                  if [ "$ap" = "$decl" ]; then okfmt=1
+                  elif [ "$ap" = 1 ]; then undeclared=1; fi
+                fi ;;
+            esac
             ;;
         esac
         if [ "$okfmt" = 1 ]; then
           row "ruleset $nm" ok 'the App a check is pinned to, and checks the project file does not declare, are not judged'
+        elif [ "$undeclared" = 1 ]; then
+          row "ruleset $nm" missing 'the ruleset carries a pull_request rule its entry does not declare'
         elif [ "$line" = "ruleset $nm missing" ]; then
           row "ruleset $nm" missing 'no ruleset of that name'
         else
@@ -157,7 +172,17 @@ else
   fi
 fi
 
-row 'approval rule parameters' "$UI" 'code-owner review, stale reviews dismissed on push, last-push approval and an approving review count of 1 are not read by this command'
+# The ruleset rows judge the approval rule's parameters; this row stays only when no entry declares one.
+if [ "$(yq 'has("rulesets")' "$yml" 2>/dev/null </dev/null)" != true ]; then
+  row 'approval rule parameters' missing 'no rulesets entry declares a pull_request rule'
+else
+  anypr=$(yq -o=json -I=0 '.rulesets' "$yml" 2>/dev/null </dev/null | jq -r 'if type == "array" then any(.[]; .rule_types | if type == "array" then any(. == "pull_request") else error("shape") end) else error("shape") end' 2>/dev/null) || anypr=
+  case "$anypr" in
+    false) row 'approval rule parameters' missing 'no rulesets entry declares a pull_request rule' ;;
+    true) ;;
+    *) row 'approval rule parameters' "$UI" 'the rulesets entries could not be read' ;;
+  esac
+fi
 
 # --- default workflow token ----------------------------------------------------------------
 if rd "$T/wf.json" "repos/$repo/actions/permissions/workflow"; then
@@ -238,15 +263,27 @@ codeowners() {
   # shellcheck disable=SC2086
   set -- $own
   [ $# -gt 0 ] || { row CODEOWNERS missing "the * line in $found names no owner"; return; }
+  # A plain @login is checked for write access; a team or an email owner is never sent in a request.
+  plain= nonplain=0
   for o in "$@"; do
     case "$o" in
-      @*) l=${o#@}; case "$l" in '' | *[!A-Za-z0-9-]*) row CODEOWNERS missing "an owner in $found is not a plain @login"; return ;; esac ;;
-      *) row CODEOWNERS missing "an owner in $found is not a plain @login"; return ;;
+      @*/*)
+        l=${o#@}; tm=${l%%/*}; tn=${l#*/}
+        case "$tm" in '' | *[!A-Za-z0-9-]*) row CODEOWNERS missing "an owner in $found has no recognised shape"; return ;; esac
+        case "$tn" in '' | */* | *[!A-Za-z0-9._-]*) row CODEOWNERS missing "an owner in $found has no recognised shape"; return ;; esac
+        nonplain=1 ;;
+      @*)
+        l=${o#@}
+        case "$l" in '' | *[!A-Za-z0-9-]*) row CODEOWNERS missing "an owner in $found has no recognised shape"; return ;; esac
+        plain="$plain $l" ;;
+      ?*@?*)
+        case "$o" in *@*@* | */* | *[!A-Za-z0-9._%+@-]*) row CODEOWNERS missing "an owner in $found has no recognised shape"; return ;; esac
+        nonplain=1 ;;
+      *) row CODEOWNERS missing "an owner in $found has no recognised shape"; return ;;
     esac
   done
   lacking=
-  for o in "$@"; do
-    l=${o#@}
+  for l in $plain; do
     if rd "$T/perm.json" "repos/$repo/collaborators/$l/permission"; then
       pm=$(jq -er '.permission | strings' "$T/perm.json" 2>/dev/null) || pm=
       case "$pm" in
@@ -260,8 +297,10 @@ codeowners() {
   done
   if [ -n "$lacking" ]; then
     row CODEOWNERS missing "owners without write access:$lacking"
+  elif [ "$nonplain" = 1 ]; then
+    row CODEOWNERS "$UI" "the * line in $found names a team or an email owner, which this command cannot judge"
   else
-    row CODEOWNERS ok "$found: the * line names only owners with write access"
+    row CODEOWNERS ok "$found: the * line names only owners with write access; whether each is a human is not judged"
   fi
 }
 codeowners

@@ -35,6 +35,7 @@ the GitHub release notes.
 - The read-back sentence in `reference/cutover.md` now names the admin App beside a repo admin as a way to read back a repo ruleset, matching the *Who makes each* paragraph (#1289).
 - A `wow-admin <owner/name>` mint refuses an owner that is not the admin App's installation account (ignoring case), before any token directory or mint (#1425); `wow-admin` refuses a name half that begins or ends with a dot, as a usage error (#1428).
 - `/way-of-working:spec-task`'s *Fetch and check* call stops as `answer no project file` when its default-branch read fails and keeps `answer no word` for a failed or silent finder; its legacy sentence now says the call's default-branch read still runs under `identities: null`. Invariants check 28 now anchors the `printf` line that prints `ANSWER=`, the *Answer branch* step's opening gate on that word, and the *Draft* step's opening condition (#1454, #1456).
+- `ruleset-drift.sh`'s list form prints `approval_params=[..]` on its line that carries `approval=`, which `wow-preflight` judges and resume reports; `wow-preflight` reads a team or email CODEOWNERS owner as `check in the UI`, and a ruleset row as `ok` only when its approval count matches its declared rule types (#1405).
 
 ## [0.32.0] — 2026-11-12
 
