@@ -1698,6 +1698,12 @@ fi
 # --- 28. spec-task prints the answer word before it drafts (#1416) ----------------------------
 if want 28; then
 #
+# (#1454, #1456 tightened it to three anchors: the print is a `printf` line, not any line holding
+# `ANSWER=`; the Answer branch step's opening must gate on the Fetch and check line's `ANSWER=` word;
+# and the Draft step's opening, not a mention anywhere in the step, must wait on the printed word and
+# on `ANSWERCHECK=ok apply` or `ANSWERCHECK=ok amend`. A step's opening is its step line plus the lines
+# after it up to its first blank or fence line, leading spaces removed, joined with one space.)
+#
 # Two spec-task runs in a row skipped the Answer branch step and redrafted over a maintainer's
 # `spec-task-answer:` comment, because nothing printed before drafting said an answer existed. The
 # Fetch and check step's first fenced block must now fetch (`L=$(spec-issue.sh fetch`), later run
@@ -1718,15 +1724,20 @@ for f in plugins/*/skills/spec-task/SKILL.md; do
       cur = ""
       if ($0 ~ /^[0-9]+[a-z]?\. \*\*Fetch and check/) { cur = "f"; fseen = 1 }
       else if ($0 ~ /^[0-9]+[a-z]?\. \*\*Draft against the base/) { cur = "d"; dseen = 1 }
+      else if ($0 ~ /^[0-9]+[a-z]?\. \*\*Answer branch/) { cur = "a"; aseen = 1 }
+      if (cur == "a" || cur == "d") { acc = 1; op[cur] = $0 } else acc = 0
       next
     }
-    cur == "d" { if (index($0, "ANSWER=")) da = 1; if (index($0, "ANSWERCHECK=ok")) dc = 1 }
+    acc && cur != "f" {
+      if ($0 ~ /^[ \t]*$/ || $0 ~ /^ *```/) acc = 0
+      else { l = $0; sub(/^ +/, "", l); op[cur] = op[cur] " " l }
+    }
     cur == "f" && fdone == 0 {
       if ($0 ~ /^ *```/) { if (fopen) fdone = 1; else fopen = 1; next }
       if (fopen) {
         if (index($0, "L=$(spec-issue.sh fetch") && !fl) fl = NR
         else if (fl && index($0, "$(spec-find.sh answer") && !fa) fa = NR
-        else if (fa && index($0, "ANSWER=") && !fp) fp = NR
+        else if (fa && $0 ~ /^ *printf / && index($0, "ANSWER=") && !fp) fp = NR
       }
     }
     END {
@@ -1734,8 +1745,15 @@ for f in plugins/*/skills/spec-task/SKILL.md; do
       else if (!fl) print "Fetch and check block has no spec-issue.sh fetch line"
       else if (!fa) print "Fetch and check block has no spec-find.sh answer line after the fetch"
       else if (!fp) print "Fetch and check block does not print ANSWER= after the answer finder"
+      if (!aseen) print "no Answer branch step"
+      else {
+        t = op["a"]; i = index(t, "**"); t = substr(t, i + 2); i = index(t, "**"); t = substr(t, i + 2)
+        sub(/^ +/, "", t)
+        g = "Run only when the *Fetch and check* line'"'"'s `ANSWER=` word is not `legacy`"
+        if (substr(t, 1, length(g)) != g) print "Answer branch step does not open by gating on the Fetch and check ANSWER= word"
+      }
       if (!dseen) print "no Draft against the base step"
-      else if (!da || !dc) print "Draft against the base step does not wait on ANSWER= and ANSWERCHECK=ok"
+      else if (index(op["d"], "first draft starts only after the *Fetch and check* line printed an `ANSWER=` word") == 0 || index(op["d"], "`ANSWERCHECK=ok apply` or `ANSWERCHECK=ok amend`") == 0) print "Draft against the base step does not wait on ANSWER= and ANSWERCHECK=ok"
     }' "$f")
   [ -z "$ansord_res" ] || ansord_hits+="  $f: ${ansord_res//$'\n'/; }"$'\n'
 done
@@ -1743,7 +1761,7 @@ done
 if [ -n "$ansord_hits" ]; then
   report "spec-task does not print the answer word before it drafts (#1416)" \
     "$ansord_hits" \
-    "Keep the answer finder and its ANSWER= print in the Fetch and check block, and the Draft step waiting on them."
+    "Keep the answer finder and its printf of ANSWER= in the Fetch and check block, the Answer branch step opening by gating on that word, and the Draft step's opening waiting on them."
 fi
 fi
 
