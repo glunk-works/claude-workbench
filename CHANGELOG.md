@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- The approval ruleset's read-back in `reference/cutover.md` now also requires the `deletion` and `non_fast_forward` rules item 2 names, not only the `pull_request` rule (#1287).
+
 ## [0.32.0] — 2026-11-12
 
 **⚠️ Migration** — before reinstalling the host tools, rewrite any bare-name entry in `broker.json` as `owner/name` (the new broker mints for no repo while one remains: `-Once` exits 2, the looping broker logs it); `wow-admin` now takes `owner/name` and writes only `tokens/<owner>/<repo>/admin-token`; then reinstall the host tools and restart the broker; then remove each old `tokens/<repo>` directory, only after `wow-admin <owner/name> --revoke` says no readable admin token is on file for it and the directory holds no `admin-token` file (where `<repo>` is also an owner half, so the directory holds the live owner directory, remove only the `admin-token` and `dev-token` files directly in it).
