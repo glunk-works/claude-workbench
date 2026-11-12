@@ -3,8 +3,8 @@
 #
 # Stub docker, devcontainer and gh record their argv in one calls.log and answer from canned files (gh from the
 # scratch origin's real objects, shaped as the compare and git/trees API answers, then reshaped by a ghx.jq.<kind>
-# filter or replaced by ghx.raw.<kind> or ghx.exit); devcontainer and gh also log their working directory, in native
-# form, to cwd.log; a recording git wrapper logs its argv and runs the real git. A scratch Reference clone (local bare
+# filter or replaced by ghx.raw.<kind> or ghx.exit); all three also log their working directory, in native
+# form, to cwd.log (#1346); a recording git wrapper logs its argv and runs the real git. A scratch Reference clone (local bare
 # origin, .devcontainer/ and .ai/project.yml committed), a scratch Clone folder holding a copy of
 # .devcontainer/, and a scratch WowHome with the three scripts and a MANIFEST in install-host-tools.ps1's
 # format are laid out per case. The stub docker answers its Nth `ps` call of each kind (volume, label)
@@ -23,13 +23,21 @@
 #                   .devcontainer entry, and a symlink or submodule entry; the API reason wins over a clone mismatch
 #   refusals        .devcontainer/ mismatch, label-only or Reference containers, bad up results, bad re-list
 #   attach          record + running container + clean probe: no compare, no gh, no devcontainer, no git on the Clone
-#   origin          the Reference's origin repository against the four-field record: start of day, attach,
+#   origin          the Reference's origin repository against the record: start of day, attach,
 #                   wow-lane -Issue/-Spec/-SpecSweep refuse another origin; a three-field record is replaced at start and
 #                   refused on attach and in the lane; url shapes that refuse without echoing the url
 #   attach refuses  mismatched/missing/malformed record, another clone, dirty probe, two containers,
 #                   restarting/paused, a failed docker ps, a missing tool
 #   yq minimum      the host yq version check: the pure comparison on stubbed version lines, both launchers refuse a
 #                   stub yq below v4.54.1 or an unreadable one (the lane through an exit-0 stub printing another yq's form) before any docker or git call, and the number is in neither launcher file
+#   -Repo (#1381)   the five-field record (a start of day writes the Reference path; a four-field record still reads and is
+#                   replaced), wow-driver and wow-lane -Repo from the record (start of day, attach, -Issue/-Hash, -Spec,
+#                   -SpecSweep) making the calls the long form makes, and each -Repo refusal before any external call; -EndDay:
+#                   idle (a docker stop of the recorded id), a dirty relay probe, a running claude in a lane leaf
+#                   (not a spec- one) or a spec leaf, a driver-like claude outside the lanes directory (idle), a missing
+#                   lanes directory, an unsafe one, a failing docker stop, exit 2 combined with another mode (the busy
+#                   fixtures are skipped loudly under MSYS); Get-Help on each launcher in the checkout returns the
+#                   .SYNOPSIS text, not the syntax line (#1386)
 #   model, canary, edit after up, the declared values the docker exec literals match
 #   wow-lane        not installed, bad arguments, container and record refusals (the sweep's lanes-directory
 #                   refusal too), the lane probe and the
@@ -40,7 +48,7 @@
 #                   working directory is a spec leaf), the spec record, the -SpecSweep mode (it kills and removes nothing, but fetches in the Reference)
 #                   (the busy-check and sweep fixtures are skipped loudly under MSYS), the shared lanes-directory guard
 #                   (an owner override in the stub docker makes `test -O` false on the lanes path, a dangling
-#                   lanes link and a missing lanes directory are fixtures), and the static shape of the guard, the four scripts and the message
+#                   lanes link and a missing lanes directory are fixtures), and the static shape of the guard, the five scripts and the message
 #                   templates (the lane and spec ones in wow-lane.ps1, the driver one in wow-driver.ps1)
 #
 #
@@ -80,7 +88,11 @@ REAL_GIT=$real_git; export REAL_GIT
 
 fail=0
 ok() { echo "ok - $1"; }
-bad() { echo "FAIL - $1" >&2; fail=1; }
+bad() {
+  echo "FAIL - $1" >&2; fail=1
+  # the last launcher run's exit code and last stderr line, so a failure seen only on a CI runner can be told apart
+  [ -z "${tmp:-}" ] || echo "# last run: rc=${rc:-unset}: $(tail -n 1 "$tmp/err" 2>/dev/null | head -c 300)" >&2
+}
 check() { _cl=$1; shift; if "$@"; then ok "$_cl"; else bad "$_cl"; fi; }
 
 ID1=$(printf '%064d' 0 | tr 0 a)
@@ -119,6 +131,7 @@ cat >"$tmp/docker.body" <<'STUB'
 #!/bin/sh
 d=$STUB_DIR
 echo "docker $*" >>"$d/calls.log"
+{ pwd -W 2>/dev/null || pwd -P; } | sed 's/^/docker /' >>"$d/cwd.log"
 case "$1" in
   ps)
     kind=vol
@@ -128,6 +141,7 @@ case "$1" in
     if [ -e "$d/ps.$kind.$n" ]; then cat "$d/ps.$kind.$n"
     elif [ -e "$d/ps.$kind" ]; then cat "$d/ps.$kind"; fi
     exit 0 ;;
+  stop) exit "$(cat "$d/stop.exit" 2>/dev/null || echo 0)" ;;
   exec)
     case "$*" in
       *" -it "*)
@@ -274,7 +288,7 @@ run_with() { # run_with <script> <args...>
 }
 run_drv() { run_with "$home/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")" "$@"; }
 reset() {
-  rm -rf "$stubdir"/calls.log "$stubdir"/cwd.log "$stubdir"/ghx.* "$stubdir"/git.log "$stubdir"/n.* "$stubdir"/ps.* "$stubdir"/up.* "$stubdir"/probe.* "$stubdir"/record-at-exec "$stubdir"/it.* "$stubdir"/lanes-at-exec "$stubdir"/spec-* "$stubdir"/moved-wt
+  rm -rf "$stubdir"/calls.log "$stubdir"/cwd.log "$stubdir"/ghx.* "$stubdir"/git.log "$stubdir"/n.* "$stubdir"/ps.* "$stubdir"/up.* "$stubdir"/probe.* "$stubdir"/record-at-exec "$stubdir"/it.* "$stubdir"/stop.* "$stubdir"/lanes-at-exec "$stubdir"/spec-* "$stubdir"/moved-wt
   : >"$stubdir/calls.log"; : >"$stubdir/git.log"
   rm -rf "$home/driver"; set_clone
 }
@@ -284,7 +298,7 @@ none_called() { [ ! -s "$stubdir/calls.log" ] && [ ! -s "$stubdir/git.log" ]; }
 no_it() { ! calls | grep -q ' -it '; }
 no_dc() { ! calls | grep -q '^devcontainer '; }
 no_gh() { ! calls | grep -q '^gh '; }
-# cwd_all <dir> <lines>: exactly that many gh and devcontainer processes logged, each started in <dir>
+# cwd_all <dir> <lines>: exactly that many docker, gh and devcontainer processes logged, each started in <dir>
 cwd_all() {
   want=$(norm "$1"); [ "$(wc -l <"$stubdir/cwd.log" 2>/dev/null | tr -d ' ')" -eq "$2" ] || return 1
   while IFS= read -r l; do [ "$(norm "${l#* }")" = "$want" ] || return 1; done <"$stubdir/cwd.log"
@@ -301,10 +315,11 @@ write_record3() { # write_record3 <id> <commit> <clone>: the old three-field rec
   printf '{"id":"%s","commit":"%s","clone":"%s"}\n' "$1" "$2" "$3" | sed 's,\\,\\\\,g;' >"$home/driver/wb-driver.json"
 }
 json_clone() { printf '%s' "$(wp "$clone")" | sed 's,\\,\\\\,g'; }
-rec_ok() { # the record holds exactly id, commit, clone, origin
+rec_ok() { # the record holds exactly id, commit, clone, origin, reference
   f=$home/driver/wb-driver.json
-  [ -f "$f" ] && jq -e --arg i "$ID1" --arg c "$c2" 'keys == ["clone","commit","id","origin"] and .id == $i and .commit == $c and .origin == "acme/widgets"' "$f" >/dev/null &&
-    [ "$(norm "$(jq -r .clone "$f")")" = "$(norm "$(wp "$clone")")" ]
+  [ -f "$f" ] && jq -e --arg i "$ID1" --arg c "$c2" 'keys == ["clone","commit","id","origin","reference"] and .id == $i and .commit == $c and .origin == "acme/widgets"' "$f" >/dev/null &&
+    [ "$(norm "$(jq -r .clone "$f")")" = "$(norm "$(wp "$clone")")" ] &&
+    [ "$(norm "$(jq -r .reference "$f")")" = "$(norm "$(wp "$ref")")" ]
 }
 # The calls other than docker ps, in order.
 non_ps() { calls | grep -v '^docker ps '; }
@@ -398,7 +413,7 @@ if mklink_dir "$tmp/homelink" "$home"; then
   reset; echo "$ID1 exited" >"$stubdir/ps.vol.1"; echo "$ID1 running" >"$stubdir/ps.vol.3"
   run_with "$home/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$tmp/homelink")"
   check "not installed: a -WowHome reached through a link passes" test "$rc" -eq 7
-  check "not installed: ...and its processes run from the final path, not the link" cwd_all "$(wp "$home")" 4
+  check "not installed: ...and its processes (docker, gh and up) run from the final path, not the link" cwd_all "$(wp "$home")" 11
   reset; run_with "$tmp/homelink/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")"
   check "not installed: a script run through the link passes the bin check" test "$rc" -ne 1 -o -s "$stubdir/calls.log"
 else skip "a directory link cannot be made here; the -WowHome link fixtures did not run"; fi
@@ -469,9 +484,9 @@ $exec_line"
   check "$1: six ps calls, two of them after up" test "$(calls | grep -c '^docker ps ')" -eq 6
   check "$1: the last two ps calls follow up" test "$(calls | sed -n '/^devcontainer up/,$p' | grep -c '^docker ps ')" -eq 2
   check "$1: no argv holds & | ^ % ! or a double quote" no_banned
-  check "$1: the record is exactly id, commit, clone and origin" rec_ok
+  check "$1: the record is exactly id, commit, clone, origin and reference" rec_ok
   check "$1: the record existed when the session started" test -f "$stubdir/record-at-exec"
-  check "$1: gh and up ran from the final -WowHome" cwd_all "$(wp "$home")" 4
+  check "$1: docker, gh and up ran from the final -WowHome" cwd_all "$(wp "$home")" 11
   check "$1: no devcontainer exec" no_dc_exec
   check "$1: nothing from the clone, the listings or up reaches an argv" no_canary
 }
@@ -540,7 +555,7 @@ gh_refuses 'with the clone also mismatched' 1; check "base binding: the API reas
 # started from inside the Clone, every process still runs from the final -WowHome
 gh_start; cd "$clone"; run_drv; cd "$tmp"
 check "base binding: started inside the Clone, exits with the session's code" test "$rc" -eq 7
-check "base binding: ...gh and up ran from -WowHome, not the Clone" cwd_all "$(wp "$home")" 4
+check "base binding: ...docker, gh and up ran from -WowHome, not the Clone" cwd_all "$(wp "$home")" 11
 
 # .devcontainer/ mismatch: refuses naming the file, before any devcontainer call
 mismatch() { # mismatch <label> <mutation command...>
@@ -935,7 +950,7 @@ check "wow-lane spec (the lanes directory missing): the prep makes it and the se
 check "wow-lane spec (the lanes directory missing): a detached worktree existed during the session" spec_seen
 rm -rf "$lanes"; $real_git -C "$crepo" worktree prune
 
-# static shape of the four scripts and the three message templates
+# static shape of the five scripts and the three message templates
 lane_fn() { sed -n "/^function $1 /,/^}/p" "$root_dir/scripts/identity/wow-lane.ps1"; }
 lane_line() { lane_fn "$1" | sed -n 2p; }
 clean_line() { # no & | ^ % ! or double quote, and no single quote between the outer pair
@@ -967,7 +982,7 @@ not_dir_test_in() { ! dir_test_in "$1"; }
 no_dir_test() { # no lanes-directory test of its own in the remainder
   ! lane_rest "$1" | grep -Eq "$dir_test_re"
 }
-for fn in Get-LaneProbeScript Get-SpecPrepScript Get-SpecCleanupScript Get-SpecSweepScript; do
+for fn in Get-LaneProbeScript Get-SpecPrepScript Get-SpecCleanupScript Get-SpecSweepScript Get-EndDayScript; do
   check "static: $fn is a function of exactly one line" test "$(lane_fn $fn | wc -l | tr -d ' ')" -eq 3
   check "static: $fn returns the guard followed by one single-quoted string" guard_first $fn
   check "static: $fn's own string holds none of & | ^ % ! or a double quote, nor an inner single quote" clean_line "  '$(lane_rest $fn)'"
@@ -981,6 +996,8 @@ for t in 'test -d $L/$N;' 'test -e $L/record-$F;' 'test $lw = ok;'; do
 done
 sweep_pure() { ! { guard_line; lane_rest Get-SpecSweepScript; } | grep -q -w -e kill -e rm -e mkdir -e git; }
 check "static: the guard and Get-SpecSweepScript hold none of kill, rm, mkdir or git as a whole word" sweep_pure
+endday_pure() { ! { guard_line; lane_rest Get-EndDayScript; } | grep -q -w -e kill -e rm -e mkdir -e git; }
+check "static: the guard and Get-EndDayScript hold none of kill, rm, mkdir or git as a whole word" endday_pure
 tpl_line() { grep -E "^[\$]script:$1 = '" "$root_dir/scripts/identity/$2" | sed "s/^[^']*'//; s/'\$//"; }
 for tplf in LaneMessage:wow-lane.ps1 SpecMessage:wow-lane.ps1 DriverMessage:wow-driver.ps1; do
   tpl=${tplf%%:*}; tplfile=${tplf#*:}
@@ -1296,9 +1313,9 @@ check "start of day, another origin: the record is unchanged" cmp -s "$tmp/snap"
 # a record naming another clone does not bind this one
 reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record "$ID2" "$c1" "$(wp "$tmp/clones/elsewhere" | sed 's,\\,\\\\,g')" other/repo
 run_drv
-start_ok_origin() { check "$1: exits with the session's code" test "$rc" -eq 7; check "$1: writes a four-field record" rec_ok; }
+start_ok_origin() { check "$1: exits with the session's code" test "$rc" -eq 7; check "$1: writes a five-field record" rec_ok; }
 start_ok_origin 'start of day, a record of another clone'
-# no record, a three-field record and an unreadable record each write four fields
+# no record, a three-field record and an unreadable record each write five fields
 reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; run_drv
 start_ok_origin 'start of day, no record'
 reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record3 "$ID2" "$c1" "$(json_clone)"; run_drv
@@ -1441,8 +1458,233 @@ for f in wow-driver.ps1 wow-lane.ps1; do
 done
 }
 
+# --- section: -Repo, the five-field record, -EndDay and Get-Help (#1381, #1386) ---
+sec_repo() {
+json_ref() { printf '%s' "$(wp "$ref")" | sed 's,\\,\\\\,g'; }
+write_record5() { # write_record5 <id> <commit> <clone> <reference> [origin] [file leaf]: the five-field record
+  mkdir -p "$home/driver"
+  printf '{"id":"%s","commit":"%s","clone":"%s","origin":"%s","reference":"%s"}\n' "$1" "$2" "$3" "${5:-acme/widgets}" "$4" | sed 's,\\,\\\\,g;' >"$home/driver/${6:-wb-driver}.json"
+}
+run_repo_drv() { run_with "$home/bin/wow-driver.ps1" -WowHome "$(wp "$home")" "$@"; }
+run_repo_lane() { run_with "$home/bin/wow-lane.ps1" -WowHome "$(wp "$home")" "$@"; }
+
+# a start of day from the record: the same calls the explicit-path form makes (the record is rewritten with the new container)
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; run_drv
+long_calls=$(non_ps)
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record5 "$ID2" "$c1" "$(json_clone)" "$(json_ref)"
+run_repo_drv -Repo Acme/Widgets
+check "-Repo driver start of day: exits with the session's code" test "$rc" -eq 7
+check "-Repo driver start of day: makes the calls the long form makes" test "$(non_ps)" = "$long_calls"
+check "-Repo driver start of day: writes the five-field record" rec_ok
+check "-Repo driver start of day: every process ran from the final -WowHome" cwd_all "$(wp "$home")" 11
+# a hidden file in driver/ (the write's temp file) is skipped; an unrelated record is read and ignored
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record5 "$ID2" "$c1" "$(json_clone)" "$(json_ref)"
+echo '{' >"$home/driver/.junk.json"; write_record5 "$ID3" "$c1" "$(wp "$tmp/clones/elsewhere" | sed 's,\\,\\\\,g')" "$(wp "$tmp/refs/else" | sed 's,\\,\\\\,g')" other/repo other
+run_repo_drv -Repo acme/widgets
+check "-Repo: a hidden file and a record of another repository do not stop a start of day" test "$rc" -eq 7
+
+# attach from the record
+running1; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; run_drv; long_calls=$(non_ps)
+running1; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/driver/wb-driver.json" "$tmp/snap"
+run_repo_drv -Repo acme/widgets
+check "-Repo driver attach: exits with the session's code" test "$rc" -eq 7
+check "-Repo driver attach: makes the calls the long form makes" test "$(non_ps)" = "$long_calls"
+check "-Repo driver attach: no gh and no devcontainer" sh -c "! grep -q '^gh \|^devcontainer ' '$stubdir/calls.log'"
+check "-Repo driver attach: the record is untouched" cmp -s "$tmp/snap" "$home/driver/wb-driver.json"
+check "-Repo driver attach: the session line is the long form's" test "$(it_line)" = "$exec_line"
+
+# refusals: exit 2 before any external call
+repo_bad() { # repo_bad <label> <args...>
+  l=$1; shift; reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"
+  run_repo_drv "$@"
+  check "-Repo driver ($l): exit 2 with a usage line" sh -c "test $rc -eq 2 && grep -q 'usage: wow-driver.ps1' '$tmp/err'"
+  check "-Repo driver ($l): no external call" none_called
+}
+repo_bad 'no slash' -Repo acme
+repo_bad 'three parts' -Repo a/b/c
+repo_bad 'a space' -Repo 'a b/c'
+repo_bad 'an empty half' -Repo acme/
+repo_bad 'with -Clone' -Repo acme/widgets -Clone "$C"
+repo_bad 'with -Reference' -Repo acme/widgets -Reference "$R"
+# refusals: exit 1 before any docker call
+repo_refuses() { # repo_refuses <label> <message part>
+  check "-Repo driver ($1): exit 1" test "$rc" -eq 1
+  check "-Repo driver ($1): says why" err_has "$2"
+  check "-Repo driver ($1): no external call" none_called
+}
+reset; run_repo_drv -Repo acme/widgets; repo_refuses 'no driver directory' 'no driver record names acme/widgets'
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)" other/repo; run_repo_drv -Repo acme/widgets; repo_refuses 'no record names it' 'no driver record names acme/widgets'
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; write_record5 "$ID2" "$c2" "$(json_clone)" "$(json_ref)" acme/widgets second
+run_repo_drv -Repo acme/widgets; repo_refuses 'two records' 'more than one driver record'
+check "-Repo driver (two records): names both file names" sh -c "grep -q 'second.json' '$tmp/err' && grep -q 'wb-driver.json' '$tmp/err'"
+reset; write_record "$ID1" "$c2" "$(json_clone)"; run_repo_drv -Repo acme/widgets; repo_refuses 'a four-field record' 'no Reference path'
+check "-Repo driver (a four-field record): says the next start of day writes it" err_has 'next start of day'
+reset; write_record3 "$ID1" "$c2" "$(json_clone)"; run_repo_drv -Repo acme/widgets; repo_refuses 'a three-field record' 'no driver record names'
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; echo '{' >"$home/driver/broken.json"; run_repo_drv -Repo acme/widgets
+repo_refuses 'an unreadable record file' 'broken.json'
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; printf '{"id":"%s","commit":"%s","clone":"x","origin":"acme/widgets","reference":""}\n' "$ID1" "$c2" >"$home/driver/wb-driver.json"
+run_repo_drv -Repo acme/widgets; repo_refuses 'an empty reference' 'reference is empty'
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "relative/path"; run_repo_drv -Repo acme/widgets
+check "-Repo driver (a recorded relative Reference): the argument checks refuse it, exit 2" test "$rc" -eq 2
+check "-Repo driver (a recorded relative Reference): no external call" none_called
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(wp "$tmp/refs/gone" | sed 's,\\,\\\\,g')"; run_repo_drv -Repo acme/widgets
+check "-Repo driver (a recorded Reference that is gone): exit 2" test "$rc" -eq 2
+# five-field strict read: an extra field and a non-string reference
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; sed 's/}$/,"x":"y"}/' "$home/driver/wb-driver.json" >"$tmp/six"; cp "$tmp/six" "$home/driver/wb-driver.json"
+run_repo_drv -Repo acme/widgets; repo_refuses 'a six-field record' 'exactly id, commit, clone, origin and reference'
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; sed 's/"reference":"[^"]*"/"reference":7/' "$home/driver/wb-driver.json" >"$tmp/num"; cp "$tmp/num" "$home/driver/wb-driver.json"
+run_repo_drv -Repo acme/widgets; repo_refuses 'a numeric reference' 'reference is not a string'
+# a four-field record still reads: attach with it works through the long form
+running1; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
+check "a four-field record still reads: attach through the long form" test "$rc" -eq 7
+
+# wow-lane -Repo
+lane_setup; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
+run_lane -Issue 5 -Hash "$PH"; long_calls=$(non_ps)
+lane_setup; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
+run_repo_lane -Repo acme/widgets -Issue 5 -Hash "$PH"
+check "-Repo lane -Issue/-Hash: exits with the session's code" test "$rc" -eq 7
+check "-Repo lane -Issue/-Hash: makes the calls the long form makes" test "$(non_ps)" = "$long_calls"
+check "-Repo lane -Issue/-Hash: the record is byte-identical afterwards" cmp -s "$tmp/rec-snap" "$home/driver/wb-driver.json"
+lane_setup; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
+rm -rf "$lanes/5" "$lanes/5-prompt.md"; $real_git -C "$crepo" worktree prune
+run_repo_lane -Repo acme/widgets -Spec 12,7
+check "-Repo lane -Spec: exits with the session's code" test "$rc" -eq 7
+check "-Repo lane -Spec: the session names the repository and the issues in order" sh -c "grep -q 'claude --model opus --effort high Spec session for acme/widgets. Run /way-of-working:spec-task for each of these issues, one at a time, in this order: 12, 7\\.' '$stubdir/calls.log'"
+lane_setup; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"
+run_repo_lane -Repo acme/widgets -SpecSweep
+check "-Repo lane -SpecSweep: lists, exit 0" sh -c "test $rc -eq 0 && grep -q 'no spec sessions' '$tmp/out'"
+lane_bad() { # lane_bad <label> <args...>: exit 2, usage, no external call
+  l=$1; shift; reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"
+  run_repo_lane "$@"
+  check "-Repo lane ($l): exit 2 with a usage line" sh -c "test $rc -eq 2 && grep -q 'usage: wow-lane.ps1' '$tmp/err'"
+  check "-Repo lane ($l): no external call" none_called
+}
+lane_bad 'a bad shape' -Repo acme -SpecSweep
+lane_bad 'with -Clone' -Repo acme/widgets -Clone "$C" -SpecSweep
+lane_bad 'with -Reference' -Repo acme/widgets -Reference "$R" -SpecSweep
+reset; run_repo_lane -Repo acme/widgets -SpecSweep
+check "-Repo lane (no record): exit 1 before any external call" sh -c "test $rc -eq 1 && grep -q 'no driver record names acme/widgets' '$tmp/err'"
+check "-Repo lane (no record): no external call" none_called
+
+# -EndDay
+end_setup() { lane_setup; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/driver/wb-driver.json" "$tmp/rec-snap"; }
+stop_calls() { calls | grep -c '^docker stop '; }
+stopped_once() { [ "$(stop_calls)" -eq 1 ] && calls | grep -q -x "docker stop $ID1"; }
+no_stop() { [ "$(stop_calls)" -eq 0 ]; }
+end_refuses() { # end_refuses <label> <message part>
+  check "-EndDay ($1): exit 1" test "$rc" -eq 1
+  check "-EndDay ($1): says why" err_has "$2"
+  check "-EndDay ($1): no docker stop" no_stop
+  check "-EndDay ($1): no interactive exec" no_it
+}
+end_setup; run_repo_lane -Repo acme/widgets -EndDay
+check "-EndDay idle: exit 0" test "$rc" -eq 0
+check "-EndDay idle: one docker stop of the recorded id" stopped_once
+check "-EndDay idle: prints stopped <id>" sh -c "test \"\$(cat '$tmp/out')\" = 'stopped $ID1'"
+check "-EndDay idle: relay probe, one pinned in-container check, then the stop, and nothing else" test "$(exec_shape)" = "exec -u root,exec -u app,stop $ID1 ,"
+check "-EndDay idle: one in-container exec, GIT_NO_REPLACE_OBJECTS=1" app_execs_pinned 1
+check "-EndDay idle: no model read, no interactive exec" no_it
+check "-EndDay idle: the record is byte-identical afterwards" cmp -s "$tmp/rec-snap" "$home/driver/wb-driver.json"
+check "-EndDay idle: no argv holds & | ^ % ! or a double quote" no_banned
+end_setup; run_lane -EndDay
+check "-EndDay through the long form: stops the recorded container" sh -c "test $rc -eq 0 && grep -q -x 'docker stop $ID1' '$stubdir/calls.log'"
+end_setup; rm -rf "$lanes"; run_repo_lane -Repo acme/widgets -EndDay
+check "-EndDay (no lanes directory): idle, stops" sh -c "test $rc -eq 0 && grep -q -x 'docker stop $ID1' '$stubdir/calls.log'"
+end_setup; echo dirty >"$stubdir/probe.out"; run_repo_lane -Repo acme/widgets -EndDay
+end_refuses 'a dirty relay probe' 'VS Code attach'
+check "-EndDay (a dirty relay probe): no in-container check ran" no_app_exec
+end_setup; : >"$stubdir/it.owner"; run_repo_lane -Repo acme/widgets -EndDay
+end_refuses 'a lanes directory not owned by the user' 'link, not a directory'
+end_setup; echo 3 >"$stubdir/stop.exit"; run_repo_lane -Repo acme/widgets -EndDay
+check "-EndDay (docker stop fails): exit 1 naming the stop" sh -c "test $rc -eq 1 && grep -q 'docker stop failed' '$tmp/err'"
+check "-EndDay (docker stop fails): does not print stopped" sh -c "! grep -q stopped '$tmp/out'"
+end_setup; rm -rf "$lanes"; ln -s "$tmp/nowhere" "$lanes" 2>/dev/null && { run_repo_lane -Repo acme/widgets -EndDay; end_refuses 'a dangling lanes link' 'link, not a directory'; rm -f "$lanes"; }
+end_bad() { # end_bad <label> <args...>
+  l=$1; shift; end_setup
+  run_repo_lane -Repo acme/widgets "$@"
+  check "-EndDay ($l): exit 2 with a usage line" sh -c "test $rc -eq 2 && grep -q 'usage: wow-lane.ps1' '$tmp/err'"
+  check "-EndDay ($l): no external call" none_called
+}
+end_bad 'with -Issue and -Hash' -EndDay -Issue 5 -Hash "$PH"
+end_bad 'with -Spec' -EndDay -Spec 5
+end_bad 'with -SpecSweep' -EndDay -SpecSweep
+end_bad 'with -Hash alone' -EndDay -Hash "$PH"
+
+if [ -n "$msys" ]; then
+  skip "the fake running session needs /proc; the -EndDay busy fixtures did not run under MSYS"
+else
+  mk_fake
+  end_busy() { # end_busy <label> <dir>: a running claude in <dir> refuses -EndDay
+    end_setup
+    if fake_start "$2"; then
+      run_repo_lane -Repo acme/widgets -EndDay
+      end_refuses "$1" 'still running'
+      check "-EndDay ($1): the in-container check ran once" app_execs_pinned 1
+      fake_stop
+    else bad "the fake running session never read as claude"; fake_stop; fi
+  }
+  end_busy 'a lane session in a numbered lane leaf' "$lanes/5"
+  end_setup; mkdir "$lanes/spec-aaa111"
+  if fake_start "$lanes/spec-aaa111"; then
+    run_repo_lane -Repo acme/widgets -EndDay
+    end_refuses 'a spec session' 'still running'
+    rm -rf "$lanes/spec-aaa111"
+    rerun_end() { rm -f "$stubdir"/n.*; : >"$stubdir/calls.log"; run_repo_lane -Repo acme/widgets -EndDay; }
+    rerun_end
+    end_refuses 'a spec session whose leaf was removed under it' 'still running'
+    fake_stop
+  else bad "the fake running session never read as claude"; fake_stop; fi
+  # the driver session runs in /workspace: it does not count as busy
+  end_setup
+  if fake_start "$crepo"; then
+    run_repo_lane -Repo acme/widgets -EndDay
+    check "-EndDay (a claude in the container clone, the driver's place): not busy, stops" sh -c "test $rc -eq 0 && grep -q -x 'docker stop $ID1' '$stubdir/calls.log'"
+    fake_stop
+  else bad "the fake running session never read as claude"; fake_stop; fi
+  # a process named claude that is not under the lanes directory but under a sibling with the same prefix
+  end_setup; mkdir "$lanes-other"
+  if fake_start "$lanes-other"; then
+    run_repo_lane -Repo acme/widgets -EndDay
+    check "-EndDay (a claude under a sibling directory with the lanes name as a prefix): not busy" sh -c "test $rc -eq 0 && grep -q -x 'docker stop $ID1' '$stubdir/calls.log'"
+    fake_stop
+  else bad "the fake running session never read as claude"; fake_stop; fi
+  rm -rf "$lanes-other"
+fi
+
+# the end-of-day script, run for real, reads an empty /proc as unreadable, never idle
+endday_unreadable() {
+  script=$(sed -n '/^function Get-EndDayScript/,/^}/p' "$root_dir/scripts/identity/wow-lane.ps1" | sed -n 2p | sed "s/^  [\$]script:LanesGuard + '//; s/'\$//")
+  g=$(grep -E "^[\$]script:LanesGuard = '.*'\$" "$root_dir/scripts/identity/wow-lane.ps1" | sed "s/^[^']*'//; s/'\$//")
+  [ -n "$g" ] || return 1
+  # a stand-in for ls that prints nothing: the walk sees no process id, its own included
+  mkdir -p "$tmp/emptybin"; printf '#!/bin/sh\nexit 0\n' >"$tmp/emptybin/ls"; chmod +x "$tmp/emptybin/ls"
+  mkdir -p "$tmp/el"; chmod 700 "$tmp/el"
+  w=$(PATH="$tmp/emptybin:$PATH" /bin/sh -c "$g$script" sh "$tmp/el")
+  [ "$w" = unreadable ]
+}
+if [ -n "$msys" ]; then skip "the end-of-day script runs against /proc; the unreadable fixture did not run under MSYS"; else
+  check "-EndDay script: a walk that sees no process, its own included, answers unreadable and not idle" endday_unreadable
+fi
+
+# Get-Help on each launcher in the checkout (the script is not run) returns the .SYNOPSIS text, not the syntax line (#1386)
+help_synopsis() { "$pwsh_abs" -NoProfile -NonInteractive -Command "(Get-Help -Name '$(wp "$root_dir/scripts/identity/$1")' -ErrorAction Stop).Synopsis" 2>/dev/null | tr -d '\r'; }
+help_starts() { # help_starts <script> <text>
+  out=$(help_synopsis "$1"); case "$out" in "$2"*) return 0 ;; esac; return 1
+}
+check "Get-Help wow-driver.ps1: the Synopsis begins with the .SYNOPSIS text" help_starts wow-driver.ps1 'Start the driver session'
+check "Get-Help wow-lane.ps1: the Synopsis begins with the .SYNOPSIS text" help_starts wow-lane.ps1 'Start a coder lane'
+help_names_home() { out=$(help_synopsis "$1"); case "$out" in *"the -WowHome identity home serves"*) return 0 ;; esac; return 1; }
+check "wow-driver.ps1's .SYNOPSIS names the identity home the org is read from" help_names_home wow-driver.ps1
+check "wow-lane.ps1's .SYNOPSIS names the identity home the org is read from" help_names_home wow-lane.ps1
+no_bare_any_repo() { ! grep -q 'Any repository of the org works' "$root_dir/scripts/identity/wow-driver.ps1" "$root_dir/scripts/identity/wow-lane.ps1"; }
+check "neither launcher says \"Any repository of the org works\"" no_bare_any_repo
+
+  :
+}
+
 # Run every section at once; replay each one's output in order.
-sections="notinst badargs start startb attach lanea laneb lanec laned misc msys origin yqver"
+sections="notinst badargs start startb attach lanea laneb lanec laned misc msys origin yqver repo"
 pids=
 # An interrupt stops the section subshells and removes the scratch tree (a signal skips the EXIT trap);
 # a pwsh run already in flight ends on its own, as test-all.sh's header allows.

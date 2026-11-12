@@ -21,8 +21,15 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- `wow-driver.ps1` and `wow-lane.ps1` take `-Repo owner/name` in place of `-Clone` and `-Reference`, reading both paths from the one driver record whose origin is that repository (the driver record gains a fifth field, `reference`, written at start of day; a three- or four-field record still reads and is replaced at the next start of day); the first start of day for a repository still takes the paths. `/way-of-working:lanes` prints its host commands in the `-Repo <owner/name>` form (#1381).
+- `wow-lane.ps1 -Repo owner/name -EndDay` stops the repository's recorded container unless a lane or spec session still runs in it, and does nothing else; the driver session in `/workspace` does not count as busy, so the stop also ends it (#1381).
+
 ### Changed
 
+- The launchers' help is now read by `Get-Help` (a blank line between `#Requires` and the help block, with a test); their `.SYNOPSIS` names the identity home the org is read from, and the driver help and `docs/identity/DEV-CONTAINER.md` say that the commit binding is to the Reference clone's configured origin, so a Reference whose origin is a fork binds to the fork's base branch (#1386, #1346). The test docker stub logs its working directory like the gh and devcontainer stubs (#1346).
+- Correction to the released v0.31.0 `#1380` entry: its "within the one limit their `.SYNOPSIS` states" should read "within the limits"; the released entry is not edited (#1391).
 - The approval ruleset's read-back in `reference/cutover.md` now also requires the `deletion` and `non_fast_forward` rules item 2 names, not only the `pull_request` rule (#1287).
 - `/way-of-working:spec-task`'s *Fetch and check* call prints the `spec-find.sh answer` word as `ANSWER=`, drafting waits on it and on the answer block's result, and invariants check 28 pins the order (#1416).
 - The read-back sentence in `reference/cutover.md` now names the admin App beside a repo admin as a way to read back a repo ruleset, matching the *Who makes each* paragraph (#1289).

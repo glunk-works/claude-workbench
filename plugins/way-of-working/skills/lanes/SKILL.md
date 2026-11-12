@@ -28,11 +28,14 @@ For one task, in this order. Each step has a name, and this skill cites a step b
 1. **Hand over the spec command.** Hand the maintainer the spec launcher command. `-Spec` takes the
    issue numbers to draft specs for; `-SpecSweep` takes none:
    ```powershell
-   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Spec N[,N...]
-   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -SpecSweep
+   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -Spec N[,N...]
+   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -SpecSweep
    ```
-   `<clone>` and `<other clone>`, here and in *start*, are the `-Clone` and `-Reference` paths
-   `wow-driver.ps1` was run with; the skill cannot know them, so the maintainer fills them in.
+   `<owner/name>`, here and in *start*, is the repository the driver runs for; the skill cannot
+   know it, so the maintainer fills it in. The `-Repo` form needs host tools installed at or after
+   this change and a driver record written by a start of day with them; otherwise the long form
+   with `-Clone <clone> -Reference <other clone>`, the two paths `wow-driver.ps1` was run with,
+   still works.
 2. **Read the closing output.** When the spec session ends, read its closing output, as the
    maintainer passes it on: its outcome for each issue and any follow-up it reported.
 3. **Review the posted spec.** Only for an issue whose outcome is `posted <id> <login> <url>`, review
@@ -73,10 +76,10 @@ tells the lane its PR closes too.
    `unsafe-dir`, `unreadable`, `repo-mismatch`, `backlog-case`, `unreached`, `not-map`, `finder: WORD`,
    `bad-issue`, `exists`, `failed`) is the answer: print it and stop.
 2. On success it prints `worktree=`, `branch=`, `found=`, `milestone=`, `prompt=` and
-   `prompt-sha256=`. Print them, then the host command with `N` and the hash filled in, and the two
-   clone paths left for the maintainer:
+   `prompt-sha256=`. Print them, then the host command with `N` and the hash filled in, and the
+   repository left for the maintainer:
    ```powershell
-   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Issue N -Hash <prompt-sha256>
+   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -Issue N -Hash <prompt-sha256>
    ```
 3. Say that the spec pin, the mode and the critics (and, when `ALSO` is given, the closes line) are in
    the prompt file.

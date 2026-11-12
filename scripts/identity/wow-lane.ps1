@@ -1,10 +1,12 @@
 #Requires -Version 7.2
+
 <#
 .SYNOPSIS
-  Start a coder lane, or a spec session, or list the spec sessions, in the container the driver
+  Start a coder lane, or a spec session, or list the spec sessions, or end the day, in the container the driver
   launcher recorded for -Clone, for the repository of -Reference's origin (WB-D24, WB-D33, issue #762,
   split from #728).
-  Any repository of the org works, chosen by -Clone and -Reference, if it is set up as the
+  Any repository of the org the -WowHome identity home serves works, chosen by -Clone and -Reference,
+  or by -Repo once a start of day has recorded both, if it is set up as the
   "Adding a repo to this host" section of claude-workbench's docs/identity/DEV-CONTAINER.md describes
   and its .ai/project.yml at -Base holds the keys the -Reference help names.
   Run it from pwsh 7.2+ on the host,
@@ -12,7 +14,7 @@
   `pwsh -File`: from a pwsh prompt `-Spec 1,2` binds as `1 2` and is refused with exit 2.
 
 .DESCRIPTION
-  Three modes, exactly one per run:
+  Four modes, exactly one per run:
 
     -Issue N -Hash HASH   Lane mode. Starts a coder lane in the worktree lane.sh prep N made (N under
                           the lanes directory, lanes.dir, in the container), on models.coder, with the
@@ -32,9 +34,16 @@
                           time. It kills and removes nothing and starts no session, but fetches in the
                           Reference (step 6). It refuses, listing nothing, when the lanes directory in
                           the container is a link, not a directory, or not owned by the container user.
+    -EndDay               End-of-day mode. Stops the repo's recorded container (docker stop) unless a lane
+                          or spec session is still running in it: any claude process the container user
+                          owns whose working directory is under the lanes directory, a lane's N or a
+                          spec session's spec- leaf. It refuses when one runs, and does nothing else: no
+                          handoff check and no cleanup. The driver session in /workspace does not count
+                          as busy, so the stop also ends it.
 
-  Order, lane and spec modes (-SpecSweep runs steps 1 to 7, skipping the model read in step 6 and step 8,
-  and its step 7 is the one non-interactive docker exec -u app of the sweep script, whose lines it prints):
+  Order, lane and spec modes (-SpecSweep and -EndDay run steps 1 to 6 without the model read in step 6;
+  -SpecSweep then runs its step 7, the one non-interactive docker exec -u app of the sweep script, whose
+  lines it prints, and -EndDay its own step 7, the end-of-day script, then docker stop of the container):
     1. The MANIFEST check, inline, before the helper is dot-sourced (as wow-driver.ps1 does it).
     2. The arguments (exit 2, before any external call, except the sh run that converts an MSYS-form -WowHome).
     3. Installed from bin under the final -WowHome.
@@ -43,7 +52,7 @@
     5. Exactly one container for the clone, running; none for the Reference; the driver record names
        this clone and that container; the relay probe is clean. The record is never written here.
     6. The Reference's origin repository against the driver record's (refused when the record has none
-       or another one), then the Reference's commit, the role's model (not for -SpecSweep) and the lanes
+       or another one), then the Reference's commit, the role's model (not for -SpecSweep or -EndDay) and the lanes
        directory, lanes.dir in the Reference's .ai/project.yml at that commit (refused, before the step 7
        docker exec, when lanes is absent, null, not a map, or its dir is not an absolute path of A-Za-z0-9._/-
        with no //, no . or .. component and no trailing slash).
@@ -54,7 +63,7 @@
     8. The interactive session, through Invoke-Session. In spec mode the session and the cleanup after
        it sit in a try whose finally runs the cleanup.
 
-  The scripts for step 7 and for the spec cleanup are returned by the four Get-*Script functions
+  The scripts for step 7 and for the spec cleanup are returned by the five Get-*Script functions
   below, each the shared lanes-directory guard ($script:LanesGuard) followed by a single-quoted
   one-liner of its own. Nothing variable is spliced into one: the lanes directory (lanes.dir, read in
   step 6) and the repo directory (a launcher literal), the issue number, hash, commit, base name, worktree leaf, spec
@@ -62,8 +71,10 @@
   holds & | ^ % ! or a double quote, nor does any other docker argument (Resolve-Tool may resolve
   a docker.cmd, which runs through cmd.exe).
 
-  Exit codes: 0 for -SpecSweep when it listed; 2 for a bad or missing argument (a usage line on stderr, before any external call, except the sh run
+  Exit codes: 0 for -SpecSweep when it listed and for -EndDay when it stopped the container; 2 for a bad or missing argument (a usage line on stderr, before any external call, except the sh run
   that converts an MSYS-form -WowHome);
+  with -Repo the record lookup (exit 1 when it refuses) runs before the checks of -Remote, -Base and the mode,
+  so those exit 2 only once a record is found;
   1 for every refusal (a one-line reason on stderr) and for a spec worktree that was kept rather than
   removed; otherwise the session's own exit code.
 
@@ -80,7 +91,12 @@
   session's own git reads (git show, log, diff, and spec-fresh.sh's diff) still honor a planted replace
   ref. If the host docker exec client dies, the in-container claude can keep running, so the finally
   cleanup may run under a live session; the removal is not forced, so git refuses it on modified or
-  untracked files, but a session that has changed nothing yet loses its working directory. These checks catch accidents.
+  untracked files, but a session that has changed nothing yet loses its working directory. These checks catch accidents. A session started between the -EndDay check and the stop is not caught.
+
+.PARAMETER Repo
+  As wow-driver.ps1: owner/name, whose driver record supplies -Clone and -Reference, which it excludes (exit 2).
+  The lane and spec commands then read -Repo owner/name -Issue N -Hash H and -Repo owner/name -Spec N; the hash
+  stays, since it binds the prompt file. Works for every mode.
 
 .PARAMETER Clone
   As wow-driver.ps1: the clone the container opens.
@@ -109,13 +125,19 @@
   Spec mode: one string, issue numbers split on commas; no empty part, no repeat, at most 10.
 
 .PARAMETER SpecSweep
-  Sweep mode: a switch, exclusive with -Issue, -Hash and -Spec. Lists the spec worktrees, records and
+  Sweep mode: a switch, exclusive with -Issue, -Hash, -Spec and -EndDay. Lists the spec worktrees, records and
   running spec sessions under the lanes directory; kills and removes nothing and starts no session, but
   fetches in the Reference. Refuses, listing nothing, when the lanes directory is a link, not a directory,
   or not owned by the container user.
+
+.PARAMETER EndDay
+  End-of-day mode: a switch, exclusive with -Issue, -Hash, -Spec and -SpecSweep. Stops the recorded container
+  unless a lane or spec session runs in it (refused then). Runs the relay probe like every mode, so a probe hit
+  refuses with its message.
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
+  [string]$Repo,
   [string]$Clone,
   [string]$Reference,
   [string]$WowHome = $(if ($env:WOW_HOME) { $env:WOW_HOME } else { Join-Path $HOME '.config/glunk-identity' }),
@@ -124,7 +146,8 @@ param(
   [string]$Issue,
   [string]$Hash,
   [string]$Spec,
-  [switch]$SpecSweep
+  [switch]$SpecSweep,
+  [switch]$EndDay
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -148,7 +171,7 @@ try {
 } catch { & $notInstalled }
 
 $script:LaunchProg = 'wow-lane'
-$script:LaunchUsage = 'usage: wow-lane.ps1 -Clone <path> -Reference <path> (-Issue <N> -Hash <sha256> | -Spec <N[,N...]> | -SpecSweep) [-WowHome <path>] [-Remote <name>] [-Base <name>]'
+$script:LaunchUsage = 'usage: wow-lane.ps1 (-Clone <path> -Reference <path> | -Repo <owner/name>) (-Issue <N> -Hash <sha256> | -Spec <N[,N...]> | -SpecSweep | -EndDay) [-WowHome <path>] [-Remote <name>] [-Base <name>]'
 . (Join-Path $PSScriptRoot 'wow-launch-common.ps1')
 
 # The in-container scripts. Each is one line in one single-quoted string, with no single quote, & | ^ % !
@@ -187,6 +210,11 @@ function Get-SpecCleanupScript {
 # Positionals: lanes dir. Prints one line per running spec session and per leaf with no running session: leaf, process id or -, issues or unknown, seconds or unknown, yes or no (directory present); or the one word none; or the one word unsafe-dir when the lanes directory is a link, not a directory or not owned by the user (nothing else is printed then). A missing lanes directory is not refused.
 function Get-SpecSweepScript {
   $script:LanesGuard + 'seen=,; any=0; dg() { if test $# = 2; then :; else dok=0; return 0; fi; dv=$1; dok=1; while test ${#dv} -gt 0; do case $dv in [$2]*) dv=${dv#?};; *) dok=0; dv=;; esac; done; }; pf() { g=; q=$1; dg $q 0-9; if test $dok = 0; then return 0; fi; if test -O /proc/$q; then :; else return 0; fi; c=$(cat /proc/$q/comm); case $c in claude) :;; *) return 0;; esac; y=$(readlink /proc/$q/cwd); case $y in $L/spec-*) :;; *) return 0;; esac; set -- ${y#$L/}; if test $# -gt 2; then return 0; fi; if test $# = 2; then case $2 in \(deleted\)) :;; *) return 0;; esac; fi; case $1 in spec-[a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9]) g=$1;; esac; }; rd() { ri=unknown; rs=unknown; f=$L/record-$1; if test -L $f; then return 0; fi; if test -f $f; then :; else return 0; fi; n=0; a=; b=; while read -r k u; do n=$((n+1)); a=$k; b=$u; done <$f; if test $n = 1; then :; else return 0; fi; ok=1; if test ${#b} -lt 1; then ok=0; fi; if test ${#b} -gt 10; then ok=0; fi; dg $b 0-9; if test $dok = 0; then ok=0; fi; case $b in 0*) ok=0;; esac; if test ${#a} -lt 1; then ok=0; fi; if test ${#a} -gt 99; then ok=0; fi; dg $a 0-9,; if test $dok = 0; then ok=0; fi; case $a in ,*) ok=0;; *,) ok=0;; *,,*) ok=0;; 0*) ok=0;; *,0*) ok=0;; esac; if test $ok = 1; then IFS=,; set -- $a; unset IFS; if test $# -gt 10; then ok=0; fi; while test $# -gt 0; do if test ${#1} -gt 9; then ok=0; fi; shift; done; fi; if test $ok = 1; then ri=$a; rs=$b; fi; };  sp() { d=no; if test -d $L/$1; then d=yes; fi; }; w=ok; case $lw in ok) :;; missing) :;; *) w=unsafe-dir;; esac; if test $w = ok; then set -- $(ls /proc); while test $# -gt 0; do pf $1; if test ${#g} -gt 0; then rd $g; sp $g; echo $g $1 $ri $rs $d; seen=$seen$g,; any=1; fi; shift; done; set -- $(ls $L); while test $# -gt 0; do h=; case $1 in spec-[a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9]) h=$1;; record-spec-[a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9]) h=${1#record-};; esac; if test ${#h} -gt 0; then case $seen in *,$h,*) h=;; esac; fi; if test ${#h} -gt 0; then e=0; if test -d $L/$h; then e=1; fi; if test -e $L/record-$h; then e=1; fi; if test -L $L/record-$h; then e=1; fi; if test $e = 1; then rd $h; sp $h; echo $h - $ri $rs $d; seen=$seen$h,; any=1; fi; fi; shift; done; fi; if test $w = unsafe-dir; then echo unsafe-dir; elif test $any = 0; then echo none; fi'
+}
+
+# Positionals: lanes dir. Words: busy unsafe-dir idle unreadable. busy: a process the user owns, named claude, with a working directory under the lanes directory (a lane's N or a spec leaf, a trailing (deleted) included). idle only when the walk saw its own process id (so a walk that sees nothing is unreadable); a missing lanes directory skips the walk and is idle.
+function Get-EndDayScript {
+  $script:LanesGuard + 'b=0; me=0; w=ok; dg() { if test $# = 2; then :; else dok=0; return 0; fi; dv=$1; dok=1; while test ${#dv} -gt 0; do case $dv in [$2]*) dv=${dv#?};; *) dok=0; dv=;; esac; done; }; case $lw in ok) :;; missing) w=idle;; *) w=unsafe-dir;; esac; if test $w = ok; then set -- $(ls /proc); while test $# -gt 0; do q=$1; dg $q 0-9; if test $dok = 1; then case $q in $$) me=1;; esac; if test -O /proc/$q; then c=$(cat /proc/$q/comm); case $c in claude) y=$(readlink /proc/$q/cwd); case $y in $L/*) b=1;; esac;; esac; fi; fi; shift; done; if test $b = 1; then w=busy; elif test $me = 1; then w=idle; else w=unreadable; fi; fi; echo $w'
 }
 
 # First-message templates: only @ORIGIN@, @LANES@, @N@, @HASH@ and @LIST@ are filled, each from a validated value.
@@ -281,13 +309,23 @@ function Get-ReferenceLanesDir([string]$Git, [string]$Yq, [string]$Reference, [s
 
 try {
   # --- arguments: exit 2, before any external call (the one exception: the sh run for an MSYS-form -WowHome) ---
+  # -Repo: the two paths come from the driver record, then go through the checks a given pair goes through.
+  $wowP = $null
+  if ($PSBoundParameters.ContainsKey('Repo')) {
+    Assert-RepoArgument $Repo
+    if ($PSBoundParameters.ContainsKey('Clone') -or $PSBoundParameters.ContainsKey('Reference')) { Stop-BadArgument '-Repo cannot be combined with -Clone or -Reference' }
+    $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain
+    $found = Find-RecordByRepo $wowP $Repo
+    $Clone = $found.Clone
+    $Reference = $found.Reference
+  }
   $cloneP = Resolve-LaunchDir '-Clone' $Clone
   $refP = Resolve-LaunchDir '-Reference' $Reference
   $gitDir = Join-Path $refP '.git'
   if (-not (Test-Path -LiteralPath $gitDir -PathType Container)) { Stop-BadArgument '-Reference needs a .git directory (not a file, so not a worktree)' }
   if (Test-ReparsePoint $gitDir) { Stop-BadArgument "-Reference's .git is a link or reparse point" }
   if ((Test-PathInside $cloneP $refP) -or (Test-PathInside $refP $cloneP)) { Stop-BadArgument '-Clone and -Reference may not be, or contain, one another' }
-  $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain
+  if ($null -eq $wowP) { $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain }
   if ((Test-PathInside $cloneP $wowP) -or (Test-PathInside $wowP $cloneP)) { Stop-BadArgument '-Clone may not be, contain or sit inside -WowHome' }
   if (-not (Test-RefName $Remote)) { Stop-BadArgument '-Remote is not a plain ref name' }
   if (-not (Test-RefName $Base)) { Stop-BadArgument '-Base is not a plain ref name' }
@@ -299,9 +337,11 @@ try {
   $hasHash = $PSBoundParameters.ContainsKey('Hash')
   $hasSpec = $PSBoundParameters.ContainsKey('Spec')
   $hasSweep = $SpecSweep.IsPresent
+  $hasEnd = $EndDay.IsPresent
+  if ($hasEnd -and ($hasIssue -or $hasHash -or $hasSpec -or $hasSweep)) { Stop-BadArgument '-EndDay cannot be combined with -Issue, -Hash, -Spec or -SpecSweep' }
   if ($hasSweep -and ($hasIssue -or $hasHash -or $hasSpec)) { Stop-BadArgument '-SpecSweep cannot be combined with -Issue, -Hash or -Spec' }
   if ($hasSpec -and ($hasIssue -or $hasHash)) { Stop-BadArgument '-Spec cannot be combined with -Issue or -Hash' }
-  if (-not $hasSweep -and -not $hasSpec -and -not $hasIssue -and -not $hasHash) { Stop-BadArgument 'give -Issue with -Hash, -Spec, or -SpecSweep' }
+  if (-not $hasEnd -and -not $hasSweep -and -not $hasSpec -and -not $hasIssue -and -not $hasHash) { Stop-BadArgument 'give -Issue with -Hash, -Spec, -SpecSweep, or -EndDay' }
   if ($hasIssue -ne $hasHash) { Stop-BadArgument '-Issue and -Hash go together' }
   $specList = @()
   if ($hasSpec) {
@@ -309,7 +349,7 @@ try {
     if ($specList.Count -gt 10) { Stop-BadArgument '-Spec takes at most 10 issues' }
     foreach ($s in $specList) { if (-not (Test-IssueNumber $s)) { Stop-BadArgument '-Spec holds a part that is not an issue number (decimal digits, no leading zero, at most 9)' } }
     if (@($specList | Select-Object -Unique).Count -ne $specList.Count) { Stop-BadArgument '-Spec repeats an issue' }
-  } elseif (-not $hasSweep) {
+  } elseif (-not $hasSweep -and -not $hasEnd) {
     if (-not (Test-IssueNumber $Issue)) { Stop-BadArgument '-Issue is not an issue number (decimal digits, no leading zero, at most 9)' }
     if (-not (Test-Hex $Hash 64)) { Stop-BadArgument '-Hash is not 64 lowercase hex digits' }
   }
@@ -347,10 +387,23 @@ try {
   $refOrigin = Get-ReferenceOrigin $git $refP $Remote
   if ($rec.origin -cne $refOrigin) { Stop-Launch "the driver record names $($rec.origin) but the Reference's $Remote is ${refOrigin}: a Reference of another repository was given" }
   $commit = Get-ReferenceCommit $git $refP $Remote $Base
-  if (-not $hasSweep) { $model = Get-RoleModel $git $yq $refP $commit $(if ($hasSpec) { 'architect' } else { 'coder' }) }
+  if (-not $hasSweep -and -not $hasEnd) { $model = Get-RoleModel $git $yq $refP $commit $(if ($hasSpec) { 'architect' } else { 'coder' }) }
   $script:LanesDir = Get-ReferenceLanesDir $git $yq $refP $commit
 
-  if ($hasSweep) {
+  if ($hasEnd) {
+    # --- end of day: stop the recorded container unless a lane or spec session runs in it ---------------
+    $word = Invoke-ContainerWord $docker $id (Get-EndDayScript) @($script:LanesDir)
+    switch -CaseSensitive ($word) {
+      'idle' { }
+      'busy' { Stop-Launch 'a lane or spec session is still running in the container: end it, then rerun' }
+      'unsafe-dir' { Stop-Launch "$($script:LanesDir) in the container is a link, not a directory, or not owned by the container user" }
+      default { Stop-Launch 'the end-of-day check in the container gave no usable answer' }
+    }
+    $stop = Invoke-Tool $docker @('stop', $id)
+    if ($stop.Code -ne 0) { Stop-Launch "docker stop failed (exit $($stop.Code))" }
+    Write-LaunchLine "stopped $id"
+    $code = 0
+  } elseif ($hasSweep) {
     # --- sweep: kills and removes nothing, no session (it fetches in the Reference above) ----------
     $rows = Invoke-SpecSweep $docker $id $script:LanesDir
     if ($rows -is [string] -and $rows -ceq 'unsafe-dir') { Stop-Launch "$($script:LanesDir) in the container is a link, not a directory, or not owned by the container user" }
