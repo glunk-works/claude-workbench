@@ -328,8 +328,8 @@ the draft* step) and relays its findings to the drafter.
    dropped, and compares them with `cmp -s`:
    ```bash
    RD='<printed refresh dir>' DD='<printed draft dir>' C=different &&
-   norm() { awk '{ sub(/\r$/, "") } !f && /^### Goal[ \t]*$/ { f = 1 } f { a[++n] = $0 } END { if (!f) exit 3; while (n > 0 && a[n] == "") n--; for (i = 1; i <= n; i++) print a[i] }' "$1"; } &&
-   head_ok() { awk '{ sub(/\r$/, "") } /^### Goal[ \t]*$/ { exit } /[^ \t]/ { nb++; if (nb == 2 && $0 !~ /^Model provenance:/) bad = 1 } END { exit (nb < 1 || nb > 2 || bad) ? 1 : 0 }' "$1"; } &&
+   norm() { awk '{ sub(/\r$/, "") } !f && /^### Goal[ \t]*$/ { f = 1 } f { a[++n] = $(0) } END { if (!f) exit 3; while (n > 0 && a[n] == "") n--; for (i = 1; i <= n; i++) print a[i] }' "${1}"; } &&
+   head_ok() { awk '{ sub(/\r$/, "") } /^### Goal[ \t]*$/ { exit } /[^ \t]/ { nb++; if (nb == 2 && $(0) !~ /^Model provenance:/) bad = 1 } END { exit (nb < 1 || nb > 2 || bad) ? 1 : 0 }' "${1}"; } &&
    if norm "$RD/approved.md" >"$RD/a.norm" && norm "$DD/draft.md" >"$DD/d.norm" && head_ok "$DD/draft.md" && cmp -s "$RD/a.norm" "$DD/d.norm"; then C=equal; fi
    echo "COMPARE=$C"
    ```

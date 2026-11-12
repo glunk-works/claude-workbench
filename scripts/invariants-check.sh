@@ -32,7 +32,7 @@ report() {
 # the tests/invariants-*.test.sh fixtures, which copy the tree and look for one check's message.
 # It is an argument on purpose, never an environment variable, so nothing ambient can narrow a
 # gate run; the gate (CI, release, gates.green) never passes it.
-ALL_IDS=(1 2 2b 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28)
+ALL_IDS=(1 2 2b 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29)
 only=
 only_set=0
 usage() {
@@ -1762,6 +1762,36 @@ if [ -n "$ansord_hits" ]; then
   report "spec-task does not print the answer word before it drafts (#1416)" \
     "$ansord_hits" \
     "Keep the answer finder and its printf of ANSWER= in the Fetch and check block, the Answer branch step opening by gating on that word, and the Draft step's opening waiting on them."
+fi
+fi
+
+# --- 29. No SKILL.md holds a bare `$<digit>` (#1470) ------------------------------------------
+if want 29; then
+#
+# The skill loader substitutes the invocation argument for a bare positional in a SKILL.md's text,
+# awk programs inside fenced Bash blocks included. #1466's refresh run saw spec-task's `norm()` awk
+# printed with the argument where `$0` stood, so every line would store the same value and two drafts with
+# the same number of lines would compare `equal`. Awk fields are written `$(0)`, `$(1)`, `$(2)` and shell positionals
+# `${1}`, which awk and the shell read as before. Appendices are not inlined by the loader and are
+# not scanned. The scan covers prose and fences alike: the loader does not tell them apart.
+#
+# Hand check of the loader (#1470): the lane that built this check could not load a throwaway skill
+# created mid-session ("Unknown skill"), so what `$(0)`, `${1}`, `$0` and `$1` become with no
+# argument and with one is NOT recorded here from observation; the only observed fact is #1466's
+# bare `$0` replaced by the argument. The maintainer confirms the rest on the host (see the PR).
+skillarg_hits=
+skillarg_seen=0
+for f in plugins/*/skills/*/SKILL.md; do
+  [ -f "$f" ] || continue
+  skillarg_seen=1
+  skillarg_res=$(LC_ALL=C awk '/\$[0-9]/ { print FNR ": " $0 }' "$f")
+  [ -z "$skillarg_res" ] || skillarg_hits+="$(printf '%s\n' "$skillarg_res" | sed "s|^|  $f:|")"$'\n'
+done
+[ "$skillarg_seen" -eq 1 ] || skillarg_hits+="  (no plugins/*/skills/*/SKILL.md found)"$'\n'
+if [ -n "$skillarg_hits" ]; then
+  report "a SKILL.md holds a bare \$<digit>, which the skill loader rewrites with the invocation argument (#1470)" \
+    "$skillarg_hits" \
+    "Write awk fields as \$(0), \$(1), \$(2) and shell positionals as \${1}."
 fi
 fi
 

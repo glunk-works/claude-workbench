@@ -691,7 +691,7 @@ If any precondition fails, STOP and report why — do not archive.
      cur=$(git branch --show-current)
      for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
        case "$b" in "$base"|"$cur") continue;; esac
-       tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$1 == b { print $2; exit }')
+       tip_gh=$(printf '%s\n' "$merged" | awk -v b="$b" '$(1) == b { print $(2); exit }')
        [ -n "$tip_gh" ] || continue                    # no merged PR -- not a candidate
        case "$(prune-verdict.sh "$b" "$tip_gh")" in   # tip IS, or is behind, the merged commit
          delete)           git branch -D "$b" && echo "pruned $b" ;;

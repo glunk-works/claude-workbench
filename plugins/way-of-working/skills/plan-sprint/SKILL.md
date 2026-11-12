@@ -943,7 +943,7 @@ If any precondition fails, stop and report why — do not proceed.
    `/way-of-working:resume` and `/way-of-working:unpark-sprint` apply too: the value read into a
    variable and passed only as that quoted variable, never typed into a command line
    (`G1=$(jq -r '.hitl_gate // ""' .ai/state.json) && hitl-gate-closed.sh "$G1"`; for the
-   ledger line, `G2=$(awk '{sub(/\r$/,"")} /^\*\*HITL Gate:/{f=1} f&&/^$/{exit} f{printf "%s ", $0}'
+   ledger line, `G2=$(awk '{sub(/\r$/,"")} /^\*\*HITL Gate:/{f=1} f&&/^$/{exit} f{printf "%s ", $(0)}'
    .ai/next-steps.md | sed 's/^\*\*HITL Gate:[[:space:]]*//') && hitl-gate-closed.sh "$G2"`),
    `closed` meaning the canonical
    `NONE OPEN — next gate: <prose>` `/way-of-working:handoff` writes. A normal closed gate
