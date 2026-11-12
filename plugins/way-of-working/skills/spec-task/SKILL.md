@@ -88,12 +88,23 @@ the draft* step) and relays its findings to the drafter.
    here as the digits themselves (`N=611`), never as an expansion.
    ```bash
    N=<digits> &&
-   D= T= L= &&
+   D= T= L= Y= W= &&
    D=$(mktemp -d) && [ -n "$D" ] && [ -d "$D" ] &&
    T=$(cd -P "$D" && pwd -P) && [ -n "$T" ] && [ -d "$T" ] &&
    L=$(spec-issue.sh fetch "$N" "$T") &&
    case "$L" in 'ok B='*) ;; *) false ;; esac &&
-   printf 'T=%s %s\n' "$T" "${L#ok }" ||
+   {
+     Y=$(mktemp) && [ -n "$Y" ] && [ -f "$Y" ] &&
+     TOPLEVEL=$(git rev-parse --show-toplevel) && [ -n "$TOPLEVEL" ] &&
+     DEF=$(gh repo view "$(git -C "$TOPLEVEL" remote get-url origin)" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') &&
+     case "$DEF" in ''|-*|*[!A-Za-z0-9._/-]*) false ;; esac &&
+     git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$DEF:refs/remotes/origin/$DEF" &&
+     git -C "$TOPLEVEL" show "refs/remotes/origin/$DEF:./.ai/project.yml" >"$Y" &&
+     W=$(spec-find.sh answer "$N" "$Y") && [ -n "$W" ]
+     rc=$?; if [ -n "$Y" ] && [ -f "$Y" ]; then rm -f "$Y"; fi
+     [ "$rc" -eq 0 ] || { L="answer no word"; false; }
+   } &&
+   printf 'T=%s %s ANSWER=%s\n' "$T" "${L#ok }" "$W" ||
    { echo "stopped: ${L:-no word}" >&2; if [ -n "$D" ] && [ -d "$D" ]; then rm -rf "$D"; fi; false; }
    ```
    `bin/spec-issue.sh` makes the reads and checks and prints one `ok` line or one stop word; its
@@ -104,6 +115,12 @@ the draft* step) and relays its findings to the drafter.
    branch removes only the non-empty `D` that `mktemp -d` printed, never `T`. Each stop prints
    `stopped: <word>`, the word being one of the following, or `no word` when the script printed
    none (a usage error, or `mktemp` failed):
+   - **No answer word** (`answer no word`). After the author check, the same call reads the default
+     branch's committed `.ai/project.yml` into a temp file the way the *Answer branch* step does and runs
+     `spec-find.sh answer`; a failed read or a finder that printed nothing stops, and the temp file is
+     removed on every path. The `ANSWER=` word ends the printed line (an `answer` line has spaces: everything
+     after `ANSWER=` is the word) and is printed before the body is read. It carries ids, times and a
+     fixed word, never comment text. Under `identities: null` the finder prints `legacy` and makes no `gh` call.
    - **Reach** (`unreachable`). A repo this identity cannot reach fails the `.permissions` read or
      the issue fetch (for an App-filed issue also the reactions read, the second fetch or the content-time query), and that failure is the stop, reported as *"couldn't read the issue (as
      `<actor>`)"* (`reference/conventions.md` § *Acting identity and reach*, which also covers an all-`false` `.permissions` under an installation token).
@@ -151,8 +168,9 @@ the draft* step) and relays its findings to the drafter.
    *Check every name the draft cites* step and, as a file, through the *Write the draft and check
    its shape*, *Critic-gate the draft* and *Post or hold* steps, and only the way those say.
 
-3a. **Answer branch (`WB-D39`, `#790`).** Run only when the *Fetch and check* step's printed
-   `VERDICT` is not `legacy`; under `identities: null` skip it and draft as above. A declared
+3a. **Answer branch (`WB-D39`, `#790`).** Run only when the *Fetch and check* line's
+   `ANSWER=` word is not `legacy`; under `identities: null` skip it and draft as above. The block below
+   reads afresh, and its own printed `ANSWER=` word decides from there. A declared
    maintainer can answer the newest escalated comment on `#N` with a new issue comment whose first
    line is exactly `spec-task-answer: escalated=<id> choice=apply` (apply the recommended fixes) or
    `choice=amend` (apply them with the changes written on the lines after the first). One Bash call
@@ -317,7 +335,12 @@ the draft* step) and relays its findings to the drafter.
 
 4. **Draft against the base's tree, fetched first.** The base is the printed `BASE` (the default
    branch's `pr_base`), written `{pr_base}` below; it is never the working tree's value. This
-   call pins the tree the draft is checked on:
+   call pins the tree the draft is checked on.
+   The run's first draft starts only after the *Fetch and check* line printed an `ANSWER=` word. When that
+   word is not `legacy`, drafting also waits until the *Answer branch* block has printed its own `ANSWER=`
+   line and `ANSWER_RC=0`; when that block's word is an `answer` line, it also waits for
+   `ANSWERCHECK=ok apply` or `ANSWERCHECK=ok amend` and the escalated comment, and when the word is
+   `not-escalated` or `ignored`, for the *Refresh branch* step's `REFRESH=` line. The pin call:
    ```bash
    BASE=<printed value> &&
    case "$BASE" in ''|-*|*[!A-Za-z0-9._/-]*) false ;; esac &&

@@ -71,7 +71,7 @@ bad "a leading comma" --only ,11
 bad "a trailing comma" --only 11,
 bad "a doubled comma" --only 11,,18
 bad "unknown id 0" --only 0
-bad "unknown id 28" --only 28
+bad "unknown id 29" --only 29
 bad "unknown id 2c" --only 2c
 bad "a glob element" --only '*'
 bad "an element with a leading space" --only ' 11'
