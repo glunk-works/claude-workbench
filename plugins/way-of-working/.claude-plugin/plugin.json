@@ -1,7 +1,7 @@
 {
   "name": "way-of-working",
   "description": "Portable Claude Code working method: the /way-of-working:resume -> /way-of-working:handoff -> /way-of-working:critic-gate -> /way-of-working:ship session protocol (plus /way-of-working:pr-checks for a PR's required checks and merge verdict, /way-of-working:archive-sprint for retiring a completed sprint, /way-of-working:retro for a retrospective on how the work went, /way-of-working:park-sprint and /way-of-working:unpark-sprint for setting a sprint aside mid-flight, /way-of-working:plan-sprint for triaging the backlog into milestones under github_milestones planning, /way-of-working:spec-task for drafting and posting a task's spec comment, /way-of-working:lanes for preparing, reporting and cleaning up coder lanes, and /way-of-working:architect-review for a repo that wires a fresh-session review gate), the architect/coder/security-critic/docs-consistency agents and the read-only transcript-reader agent, a SessionStart cursor banner, a UserPromptSubmit token-reach hook, PreCompact/PostCompact compaction hooks, and the Global Conventions. Parameterized per repo by .ai/project.yml (see reference/project-schema.md) -- a shared skill never names a repo-specific value.",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "license": "Apache-2.0",
   "author": {
     "name": "glunk-works"
