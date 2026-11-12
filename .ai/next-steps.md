@@ -1,25 +1,22 @@
 
 # Cursor — claude-workbench
 
-**Now:** **Sprint 19** (cursor id `sprint-19`), status **implementing**, on milestone 30, *Second consumer: fixes from resume-orchestrator's cutover*. No lane is live and no spec is pending. Milestone 34 holds the remaining repos' dev-container cutovers.
+**Now:** **Sprint 19** (cursor id `sprint-19`), status **implementing**, on milestone 30, *Second consumer: fixes from resume-orchestrator's cutover*. v0.32.0 is released and this repo pins it. No lane is live and no spec is pending. Milestone 34 holds the remaining repos' dev-container cutovers.
 
-**Just done (2026-11-11, driver session, opus):**
-- #1435 merged (PR #1441, `9688272`): this repo's `.ai/project.yml` declares `host_tools` (yq, jq, git, gh, claude).
-- #1374 merged (PR #1442, `a78d697`): spec-task refreshes a stale approved spec by carrying it forward (`WB-D48`), and the finder prefers the newer approved comment when the older is stale. Review findings are #1444 (milestone 33).
-- #1440 filed and merged (PR #1443, `803a478`): the lane prompt forbids only the `.ai/` cursor files. Its review finding #1445 was closed as decided (the driver note's deletion).
-- #1424 merged (PR #1446, `ae32ab7`): an escalation outranks an older unreacted spec draft in `find` and `answer`.
-- Milestone 30's description was rewritten: merged items moved to a Done line, Build order holds only open items with met dependencies marked `none`. Milestone 33 gained #1444.
+**Just done (2026-11-12, driver session, opus):**
+- #1448 merged (`376636d`): way-of-working v0.32.0, released from `main` as tag `v0.32.0` at `376636d`, carrying #1374, #1375, #1377, #1424, #1440, #1371 and #1427.
+- #1449 merged (`2edff6d`): this repo's own pin moves to `v0.32.0`.
 
-**Next:** task #1381 — the maintainer cuts a plugin release carrying #1374, #1375, #1377, #1424 and #1440 and bumps the pin; then the driver hands over -Spec commands for the next milestone 30 specs (#1381, #1416, #1425, #1287, #1408 have no unmet depends_on), reviews each posted spec against main and its critic transcript before the maintainer reacts, preps a lane per approved spec, and gives a merge assessment of each lane PR. The driver stays on opus.
+**Next:** task #1381 — after the container restart through the launcher, the driver runs, from /workspace in its own session, `claude plugin uninstall way-of-working@claude-workbench --scope project && git checkout -- .claude/settings.json`; the maintainer runs `/reload-plugins`; the driver checks the user entry and any /workspace entry in `installed_plugins.json` are at `376636d` (old /tmp/lanes entries are leftovers). Then the driver hands over -Spec commands for #1381, #1416, #1425, #1287 and #1408 (no unmet depends_on), one per issue after the reaction-timing check, reviews each posted spec before the maintainer reacts, preps a lane per approved spec, and gives a merge assessment of each lane PR. The driver stays on opus.
 
-**HITL Gate: OPEN** — the plugin release and pin bump are the maintainer's; each next milestone 30 spec needs the driver's review and the maintainer's reaction, then each lane PR the maintainer's approval
+**HITL Gate: OPEN** — the maintainer runs /reload-plugins after the driver's uninstall; each next milestone 30 spec needs the driver's review and the maintainer's reaction, then each lane PR the maintainer's approval
 
-**Critic pass:** none in this session; it wrote no code. The lanes ran their own: #1441 converged in 1 round (architect, security-critic) and #1443 in 2 (architect, security-critic, docs-consistency); #1442 and #1446 ran all three, with their round counts in each lane's transcript.
+**Critic pass:** docs-consistency on #1448, 1 round, converged (two optional completeness notes: the #1410 bullet's number was added, #1436 was left out as repo-internal). #1449 ran none: a one-line pin change outside `code_paths`.
 
 **Maintainer actions:**
-- The plugin release above. Until the pin includes #1440, a spec that edits `.ai/project.yml` still needs the driver's ruling typed into its lane; until it includes #1424, a superseded draft must be deleted, not un-reacted, before answering an escalation.
+- The launcher's start of day lands in a session that still loads 0.31.0: the stale project-scope /workspace entry outranks the user-scope install. The driver's uninstall above, then `/reload-plugins`, is the fix; the 27 old `/tmp/lanes/*` project entries matter only to a session started in those folders.
 - The rest of #1427's Migration line: remove each old `tokens/<repo>` directory on both homes, only after `wow-admin <owner/name> --revoke` says no admin token is on file for it (an owner-equals-name directory keeps its owner directory; remove only the leftover token files in it).
-- After every plugin pin bump and restart, before any session: inside the container, `claude plugin uninstall way-of-working@claude-workbench --scope project && git checkout -- .claude/settings.json`; every `installed_plugins.json` entry must then be at the tag's `gitCommitSha`. Rewrite `reference/conventions.md` § *Bumping a pinned plugin* to this flow.
+- Rewrite `reference/conventions.md` § *Bumping a pinned plugin* to the post-restart project-scope uninstall flow.
 - The next time the container is recreated after a `FROM` bump, run the extended live-run check under *Opening it* in `docs/identity/DEV-CONTAINER.md`.
 - Carried: resume-orchestrator: merge its PR #186, then the home-volume cleanup and restart through `wow-driver.ps1`.
 - Carried: remove the old `/tmp/lanes/spec-*` and `record-spec-*` directories of exited spec sessions.
