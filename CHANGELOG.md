@@ -33,6 +33,7 @@ the GitHub release notes.
 - The approval ruleset's read-back in `reference/cutover.md` now also requires the `deletion` and `non_fast_forward` rules item 2 names, not only the `pull_request` rule (#1287).
 - `/way-of-working:spec-task`'s *Fetch and check* call prints the `spec-find.sh answer` word as `ANSWER=`, drafting waits on it and on the answer block's result, and invariants check 28 pins the order (#1416).
 - The read-back sentence in `reference/cutover.md` now names the admin App beside a repo admin as a way to read back a repo ruleset, matching the *Who makes each* paragraph (#1289).
+- A `wow-admin <owner/name>` mint refuses an owner that is not the admin App's installation account (ignoring case), before any token directory or mint (#1425); `wow-admin` refuses a name half that begins or ends with a dot, as a usage error (#1428).
 
 ## [0.32.0] — 2026-11-12
 

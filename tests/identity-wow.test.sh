@@ -27,6 +27,11 @@
 #                    any owner by naming it, takes a leftover bare copy and an owner-only copy, and for two
 #                    differing tokens removes what each answer allows (204 then 500: leftover gone, owner
 #                    kept, exit 1) (#1340, #1348)
+#   owner check      a mint reads the admin installation's account login once, after the unlock, and refuses
+#                    (exit 1, no POST, no tokens/ entry, no unlock directory) an owner that differs from it
+#                    ignoring case, a failed read (HTTP 500) and a login of the wrong shape; ACME/repo1
+#                    mints into tokens/ACME; --revoke makes no read; acme/.hidden and acme/repo1. are usage
+#                    errors for mint and revoke (#1425, #1428)
 #   secrecy          neither token nor passphrase reaches stdout, stderr or argv
 #   usage / config   bad arguments exit 2 and missing config exits 1, before curl is called
 #
@@ -52,6 +57,15 @@ cat >"$tmp/bin/curl" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$@" >"$STUB_DIR/argv"
 cat >"$STUB_DIR/stdin"
+# An account read (GET /app/installations/<id>, no further segment) is answered from its own
+# variables and recorded in its own file, so the mint-call assertions on calls/stdin hold (#1425).
+if grep -q '^url = "https://api.github.com/app/installations/[0-9]*"$' "$STUB_DIR/stdin"; then
+  cp "$STUB_DIR/stdin" "$STUB_DIR/acct-stdin"
+  echo read >>"$STUB_DIR/acct"
+  if [ -n "${STUB_ACCT_BODY:-}" ]; then body=$STUB_ACCT_BODY; else body="{\"account\":{\"login\":\"${STUB_ACCT_LOGIN:-acme}\"}}"; fi
+  printf '%s\n%s' "$body" "${STUB_ACCT_STATUS:-200}"
+  exit 0
+fi
 echo called >>"$STUB_DIR/calls"
 st=$STUB_STATUS
 if [ -s "$STUB_DIR/statuses" ]; then
@@ -101,11 +115,12 @@ tokfile="$home/tokens/acme/repo1/admin-token"
 
 # run <cmd...>: runs with the stub curl first on PATH; sets rc, out (stdout+stderr).
 run() {
-  rm -f "$tmp/stub/calls"
+  rm -f "$tmp/stub/calls" "$tmp/stub/acct"
   rc=0
   out=$(PATH="$tmp/bin:$PATH" "$@" 2>&1) || rc=$?
 }
 calls() { if [ -f "$tmp/stub/calls" ]; then wc -l <"$tmp/stub/calls" | tr -d ' '; else echo 0; fi; }
+acct_reads() { if [ -f "$tmp/stub/acct" ]; then wc -l <"$tmp/stub/acct" | tr -d ' '; else echo 0; fi; }
 sent() { sed -n 's/^data-binary = "\(.*\)"$/\1/p' "$tmp/stub/stdin" | sed 's/\\"/"/g'; }
 
 # --- admin mint
@@ -406,7 +421,7 @@ assert_eq "acme/acme: token written" "$TOKEN" "$(sed -n 1p "$h/tokens/acme/acme/
 assert_eq "acme/acme: tokens/acme holds only the repo directory" acme "$(ls -A "$h/tokens/acme")"
 
 # usage: bare or malformed arguments leave nothing, mint and revoke alike
-for arg in repo1 a/b/c acme/ /repo1 ../x acme/.. .acme/repo1 acme./repo1; do
+for arg in repo1 a/b/c acme/ /repo1 ../x acme/.. .acme/repo1 acme./repo1 acme/.hidden acme/repo1.; do
   h=$(newhome "usage-$(printf '%s' "$arg" | tr -c 'A-Za-z0-9\n' _)")
   mint_in "$h" "$arg"
   assert_eq "mint [$arg] usage rc" 2 "$rc"
@@ -651,6 +666,58 @@ WOW_HOME="$oldkeys" run sh "$review" repo1
 assert_eq "review old-keys config rc" 1 "$rc"
 assert_eq "review old-keys config curl uncalled" 0 "$(calls)"
 assert_eq "review old-keys config names the role keys" 1 "$(printf '%s' "$out" | grep -c 'keyed by role' || true)"
+
+# --- the typed owner is checked against the admin installation's account (#1425)
+# a successful mint makes exactly one account read, then the mint
+h=$(newhome acct-ok)
+mint_in "$h"
+assert_eq "owner check ok: rc" 0 "$rc"
+assert_eq "owner check ok: one account read" 1 "$(acct_reads)"
+assert_eq "owner check ok: one mint call" 1 "$(calls)"
+assert_eq "owner check ok: the read asked for the admin installation" 1 "$(grep -c '^url = "https://api.github.com/app/installations/111"$' "$tmp/stub/acct-stdin")"
+assert_eq "owner check ok: the passphrase is not in the read" 0 "$(grep -c 'correct-horse' "$tmp/stub/acct-stdin" || true)"
+
+# a mismatch: after the prompt, no POST, nothing left behind
+h=$(newhome acct-typo)
+STUB_ACCT_LOGIN=acme mint_in "$h" typo/repo1
+assert_eq "owner mismatch rc" 1 "$rc"
+assert_eq "owner mismatch no POST" 0 "$(calls)"
+assert_eq "owner mismatch one account read" 1 "$(acct_reads)"
+has_msg "owner mismatch names both logins" "the admin App's installation belongs to acme, not typo; refusing typo/repo1"
+untouched "$h" "owner mismatch"
+
+# case is ignored, and the typed spelling picks the directory
+h=$(newhome acct-case)
+mint_in "$h" ACME/repo1
+assert_eq "owner case rc" 0 "$rc"
+assert_eq "owner case one account read" 1 "$(acct_reads)"
+assert_eq "owner case token written under the typed owner" "$TOKEN" "$(sed -n 1p "$h/tokens/ACME/repo1/admin-token")"
+h=$(newhome acct-case2)
+STUB_ACCT_LOGIN=Acme mint_in "$h" acme/repo1
+assert_eq "account in another case rc" 0 "$rc"
+
+# a failed read, or a login of the wrong shape, refuses the same way
+h=$(newhome acct-500)
+STUB_ACCT_STATUS=500 STUB_ACCT_BODY='{"message":"boom"}' mint_in "$h"
+assert_eq "account read 500 rc" 1 "$rc"
+assert_eq "account read 500 no POST" 0 "$(calls)"
+has_msg "account read 500 message" "could not read the admin App's installation account; refusing acme/repo1"
+untouched "$h" "account read 500"
+for badlogin in '{"account":{"login":"-acme"}}' '{"account":{"login":"ac/me"}}' '{"account":{"login":""}}' '{"account":{"login":7}}' '{"account":null}' '{}'; do
+  h=$(newhome "acct-bad-$(printf '%s' "$badlogin" | tr -c 'A-Za-z0-9' _)")
+  STUB_ACCT_BODY=$badlogin mint_in "$h"
+  assert_eq "bad account [$badlogin] rc" 1 "$rc"
+  assert_eq "bad account [$badlogin] no POST" 0 "$(calls)"
+  untouched "$h" "bad account [$badlogin]"
+done
+
+# --revoke makes no account read
+h=$(newhome acct-revoke)
+put_tok "$h/tokens/typo/repo1/admin-token"
+STUB_BODY= STUB_STATUS=204 revoke_in "$h" typo/repo1
+assert_eq "revoke under a mistyped owner rc" 0 "$rc"
+assert_eq "revoke makes no account read" 0 "$(acct_reads)"
+assert_eq "revoke makes one DELETE" 1 "$(calls)"
 
 if [ "$fail" -ne 0 ]; then exit 1; fi
 echo "identity-wow: $pass_count assertions passed"
