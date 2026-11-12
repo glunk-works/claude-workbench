@@ -21,6 +21,8 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-11-12
+
 ### Added
 
 - `spec-find.sh` writes one stderr line, `spec-find.sh: unreadable: <step>[ <id>]`, naming the failed read whenever it prints `unreadable`; stdout and the exit status are unchanged (#1466).
