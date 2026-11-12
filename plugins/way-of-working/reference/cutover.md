@@ -151,7 +151,8 @@ default branch, reads back with all its rules and enforces nothing there, so the
   conditions that include this repo and exclude nothing that matches it;
 - `bypass_actors` an empty list;
 - a `pull_request` rule with every parameter item 2 names (code-owner review, stale reviews
-  dismissed on push, last-push approval, and `required_approving_review_count` 1).
+  dismissed on push, last-push approval, and `required_approving_review_count` 1);
+- a `deletion` rule and a `non_fast_forward` rule, each present in the ruleset's `rules`.
 
 Who makes each: a repo ruleset needs repo admin, in the browser or through an admin App; an
 org ruleset only an org owner in the browser, since a repo-scoped admin-App token cannot edit
