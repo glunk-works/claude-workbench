@@ -69,14 +69,13 @@ mutate "$d" "Fetch and check" block 'if (index($0, "$(spec-find.sh answer")) nex
 assert_fires "the spec-find.sh answer line deleted" "$d"
 
 d="$(tree moved)"
-# Drop the finder line and re-add it after the closing fence's preceding lines, i.e. after
-# the printing of ANSWER= and the fetch: the fetch comes first, the finder last.
+# Hold the finder line back and print it just before the closing fence, below the ANSWER= print.
 mutate "$d" "Fetch and check" block 'if (index($0, "$(spec-find.sh answer")) { held = $0; next } if (closing && held != "") { print held }'
 assert_fires "the finder line moved below the ANSWER= print" "$d"
 
 d="$(tree finderfirst)"
 # Rename the real fetch line so only a fetch line placed after the finder remains.
-mutate "$d" "Fetch and check" block 'if (index($0, "L=$(spec-issue.sh fetch")) { held = $0; sub(/L=\$\(spec-issue.sh fetch/, "L=$(spec-issue-x.sh fetch"); } if (closing) print "   L=$(spec-issue.sh fetch \"$N\" \"$T\") &&"'
+mutate "$d" "Fetch and check" block 'if (index($0, "L=$(spec-issue.sh fetch")) { sub(/L=\$\(spec-issue.sh fetch/, "L=$(spec-issue-x.sh fetch"); } if (closing) print "   L=$(spec-issue.sh fetch \"$N\" \"$T\") &&"'
 assert_fires "the fetch line placed after the finder line" "$d"
 
 d="$(tree noprint)"

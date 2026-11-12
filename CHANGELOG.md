@@ -23,6 +23,7 @@ the GitHub release notes.
 
 ### Changed
 
+- The approval ruleset's read-back in `reference/cutover.md` now also requires the `deletion` and `non_fast_forward` rules item 2 names, not only the `pull_request` rule (#1287).
 - `/way-of-working:spec-task`'s *Fetch and check* call prints the `spec-find.sh answer` word as `ANSWER=`, drafting waits on it and on the answer block's result, and invariants check 28 pins the order (#1416).
 
 ## [0.32.0] — 2026-11-12
@@ -50,7 +51,7 @@ the GitHub release notes.
 
 **⚠️ Migration** — once the host tools are reinstalled, `wow-driver.ps1` needs `gh` on PowerShell's PATH on both paths (it refuses without it) and, for a start of day, a `gh` login that can read the origin repository.
 
-**⚠️ Migration** — before the dev container is recreated, change this repo's entry in `broker.json` to `glunk-works/claude-workbench`, then reinstall the host tools (which creates the owner-qualified token directory; a missing bind source fails `devcontainer up`) and restart the broker.
+**⚠️ Migration (this repository only)** — before the dev container is recreated, change this repo's entry in `broker.json` to `glunk-works/claude-workbench`, then reinstall the host tools (which creates the owner-qualified token directory; a missing bind source fails `devcontainer up`) and restart the broker. This step is for this repository's own `.devcontainer/` and its own `broker.json` entry, which the plugin does not ship, so a consuming repo bumping its pin skips it.
 
 ### Changed
 
