@@ -165,8 +165,8 @@ On a host with the marketplace repository's host tools installed, `wow-preflight
 <project.yml>` prints these preconditions as one table, judged against the project file it is
 given (pass the reviewed PR's copy), and makes only GET requests. A row reads `ok`, `missing`
 or `check in the UI`; the last is left for the operator: a precondition this command does not
-read (the approval rule's parameters, the App installations,
-org secrets, fork pull request workflows) or a read that failed or was not conclusive. It also
+read (the App installations,
+org secrets, fork pull request workflows) or a read that failed or was not conclusive. The ruleset rows judge the approval rule's parameters (code-owner review, stale reviews dismissed on push, last-push approval, an approving review count of 1), except an organization ruleset's row, which reads `check in the UI` and does not judge them. It also
 reports each environment's admins-bypass setting, which must be off, and says that a secret the
 repo's workflows use needs this repo in its visibility; both are set in the browser. It uses the admin token the repo's container mounts, so run `wow-admin
 <owner/name> --revoke` after the run. A `missing` row is fixed in the order *The order* gives, and in

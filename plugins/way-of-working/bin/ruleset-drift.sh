@@ -30,7 +30,7 @@
 # Otherwise one line per entry.
 #
 # When the file declares a `rulesets` key, the list form reads every entry and prints:
-#   ruleset <name> missing_types=[..] missing_checks=[..] approval=<n> bypass_actors=<n> unpinned_checks=[..]
+#   ruleset <name> missing_types=[..] missing_checks=[..] approval=<n> bypass_actors=<n> unpinned_checks=[..] approval_params=[..]
 #   ruleset <name> missing
 #   ruleset <name> inconclusive
 #   ruleset #<i> inconclusive
@@ -43,6 +43,12 @@
 # from the branch-rules read already made. It judges only whether a check is pinned to some App,
 # never which App: a pin to the wrong App reads as pinned. A declared check the rule does not
 # carry at all is in `missing_checks`, not here.
+# `approval_params` (#1405) names, comma-joined in this fixed order, the parameters of this
+# ruleset's `pull_request` rule on the branch that are not at the cutover value, from the same
+# branch-rules read: `require_code_owner_review` not true, `dismiss_stale_reviews_on_push` not
+# true, `require_last_push_approval` not true, `required_approving_review_count` not the number 1.
+# An absent parameter counts as not at its value. Empty when the ruleset carries no `pull_request`
+# rule on the branch.
 # An entry's `source` picks the API: `repo` -> repos/<repo>/rulesets, `org` ->
 # orgs/<owner>/rulesets; anything else is inconclusive, never read as `repo`.
 #
@@ -119,6 +125,11 @@ missing_checks() {
   printf '%s' "$B" | jq -r --argjson id "$1" --arg c "$2" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[].context] as $have | ($c | split(",") | map(select(. != ""))) - $have | join(",")'
 }
 
+# The approval-rule parameters of this ruleset's pull_request rule that are not at the cutover value.
+approval_params() {
+  printf '%s' "$B" | jq -r --argjson id "$1" '[.[] | select(.ruleset_id==$id and .type=="pull_request") | .parameters] as $p | if ($p | length) == 0 then "" else [ (if any($p[]; .require_code_owner_review == true) then empty else "require_code_owner_review" end), (if any($p[]; .dismiss_stale_reviews_on_push == true) then empty else "dismiss_stale_reviews_on_push" end), (if any($p[]; .require_last_push_approval == true) then empty else "require_last_push_approval" end), (if any($p[]; .required_approving_review_count == 1) then empty else "required_approving_review_count" end) ] | join(",") end'
+}
+
 # The declared checks (comma-joined, $2) this ruleset's required_status_checks rule carries unpinned.
 unpinned_checks() {
   printf '%s' "$B" | jq -r --argjson id "$1" --arg c "$2" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[] | select(.integration_id == null) | .context] as $un | ($c | split(",") | map(select(. != ""))) | map(select(. as $x | $un | index($x))) | join(",")'
@@ -151,8 +162,9 @@ if [ "$HAS" = true ]; then
     MT=$(missing_types "$RID" "$TYPES") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
     MC=$(missing_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
     UC=$(unpinned_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
+    PP=$(approval_params "$RID") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
     AP=$(printf '%s' "$B" | jq --argjson id "$RID" '[.[] | select(.ruleset_id==$id and .type=="pull_request")] | length') || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
-    printf 'ruleset %s missing_types=[%s] missing_checks=[%s] approval=%s bypass_actors=%s unpinned_checks=[%s]\n' "$NAME" "$MT" "$MC" "$AP" "$BYP" "$UC"
+    printf 'ruleset %s missing_types=[%s] missing_checks=[%s] approval=%s bypass_actors=%s unpinned_checks=[%s] approval_params=[%s]\n' "$NAME" "$MT" "$MC" "$AP" "$BYP" "$UC" "$PP"
   done
   exit 0
 fi

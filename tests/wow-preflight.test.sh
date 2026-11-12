@@ -88,7 +88,7 @@ drop() { rm -f "$STUBS/$(printf '%s' "$1" | tr '/?=' '___')"; }
 
 write_token() { printf '%s\n%s\n' "$1" "$2" >"$WOW_HOME/tokens/o/r/admin-token"; }
 
-rules_ok='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2}]'
+rules_ok='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'
 yml="$tmp/p.yml"
 write_yml() {
   cat >"$yml" <<'Y'
@@ -134,12 +134,16 @@ rows() { sed 1d "$tmp/out" | cut -f1; }
 logged() { grep -c -- "$1" "$STUBS/gh.log" 2>/dev/null || true; }
 
 # --- all in place ----------------------------------------------------------------------------
+check_ui() { # check_ui <label> <row>
+  assert_eq "$1: exit 0" 0 "$rc"
+  assert_eq "$1: state" "check in the UI" "$(state "$2")"
+}
+
 setup_ok; run
 assert_eq "all ok: exit 0" 0 "$rc"
 assert_eq "all ok: header" "precondition	state	detail" "$(sed -n 1p "$tmp/out")"
 assert_eq "all ok: the rows, in order" "ruleset checks
 ruleset approval
-approval rule parameters
 default workflow token
 allow auto-merge
 environment release
@@ -152,9 +156,10 @@ fork pull request workflows" "$(rows)"
 for k in 'ruleset checks' 'ruleset approval' 'default workflow token' 'allow auto-merge' 'environment release' 'CODEOWNERS' 'dev App permissions'; do
   assert_eq "all ok: $k" ok "$(state "$k")"
 done
-for k in 'approval rule parameters' 'reviewer App installation' 'dev App installation' 'org secrets' 'fork pull request workflows'; do
+for k in 'reviewer App installation' 'dev App installation' 'org secrets' 'fork pull request workflows'; do
   assert_eq "all ok: $k is a fixed UI row" "check in the UI" "$(state "$k")"
 done
+assert_eq "all ok: no approval rule parameters row, a ruleset declares pull_request" 0 "$(rows | grep -c 'approval rule parameters' || true)"
 assert_eq "all ok: every row has three fields" 0 "$(awk -F'\t' 'NF != 3' "$tmp/out" | wc -l | tr -d ' ')"
 assert_eq "all ok: the revoke line on stderr" "wow-preflight: done; revoke the admin token now: wow-admin o/r --revoke" "$(tail -n 1 "$tmp/err")"
 assert_eq "all ok: every call carried the token in GH_TOKEN" 0 "$(grep -c bad "$STUBS/tok.log" || true)"
@@ -176,11 +181,11 @@ check_missing() { # check_missing <label> <row> <detail-substring>
 setup_ok; put repos/o/r/rulesets/2 '{"bypass_actors":[{"actor_id":1}]}'; run
 check_missing "a bypass actor" "ruleset approval" "bypass_actors=1"
 assert_eq "a bypass actor: the other ruleset stays ok" ok "$(state 'ruleset checks')"
-setup_ok; put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2}]'; run
+setup_ok; put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'; run
 check_missing "a missing check" "ruleset checks" "missing_checks=[test]"
-setup_ok; put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test"}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2}]'; run
+setup_ok; put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test"}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'; run
 check_missing "an unpinned check" "ruleset checks" "unpinned_checks=[test]"
-setup_ok; put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},{"type":"pull_request","ruleset_id":2}]'; run
+setup_ok; put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'; run
 check_missing "a missing rule type" "ruleset checks" "missing_types=[deletion]"
 setup_ok; put repos/o/r/rulesets '[{"id":2,"name":"approval"}]'; run
 check_missing "an absent ruleset" "ruleset checks" "no ruleset"
@@ -194,9 +199,21 @@ assert_eq "an environment with admins bypass: the other environment is ok" ok "$
 setup_ok; printf '* # nobody\n' >"$STUBS/repos_o_r_contents_.github_CODEOWNERS_ref_main"; run
 check_missing "a * line with no owner" CODEOWNERS "no owner"
 setup_ok; printf '* @o/team\n' >"$STUBS/repos_o_r_contents_.github_CODEOWNERS_ref_main"; run
-check_missing "a team owner" CODEOWNERS "plain @login"
+check_ui "a team owner" CODEOWNERS
+case "$(detail CODEOWNERS)" in *"team or an email"*) echo "ok - a team owner: detail names it" ;; *) echo "FAIL - a team owner: detail [$(detail CODEOWNERS)]" >&2; fail=1 ;; esac
+assert_eq "a team owner: no permission request" 0 "$(logged collaborators)"
 setup_ok; printf '* alice@example.com\n' >"$STUBS/repos_o_r_contents_.github_CODEOWNERS_ref_main"; run
-check_missing "an email owner" CODEOWNERS "plain @login"
+check_ui "an email owner" CODEOWNERS
+assert_eq "an email owner: no permission request" 0 "$(logged collaborators)"
+setup_ok; printf '* @o/team @alice\n' >"$STUBS/repos_o_r_contents_.github_CODEOWNERS_ref_main"; run
+check_ui "a team owner next to a plain login with write" CODEOWNERS
+assert_eq "a team owner next to a plain login with write: only the login is requested" 1 "$(logged collaborators)"
+setup_ok; printf '* @o/team @alice\n' >"$STUBS/repos_o_r_contents_.github_CODEOWNERS_ref_main"; put repos/o/r/collaborators/alice/permission '{"permission":"read"}'; run
+check_missing "a team owner next to a plain login lacking write" CODEOWNERS "@alice"
+setup_ok; printf '* @\n' >"$STUBS/repos_o_r_contents_.github_CODEOWNERS_ref_main"; run
+check_missing "a * line naming @ alone" CODEOWNERS "no recognised shape"
+setup_ok; printf '* nobody\n' >"$STUBS/repos_o_r_contents_.github_CODEOWNERS_ref_main"; run
+check_missing "an owner of no recognised shape" CODEOWNERS "no recognised shape"
 setup_ok; put repos/o/r/collaborators/alice/permission '{"permission":"read"}'; run
 check_missing "an owner without write" CODEOWNERS "@alice"
 setup_ok; printf '* @alice\ndocs/ @bob\n' >"$STUBS/repos_o_r_contents_.github_CODEOWNERS_ref_main"; run
@@ -211,15 +228,24 @@ setup_ok; put apps/glunk-dev '{"permissions":{"contents":"write","workflows":"wr
 check_missing "a dev App holding workflows" "dev App permissions" "workflows"
 setup_ok; put apps/glunk-dev '{"permissions":{"administration":"write"}}'; run
 check_missing "a dev App holding administration" "dev App permissions" "administration"
+setup_ok; put repos/o/r/rules/branches/main "$(printf '%s' "$rules_ok" | sed 's/"require_last_push_approval":true/"require_last_push_approval":false/')"; run
+check_missing "last-push approval off" "ruleset approval" "approval_params=[require_last_push_approval]"
+setup_ok; sed -i '/name: approval/,$d' "$yml"; run
+check_missing "no entry declares pull_request" "approval rule parameters" "no rulesets entry declares a pull_request rule"
+# the checks entry's ruleset carries a pull_request rule (all four parameters at their values) its entry does not declare
+setup_ok; put repos/o/r/rules/branches/main "$(printf '%s' "$rules_ok" | sed 's/"ruleset_id":2/"ruleset_id":1/')"; run
+check_missing "an undeclared pull_request rule" "ruleset checks" "does not declare"
+# a map reads through ruleset-drift.sh's join, so only the wrapper's own type test can stop it
+setup_ok; sed -i 's/rule_types: \[pull_request\]/rule_types: {a: pull_request}/' "$yml"; run
+check_ui "rule_types a map" "ruleset approval"
+case "$(detail 'ruleset approval')" in *"could not be read as a list"*) echo "ok - rule_types a map: detail names it" ;; *) echo "FAIL - rule_types a map: detail [$(detail 'ruleset approval')]" >&2; fail=1 ;; esac
+assert_eq "rule_types a map: the parameters row is not a contradicting missing" "check in the UI" "$(state 'approval rule parameters')"
+assert_eq "rule_types a map: the other ruleset stays ok" ok "$(state 'ruleset checks')"
 setup_ok; sed -i '/^rulesets:/,$d' "$yml"; run
 check_missing "no rulesets key" rulesets "no rulesets key"
 assert_eq "no rulesets key: ruleset-drift.sh is not run" 0 "$(logged rules/branches)"
 
 # --- failed reads and absent fields ----------------------------------------------------------
-check_ui() { # check_ui <label> <row>
-  assert_eq "$1: exit 0" 0 "$rc"
-  assert_eq "$1: state" "check in the UI" "$(state "$2")"
-}
 setup_ok; fail_ep repos/o/r/actions/permissions/workflow; run
 check_ui "a failed workflow-token read" "default workflow token"
 assert_eq "a failed read: the other rows still print" ok "$(state 'allow auto-merge')"
@@ -270,9 +296,9 @@ setup_ok; printf 'rulesets: []\n' >"$yml"; run
 check_ui "an empty rulesets list" rulesets
 
 # --- a name that would forge the ok form -----------------------------------------------------
-forged='checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[]'
+forged='checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]'
 setup_ok
-put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2}]'
+put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'
 jq -n --arg n "$forged" '[{"id":1,"name":$n},{"id":2,"name":"approval"}]' >"$STUBS/repos_o_r_rulesets"
 { echo 'rulesets:'; printf '  - name: "%s"\n' "$forged"; echo '    source: repo'; echo '    rule_types: [required_status_checks, deletion]'
   echo '    required_checks: [lint, test]'; echo '  - name: approval'; echo '    source: repo'; echo '    rule_types: [pull_request]'; } >"$yml"
@@ -282,7 +308,7 @@ assert_eq "a forged name: the row is not ok" missing "$(state "ruleset $forged")
 setup_ok; forged2='x unpinned_checks=[]'
 jq -n --arg n "$forged2" '[{"id":1,"name":$n},{"id":2,"name":"approval"}]' >"$STUBS/repos_o_r_rulesets"
 sed -i "s/name: checks/name: \"$forged2\"/" "$yml"
-put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test"}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2}]'
+put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test"}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'
 run
 assert_eq "a name ending like an ok tail: an unpinned check is still missing" missing "$(state "ruleset $forged2")"
 
