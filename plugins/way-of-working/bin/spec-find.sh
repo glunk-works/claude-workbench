@@ -45,7 +45,9 @@
 # read of the whole comment JSON, to a file in this script's own temp directory (never to stdout), from which
 # its `updated_at` is read with yq (#1374); a failed fetch or an unparseable file is `unreadable`, and a missing `updated_at` reads as changed (`moved`).
 # An escalated comment gets the role check only (#746). Every `gh` call's stderr goes to /dev/null. It never prints comment text,
-# on stdout or stderr, and it writes only its own fixed diagnostics to stderr.
+# on stdout or stderr. On `unreadable` it writes one stderr line, `spec-find.sh: unreadable: <step>[ <id>]`, the step from a fixed
+# vocabulary (config pr_base, config backlog, declared ids, comment list, role, reactions, comment, verdict, answer list, escalated, answer,
+# result) and the id one already checked as digits; callers may show the line but never parse it. Its other stderr text is fixed.
 #
 # A comment is a candidate only when ALL of these hold:
 #   - its first line is exactly the spec-task marker (`spec-task: issue=N base=B sha=<40 hex>`),
@@ -158,39 +160,47 @@ out() {
   exit 0
 }
 
-# --- the configuration -------------------------------------------------------------------
-base="$(yq -r 'explode(.) | .pr_base | select(tag == "!!str")' "$yml" 2>/dev/null)" || out unreadable
-case "$base" in '' | -* | *[!A-Za-z0-9._/-]*) out unreadable ;; esac
+# bad <step> [<id>] -- `unreadable` with one stderr line naming the failed step (#1466). The line is
+# fixed text plus an id the caller has already checked as digits, never text from a read; a failed
+# stderr write is ignored, so stdout and the exit status are those of `out unreadable`.
+bad() {
+  (printf 'spec-find.sh: unreadable: %s\n' "$*" >&2) || :
+  out unreadable
+}
 
-backlog="$(yq -r 'explode(.) | (.backlog.repo // .repo) | select(tag == "!!str")' "$yml" 2>/dev/null)" || out unreadable
+# --- the configuration -------------------------------------------------------------------
+base="$(yq -r 'explode(.) | .pr_base | select(tag == "!!str")' "$yml" 2>/dev/null)" || bad config pr_base
+case "$base" in '' | -* | *[!A-Za-z0-9._/-]*) bad config pr_base ;; esac
+
+backlog="$(yq -r 'explode(.) | (.backlog.repo // .repo) | select(tag == "!!str")' "$yml" 2>/dev/null)" || bad config backlog
 case "$backlog" in
-  '' | *[!A-Za-z0-9._/-]* | */*/* | /* | */ | ./* | ../* | */. | */..) out unreadable ;;
+  '' | *[!A-Za-z0-9._/-]* | */*/* | /* | */ | ./* | ../* | */. | */..) bad config backlog ;;
   */*) : ;;
-  *) out unreadable ;;
+  *) bad config backlog ;;
 esac
 
 # The declared ids come from declared-ids.sh (#1079), whose line is held to its shape here: exactly
 # `ok <ids> <dev>`, three fields, a non-empty list, a dev id of `-` or digits with no leading zero.
 # One of five copies of the declared-ids.sh ok-line parser (spec-find, spec-comment, spec-answer, spec-issue, spec-post); a change to that line edits all five (declared-ids.sh header, #1105).
-di_line="$(sh "$di" "$yml" </dev/null 2>/dev/null)" || out unreadable
+di_line="$(sh "$di" "$yml" </dev/null 2>/dev/null)" || bad declared ids
 case "$di_line" in
   no-map) out legacy ;;
   *"
-"*) out unreadable ;;
+"*) bad declared ids ;;
   "ok "*) : ;;
-  *) out unreadable ;;
+  *) bad declared ids ;;
 esac
 di_rest="${di_line#ok }"
-case "$di_rest" in *" "*" "* | " "* | *" " | "") out unreadable ;; *" "*) : ;; *) out unreadable ;; esac
+case "$di_rest" in *" "*" "* | " "* | *" " | "") bad declared ids ;; *" "*) : ;; *) bad declared ids ;; esac
 maint_ids="${di_rest%% *}"
 dev_id="${di_rest#* }"
 case "$dev_id" in
   -) dev_id= ;;
-  '' | 0* | *[!0-9]*) out unreadable ;;
+  '' | 0* | *[!0-9]*) bad declared ids ;;
 esac
 
 # --- the one listing ---------------------------------------------------------------------
-gh api --paginate "repos/$backlog/issues/$issue/comments" --jq '.[] | (((.body // "") + "\n") | split("\n")[0] | rtrimstr("\r")) as $l | select($l | test("^(spec-task(-escalated)?: issue=[1-9][0-9]* base=[A-Za-z0-9._/][A-Za-z0-9._/-]* sha=[0-9a-f]{40}|spec-task-answer: escalated=[1-9][0-9]* choice=(apply|amend))$")) | ($l | split(" ")) as $f | [(.id|tostring), .updated_at, .issue_url, .user.login, (.user.id|tostring), ($f[1] | ltrimstr("issue=") | ltrimstr("escalated=")), ($f[2] | ltrimstr("base=") | ltrimstr("choice=")), ($f[0] | rtrimstr(":"))] + (if $f[0] == "spec-task-answer:" then [.created_at] else [] end) | @tsv' >"$tmp/list.tsv" 2>/dev/null || out unreadable
+gh api --paginate "repos/$backlog/issues/$issue/comments" --jq '.[] | (((.body // "") + "\n") | split("\n")[0] | rtrimstr("\r")) as $l | select($l | test("^(spec-task(-escalated)?: issue=[1-9][0-9]* base=[A-Za-z0-9._/][A-Za-z0-9._/-]* sha=[0-9a-f]{40}|spec-task-answer: escalated=[1-9][0-9]* choice=(apply|amend))$")) | ($l | split(" ")) as $f | [(.id|tostring), .updated_at, .issue_url, .user.login, (.user.id|tostring), ($f[1] | ltrimstr("issue=") | ltrimstr("escalated=")), ($f[2] | ltrimstr("base=") | ltrimstr("choice=")), ($f[0] | rtrimstr(":"))] + (if $f[0] == "spec-task-answer:" then [.created_at] else [] end) | @tsv' >"$tmp/list.tsv" 2>/dev/null || bad comment list
 
 # --- the static rules --------------------------------------------------------------------
 # Rows are de-duplicated on id (first kept), then each must have exactly 8 fields, one of the two
@@ -210,7 +220,7 @@ SF_ISSUE="$issue" SF_BASE="$base" SF_URL="https://api.github.com/repos/$backlog/
   $6 "" != issue "" || $3 "" != url "" || $7 "" != base "" { next }
   !(index(maint, "," $5 ",") > 0 || (dev != "" && $5 "" == dev "")) { next }
   { print $1 us $4 us $5 us $8 us $2 }
-' "$tmp/list.tsv" >"$tmp/rows" 2>/dev/null || out unreadable
+' "$tmp/list.tsv" >"$tmp/rows" 2>/dev/null || bad comment list
 
 # --- the role, reactions and approval of each remaining row ------------------------------
 US="$(printf '\037')"
@@ -232,11 +242,11 @@ gt() {
 }
 while IFS="$US" read -r c_id c_login c_uid c_kind c_updated; do
   n=$((n + 1))
-  case "$c_id" in '' | *[!0-9]*) out unreadable ;; esac
-  case "$c_uid" in '' | *[!0-9]*) out unreadable ;; esac
+  case "$c_id" in '' | *[!0-9]*) bad comment list ;; esac
+  case "$c_uid" in '' | *[!0-9]*) bad comment list ;; esac
   case ",$maint_ids," in *",$c_uid,"*) want=maintainer ;; *) want=dev_app ;; esac
-  got="$(sh "$gi" role "$c_login" "$c_uid" "$yml" 2>/dev/null </dev/null)" || out unreadable
-  [ "$got" = "$want" ] || out unreadable
+  got="$(sh "$gi" role "$c_login" "$c_uid" "$yml" 2>/dev/null </dev/null)" || bad role "$c_id"
+  [ "$got" = "$want" ] || bad role "$c_id"
   if [ "$c_kind" = spec-task-escalated ]; then
     esc_ids="${esc_ids:+$esc_ids,}$c_id"
     if [ -z "$esc_target" ] || [ "$(gt "$c_id" "$esc_target")" = yes ]; then
@@ -250,15 +260,15 @@ while IFS="$US" read -r c_id c_login c_uid c_kind c_updated; do
   role_ids="${role_ids:+$role_ids,}$c_id"
 
   rx="$tmp/rx.$n"
-  gh api "repos/$backlog/issues/comments/$c_id/reactions" --paginate --jq '.[] | [(.user.id|tostring), .content, .created_at] | @tsv' >"$rx" 2>/dev/null </dev/null || out unreadable
+  gh api "repos/$backlog/issues/comments/$c_id/reactions" --paginate --jq '.[] | [(.user.id|tostring), .content, .created_at] | @tsv' >"$rx" 2>/dev/null </dev/null || bad reactions "$c_id"
   cj="$tmp/cj.$n"
-  gh api "repos/$backlog/issues/comments/$c_id" >"$cj" 2>/dev/null </dev/null || out unreadable
-  again="$(yq -p=json -r '.updated_at' "$cj" 2>/dev/null </dev/null)" || out unreadable
+  gh api "repos/$backlog/issues/comments/$c_id" >"$cj" 2>/dev/null </dev/null || bad comment "$c_id"
+  again="$(yq -p=json -r '.updated_at' "$cj" 2>/dev/null </dev/null)" || bad comment "$c_id"
   if [ "$again" != "$c_updated" ]; then
     [ -n "$moved_id" ] || moved_id="$c_id"
     continue
   fi
-  verdict="$(sh "$sr" "$c_updated" "$maint_ids" <"$rx" 2>/dev/null)" || out unreadable
+  verdict="$(sh "$sr" "$c_updated" "$maint_ids" <"$rx" 2>/dev/null)" || bad verdict "$c_id"
   if [ "$verdict" = approved ]; then
     cand_ids="${cand_ids:+$cand_ids,}$c_id"
     cand_n=$((cand_n + 1))
@@ -302,10 +312,10 @@ if [ "$mode" = answer ]; then
       $3 "" != url "" || index(maint, "," $5 ",") == 0 { next }
       $7 "" != "apply" && $7 "" != "amend" { next }
       { print $1 }
-    ' "$tmp/list.tsv" >"$tmp/ignored" 2>/dev/null || out unreadable
+    ' "$tmp/list.tsv" >"$tmp/ignored" 2>/dev/null || bad answer list
     ign_ids=
     while read -r i_id; do
-      case "$i_id" in '' | *[!0-9]*) out unreadable ;; esac
+      case "$i_id" in '' | *[!0-9]*) bad answer list ;; esac
       ign_ids="${ign_ids:+$ign_ids,}$i_id"
     done <"$tmp/ignored"
     [ -z "$ign_ids" ] || out "ignored $ign_ids"
@@ -313,7 +323,7 @@ if [ "$mode" = answer ]; then
   fi
   case "$esc_target_updated" in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) : ;;
-    *) out unreadable ;;
+    *) bad escalated "$esc_target" ;;
   esac
   # Answer rows (nine fields): dedupe on id, the author id a declared maintainer's (never the dev App's),
   # digit ids, the target's id, the backlog repo's URL, a choice, created_at equal to updated_at and later
@@ -330,17 +340,17 @@ if [ "$mode" = answer ]; then
     index(maint, "," $5 ",") == 0 { next }
     $7 "" != "apply" && $7 "" != "amend" { next }
     { print $1 us $4 us $5 us $2 us $9 us $7 }
-  ' "$tmp/list.tsv" >"$tmp/arows" 2>/dev/null || out unreadable
+  ' "$tmp/list.tsv" >"$tmp/arows" 2>/dev/null || bad answer list
   ans_n=0 ans_ids= ans_line=
   while IFS="$US" read -r a_id a_login a_uid a_updated a_created a_choice; do
-    case "$a_id" in '' | *[!0-9]*) out unreadable ;; esac
-    case "$a_uid" in '' | *[!0-9]*) out unreadable ;; esac
-    got="$(sh "$gi" role "$a_login" "$a_uid" "$yml" 2>/dev/null </dev/null)" || out unreadable
-    [ "$got" = maintainer ] || out unreadable
+    case "$a_id" in '' | *[!0-9]*) bad answer list ;; esac
+    case "$a_uid" in '' | *[!0-9]*) bad answer list ;; esac
+    got="$(sh "$gi" role "$a_login" "$a_uid" "$yml" 2>/dev/null </dev/null)" || bad role "$a_id"
+    [ "$got" = maintainer ] || bad role "$a_id"
     for ts in "$a_updated" "$a_created"; do
       case "$ts" in
         [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) : ;;
-        *) out unreadable ;;
+        *) bad answer "$a_id" ;;
       esac
     done
     [ "$a_created" = "$a_updated" ] || continue
@@ -377,10 +387,10 @@ if [ "$cand_n" -ge 2 ]; then
   cand_ids="$newest" cand_updated="$newest_updated" cand_n=1
 fi
 if [ "$cand_n" -eq 1 ]; then
-  case "$cand_ids" in '' | *[!0-9]*) out unreadable ;; esac
+  case "$cand_ids" in '' | *[!0-9]*) bad result ;; esac
   case "$cand_updated" in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) : ;;
-    *) out unreadable ;;
+    *) bad result ;;
   esac
   out "found $cand_ids $cand_updated"
 fi

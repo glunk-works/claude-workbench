@@ -276,10 +276,28 @@ run() {
   err="$(cat "$cd_/err")"
 }
 
+# step <step> -- after an `expect` of `unreadable`: stderr is exactly the one line naming the failed step (#1466)
+step() {
+  assert_eq "$last_desc: stderr names the step" "spec-find.sh: unreadable: $1" "$err"
+}
+
 # expect <desc> <want-stdout> [want-rc]
+# Stderr is one `spec-find.sh: unreadable: ...` line when stdout is `unreadable`, and empty for every other word.
 expect() {
   want_rc="${3:-0}"
+  last_desc="$1"
   assert_eq "$1" "$2|$want_rc" "$out|$rc"
+  if [ "$rc" = 0 ]; then
+    if [ "$out" = unreadable ]; then
+      case "$err" in
+        "spec-find.sh: unreadable: "?* ) case "$err" in *"
+"*) echo "FAIL - $1: stderr is more than one line" >&2; fail=1 ;; esac ;;
+        *) echo "FAIL - $1: stderr is not an unreadable line: [$err]" >&2; fail=1 ;;
+      esac
+    else
+      assert_eq "$1: stderr is empty" "" "$err"
+    fi
+  fi
   case "$out$err" in
     *"$SENTINEL"*) echo "FAIL - $1: the sentinel reached an output stream" >&2; fail=1 ;;
   esac
@@ -401,9 +419,11 @@ expect "none: a row of an unknown kind is dropped" "none"
 
 nc; use_gi_stub maintainer; addesc 1001 "dev-app[bot]" 201; run
 expect "unreadable: role mismatch on an escalated row" "unreadable"
+step "role 1001"
 
 nc; use_gi_stub EXIT2; addesc 1001 maint1 101; run
 expect "unreadable: role exits 2 on an escalated row" "unreadable"
+step "role 1001"
 
 # --- none ---
 nc; run
@@ -467,33 +487,43 @@ expect "precedence: unreadable beats moved" "unreadable"
 # --- unreadable ---
 nc; approved 1001 maint1 101; flag "FX_LIST_FAIL=1"; run
 expect "unreadable: the listing fails" "unreadable"
+step "comment list"
 
 nc; approved 1001 maint1 101; flag "FX_LIST_FAIL=1"; flag "FX_PARTIAL=1"; run
 expect "unreadable: the listing writes a page and then fails" "unreadable"
+step "comment list"
 
 nc; approved 1001 maint1 101; flag "FX_RX_FAIL=1"; run
 expect "unreadable: the reactions fetch fails" "unreadable"
+step "reactions 1001"
 
 nc; approved 1001 maint1 101; flag "FX_RX_FAIL=1"; flag "FX_PARTIAL=1"; run
 expect "unreadable: the reactions fetch writes a page and then fails" "unreadable"
+step "reactions 1001"
 
 nc; approved 1001 maint1 101; flag "FX_UPD_FAIL=1"; run
 expect "unreadable: the second read fails" "unreadable"
+step "comment 1001"
 
 nc; addrow 1001 maint1 101 "2026-09-21 09:00:00"; addrx 1001 101 +1 "$T2"; run
 expect "unreadable: spec-reaction.sh exits 2 on a malformed updated_at" "unreadable"
+step "verdict 1001"
 
 nc; use_gi_stub EXIT2; approved 1001 maint1 101; run
 expect "unreadable: role exits 2" "unreadable"
+step "role 1001"
 
 nc; use_gi_stub dev_app; approved 1001 maint1 101; run
 expect "unreadable: role prints the wrong role for a maintainer id" "unreadable"
+step "role 1001"
 
 nc; use_gi_stub maintainer; approved 1001 "dev-app[bot]" 201; run
 expect "unreadable: role prints the wrong role for the dev-App id" "unreadable"
+step "role 1001"
 
 nc; use_gi_stub undeclared; approved 1001 maint1 101; run
 expect "unreadable: role prints undeclared for a declared id" "unreadable"
+step "role 1001"
 
 nc; Y_IDENT=" null"; writeyml; approved 1001 maint1 101; run
 expect "legacy: identities: null" "legacy"
@@ -502,75 +532,92 @@ assert_eq "legacy: identities: null made no gh call" "" "$(cat "$cd_/gh.log")"
 nc; Y_IDENT='  maintainer: []
   dev_app: null'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: an empty maintainer list" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: "101"}'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a string maintainer id" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: 101}
     - {login: maint2}'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: one malformed maintainer entry" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: 101}
   dev_app: {login: "dev-app[bot]", id: "201"}'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a malformed dev_app" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: 101}
   dev_app: just-a-string'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a dev_app that is not a map" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: 101}
     - {login: "dev-app[bot]", id: 201}
   dev_app: {login: "dev-app[bot]", id: 201}'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a dev-App id on the maintainer list" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: 101}
     - {login: "dev-app[bot]", id: 2001}
   dev_app: {login: "dev-app[bot]", id: +2001}'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a dev-App id spelled +2001 beside 2001 on the maintainer list" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: 101}
     - {login: "dev-app[bot]", id: 2001}
   dev_app: {login: "dev-app[bot]", id: 0x7D1}'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a dev-App id spelled 0x7D1 beside 2001 on the maintainer list" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: 101}
     - {login: "dev-app[bot]", id: 2001}
   dev_app: {login: "dev-app[bot]", id: 02001}'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a dev-App id spelled 02001 beside 2001 on the maintainer list" "unreadable"
+step "declared ids"
 
 nc; Y_IDENT='  maintainer:
     - {login: maint1, id: 101}
   dev_app: {login: "dev-app[bot]", id: 0x7D1}'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a non-canonical dev-App id with no collision" "unreadable"
+step "declared ids"
 
 nc; Y_PRBASE="-x"; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a pr_base that begins with a dash" "unreadable"
+step "config pr_base"
 
 nc; Y_PRBASE='"a b"'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a pr_base with a space" "unreadable"
+step "config pr_base"
 
 nc; Y_PRBASE='""'; writeyml; approved 1001 maint1 101; run
 expect "unreadable: an empty pr_base" "unreadable"
+step "config pr_base"
 
 nc; Y_BACKLOG="not-a-repo"; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a backlog repo without a slash" "unreadable"
+step "config backlog"
 
 nc; Y_BACKLOG="a/b/c"; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a backlog repo with two slashes" "unreadable"
+step "config backlog"
 
 nc; Y_BACKLOG="../x"; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a backlog repo starting with .." "unreadable"
+step "config backlog"
 
 nc; Y_BACKLOG="owner/.."; writeyml; approved 1001 maint1 101; run
 expect "unreadable: a backlog repo ending in /.." "unreadable"
+step "config backlog"
 
 # --- every declared App off the maintainer list (#708) ---
 # Each of reviewer_app and loop_app, in turn: refused under find and, below, under pending.
@@ -581,21 +628,25 @@ for app in reviewer_app loop_app; do
     - {login: \"$alogin\", id: 2002}
   $app: {login: \"$alogin\", id: 2002}"; writeyml; approved 1001 maint1 101; run
   expect "unreadable: the $app id on the maintainer list" "unreadable"
+  step "declared ids"
   for sp in +2002 0x7D2 02002 2_002; do
     nc; Y_IDENT="  maintainer:
     - {login: maint1, id: 101}
     - {login: \"$alogin\", id: 2002}
   $app: {login: \"$alogin\", id: $sp}"; writeyml; approved 1001 maint1 101; run
     expect "unreadable: the $app id spelled $sp beside 2002 on the maintainer list" "unreadable"
+    step "declared ids"
   done
   nc; Y_IDENT="  maintainer:
     - {login: maint1, id: 101}
   $app: {login: \"$alogin\", id: \"2002\"}"; writeyml; approved 1001 maint1 101; run
   expect "unreadable: a $app entry with a string id" "unreadable"
+  step "declared ids"
   nc; Y_IDENT="  maintainer:
     - {login: maint1, id: 101}
   $app: just-a-string"; writeyml; approved 1001 maint1 101; run
   expect "unreadable: a $app entry that is a bare string" "unreadable"
+  step "declared ids"
   nc; Y_IDENT="  maintainer:
     - {login: maint1, id: 101}
   $app: {login: \"$alogin\", id: 2002}"; writeyml; approved 1001 maint1 101; run
@@ -627,26 +678,31 @@ for app in reviewer_app loop_app; do
     - {login: \"$alogin\", id: 2002}
   $app: {login: \"$alogin\", id: 2002}"; writeyml; approved 1001 maint1 101; runp 1001
   expect "pending: the $app id on the maintainer list" "unreadable"
+  step "declared ids"
   nc; Y_IDENT="  maintainer:
     - {login: maint1, id: 101}
     - {login: \"$alogin\", id: 2002}
   $app: {login: \"$alogin\", id: +2002}"; writeyml; approved 1001 maint1 101; runp 1001
   expect "pending: the $app id spelled +2002 beside 2002 on the maintainer list" "unreadable"
+  step "declared ids"
   nc; Y_IDENT="  maintainer:
     - {login: maint1, id: 101}
   $app: just-a-string"; writeyml; approved 1001 maint1 101; runp 1001
   expect "pending: a $app entry that is a bare string" "unreadable"
+  step "declared ids"
   for sp in 0x7D2 02002 2_002; do
     nc; Y_IDENT="  maintainer:
     - {login: maint1, id: 101}
     - {login: \"$alogin\", id: 2002}
   $app: {login: \"$alogin\", id: $sp}"; writeyml; approved 1001 maint1 101; runp 1001
     expect "pending: the $app id spelled $sp beside 2002 on the maintainer list" "unreadable"
+    step "declared ids"
   done
   nc; Y_IDENT="  maintainer:
     - {login: maint1, id: 101}
   $app: {login: \"$alogin\", id: \"2002\"}"; writeyml; approved 1001 maint1 101; runp 1001
   expect "pending: a $app entry with a string id" "unreadable"
+  step "declared ids"
 done
 
 nc; approved 1001 maint1 101; addrow 1002 "dev-app[bot]" 201; runp 1001
@@ -675,6 +731,7 @@ expect "pending: a row that moves between the reads" "moved 1002"
 
 nc; approved 1001 maint1 101; flag "FX_LIST_FAIL=1"; runp 1001
 expect "pending: a failed listing" "unreadable"
+step "comment list"
 
 nc; approved 1001 maint1 101; addrow 1002 "dev-app[bot]" 201; runp 0
 expect "exit 2: pending with an after-id of zero" "" 2
@@ -760,9 +817,11 @@ expect "answer: a repeated answer row is de-duplicated" "answer 1001 $TE1 1002 $
 
 nc; use_gi_stub dev_app; addesc 1001 "dev-app[bot]" 201 "$TE1"; addans 1002 maint1 101 1001 apply; runa
 expect "unreadable: a role mismatch on an answer row" "unreadable"
+step "role 1002"
 
 nc; addesc 1001 maint1 101 "$TE1"; addans 1002 maint1 101 1001 apply; flag 'FX_LIST_FAIL=1'; runa
 expect "unreadable: a failed listing" "unreadable"
+step "comment list"
 
 nc; approved 1001 maint1 101; addans 1002 maint1 101 1001 apply; runa
 expect "ignored: find would say found" "ignored 1002"
@@ -885,6 +944,7 @@ assert_eq "sentinel: the run still printed found" "found 1002 $T1|0" "$out|$rc"
 # The second read's JSON: a failed read of updated_at is unreadable, as a failed gh read is.
 nc; approved 1001 maint1 101; printf 'not json: {' >"$cd_/cj/1001.json"; run
 expect "unreadable: a second read whose JSON file does not parse" "unreadable"
+step "comment 1001"
 nc; approved 1001 maint1 101; printf '{"id": 1001, "body": "x"}\n' >"$cd_/cj/1001.json"; run
 expect "moved: a second read with no updated_at reads as changed" "moved 1001"
 
@@ -936,6 +996,7 @@ for stub in 'exit 2' 'exit 1' 'echo unreadable' 'echo "ok 101"' 'echo "ok 101 - 
   printf '#!/bin/sh\n%s\n' "$stub" >"$cd_/bin/declared-ids.sh"
   run
   expect "unreadable: a helper stub that does [$stub]" "unreadable"
+  step "declared ids"
 done
 
 # A null identities map is the legacy shape in every mode, with no gh call (#1375).
