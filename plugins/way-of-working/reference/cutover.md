@@ -140,7 +140,7 @@ workflow to post the gate's context and so forge the review status.
 
 The read-back is the approval ruleset fetched by its id (taken from the repo's rulesets list by
 name and `source_type`) through the repo's rulesets endpoint, or `orgs/<owner>/rulesets/<id>` for
-an org ruleset, by someone who can edit that ruleset: a repo admin for a repo ruleset, an org owner for an org
+an org ruleset, by someone who can edit that ruleset: a repo admin or the admin App for a repo ruleset, an org owner for an org
 one. A read that omits `bypass_actors` or sends it null means unknown, not none, and does not
 pass. A ruleset whose enforcement is `evaluate` or `disabled`, or whose conditions miss the
 default branch, reads back with all its rules and enforces nothing there, so the read must show:
