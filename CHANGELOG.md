@@ -41,7 +41,7 @@ the GitHub release notes.
 
 ### Fixed
 
-- Skill awk fields and shell positionals are written `$(N)` and `${N}`, forms the skill loader is not known to rewrite with the invocation argument (whether it leaves them alone is for the maintainer to confirm on the host); spec-task's refresh compare, run with the loader's `$0` substitution simulated, reads changed text as different; invariants check 29 refuses a bare `$<digit>` in a `SKILL.md` (#1470).
+- Skill awk fields and shell positionals are written `$(N)` and `${N}`, forms the skill loader leaves unchanged whatever argument the skill is run with (a bare `$N` is replaced by the Nth argument, counting from 0, when it exists); spec-task's refresh compare, run with the loader's `$0` substitution simulated, reads changed text as different; invariants check 29 refuses a bare `$<digit>` in a `SKILL.md` (#1470).
 
 ## [0.32.0] — 2026-11-12
 

@@ -1775,10 +1775,12 @@ if want 29; then
 # `${1}`, which awk and the shell read as before. Appendices are not inlined by the loader and are
 # not scanned. The scan covers prose and fences alike: the loader does not tell them apart.
 #
-# Hand check of the loader (#1470): the lane that built this check could not load a throwaway skill
-# created mid-session ("Unknown skill"), so what `$(0)`, `${1}`, `$0` and `$1` become with no
-# argument and with one is NOT recorded here from observation; the only observed fact is #1466's
-# bare `$0` replaced by the argument. The maintainer confirms the rest on the host (see the PR).
+# Hand check of the loader (#1470), run in a fresh session with a probe skill under Claude Code
+# 2.1.316 (`claude -p "/dollar-probe ..."`). `$(0)` and `${1}` came back unchanged with no argument,
+# with one (`hello`) and with two (`hello world`). A bare `$N` is the Nth argument counting from 0,
+# replaced only when that argument exists: with no argument `$0` and `$1` stayed as written; with
+# `hello`, `$0` became `hello` and `$1` stayed; with `hello world`, `$0` became `hello` and `$1`
+# became `world`. `$ARGUMENTS` became the whole argument string, or empty with none.
 skillarg_hits=
 skillarg_seen=0
 for f in plugins/*/skills/*/SKILL.md; do
