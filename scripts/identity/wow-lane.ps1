@@ -18,11 +18,11 @@
 
     -Issue N -Hash HASH   Lane mode. Starts a coder lane in the worktree lane.sh prep N made (N under
                           the lanes directory, lanes.dir, in the container), on models.coder, with the
-                          lane's fixed first message, which names the origin repository and the issue number. HASH is the
+                          lane's fixed first message, which leads with the role and the issue number, then names the origin repository. HASH is the
                           prompt-sha256= value prep printed.
     -Spec N[,N...]        Spec mode. Makes a fresh detached worktree at the Reference's base commit
                           under the lanes directory (spec- and six characters of a-z0-9), starts a session there
-                          on models.architect at --effort high, whose first message names the origin repository and asks it to run
+                          on models.architect at --effort high, whose first message leads with the role and the issue numbers in order, then names the origin repository, and asks it to run
                           /way-of-working:spec-task for each issue in order and build nothing. When that
                           session exits the worktree is removed, after checking it is still the one made.
                           Beside the worktree the prep writes a record (record- and the leaf in the
@@ -217,9 +217,9 @@ function Get-EndDayScript {
   $script:LanesGuard + 'b=0; me=0; w=ok; dg() { if test $# = 2; then :; else dok=0; return 0; fi; dv=$1; dok=1; while test ${#dv} -gt 0; do case $dv in [$2]*) dv=${dv#?};; *) dok=0; dv=;; esac; done; }; case $lw in ok) :;; missing) w=idle;; *) w=unsafe-dir;; esac; if test $w = ok; then set -- $(ls /proc); while test $# -gt 0; do q=$1; dg $q 0-9; if test $dok = 1; then case $q in $$) me=1;; esac; if test -O /proc/$q; then c=$(cat /proc/$q/comm); case $c in claude) y=$(readlink /proc/$q/cwd); case $y in $L/*) b=1;; esac;; esac; fi; fi; shift; done; if test $b = 1; then w=busy; elif test $me = 1; then w=idle; else w=unreadable; fi; fi; echo $w'
 }
 
-# First-message templates: only @ORIGIN@, @LANES@, @N@, @HASH@ and @LIST@ are filled, each from a validated value.
-$script:LaneMessage = 'Lane for @ORIGIN@ issue #@N@. In one Bash call, run: T=$(mktemp -d); cp @LANES@/@N@-prompt.md $T/p.md; sha256sum $T/p.md; echo $T/p.md. Stop unless that call printed the hash @HASH@. If it did, read only that copy and follow it.'
-$script:SpecMessage = 'Spec session for @ORIGIN@. Run /way-of-working:spec-task for each of these issues, one at a time, in this order: @LIST@. Build nothing, and start no build for any of them.'
+# First-message templates: only @ORIGIN@, @LANES@, @N@, @HASH@, @LIST@ and @TAGS@ are filled, each from a validated value.
+$script:LaneMessage = 'Lane: #@N@ in @ORIGIN@. In one Bash call, run: T=$(mktemp -d); cp @LANES@/@N@-prompt.md $T/p.md; sha256sum $T/p.md; echo $T/p.md. Stop unless that call printed the hash @HASH@. If it did, read only that copy and follow it.'
+$script:SpecMessage = 'Spec: @TAGS@ in @ORIGIN@. Run /way-of-working:spec-task for each of these issues, one at a time, in this order: @LIST@. Build nothing, and start no build for any of them.'
 
 # The lanes directory is lanes.dir of the Reference's project file at the base commit, set in step 6; the repo directory is a literal.
 $script:LanesDir = $null
@@ -452,7 +452,7 @@ try {
       'failed' { Stop-Launch "git worktree add or the spec record write failed in the container; it was rolled back as far as it could be, so check $($script:LanesDir)/$specLeaf for a leftover directory" }
       default { Stop-Launch "the spec prep in the container gave no usable answer; $($script:LanesDir)/$specLeaf may have been made, check it by hand" }
     }
-    $message = $script:SpecMessage.Replace('@ORIGIN@', $refOrigin).Replace('@LIST@', ($specList -join ', '))
+    $message = $script:SpecMessage.Replace('@ORIGIN@', $refOrigin).Replace('@TAGS@', (($specList | ForEach-Object { "#$_" }) -join ', ')).Replace('@LIST@', ($specList -join ', '))
     $dir = "$($script:LanesDir)/$specLeaf"
     $argv = @('exec', '-it', '-u', 'app', '-e', 'GIT_TERMINAL_PROMPT=0', '-w', $dir, $id,
       '/usr/local/bin/claude', '--model', $model, '--effort', 'high', $message)
