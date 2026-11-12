@@ -88,7 +88,11 @@ REAL_GIT=$real_git; export REAL_GIT
 
 fail=0
 ok() { echo "ok - $1"; }
-bad() { echo "FAIL - $1" >&2; fail=1; }
+bad() {
+  echo "FAIL - $1" >&2; fail=1
+  # the last launcher run's exit code and last stderr line, so a failure seen only on a CI runner can be told apart
+  [ -z "${tmp:-}" ] || echo "# last run: rc=${rc:-unset}: $(tail -n 1 "$tmp/err" 2>/dev/null | head -c 300)" >&2
+}
 check() { _cl=$1; shift; if "$@"; then ok "$_cl"; else bad "$_cl"; fi; }
 
 ID1=$(printf '%064d' 0 | tr 0 a)
