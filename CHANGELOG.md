@@ -23,7 +23,7 @@ the GitHub release notes.
 
 ### Added
 
-- `spec-find.sh` writes one stderr line, `spec-find.sh: unreadable: <step>`, naming the failed read whenever it prints `unreadable`; stdout and the exit status are unchanged (`#1466`).
+- `spec-find.sh` writes one stderr line, `spec-find.sh: unreadable: <step>[ <id>]`, naming the failed read whenever it prints `unreadable`; stdout and the exit status are unchanged (#1466).
 - `wow-driver.ps1` and `wow-lane.ps1` take `-Repo owner/name` in place of `-Clone` and `-Reference`, reading both paths from the one driver record whose origin is that repository (the driver record gains a fifth field, `reference`, written at start of day; a three- or four-field record still reads and is replaced at the next start of day); the first start of day for a repository still takes the paths. `/way-of-working:lanes` prints its host commands in the `-Repo <owner/name>` form (#1381).
 - `wow-lane.ps1 -Repo owner/name -EndDay` stops the repository's recorded container unless a lane or spec session still runs in it, and does nothing else; the driver session in `/workspace` does not count as busy, so the stop also ends it (#1381).
 
