@@ -240,7 +240,9 @@ edited it. **Default to the full checklist whenever unsure.**
          <updated_at>`, `<id>` digits with no leading zero, `<updated_at>`
          `YYYY-MM-DDTHH:MM:SSZ`. Parse them into `CID` and `CUP` in that call and fetch with
          those variables. Any other word, a non-zero exit or empty output is "not found"
-         (an exit or empty output reads as `unreadable`). The line is never pasted into a
+         (an exit or empty output reads as `unreadable`). On `unreadable` the finder also writes one stderr line
+         naming the failed step, which a session may quote when it reports the stop; that line is never parsed and never
+         changes how the stdout line is read. The stdout line is never pasted into a
          later command.
        - **The pin.** A session pins the first `found` pair this skill's own `Spec pin:`
          line prints, for the rest of the session; it types the pin from that line and from no
