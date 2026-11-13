@@ -474,15 +474,15 @@ edited it. **Default to the full checklist whenever unsure.**
    - Weakened or missing → impossible to miss; name exactly what is absent. `missing` is
      "weakened or missing"; a non-empty `missing_types` or `missing_checks` is weakened. **`approval=1`
      (a `pull_request` rule) with `bypass_actors` above `0` is drift:** name the ruleset and
-     say the approval gate has a standing bypass. **A non-empty `approval_params`** (the list form's last
-     field) **is drift too:** report the approval rule as not at the cutover value, naming the
-     parameters it lists. Everything else is healthy. Report per ruleset
+     say the approval gate has a standing bypass. **A non-empty `approval_params`** **is drift too:** report the approval rule as not at the cutover value, naming the
+     parameters it lists. This bullet never reports the not-visible line; the exception and
+     inconclusive bullets below do. Everything else is healthy. Report per ruleset
      only when something is wrong (`Ruleset check: healthy (2 rulesets, 4 rule types, 3 required
      checks).`).
    - **The one exception, on the reach exception above** (`.permissions` all `false` and the
      installation probe `reached` `{repo}`): when the script exits 0 and prints one or more
      lines, every one the `inconclusive (bypass actors not visible to this identity)` line with
-     empty `missing_types` and `missing_checks`, report `Ruleset check: bypass actors not readable
+     empty `missing_types`, `missing_checks` and `approval_params`, report `Ruleset check: bypass actors not readable
      as an installation token; the rule types and required checks were readable and present.` in
      place of the inconclusive report.
    - Any `inconclusive` line, a script that is missing, or a run that prints no line at all →
@@ -492,13 +492,16 @@ edited it. **Default to the full checklist whenever unsure.**
      carries no `bypass_actors` array (the key missing, or sent as `null` — which one GitHub
      sends a caller who cannot edit the ruleset was not observed, so the check keys on the type):
      inconclusive, except in the plain-line case above. The not-visible line also carries
-     `missing_types` and `missing_checks`; the report names any type or check it lists as absent.
+     `missing_types`, `missing_checks` and `approval_params`; the report names any type or check it lists as
+     "not seen" (not "absent"), and a non-empty `approval_params` as the approval rule's parameters not
+     seen at the cutover value, naming them; the line stays inconclusive.
 
    It is still a report, not a gate. The check confirms that the declared rule types, check
    names and (lack of) bypass actors are there; the approval rule's parameters are judged only on
-   the list form's line that carries `approval=`; the single form's line and the not-visible line (the
-   one an identity that cannot see bypass actors gets) do not carry them, so on those a ruleset
-   weakened only in its parameters is not reported as drift; and the `unpinned_checks` field is still
+   the list form's line that carries `approval=`; the not-visible line (the one an identity that
+   cannot see bypass actors gets) carries them, and a non-empty list there is named inside its
+   inconclusive report, never reported as drift; the single form's line does not carry them, so on
+   it a ruleset weakened only in its parameters is not reported as drift; and the `unpinned_checks` field is still
    not judged (which App a check is pinned to is not read at all), so a ruleset weakened only in a
    pin still reads healthy.
 
