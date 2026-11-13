@@ -34,10 +34,13 @@
 #   ruleset <name> missing
 #   ruleset <name> inconclusive
 #   ruleset #<i> inconclusive
-#   ruleset <name> inconclusive (bypass actors not visible to this identity) missing_types=[..] missing_checks=[..]
+#   ruleset <name> inconclusive (bypass actors not visible to this identity) missing_types=[..] missing_checks=[..] unpinned_checks=[..] approval_params=[..]
 # The not-visible line (an identity that cannot edit a ruleset is not shown its bypass actors)
-# still carries the rule types and required checks the branch rules lack, computed as for a
-# visible ruleset; if either computation fails the plain `ruleset <name> inconclusive` is printed.
+# still carries the rule types and required checks the branch rules lack, and the unpinned
+# checks and approval parameters, computed as for a visible ruleset (all four come from the
+# branch-rules read); if any of the four computations fails the plain
+# `ruleset <name> inconclusive` is printed. It has no `approval=` count: without the bypass
+# count that count judges nothing.
 # `unpinned_checks` (#1383) names the declared `required_checks` that this ruleset's
 # `required_status_checks` rule on the branch carries with an `integration_id` absent or null,
 # from the branch-rules read already made. It judges only whether a check is pinned to some App,
@@ -156,7 +159,9 @@ if [ "$HAS" = true ]; then
       '' | *[!0-9]*)
         MT=$(missing_types "$RID" "$TYPES") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
         MC=$(missing_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
-        printf 'ruleset %s inconclusive (bypass actors not visible to this identity) missing_types=[%s] missing_checks=[%s]\n' "$NAME" "$MT" "$MC"
+        UC=$(unpinned_checks "$RID" "$CHECKS") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
+        PP=$(approval_params "$RID") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
+        printf 'ruleset %s inconclusive (bypass actors not visible to this identity) missing_types=[%s] missing_checks=[%s] unpinned_checks=[%s] approval_params=[%s]\n' "$NAME" "$MT" "$MC" "$UC" "$PP"
         continue ;;
     esac
     MT=$(missing_types "$RID" "$TYPES") || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
