@@ -3065,3 +3065,22 @@ PR #1469), in an order Claude Code's generated title picks. Deferred and tracked
 
 Sprint 19 closed on 2026-11-13; its last change to this repo is `3e76053` (PR #1476), the pin
 bump to `v0.33.0`.
+
+Sprint 20 (milestone 31, *Cutover read-back: ruleset fields and the admin-token read-back*, all
+its issues closed) makes the cutover's read-back trustworthy before resume-orchestrator goes again.
+`ruleset-drift.sh` passes its lists to `jq` as JSON arrays, so a comma-named rule type or check no
+longer splits (#1298, PR #1482), adds the approval fields to the not-visible line (#1418, PR
+#1484), judges check pins and tag rulesets (#1413, PR #1486) and has tests for its array reads and
+fallbacks (#1483 with #1485, PR #1489). The `wow-readback` host command reads a repo's settings back
+against `.ai/project.yml` with the admin token: rulesets first (#1414, PR #1491), then workflows,
+environments and repo settings, with the `environments` and `repo_settings` schema keys (#1488, PR
+#1494). It shipped in `v0.34.0`, tagged at `40c7d52` (PR #1496).
+
+Verified live: `ruleset-drift.sh` from this repo's container as an installation token on
+2026-11-13, reading both rulesets' rule types and required checks, with bypass actors reported as
+not visible. Hermetically verified only, live run deferred and tracked:
+- `wow-readback` with the admin token against a real repo, and `ruleset-drift.sh` as an identity
+  that can see bypass actors (#1499).
+
+Sprint 20 closed on 2026-11-13; its last change to this repo is `2c386f7` (PR #1498), the pin
+bump to `v0.34.0`.
