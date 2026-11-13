@@ -21,6 +21,8 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-11-13
+
 ### Added
 
 - `wow-readback <owner/name> --since <time> [--until <time>]`, a read-only host command beside `wow-preflight` that checks, after an admin token's life, that no declared ruleset drifted, was recreated or edited, or gained a history entry, that no tag ruleset has a bypass actor, and that the default branch and the admin App show no activity in the window, then prints the two org audit-log searches to do by hand; it takes effect once the host tools are reinstalled (#1414).
