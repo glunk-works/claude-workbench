@@ -137,3 +137,10 @@ host_tools:
   - { name: git, min: "2.36", fix: "install git 2.36 or newer, or rebuild the dev container" }
   - { name: gh, min: "2.0", fix: "install the GitHub CLI 2.0 or newer, or rebuild the dev container" }
   - { name: claude, min: "2.0", fix: "install Claude Code 2.0 or newer, or rebuild the dev container" }
+
+# ── deployment environments ──────────────────────────────────────────────────
+# #1488: the environments scripts/identity/wow-readback compares with the repo's live ones. `release` is
+# the main-only, human-reviewed environment .github/workflows/release.yml deploys through; the reviewer
+# is the declared maintainer. An environment not listed here is not judged.
+environments:
+  - { name: release, reviewers: [{ type: User, id: 22668449 }], branch_policy: custom, branches: [main], admins_can_bypass: false }

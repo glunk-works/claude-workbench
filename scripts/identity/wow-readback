@@ -17,7 +17,7 @@
 # This command itself needs an admin-capable token (a ruleset's bypass actors are withheld from a
 # caller that cannot edit the ruleset). The sequence, with the by-hand searches last:
 #   1. wow-admin <owner/name> --revoke               (the token whose life is being checked)
-#   2. wow-admin <owner/name> --perms administration=write,contents=read
+#   2. wow-admin <owner/name> --perms administration=write,contents=read,actions=read
 #   3. wow-readback <owner/name> --since <time> [--until <time>]
 #   4. wow-admin <owner/name> --revoke
 #   5. only then the two by-hand searches the output prints, so a default-branch change made during
@@ -42,6 +42,17 @@
 #   default-branch activity  any activity entry for the default branch's ref inside the window
 #   admin App activity     any activity entry on any ref inside the window whose actor is the admin App's
 #                          bot_user_id (apps.json) or null; a missing or non-numeric bot_user_id is a fail
+#   active workflows       every workflow the repo reports `active`, bar those under `dynamic/`, must be a
+#                          file the default branch tracks in .github/workflows; an untracked one is a fail
+#   environment <name>     one line per environment the project file's `environments` list declares: the
+#                          required reviewers, the deployment branch policy and, under `custom`, the branch
+#                          names, and admin bypass must each equal the declaration; with none declared, one
+#                          `environments` pass line. An invalid list is one `environments` fail line
+#   repo settings          the default branch equals pr_base; the default workflow token is `read` and
+#                          Actions may not approve PRs, unless the project file's `repo_settings` declares
+#                          otherwise; merge methods and auto-merge are judged only when `repo_settings`
+#                          declares them
+#                          (these three read state at the time of the run, so --since and --until do not apply)
 #   audit log ...          two `by hand` steps for an org owner (the REST audit log is not available on
 #                          this org's plan)
 # An entry with `source: org` is one fail line: a repo-scoped admin token cannot read an org ruleset, so
@@ -57,8 +68,9 @@
 # longest time_period is a year). The activity reads request time_period=year and are filtered to the
 # window by timestamp.
 #
-# Not checked: deploy keys, collaborators and teams, webhooks, and the active workflows, environments and repo
-# settings (the last three are #1488).
+# Not checked: deploy keys, collaborators and teams, webhooks, an environment the project file does not declare,
+# an environment's secrets, variables, wait timer, self-review prevention and custom deployment protection rules,
+# `dynamic/` workflows, a tracked workflow that is disabled, and any repo setting not judged.
 # Residuals:
 #   - A change made with an App installation token was not probed.
 #   - Ref changes to tags are visible to neither the audit log nor the activity endpoint, so tags rely
@@ -66,7 +78,7 @@
 #   - A rename of the default branch away and a new branch made with the old name is bounded only by
 #     the activity check and any environment branch policy that names the branch.
 # Any entry in a row's window is a finding even when the maintainer made it, for the operator to judge.
-# Checks 1 to 5 trust the default branch's name and .ai/project.yml at the time of the run, so exit 0 means only that the automated rows passed, not that the
+# Checks 1 to 5 and the three state rows trust the default branch's name and .ai/project.yml at the time of the run, so exit 0 means only that the automated rows passed, not that the
 # window is clean.
 #
 # Toolset: POSIX sh, gh, jq, yq (mikefarah v4), awk, plus what wow-common.sh and token-check.sh use.
@@ -136,7 +148,7 @@ unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
 # --- the token: checked before any request ----------------------------------------------------
 tokfile=$wow_home/tokens/$owner/$name/admin-token
 stop_token() {
-  die "no usable admin token for $repo ($1); if one is on file, run: wow-admin $repo --revoke; then mint one with: wow-admin $repo --perms administration=write,contents=read"
+  die "no usable admin token for $repo ($1); if one is on file, run: wow-admin $repo --revoke; then mint one with: wow-admin $repo --perms administration=write,contents=read,actions=read"
 }
 TOK=$(sh "$here/token-check.sh" token "$tokfile" 2>/dev/null) && [ -n "$TOK" ] || stop_token "token file"
 GH_TOKEN=$TOK gh api --hostname github.com --paginate installation/repositories \
@@ -358,7 +370,188 @@ case "$bid" in
     fi ;;
 esac
 
-# --- row 7: by hand ------------------------------------------------------------------------------
+# --- rows 7 to 9: the active workflows, the declared environments and the repo settings ----------
+# These three judge state at the time of the run, so --since and --until do not apply. The two rules
+# below are the ones plugins/way-of-working/bin/schema-complete.sh holds for the project file's
+# `environments` and `repo_settings` keys, run here through yq's whole-string match and read back as one boolean.
+ENV_RULE='.environments | explode(.) | . as $l
+    | ([$l[] | . as $e | (if (($e | tag) != "!!map") then false
+        elif (($e | keys | sort | join(",")) != "admins_can_bypass,branch_policy,branches,name,reviewers") then false
+        elif (((($e.name | tag) == "!!str") and (($e.branch_policy | tag) == "!!str") and (($e.admins_can_bypass | tag) == "!!bool") and (($e.reviewers | tag) == "!!seq")) | not) then false
+        elif ([$e.reviewers[] | . as $r | (($r | tag) == "!!map" and ($r | keys | sort | join(",")) == "id,type" and ($r.type | tag) == "!!str" and ($r.id | tag) == "!!int")] | all | not) then false
+        elif ($e.branch_policy == "custom") then ((($e.branches | tag) == "!!seq") and ([$e.branches[] | (tag == "!!str")] | all))
+        else (($e.branches | tag) == "!!null") end)] | all) as $shape
+    | (if $shape then
+        (([$l[] | . as $e | (if (($e.branches | tag) == "!!seq") then $e.branches else [] end) as $b | (($e.name | test("^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")) and ($e.branch_policy | test("^(all|protected|custom)$"))
+            and ([$e.reviewers[] | . as $r | (($r.type | test("^(User|Team)$")) and ($r.id | to_string | test("^[1-9][0-9]{0,15}$")))] | all)
+            and (([$e.reviewers[] | . as $r | $r.type + ":" + ($r.id | to_string)] | unique | length) == ($e.reviewers | length))
+            and ([$b[] | test("^[A-Za-z0-9._/*-]+$")] | all)
+            and (($b | unique | length) == ($b | length))
+            and (($e.branch_policy != "custom") or (($b | length) > 0)))] | all)
+          and (([$l[] | .name] | unique | length) == ($l | length)))
+      else false end) | to_string'
+RS_RULE='.repo_settings | explode(.) | . as $m
+    | ([$m | keys | .[] | (. == "merge_methods" or . == "auto_merge" or . == "workflow_permissions" or . == "actions_can_approve")] | all) as $keys
+    | (if $keys then
+        ((($m | has("merge_methods") | not) or (($m.merge_methods | tag) == "!!seq" and ($m.merge_methods | length) > 0
+            and ([$m.merge_methods[] | ((tag == "!!str") and (. == "merge" or . == "squash" or . == "rebase"))] | all)
+            and (($m.merge_methods | unique | length) == ($m.merge_methods | length))))
+          and (($m | has("auto_merge") | not) or (($m.auto_merge | tag) == "!!bool"))
+          and (($m | has("actions_can_approve") | not) or (($m.actions_can_approve | tag) == "!!bool"))
+          and (($m | has("workflow_permissions") | not) or ((($m.workflow_permissions | tag) == "!!str") and ($m.workflow_permissions == "read" or $m.workflow_permissions == "write"))))
+      else false end) | to_string'
+
+# rdo <outfile> <endpoint> <key>: a paginated object read; the pages' <key> arrays merged into one array.
+rdo() {
+  rd "$T/raw" --paginate "$2" || return 1
+  jq -s --arg k "$3" 'if length > 0 and all(.[]; (.[$k] | type) == "array") then [.[][$k][]] else error("shape") end' "$T/raw" >"$1" 2>/dev/null
+}
+
+# row 7: every active workflow, bar GitHub's dynamic/ ones, must be a file the default branch tracks.
+if [ -z "$base" ]; then
+  fail 'active workflows' 'the default branch could not be read'
+elif ! rdo "$T/wf.json" "repos/$repo/actions/workflows" workflows; then
+  fail 'active workflows' 'the workflows read failed'
+elif ! rd "$T/wfdir.json" "repos/$repo/contents/.github/workflows?ref=$base"; then
+  fail 'active workflows' "the .github/workflows listing on $base could not be read"
+else
+  wr=$(jq -r --slurpfile d "$T/wfdir.json" '
+    if ($d | length) != 1 or ($d[0] | type) != "array"
+       or (all($d[0][]; type == "object" and (.type | type) == "string" and (.path | type) == "string") | not)
+       or (all(.[]; type == "object" and (.state | type) == "string" and (.path | type) == "string") | not)
+    then "shape"
+    else ([$d[0][] | select(.type == "file") | .path]) as $t
+      | ([.[] | select(.state == "active" and (.path | startswith("dynamic/") | not)) | .path]) as $a
+      | ($a - $t) as $u
+      | if ($u | length) == 0 then "ok \($a | length)" else "untracked \($u | length) \($u | join(", "))" end
+    end' "$T/wf.json" 2>/dev/null) || wr=shape
+  case "$wr" in
+    'ok '*) pass 'active workflows' "${wr#ok } active workflows compared, each with a tracked file on $base" ;;
+    'untracked '*) wr=${wr#untracked }; fail 'active workflows' "${wr%% *} active workflows with no tracked file on $base: ${wr#* }" ;;
+    *) fail 'active workflows' 'the workflows or the directory listing is not the expected shape' ;;
+  esac
+fi
+
+# The project file's two keys: null or absent, a value the rule accepts, or a value it refuses.
+# envs / rsj hold the alias-expanded JSON; every value used below is read from it.
+envstate=unreadable rsstate=unreadable
+if [ -n "$yml" ]; then
+  case "$(yq eval '.environments | tag' "$yml" 2>/dev/null </dev/null)" in
+    '!!null') envstate=none ;;
+    '!!seq') [ "$(yq eval "$ENV_RULE" "$yml" 2>/dev/null </dev/null)" = true ] \
+               && yq -o=json -I=0 '.environments | explode(.)' "$yml" >"$T/envs.json" 2>/dev/null </dev/null && envstate=ok || envstate=invalid ;;
+    *) envstate=invalid ;;
+  esac
+  case "$(yq eval '.repo_settings | tag' "$yml" 2>/dev/null </dev/null)" in
+    '!!null') rsstate=none ;;
+    '!!map') [ "$(yq eval "$RS_RULE" "$yml" 2>/dev/null </dev/null)" = true ] \
+               && yq -o=json -I=0 '.repo_settings | explode(.)' "$yml" >"$T/rs.json" 2>/dev/null </dev/null && rsstate=ok || rsstate=invalid ;;
+    *) rsstate=invalid ;;
+  esac
+fi
+
+# row 8: one line per declared environment, in list order.
+if [ -z "$base" ]; then
+  fail environments 'the default branch could not be read'
+elif [ -z "$yml" ]; then
+  fail environments 'the default branch'"'"'s .ai/project.yml could not be read'
+elif [ "$envstate" = invalid ] || [ "$envstate" = unreadable ]; then
+  fail environments 'the project file'"'"'s environments key is not a list the schema accepts'
+elif [ "$envstate" = none ]; then
+  pass environments 'the project file declares none'
+else
+  en=$(jq 'length' "$T/envs.json" 2>/dev/null) || en=0
+  [ "$en" -gt 0 ] || pass environments 'the project file declares none'
+  i=0
+  while [ "$i" -lt "$en" ]; do
+    ent=$(jq -c ".[$i]" "$T/envs.json" 2>/dev/null) || ent=
+    nm=$(printf '%s' "$ent" | jq -r '.name' 2>/dev/null) || nm=
+    lab="environment $nm"
+    if ! rd "$T/env.$i.json" "repos/$repo/environments/$nm"; then
+      fail "$lab" 'the environment read failed'
+      i=$((i + 1)); continue
+    fi
+    st=$(jq -r --argjson e "$ent" '
+      def same(f): if f == "bad" then "bad" elif f then "same" else "diff" end;
+      (try ([.protection_rules[] | select(.type == "required_reviewers") | .reviewers[] | (.type | if type == "string" then . else error("type") end) + ":" + (.reviewer.id | if type == "number" then tostring else error("id") end)] | unique) catch "bad") as $rv
+      | (if has("deployment_branch_policy") | not then "bad"
+         elif .deployment_branch_policy == null then "all"
+         elif (.deployment_branch_policy | type) != "object" then "bad"
+         elif .deployment_branch_policy.protected_branches == true and .deployment_branch_policy.custom_branch_policies == false then "protected"
+         elif .deployment_branch_policy.protected_branches == false and .deployment_branch_policy.custom_branch_policies == true then "custom"
+         else "bad" end) as $pol
+      | [ (if $rv == "bad" then "bad" elif $rv == ($e.reviewers | map(.type + ":" + (.id | tostring)) | unique) then "same" else "diff" end),
+          (if $pol == "bad" then "bad" elif $pol == $e.branch_policy then "same" else "diff" end),
+          $pol,
+          (if (.can_admins_bypass | type) != "boolean" then "bad" elif .can_admins_bypass == $e.admins_can_bypass then "same" else "diff" end) ] | join(" ")' "$T/env.$i.json" 2>/dev/null) || st="bad bad bad bad"
+    set -- $st
+    rv=${1:-bad} pl=${2:-bad} act=${3:-bad} by=${4:-bad}
+    br=same
+    if [ "$pl" = same ] && [ "$act" = custom ]; then
+      if ! rdo "$T/bp.$i.json" "repos/$repo/environments/$nm/deployment-branch-policies" branch_policies; then
+        br=bad
+      else
+        br=$(jq -r --argjson e "$ent" '
+          if all(.[]; type == "object" and (.type | type) == "string" and (.name | type) == "string") | not then "bad"
+          elif any(.[]; .type != "branch") then "diff"
+          elif ([.[].name] | unique) == ($e.branches | unique) then "same" else "diff" end' "$T/bp.$i.json" 2>/dev/null) || br=bad
+      fi
+    fi
+    if [ "$rv $pl $br $by" = 'same same same same' ]; then
+      pass "$lab" "reviewers, branch policy$([ "$act" != custom ] || echo ', branches') and admin bypass match the project file"
+    else
+      msg=
+      for f in "reviewers:$rv" "branch policy:$pl" "branches:$br" "admin bypass:$by"; do
+        case "${f#*:}" in
+          diff) msg="$msg${msg:+, }${f%%:*} differ" ;;
+          bad) msg="$msg${msg:+, }${f%%:*} could not be read (a read failed, or a value was absent or the wrong type)" ;;
+        esac
+      done
+      fail "$lab" "$msg"
+    fi
+    i=$((i + 1))
+  done
+fi
+
+# row 9: the repo settings.
+if [ -z "$base" ] || [ ! -s "$T/repo.json" ]; then
+  fail 'repo settings' 'the repo or its default branch could not be read'
+elif [ -z "$yml" ]; then
+  fail 'repo settings' 'the default branch'"'"'s .ai/project.yml could not be read'
+elif [ "$rsstate" = invalid ] || [ "$rsstate" = unreadable ]; then
+  fail 'repo settings' 'the project file'"'"'s repo_settings key is not a map the schema accepts'
+else
+  [ "$rsstate" = ok ] || printf 'null\n' >"$T/rs.json"
+  pb=$(yq -o=json -I=0 'explode(.) | .pr_base' "$yml" 2>/dev/null </dev/null | jq -r 'strings' 2>/dev/null) || pb=
+  wp=ok
+  rd "$T/wfperm.json" "repos/$repo/actions/permissions/workflow" || wp=bad
+  # fld <name> <true|false|bad>: record a judged field; true is a match, false a difference, anything else an unreadable value.
+  judged= bad=
+  fld() { judged="$judged${judged:+, }$1"; case "$2" in true) ;; false) bad="$bad${bad:+, }$1 differs" ;; *) bad="$bad${bad:+, }$1 could not be read" ;; esac; }
+  # isv <file> <string-filter> <expected-string> and isb <file> <filter> <expected-JSON-boolean>: true or false; isb gives bad for an absent or wrong-type field, isv gives empty output (its filter ends in `strings`), which fld reads as unreadable.
+  isv() { jq -r --arg x "$3" "$2"' as $v | if $v == null then "bad" elif $v == $x then "true" else "false" end' "$1" 2>/dev/null || echo bad; }
+  isb() { jq -r --argjson x "$3" "$2"' as $v | if ($v | type) != "boolean" then "bad" elif $v == $x then "true" else "false" end' "$1" 2>/dev/null || echo bad; }
+  rsv() { jq -r --arg k "$1" --arg d "$2" 'if type == "object" and has($k) then .[$k] else $d end' "$T/rs.json" 2>/dev/null; }
+  if [ -n "$pb" ]; then fld default_branch "$(isv "$T/repo.json" '.default_branch | strings' "$pb")"; else fld default_branch bad; fi
+  if [ "$wp" = ok ]; then
+    fld default_workflow_permissions "$(isv "$T/wfperm.json" '.default_workflow_permissions | strings' "$(rsv workflow_permissions read)")"
+    fld can_approve_pull_request_reviews "$(isb "$T/wfperm.json" '.can_approve_pull_request_reviews' "$(rsv actions_can_approve false)")"
+  else
+    fld default_workflow_permissions bad; fld can_approve_pull_request_reviews bad
+  fi
+  if [ "$rsstate" = ok ] && jq -e 'has("merge_methods")' "$T/rs.json" >/dev/null 2>&1; then
+    for mm in merge:allow_merge_commit squash:allow_squash_merge rebase:allow_rebase_merge; do
+      want=$(jq -r --arg m "${mm%%:*}" '.merge_methods | if any(.[]; . == $m) then "true" else "false" end' "$T/rs.json" 2>/dev/null) || want=bad
+      if [ "$want" = bad ]; then fld "${mm#*:}" bad; else fld "${mm#*:}" "$(isb "$T/repo.json" ".${mm#*:}" "$want")"; fi
+    done
+  fi
+  if [ "$rsstate" = ok ] && jq -e 'has("auto_merge")' "$T/rs.json" >/dev/null 2>&1; then
+    fld allow_auto_merge "$(isb "$T/repo.json" '.allow_auto_merge' "$(rsv auto_merge false)")"
+  fi
+  if [ -z "$bad" ]; then pass 'repo settings' "judged: $judged"; else fail 'repo settings' "$bad"; fi
+fi
+
+# --- row 10: by hand ------------------------------------------------------------------------------
 row 'audit log: default branch' 'by hand' "after the final revoke, search the org audit log web UI for: action:repo.update_default_branch repo:$repo, from $since to the time of the search"
 row 'audit log: rename' 'by hand' "after the final revoke, search the org audit log web UI org-wide for: action:repo.rename, from $since to the time of the search (a rename, a default-branch change and a rename back may not match a repo: filter)"
 

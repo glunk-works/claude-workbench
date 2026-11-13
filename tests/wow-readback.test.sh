@@ -75,7 +75,8 @@ fail_ep() { printf '%s\n' "${2:-gh: Server Error (HTTP 500)}" >"$STUBS/$(ep_key 
 write_token() { printf '%s\n%s\n' "$1" "$2" >"$WOW_HOME/tokens/o/r/admin-token"; }
 
 rules_ok='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'
-YML='rulesets:
+YML='pr_base: main
+rulesets:
   - name: checks
     source: repo
     rule_types: [required_status_checks, deletion]
@@ -84,6 +85,10 @@ YML='rulesets:
     source: repo
     rule_types: [pull_request]
 '
+ENVY='environments:
+  - { name: rel, reviewers: [{ type: User, id: 7 }], branch_policy: custom, branches: [main], admins_can_bypass: false }
+'
+WF_KEY='repos/o/r/contents/.github/workflows?ref=main'
 ACT_B="repos/o/r/activity?ref=refs/heads/main&time_period=year&per_page=100"
 ACT_ALL="repos/o/r/activity?time_period=year&per_page=100"
 # The window, relative to now so the 365-day limit on --since never ages the fixtures: --since is 30 days
@@ -96,13 +101,20 @@ UNTIL_LATE=$(day -21)
 UNTIL_EARLY=$(day -29)
 SINCE_DAY=${SINCE%%T*}
 PREV_DAY=$(day -31); PREV_DAY=${PREV_DAY%%T*}
+ENV_OK='{"name":"rel","can_admins_bypass":false,"protection_rules":[{"type":"required_reviewers","reviewers":[{"type":"User","reviewer":{"id":7}}]}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+drop_ep() { rm -f "$STUBS/$(ep_key "$1")"; }
 setup_ok() {
   rm -rf "$STUBS"; mkdir -p "$STUBS"
   write_token "$TOKEN" 2099-01-01T00:00:00Z
   printf '{"admin":{"bot_user_id":"900"}}\n' >"$WOW_HOME/apps.json"
   put installation/repositories '{"repositories":[{"full_name":"o/r"}]}'
-  put repos/o/r '{"default_branch":"main"}'
-  printf '%s' "$YML" >"$STUBS/$(ep_key 'repos/o/r/contents/.ai/project.yml?ref=main')"
+  put repos/o/r '{"default_branch":"main","allow_merge_commit":true,"allow_squash_merge":true,"allow_rebase_merge":false,"allow_auto_merge":false}'
+  printf '%s%s' "$YML" "$ENVY" >"$STUBS/$(ep_key 'repos/o/r/contents/.ai/project.yml?ref=main')"
+  put repos/o/r/actions/workflows '{"total_count":3,"workflows":[{"path":".github/workflows/ci.yml","state":"active"},{"path":"dynamic/pages/pages-build-deployment","state":"active"},{"path":".github/workflows/old.yml","state":"disabled_manually"}]}'
+  put "$WF_KEY" '[{"type":"file","path":".github/workflows/ci.yml"}]'
+  put repos/o/r/environments/rel "$ENV_OK"
+  put repos/o/r/environments/rel/deployment-branch-policies '{"total_count":1,"branch_policies":[{"name":"main","type":"branch"}]}'
+  put repos/o/r/actions/permissions/workflow '{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}'
   put repos/o/r/rules/branches/main "$rules_ok"
   put repos/o/r/rulesets '[{"id":1,"name":"checks"},{"id":2,"name":"approval"}]'
   put repos/o/r/rulesets/1 "{\"bypass_actors\":[],\"created_at\":\"$BEFORE\",\"updated_at\":\"$BEFORE\"}"
@@ -139,10 +151,13 @@ by id approval
 history approval
 default-branch activity
 admin App activity
+active workflows
+environment rel
+repo settings
 audit log: default branch
 audit log: rename" "$(sed 1d "$tmp/out" | cut -f1)"
 assert_eq "clean: no fail line" 0 "$(awk -F'\t' '$2 == "fail"' "$tmp/out" | wc -l | tr -d ' ')"
-assert_eq "clean: eight pass lines" 8 "$(awk -F'\t' '$2 == "pass"' "$tmp/out" | wc -l | tr -d ' ')"
+assert_eq "clean: eleven pass lines" 11 "$(awk -F'\t' '$2 == "pass"' "$tmp/out" | wc -l | tr -d ' ')"
 assert_eq "clean: two by hand lines" 2 "$(awk -F'\t' '$2 == "by hand"' "$tmp/out" | wc -l | tr -d ' ')"
 assert_eq "clean: every line has three fields" 0 "$(awk -F'\t' 'NF != 3' "$tmp/out" | wc -l | tr -d ' ')"
 case "$(detail 'audit log: default branch')" in *"repo:o/r"*"from $SINCE to the time of the search"*) echo "ok - clean: default-branch search names the repo and --since" ;; *) echo "FAIL - clean: default-branch search: $(detail 'audit log: default branch')" >&2; fail=1 ;; esac
@@ -156,7 +171,7 @@ assert_eq "clean: the revoke line on stderr" "wow-readback: done; revoke the adm
 setup_ok; rm -f "$STUBS/gh.log" "$STUBS/tok.log"; rc=0
 TMPDIR="$tmp/tmpdir" PATH="$tmp/ghbin:$tmp/crbin:$PATH_SAVE" "$tmp/bin/wow-readback" o/r --since "$SINCE" >"$tmp/out" 2>"$tmp/err" </dev/null || rc=$?
 assert_eq "CR-ending tools: exit 0" 0 "$rc"
-assert_eq "CR-ending tools: eight pass lines" 8 "$(awk -F'\t' '$2 == "pass"' "$tmp/out" | wc -l | tr -d ' ')"
+assert_eq "CR-ending tools: eleven pass lines" 11 "$(awk -F'\t' '$2 == "pass"' "$tmp/out" | wc -l | tr -d ' ')"
 
 # --- ruleset by id and history ----------------------------------------------------------------
 setup_ok; put repos/o/r/rulesets/1 "{\"bypass_actors\":[],\"created_at\":\"$BEFORE\",\"updated_at\":\"$AFTER\"}"; run
@@ -185,7 +200,8 @@ setup_ok; put repos/o/r/rulesets/1 "{\"bypass_actors\":[],\"created_at\":\"yeste
 expect "a time that does not parse" 1 "by id checks" fail
 
 # --- tag bypass -------------------------------------------------------------------------------
-tagyml() { YML='rulesets:
+tagyml() { YML='pr_base: main
+rulesets:
   - name: tags
     source: repo
     target: tag
@@ -215,7 +231,8 @@ tag_setup
 put repos/o/r/rulesets/1 "$rules_tag,\"bypass_actors\":null,\"created_at\":\"$BEFORE\",\"updated_at\":\"$BEFORE\"}"
 run
 expect "a tag entry whose bypass_actors is null" 1 "tag bypass tags" fail
-YML='rulesets:
+YML='pr_base: main
+rulesets:
   - name: checks
     source: repo
     rule_types: [required_status_checks, deletion]
@@ -257,7 +274,7 @@ expect "a drift line with a non-empty list" 1 "drift checks" fail
 assert_eq "a drift line with a non-empty list: the other ruleset passes" pass "$(result 'drift approval')"
 setup_ok; put repos/o/r/rulesets/2 "{\"bypass_actors\":[{\"actor_id\":1}],\"created_at\":\"$BEFORE\",\"updated_at\":\"$BEFORE\"}"; run
 expect "a bypass actor in the drift line" 1 "drift approval" fail
-setup_ok; drop_ep() { rm -f "$STUBS/$(ep_key "$1")"; }; drop_ep repos/o/r/rules/branches/main; run
+setup_ok; drop_ep repos/o/r/rules/branches/main; run
 expect "an inconclusive drift run" 1 "drift checks" fail
 
 # --- a source: org entry ------------------------------------------------------------------------
@@ -302,6 +319,188 @@ setup_ok; fail_ep repos/o/r; run
 expect "a failed repo read" 1 "default-branch activity" fail
 assert_eq "a failed repo read: the rulesets line fails" fail "$(result rulesets)"
 
+# --- active workflows --------------------------------------------------------------------------
+WF_ALL='{"total_count":2,"workflows":[{"path":".github/workflows/ci.yml","state":"active"},{"path":".github/workflows/x.yml","state":"active"}]}'
+setup_ok; run
+assert_eq "clean: the active workflows row counts what it compared" "1 active workflows compared, each with a tracked file on main" "$(detail 'active workflows')"
+setup_ok; put repos/o/r/actions/workflows "$WF_ALL"; run
+expect "an active workflow with no tracked file" 1 "active workflows" fail
+assert_eq "an untracked workflow: the detail names it" "1 active workflows with no tracked file on main: .github/workflows/x.yml" "$(detail 'active workflows')"
+for other in 'environment rel' 'repo settings'; do
+  assert_eq "an untracked workflow: $other is unaffected" pass "$(result "$other")"
+done
+setup_ok; put repos/o/r/actions/workflows '{"total_count":1,"workflows":[{"path":".github/workflows/x.yml","state":"disabled_manually"}]}'; run
+expect "a disabled untracked workflow" 0 "active workflows" pass
+setup_ok; put repos/o/r/actions/workflows '{"total_count":1,"workflows":[{"path":"dynamic/a/b","state":"active"}]}'; run
+expect "a dynamic/ workflow" 0 "active workflows" pass
+setup_ok; printf '%s\n%s\n' '{"total_count":2,"workflows":[{"path":".github/workflows/ci.yml","state":"active"}]}' '{"total_count":2,"workflows":[{"path":".github/workflows/x.yml","state":"active"}]}' >"$STUBS/$(ep_key repos/o/r/actions/workflows)"; run
+expect "an untracked workflow on a second page" 1 "active workflows" fail
+setup_ok; put "$WF_KEY" '[{"type":"dir","path":".github/workflows/ci.yml"}]'; run
+expect "a tracked path that is a directory" 1 "active workflows" fail
+setup_ok; fail_ep repos/o/r/actions/workflows; run
+expect "a failed workflows read" 1 "active workflows" fail
+setup_ok; fail_ep "$WF_KEY"; run
+expect "a failed directory read" 1 "active workflows" fail
+setup_ok; drop_ep "$WF_KEY"; run
+expect "a missing workflows directory" 1 "active workflows" fail
+setup_ok; put "$WF_KEY" '{"type":"file","path":".github/workflows"}'; run
+expect "a directory listing that is not a list" 1 "active workflows" fail
+setup_ok; put repos/o/r/actions/workflows '{"workflows":[{"path":3,"state":"active"}]}'; run
+expect "a workflow entry of the wrong shape" 1 "active workflows" fail
+setup_ok; put repos/o/r/actions/workflows '[1]'; run
+expect "a workflows page of the wrong shape" 1 "active workflows" fail
+setup_ok; fail_ep repos/o/r; run
+expect "no default branch" 1 "active workflows" fail
+
+# --- environments -------------------------------------------------------------------------------
+envp() { put repos/o/r/environments/rel "$1"; }
+env_json() { # env_json <reviewers-json> <policy-json> <bypass-json>
+  printf '{"name":"rel","can_admins_bypass":%s,"protection_rules":[{"type":"required_reviewers","reviewers":%s}],"deployment_branch_policy":%s}' "$3" "$1" "$2"
+}
+REV7='[{"type":"User","reviewer":{"id":7}}]'
+POL_C='{"protected_branches":false,"custom_branch_policies":true}'
+envcase() { # envcase <label> <env json> -> the environment row fails alone
+  setup_ok; envp "$2"; run
+  expect "$1" 1 "environment rel" fail
+  assert_eq "$1: the other new rows are unaffected" "pass pass" "$(result 'active workflows') $(result 'repo settings')"
+}
+envcase "an extra reviewer" "$(env_json '[{"type":"User","reviewer":{"id":7}},{"type":"User","reviewer":{"id":8}}]' "$POL_C" false)"
+assert_eq "reviewers: the detail names only reviewers" "reviewers differ" "$(detail 'environment rel')"
+envcase "a missing reviewer" "$(env_json '[]' "$POL_C" false)"
+envcase "a Team where a User of the same id is declared" "$(env_json '[{"type":"Team","reviewer":{"id":7}}]' "$POL_C" false)"
+envcase "a live reviewer with no readable id" '{"name":"rel","can_admins_bypass":false,"protection_rules":[{"type":"required_reviewers","reviewers":[{"type":"User","reviewer":{"id":7}},{"type":"Team","reviewer":null}]}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+assert_eq "an unreadable reviewer: the detail says could not be read" "reviewers could not be read (a read failed, or a value was absent or the wrong type)" "$(detail 'environment rel')"
+envcase "no protection_rules" '{"name":"rel","can_admins_bypass":false,"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+envcase "branch policy all against custom" "$(env_json "$REV7" null false)"
+assert_eq "branch policy: named" "branch policy differ" "$(detail 'environment rel')"
+envcase "branch policy protected against custom" "$(env_json "$REV7" '{"protected_branches":true,"custom_branch_policies":false}' false)"
+envcase "a branch policy of neither kind" "$(env_json "$REV7" '{"protected_branches":true,"custom_branch_policies":true}' false)"
+envcase "a missing deployment_branch_policy" '{"name":"rel","can_admins_bypass":false,"protection_rules":[{"type":"required_reviewers","reviewers":[{"type":"User","reviewer":{"id":7}}]}]}'
+envcase "admins can bypass" "$(env_json "$REV7" "$POL_C" true)"
+assert_eq "bypass: named" "admin bypass differ" "$(detail 'environment rel')"
+envcase "can_admins_bypass absent" '{"name":"rel","protection_rules":[{"type":"required_reviewers","reviewers":[{"type":"User","reviewer":{"id":7}}]}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+setup_ok; put repos/o/r/environments/rel/deployment-branch-policies '{"total_count":2,"branch_policies":[{"name":"main","type":"branch"},{"name":"dev","type":"branch"}]}'; run
+expect "a branch-name set that differs" 1 "environment rel" fail
+assert_eq "branches: named" "branches differ" "$(detail 'environment rel')"
+setup_ok; put repos/o/r/environments/rel/deployment-branch-policies '{"total_count":1,"branch_policies":[{"name":"v1","type":"tag"}]}'; run
+expect "a tag-type policy" 1 "environment rel" fail
+setup_ok; put repos/o/r/environments/rel/deployment-branch-policies '{"total_count":2,"branch_policies":[{"name":"main","type":"branch"},{"name":"v1","type":"tag"}]}'; run
+expect "a tag-type policy beside the declared branch" 1 "environment rel" fail
+setup_ok; printf '%s\n%s\n' '{"total_count":2,"branch_policies":[{"name":"main","type":"branch"}]}' '{"total_count":2,"branch_policies":[{"name":"dev","type":"branch"}]}' >"$STUBS/$(ep_key repos/o/r/environments/rel/deployment-branch-policies)"; run
+expect "a second page of branch policies that adds a name" 1 "environment rel" fail
+setup_ok; fail_ep repos/o/r/environments/rel/deployment-branch-policies; run
+expect "a failed branch-policies read" 1 "environment rel" fail
+setup_ok; drop_ep repos/o/r/environments/rel; run
+expect "a 404 on the environment read" 1 "environment rel" fail
+# the environment list and its rule
+envyml() { # envyml <text>: the project file with the given environments text after the rulesets
+  printf '%s%s' "$YML" "$1" >"$STUBS/$(ep_key 'repos/o/r/contents/.ai/project.yml?ref=main')"
+}
+envone() { # envone <label> <text>: one environments fail line, no environment read
+  setup_ok; envyml "$2"; run
+  assert_eq "$1: exit 1" 1 "$rc"
+  assert_eq "$1: one environments fail line" fail "$(result environments)"
+  assert_eq "$1: no environment row" 0 "$(grep -c '^environment ' "$tmp/out" || true)"
+  assert_eq "$1: no environment read" 0 "$(grep -c 'repos/o/r/environments' "$STUBS/gh.log" || true)"
+}
+envone "an environments scalar" 'environments: rel
+'
+envone "an environments map" 'environments: {name: rel}
+'
+envone "a bad name" 'environments:
+  - { name: "-rel", reviewers: [], branch_policy: all, branches: null, admins_can_bypass: false }
+'
+envone "a name with a newline" 'environments:
+  - { name: "rel\n", reviewers: [], branch_policy: all, branches: null, admins_can_bypass: false }
+'
+envone "a duplicated name" 'environments:
+  - { name: rel, reviewers: [], branch_policy: all, branches: null, admins_can_bypass: false }
+  - { name: rel, reviewers: [], branch_policy: all, branches: null, admins_can_bypass: false }
+'
+envone "a repeated reviewer" 'environments:
+  - { name: rel, reviewers: [{ type: User, id: 7 }, { type: User, id: 7 }], branch_policy: all, branches: null, admins_can_bypass: false }
+'
+envone "branches under all" 'environments:
+  - { name: rel, reviewers: [], branch_policy: all, branches: [main], admins_can_bypass: false }
+'
+envone "a string admins_can_bypass" 'environments:
+  - { name: rel, reviewers: [], branch_policy: all, branches: null, admins_can_bypass: "false" }
+'
+setup_ok; drop_ep 'repos/o/r/contents/.ai/project.yml?ref=main'; run
+assert_eq "an unreadable project file: environments fails" fail "$(result environments)"
+for body in 'none' 'environments: null
+' 'environments: []
+'; do
+  setup_ok; if [ "$body" = none ]; then envyml ''; else envyml "$body"; fi; run
+  assert_eq "no environments declared [$(printf '%s' "$body" | head -n 1)]: exit 0" 0 "$rc"
+  assert_eq "no environments declared [$(printf '%s' "$body" | head -n 1)]: one environments pass line" pass "$(result environments)"
+  assert_eq "no environments declared [$(printf '%s' "$body" | head -n 1)]: no environment row" 0 "$(grep -c '^environment ' "$tmp/out" || true)"
+done
+setup_ok; envyml 'environments:
+  - { name: rel, reviewers: [{ type: User, id: 7 }], branch_policy: custom, branches: [main], admins_can_bypass: false }
+  - { name: stage, reviewers: [], branch_policy: protected, branches: null, admins_can_bypass: true }
+'
+put repos/o/r/environments/stage '{"name":"stage","can_admins_bypass":true,"protection_rules":[],"deployment_branch_policy":{"protected_branches":true,"custom_branch_policies":false}}'; run
+assert_eq "two declared environments: exit 0" 0 "$rc"
+assert_eq "two declared environments: in list order" "environment rel
+environment stage" "$(grep '^environment ' "$tmp/out" | cut -f1)"
+setup_ok; put repos/o/r/environments/other '{"name":"other","can_admins_bypass":true}'; run
+assert_eq "an undeclared environment is not read" 0 "$(grep -c 'environments/other' "$STUBS/gh.log" || true)"
+
+# --- repo settings ------------------------------------------------------------------------------
+setup_ok; run
+assert_eq "clean: repo settings names the judged fields" "judged: default_branch, default_workflow_permissions, can_approve_pull_request_reviews" "$(detail 'repo settings')"
+rsyml() { printf '%s%s%s' "$YML" "$ENVY" "$1" >"$STUBS/$(ep_key 'repos/o/r/contents/.ai/project.yml?ref=main')"; }
+rscase() { # rscase <label> <fail|pass>
+  expect "$1" "$([ "$2" = fail ] && echo 1 || echo 0)" "repo settings" "$2"
+  assert_eq "$1: the other new rows are unaffected" "pass pass" "$(result 'active workflows') $(result 'environment rel')"
+}
+setup_ok; put repos/o/r/actions/permissions/workflow '{"default_workflow_permissions":"write","can_approve_pull_request_reviews":false}'; run
+rscase "a write workflow token with no repo_settings" fail
+assert_eq "write token: named" "default_workflow_permissions differs" "$(detail 'repo settings')"
+setup_ok; put repos/o/r/actions/permissions/workflow '{"default_workflow_permissions":"read","can_approve_pull_request_reviews":true}'; run
+rscase "Actions approving PRs with no repo_settings" fail
+setup_ok; put repos/o/r '{"default_branch":"main","allow_merge_commit":false,"allow_squash_merge":false,"allow_rebase_merge":true,"allow_auto_merge":true}'; run
+rscase "merge methods and auto-merge are not judged with no repo_settings" pass
+setup_ok; rsyml 'repo_settings: { merge_methods: [merge, squash], auto_merge: false }
+'; run
+rscase "merge methods and auto-merge matching once declared" pass
+assert_eq "declared: the detail names the fields" "judged: default_branch, default_workflow_permissions, can_approve_pull_request_reviews, allow_merge_commit, allow_squash_merge, allow_rebase_merge, allow_auto_merge" "$(detail 'repo settings')"
+setup_ok; rsyml 'repo_settings: { merge_methods: [squash] }
+'; run
+rscase "a merge method that differs once declared" fail
+assert_eq "merge methods: named" "allow_merge_commit differs" "$(detail 'repo settings')"
+setup_ok; rsyml 'repo_settings: { auto_merge: true }
+'; run
+rscase "auto-merge that differs once declared" fail
+setup_ok; put repos/o/r '{"default_branch":"main","allow_merge_commit":true,"allow_squash_merge":true,"allow_rebase_merge":false}'; rsyml 'repo_settings: { auto_merge: false }
+'; run
+rscase "a declared auto-merge with the field absent" fail
+setup_ok; put repos/o/r/actions/permissions/workflow '{"default_workflow_permissions":"write","can_approve_pull_request_reviews":true}'; rsyml 'repo_settings: { workflow_permissions: write, actions_can_approve: true }
+'; run
+rscase "an override that matches a non-default live value" pass
+setup_ok; put repos/o/r '{"default_branch":"trunk","allow_merge_commit":true,"allow_squash_merge":true,"allow_rebase_merge":false,"allow_auto_merge":false}'
+cp "$STUBS/$(ep_key 'repos/o/r/contents/.ai/project.yml?ref=main')" "$STUBS/$(ep_key 'repos/o/r/contents/.ai/project.yml?ref=trunk')"; run
+assert_eq "a default branch that is not pr_base: exit 1" 1 "$rc"
+assert_eq "a default branch that is not pr_base: the row fails" fail "$(result 'repo settings')"
+assert_eq "default_branch: named" "default_branch differs" "$(detail 'repo settings')"
+setup_ok; fail_ep repos/o/r/actions/permissions/workflow; run
+rscase "a failed workflow-permissions read" fail
+setup_ok; put repos/o/r/actions/permissions/workflow '{"default_workflow_permissions":"read"}'; run
+rscase "a workflow-permissions read with a field absent" fail
+for body in 'repo_settings: [merge]
+' 'repo_settings: { merge_methods: [ff] }
+' 'repo_settings: { workflow_permissions: admin }
+' 'repo_settings: { unknown: 1 }
+'; do
+  setup_ok; rsyml "$body"; run
+  rscase "a malformed repo_settings [$(printf '%s' "$body" | head -n 1)]" fail
+done
+setup_ok; printf '%s%s' "$(printf '%s' "$YML" | sed '/^pr_base/d')" "$ENVY" >"$STUBS/$(ep_key 'repos/o/r/contents/.ai/project.yml?ref=main')"; run
+expect "no pr_base" 1 "repo settings" fail
+setup_ok; drop_ep 'repos/o/r/contents/.ai/project.yml?ref=main'; run
+expect "an unreadable project file: repo settings" 1 "repo settings" fail
+
 # --- stops before any request ---------------------------------------------------------------------
 stops() { # stops <label>: exit 1, no table, no request but the installation read
   assert_eq "$1: exit 1" 1 "$rc"
@@ -312,7 +511,7 @@ stops() { # stops <label>: exit 1, no table, no request but the installation rea
 setup_ok; rm -f "$WOW_HOME/tokens/o/r/admin-token"; run
 stops "a missing token file"
 assert_eq "a missing token file: no gh call at all" 0 "$([ -f "$STUBS/gh.log" ] && wc -l <"$STUBS/gh.log" | tr -d ' ' || echo 0)"
-case "$(cat "$tmp/err")" in *"wow-admin o/r --revoke"*"wow-admin o/r --perms administration=write,contents=read"*) echo "ok - a stop names the revoke and the mint" ;; *) echo "FAIL - a stop names the revoke and the mint: $(cat "$tmp/err")" >&2; fail=1 ;; esac
+case "$(cat "$tmp/err")" in *"wow-admin o/r --revoke"*"wow-admin o/r --perms administration=write,contents=read,actions=read"*) echo "ok - a stop names the revoke and the mint" ;; *) echo "FAIL - a stop names the revoke and the mint: $(cat "$tmp/err")" >&2; fail=1 ;; esac
 setup_ok; write_token "$TOKEN" 2000-01-01T00:00:00Z; run
 stops "an expired token"
 assert_eq "an expired token: no gh call at all" 0 "$([ -f "$STUBS/gh.log" ] && wc -l <"$STUBS/gh.log" | tr -d ' ' || echo 0)"

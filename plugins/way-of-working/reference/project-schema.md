@@ -36,7 +36,7 @@ failure the skill exists to prevent.
 Same rule for an individual key: a key that is absent is not a key that is `null`. `null` is
 a decision ("this repo has no review CI gate"); **absent is an unanswered question, always —
 no key has a default any more** (`WB-D17`, `#142`, reversing `#127`'s Optional-key clause).
-(`rulesets`, `lanes`, `append_only` and `host_tools`, the four optional keys, and the optional sub-key
+(`rulesets`, `lanes`, `append_only`, `host_tools`, `environments` and `repo_settings`, the six optional keys, and the optional sub-key
 `identities.dev_app.commit_route` are the stated exceptions: an absent one is simply not declared and is never asked, and
 each one's section says so.)
 `/way-of-working:resume` is the one place a missing key is asked for, once per session, at
@@ -165,6 +165,12 @@ append_only: null                # null means no file is held to the append mark
 # ── host tools (optional) ────────────────────────────────────────────────────
 host_tools: null                 # null (or an empty list) declares no host tool. Optional: an
                                  # undeclared key is never asked. A list of { name, min, fix } — see below.
+
+# ── deployment environments and repo settings (optional) ─────────────────────
+environments: null               # null (or an empty list) declares no environment. Optional: an
+                                 # undeclared key is never asked. A list of environment maps — see below.
+repo_settings: null              # null (or an empty map) overrides no built-in expectation. Optional: an
+                                 # undeclared key is never asked. A map of declared settings — see below.
 ```
 
 ---
@@ -1005,6 +1011,48 @@ doctor checks only the `PATH` of the machine the session runs on. What the docto
 an auto-start; a declared but malformed `host_tools` is `incomplete` like any key and holds auto-start
 as one does (an `invalid host_tools…` finding is fixed by hand, or by removing the key).
 
+### `environments`
+
+`environments` (`#1488`) is **optional**, like `host_tools`: it is either `null` or a list of the
+deployment environments the repo declares, each a map of exactly `name`, `reviewers`, `branch_policy`,
+`branches` and `admins_can_bypass`. An undeclared `environments` is simply not declared and is never
+asked; `null` and an empty list both declare no environment, and an environment the file does not
+declare is never judged.
+
+- `name` — letters, digits, `.`, `_`, `-`, starting with a letter or digit, at most 100 characters,
+  unique in the list.
+- `reviewers` — a list (it may be empty) of maps of exactly `type` (the string `User` or `Team`) and
+  `id` (a positive YAML integer), no pair repeated: the required reviewers.
+- `branch_policy` — `all`, `protected` or `custom`: the deployment branch policy.
+- `branches` — under `custom`, a non-empty list of unique strings of letters, digits, `.`, `_`, `-`, `/`
+  and `*`, the branch names the environment allows; `null` under the other two.
+- `admins_can_bypass` — a YAML boolean, what the environment's admin bypass must read.
+
+`bin/schema-complete.sh` validates the key (any other shape is one `invalid environments` finding).
+`scripts/identity/wow-readback` is its one reader: it reads the **default branch's** committed copy,
+applies the same rule, and prints one line per declared environment, failing when the live reviewers,
+branch policy, branch names or admin bypass differ. A mismatch only ever fails a readback row.
+
+### `repo_settings`
+
+`repo_settings` (`#1488`) is **optional**: it is either `null` or a map that declares expected repo
+settings, with keys from `merge_methods`, `auto_merge`, `workflow_permissions` and `actions_can_approve`.
+An undeclared `repo_settings` is simply not declared and is never asked; `null` and an empty map both
+override nothing.
+
+- `merge_methods` — a non-empty list of unique strings from `merge`, `squash`, `rebase`: the merge
+  methods the repo allows. Judged only when declared.
+- `auto_merge` — a YAML boolean, what the repo's auto-merge setting must read. Judged only when declared.
+- `workflow_permissions` — `read` or `write`, the Actions default workflow token. It is judged against
+  `read` when not declared.
+- `actions_can_approve` — a YAML boolean, whether Actions may approve pull requests. It is judged against
+  `false` when not declared.
+
+`bin/schema-complete.sh` validates the key (any other shape is one `invalid repo_settings` finding).
+`scripts/identity/wow-readback` is its one reader: it reads the **default branch's** committed copy,
+applies the same rule, and prints one `repo settings` line. The default branch is judged against
+`pr_base` with no override. A mismatch only ever fails a readback row.
+
 ---
 
 ## Worked example — a second repo, to show the seams move
@@ -1101,6 +1149,10 @@ lanes:
 append_only: null                 # optional, never asked; no file is held to the append marker rule
 
 host_tools: null                  # optional, never asked; no host tool is declared
+
+environments: null                # optional, never asked; no environment is declared
+
+repo_settings: null               # optional, never asked; no built-in expectation is overridden
 ```
 
 The two configurations differ in every value and in the *shapes* (`backlog.kind`, and
