@@ -258,6 +258,16 @@ printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types:
 assert_eq "list form: a control character in one of several rule types" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
 printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [deletion]' '    required_checks: [1]' >"$yml"
 assert_eq "list form: a non-string check entry" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
+# a string `parameters` makes approval_params fail in jq: the entry falls back to the plain inconclusive line
+BAD_RULES='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":"x"}]'
+setup_ok; list_yml; echo "$BAD_RULES" >"$STUBS/$EP_B"
+assert_eq "list form: a field-computation failure, bypass actors visible" \
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval inconclusive" "$(run $R $BASE $yml)"
+setup_ok; list_yml; echo "$BAD_RULES" >"$STUBS/$EP_B"; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_2"
+assert_eq "list form: a field-computation failure, bypass actors not visible" \
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval inconclusive" "$(run $R $BASE $yml)"
 
 # The CR-stripping wrappers keep their temp files in a private directory, removed on exit.
 setup_ok; list_yml; mkdir -p "$tmp/td"
@@ -376,6 +386,10 @@ assert_eq "single form: a check name with a comma, carried" \
   "ruleset checks missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
 printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [required_status_checks]' '  required_checks: [lint, "te\nst"]' >"$yml"
 assert_eq "single form: a control character in one of several checks" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [required_status_checks]' '  required_checks: [1]' >"$yml"
+assert_eq "single form: a non-string check entry" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [required_status_checks]' '  required_checks: [lint, ~]' >"$yml"
+assert_eq "single form: a null check entry" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
 printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [deletion, "dele\ntion"]' >"$yml"
 assert_eq "single form: a control character in one of several rule types" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
 

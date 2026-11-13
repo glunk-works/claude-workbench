@@ -247,7 +247,7 @@ check_missing "no entry declares pull_request" "approval rule parameters" "no ru
 # the checks entry's ruleset carries a pull_request rule (all four parameters at their values) its entry does not declare
 setup_ok; put repos/o/r/rules/branches/main "$(printf '%s' "$rules_ok" | sed 's/"ruleset_id":2/"ruleset_id":1/')"; run
 check_missing "an undeclared pull_request rule" "ruleset checks" "does not declare"
-# a map reads through ruleset-drift.sh's join, so only the wrapper's own type test can stop it
+# a map's values pass ruleset-drift.sh's array read, so only the wrapper's own type test can stop it
 setup_ok; sed -i 's/rule_types: \[pull_request\]/rule_types: {a: pull_request}/' "$yml"; run
 check_ui "rule_types a map" "ruleset approval"
 case "$(detail 'ruleset approval')" in *"could not be read as a list"*) echo "ok - rule_types a map: detail names it" ;; *) echo "FAIL - rule_types a map: detail [$(detail 'ruleset approval')]" >&2; fail=1 ;; esac
