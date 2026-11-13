@@ -127,6 +127,8 @@ lanes if-present
 lanes.dir if-map
 append_only if-present
 host_tools if-present
+environments if-present
+repo_settings if-present
 review.ci_gate
 review.ci_gate.check if-map
 review.ci_gate.header if-map
@@ -143,7 +145,7 @@ identities.maintainer if-map
 identities.dev_app if-map
 identities.reviewer_app if-map
 identities.loop_app if-map"
-assert_eq "keys: the exact required path set, conditionals suffixed if-map, optional rulesets, lanes, append_only and host_tools if-present" \
+assert_eq "keys: the exact required path set, conditionals suffixed if-map, optional rulesets, lanes, append_only, host_tools, environments and repo_settings if-present" \
   "$expected_keys" "$("$script" keys)"
 
 echo "# check -- the complete fixture"
@@ -892,6 +894,91 @@ ht_bad "an empty fix" 'host_tools: [{name: gh, min: "1", fix: ""}]'
 ht_bad "an over-long fix" "host_tools: [{name: gh, min: \"1\", fix: \"$(printf 'a%.0s' $(seq 201))\"}]"
 ht_bad "a fix holding a control character" 'host_tools: [{name: gh, min: "1", fix: "a\tb"}]'
 ht_bad "a fix holding a newline" 'host_tools: [{name: gh, min: "1", fix: "a\nb"}]'
+
+echo "# check -- environments (#1488): the fifth optional key; null or a list of environment maps"
+
+env_fixture() { { cat "$base"; printf '%s\n' "$1"; } >"$2"; }
+ENV_A='reviewers: [], branch_policy: all, branches: null, admins_can_bypass: false'
+
+assert_eq "environments: absent is silent" "complete" "$(run_check "$base")"
+for v in 'environments: null' 'environments: []' \
+  'environments: [{name: release, reviewers: [{type: User, id: 5}], branch_policy: custom, branches: [main, "rel/*"], admins_can_bypass: false}]' \
+  'environments: [{name: stage, reviewers: [{type: Team, id: 5}, {type: User, id: 5}], branch_policy: all, branches: null, admins_can_bypass: true}]' \
+  'environments: [{name: p, reviewers: [], branch_policy: protected, branches: null, admins_can_bypass: true}]'; do
+  env_fixture "$v" "$tmp/env_ok.yml"
+  assert_eq "$v is complete" "complete" "$(run_check "$tmp/env_ok.yml")"
+done
+
+env_bad() { # env_bad <label> <yaml>
+  env_fixture "$2" "$tmp/env_bad.yml"
+  out=$(run_check "$tmp/env_bad.yml")
+  assert_eq "environments: $1 is invalid" "incomplete|invalid environments" "$(printf '%s\n' "$out" | sed -n '1p;2p' | cut -d' ' -f1,2 | paste -sd'|')"
+  assert_eq "environments: $1 is the only finding" "2" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+}
+env_bad "a scalar" 'environments: release'
+env_bad "a map" 'environments: {name: release}'
+env_bad "an aliased list" "x: &x [{name: r, $ENV_A}]
+environments: *x"
+env_bad "an entry that is not a map" 'environments: [release]'
+env_bad "a missing entry key" 'environments: [{name: r, reviewers: [], branch_policy: all, branches: null}]'
+env_bad "an extra entry key" "environments: [{name: r, $ENV_A, why: y}]"
+env_bad "a name starting with a dash" "environments: [{name: -r, $ENV_A}]"
+env_bad "a name with a space" "environments: [{name: \"r r\", $ENV_A}]"
+env_bad "a name with a slash" "environments: [{name: a/b, $ENV_A}]"
+env_bad "a name over 100 characters" "environments: [{name: $(printf 'a%.0s' $(seq 101)), $ENV_A}]"
+env_bad "a name holding a newline" "environments: [{name: \"r\\n\", $ENV_A}]"
+env_bad "a duplicate name" "environments: [{name: r, $ENV_A}, {name: r, $ENV_A}]"
+env_bad "a string id" 'environments: [{name: r, reviewers: [{type: User, id: "5"}], branch_policy: all, branches: null, admins_can_bypass: false}]'
+env_bad "a zero id" 'environments: [{name: r, reviewers: [{type: User, id: 0}], branch_policy: all, branches: null, admins_can_bypass: false}]'
+env_bad "a negative id" 'environments: [{name: r, reviewers: [{type: User, id: -3}], branch_policy: all, branches: null, admins_can_bypass: false}]'
+env_bad "a reviewer type other than User or Team" 'environments: [{name: r, reviewers: [{type: Bot, id: 5}], branch_policy: all, branches: null, admins_can_bypass: false}]'
+env_bad "a reviewer with an extra key" 'environments: [{name: r, reviewers: [{type: User, id: 5, x: 1}], branch_policy: all, branches: null, admins_can_bypass: false}]'
+env_bad "a reviewer that is not a map" 'environments: [{name: r, reviewers: [5], branch_policy: all, branches: null, admins_can_bypass: false}]'
+env_bad "a repeated reviewer pair" 'environments: [{name: r, reviewers: [{type: User, id: 5}, {type: User, id: 5}], branch_policy: all, branches: null, admins_can_bypass: false}]'
+env_bad "reviewers that are not a list" 'environments: [{name: r, reviewers: {type: User, id: 5}, branch_policy: all, branches: null, admins_can_bypass: false}]'
+env_bad "an unknown branch_policy" 'environments: [{name: r, reviewers: [], branch_policy: some, branches: null, admins_can_bypass: false}]'
+env_bad "branches null under custom" 'environments: [{name: r, reviewers: [], branch_policy: custom, branches: null, admins_can_bypass: false}]'
+env_bad "an empty branches list under custom" 'environments: [{name: r, reviewers: [], branch_policy: custom, branches: [], admins_can_bypass: false}]'
+env_bad "a list of branches under all" 'environments: [{name: r, reviewers: [], branch_policy: all, branches: [main], admins_can_bypass: false}]'
+env_bad "a list of branches under protected" 'environments: [{name: r, reviewers: [], branch_policy: protected, branches: [main], admins_can_bypass: false}]'
+env_bad "a branch with a space" 'environments: [{name: r, reviewers: [], branch_policy: custom, branches: ["a b"], admins_can_bypass: false}]'
+env_bad "a non-string branch" 'environments: [{name: r, reviewers: [], branch_policy: custom, branches: [1], admins_can_bypass: false}]'
+env_bad "a repeated branch" 'environments: [{name: r, reviewers: [], branch_policy: custom, branches: [main, main], admins_can_bypass: false}]'
+env_bad "a string admins_can_bypass" 'environments: [{name: r, reviewers: [], branch_policy: all, branches: null, admins_can_bypass: "false"}]'
+env_bad "a null admins_can_bypass" 'environments: [{name: r, reviewers: [], branch_policy: all, branches: null, admins_can_bypass: null}]'
+
+echo "# check -- repo_settings (#1488): the sixth optional key; null or a map of declared settings"
+
+rs_fixture() { { cat "$base"; printf '%s\n' "$1"; } >"$2"; }
+
+assert_eq "repo_settings: absent is silent" "complete" "$(run_check "$base")"
+for v in 'repo_settings: null' 'repo_settings: {}' \
+  'repo_settings: {merge_methods: [squash, rebase], auto_merge: true, workflow_permissions: write, actions_can_approve: false}' \
+  'repo_settings: {merge_methods: [merge]}' 'repo_settings: {workflow_permissions: read}'; do
+  rs_fixture "$v" "$tmp/rs_ok.yml"
+  assert_eq "$v is complete" "complete" "$(run_check "$tmp/rs_ok.yml")"
+done
+
+rs_bad() { # rs_bad <label> <yaml>
+  rs_fixture "$2" "$tmp/rs_bad.yml"
+  out=$(run_check "$tmp/rs_bad.yml")
+  assert_eq "repo_settings: $1 is invalid" "incomplete|invalid repo_settings" "$(printf '%s\n' "$out" | sed -n '1p;2p' | cut -d' ' -f1,2 | paste -sd'|')"
+  assert_eq "repo_settings: $1 is the only finding" "2" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+}
+rs_bad "a scalar" 'repo_settings: squash'
+rs_bad "a list" 'repo_settings: [squash]'
+rs_bad "an aliased map" 'x: &x {auto_merge: true}
+repo_settings: *x'
+rs_bad "an unknown key" 'repo_settings: {delete_branch_on_merge: true}'
+rs_bad "an empty merge_methods" 'repo_settings: {merge_methods: []}'
+rs_bad "an unknown merge method" 'repo_settings: {merge_methods: [fast-forward]}'
+rs_bad "a repeated merge method" 'repo_settings: {merge_methods: [squash, squash]}'
+rs_bad "a non-string merge method" 'repo_settings: {merge_methods: [1]}'
+rs_bad "a scalar merge_methods" 'repo_settings: {merge_methods: squash}'
+rs_bad "a string auto_merge" 'repo_settings: {auto_merge: "true"}'
+rs_bad "a string actions_can_approve" 'repo_settings: {actions_can_approve: "no"}'
+rs_bad "workflow_permissions admin" 'repo_settings: {workflow_permissions: admin}'
+rs_bad "a numeric workflow_permissions" 'repo_settings: {workflow_permissions: 1}'
 
 echo "# check -- ruleset.name (#451): bound as a value, so only an empty or control-character name is rejected"
 

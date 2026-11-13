@@ -53,8 +53,8 @@
 #     are suffixed ` if-map` -- each group is required only when its parent
 #     (`review.ci_gate`, `orchestration`) itself resolves to a map, never when it
 #     is `null`. `identities` itself is unsuffixed and its four sub-keys carry ` if-map`,
-#     as `orchestration` does. `rulesets`, `lanes`, `append_only` and `host_tools` are suffixed ` if-present` -- the four
-#     OPTIONAL paths: never reported when absent, validated when there (WB-D24 dual mode, WB-D34, #1155, #1377, below).
+#     as `orchestration` does. `rulesets`, `lanes`, `append_only`, `host_tools`, `environments` and `repo_settings` are suffixed ` if-present` -- the six
+#     OPTIONAL paths: never reported when absent, validated when there (WB-D24 dual mode, WB-D34, #1155, #1377, #1488, below).
 #     `lanes.dir` is suffixed ` if-map`, required only when `lanes` itself is a map.
 #     Always exits 0.
 #
@@ -159,6 +159,8 @@ set -eu
 #          | optlanemap (lanes only: optional; null or a map if present)
 #          | optappend (append_only only: optional; null or a list of paths if present)
 #          | opthost (host_tools only: optional; null or a list of {name, min, fix} maps if present)
+#          | optenv (environments only: optional; null or a list of environment maps if present)
+#          | optreposet (repo_settings only: optional; null or a map of declared settings if present)
 #   shape: - | ownername | branch | ghlogin | rulename | textname | pair | lanesdir   (consulted for
 #          value/nullable; `pair` is a {login, id} map, `identities.*_app` only; `textname`
 #          is a ruleset name a reader binds as a value, #451; `lanesdir` is `lanes.dir`'s
@@ -233,6 +235,19 @@ HOST_TOP='
 host_tools opthost -
 '
 
+# `environments` (#1488) is the fifth OPTIONAL key (`optenv`): silent when absent, `null` or a list
+# when present (a scalar, a map or an aliased list is `invalid`), and every entry of a list must be
+# a map of exactly `name`, `reviewers`, `branch_policy`, `branches` and `admins_can_bypass` as
+# `check_environments_entries` reads them. `repo_settings` is the sixth (`optreposet`): silent when
+# absent, `null` or a map when present, whose keys `check_repo_settings_entries` holds to a subset of
+# four. scripts/identity/wow-readback is the one reader of both.
+ENV_TOP='
+environments optenv -
+'
+REPOSET_TOP='
+repo_settings optreposet -
+'
+
 # `identities` is a nullable map exactly like `orchestration`: `null` is the explicit
 # answer "this repo has not cut over to App identities" (the pre-WB-D24 model), a map is
 # the declared set, and then these sub-keys are required -- present, so absent prompts.
@@ -294,6 +309,8 @@ case "$mode" in
     done
     printf '%s\n' "append_only if-present"
     printf '%s\n' "host_tools if-present"
+    printf '%s\n' "environments if-present"
+    printf '%s\n' "repo_settings if-present"
     printf '%s\n' "review.ci_gate"
     printf '%s\n' "$CIGATE_KEYS" | while IFS=' ' read -r path kind shape; do
       [ -n "$path" ] || continue
@@ -595,7 +612,7 @@ check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
   path="$1"; kind="$2"; shape="$3"; present="$4"; tag="$5"; safe="$6"; json="$7"
 
   if [ "$present" != true ]; then
-    case "$kind" in optnelist | optlanemap | optappend | opthost) return ;; esac   # an absent optional key is not a finding
+    case "$kind" in optnelist | optlanemap | optappend | opthost | optenv | optreposet) return ;; esac   # an absent optional key is not a finding
     case "$kind" in cigate | orchmap | identmap) kind=nullable ;; nelist) kind=list ;; esac   # printed as the interview asks it
     add_finding "missing $path $kind"
     return
@@ -668,6 +685,20 @@ check_row() { # check_row <path> <kind> <shape> <present> <tag> <safe> <json>
       case "$tag" in
         '!!null') : ;;
         '!!seq') host_is_seq=1; host_json="$json" ;;
+        *) invalid_finding "$path" "$json" ;;
+      esac
+      ;;
+    optenv)
+      case "$tag" in
+        '!!null') : ;;
+        '!!seq') env_is_seq=1; env_json="$json" ;;
+        *) invalid_finding "$path" "$json" ;;
+      esac
+      ;;
+    optreposet)
+      case "$tag" in
+        '!!null') : ;;
+        '!!map') reposet_is_map=1; reposet_json="$json" ;;
         *) invalid_finding "$path" "$json" ;;
       esac
       ;;
@@ -859,6 +890,61 @@ check_host_tools_entries() {
   esac
 }
 
+# The `environments` entry rule (#1488), the one wow-readback applies too. Every entry is a map of
+# exactly `name`, `reviewers`, `branch_policy`, `branches` and `admins_can_bypass`. `name` is a string
+# of letters, digits, `.`, `_`, `-`, starting with a letter or digit, at most 100 characters, unique in
+# the list. `reviewers` is a list (it may be empty) of maps of exactly `type` (the string `User` or
+# `Team`) and `id` (a positive YAML integer), no pair repeated. `branch_policy` is `all`, `protected`
+# or `custom`. `branches` is a non-empty list of unique strings of letters, digits, `.`, `_`, `-`, `/`
+# and `*` under `custom`, and `null` otherwise. `admins_can_bypass` is a YAML boolean. The whole check
+# runs inside yq, the shape stage before the value stage so a wrong shape reads `false` and never an
+# error, and one boolean line is the only thing read back.
+check_environments_entries() {
+  good=$(yq eval '.environments | explode(.) | . as $l
+    | ([$l[] | . as $e | (if (($e | tag) != "!!map") then false
+        elif (($e | keys | sort | join(",")) != "admins_can_bypass,branch_policy,branches,name,reviewers") then false
+        elif (((($e.name | tag) == "!!str") and (($e.branch_policy | tag) == "!!str") and (($e.admins_can_bypass | tag) == "!!bool") and (($e.reviewers | tag) == "!!seq")) | not) then false
+        elif ([$e.reviewers[] | . as $r | (($r | tag) == "!!map" and ($r | keys | sort | join(",")) == "id,type" and ($r.type | tag) == "!!str" and ($r.id | tag) == "!!int")] | all | not) then false
+        elif ($e.branch_policy == "custom") then ((($e.branches | tag) == "!!seq") and ([$e.branches[] | (tag == "!!str")] | all))
+        else (($e.branches | tag) == "!!null") end)] | all) as $shape
+    | (if $shape then
+        (([$l[] | . as $e | (if (($e.branches | tag) == "!!seq") then $e.branches else [] end) as $b | (($e.name | test("^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")) and ($e.branch_policy | test("^(all|protected|custom)$"))
+            and ([$e.reviewers[] | . as $r | (($r.type | test("^(User|Team)$")) and ($r.id | to_string | test("^[1-9][0-9]{0,15}$")))] | all)
+            and (([$e.reviewers[] | . as $r | $r.type + ":" + ($r.id | to_string)] | unique | length) == ($e.reviewers | length))
+            and ([$b[] | test("^[A-Za-z0-9._/*-]+$")] | all)
+            and (($b | unique | length) == ($b | length))
+            and (($e.branch_policy != "custom") or (($b | length) > 0)))] | all)
+          and (([$l[] | .name] | unique | length) == ($l | length)))
+      else false end) | to_string' "$FILE" 2>/dev/null) || { echo unreadable; exit 0; }
+  case "$good" in
+    true) ;;
+    false) invalid_finding environments "$env_json" ;;
+    *) echo unreadable; exit 0 ;;
+  esac
+}
+
+# The `repo_settings` rule (#1488): a map whose keys are a subset of `merge_methods`, `auto_merge`,
+# `workflow_permissions` and `actions_can_approve`. `merge_methods` is a non-empty list of unique
+# strings from `merge`, `squash`, `rebase`; `auto_merge` and `actions_can_approve` are YAML booleans;
+# `workflow_permissions` is the string `read` or `write`. An empty map is valid and overrides nothing.
+check_repo_settings_entries() {
+  good=$(yq eval '.repo_settings | explode(.) | . as $m
+    | ([$m | keys | .[] | (. == "merge_methods" or . == "auto_merge" or . == "workflow_permissions" or . == "actions_can_approve")] | all) as $keys
+    | (if $keys then
+        ((($m | has("merge_methods") | not) or (($m.merge_methods | tag) == "!!seq" and ($m.merge_methods | length) > 0
+            and ([$m.merge_methods[] | ((tag == "!!str") and (. == "merge" or . == "squash" or . == "rebase"))] | all)
+            and (($m.merge_methods | unique | length) == ($m.merge_methods | length))))
+          and (($m | has("auto_merge") | not) or (($m.auto_merge | tag) == "!!bool"))
+          and (($m | has("actions_can_approve") | not) or (($m.actions_can_approve | tag) == "!!bool"))
+          and (($m | has("workflow_permissions") | not) or ((($m.workflow_permissions | tag) == "!!str") and ($m.workflow_permissions == "read" or $m.workflow_permissions == "write"))))
+      else false end) | to_string' "$FILE" 2>/dev/null) || { echo unreadable; exit 0; }
+  case "$good" in
+    true) ;;
+    false) invalid_finding repo_settings "$reposet_json" ;;
+    *) echo unreadable; exit 0 ;;
+  esac
+}
+
 cigate_is_map=0
 orch_is_map=0
 ident_is_map=0
@@ -867,6 +953,10 @@ append_is_seq=0
 append_json=
 host_is_seq=0
 host_json=
+env_is_seq=0
+env_json=
+reposet_is_map=0
+reposet_json=
 run_table "$MAIN_KEYS"
 run_table "$RULESETS_KEYS"
 check_ruleset_entries
@@ -877,6 +967,10 @@ run_table "$APPEND_TOP"
 [ "$append_is_seq" = 1 ] && check_append_entries
 run_table "$HOST_TOP"
 [ "$host_is_seq" = 1 ] && check_host_tools_entries
+run_table "$ENV_TOP"
+[ "$env_is_seq" = 1 ] && check_environments_entries
+run_table "$REPOSET_TOP"
+[ "$reposet_is_map" = 1 ] && check_repo_settings_entries
 [ "$cigate_is_map" = 1 ] && run_table "$CIGATE_KEYS"
 [ "$orch_is_map" = 1 ] && run_table "$ORCH_KEYS"
 [ "$ident_is_map" = 1 ] && run_table "$IDENT_KEYS"
