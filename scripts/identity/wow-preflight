@@ -132,7 +132,7 @@ else
       elif [ "$src" = org ]; then
         row "ruleset $nm" "$UI" 'an org ruleset: a repo-scoped admin token cannot read it'
       elif ! printf '%s' "$ent" | jq -e '.rule_types | arrays' >/dev/null 2>&1; then
-        # A map would pass ruleset-drift.sh's join, so the list form is checked here.
+        # A map's values pass ruleset-drift.sh's array read, so the list form is checked here.
         row "ruleset $nm" "$UI" 'the entry'"'"'s rule types could not be read as a list'
       else
         decl=0
