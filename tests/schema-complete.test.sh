@@ -727,6 +727,35 @@ assert_eq "rulesets: null is invalid (absent is the old shape; null is not an an
   'incomplete
 invalid rulesets null' "$(run_check "$f")"
 
+echo "# check -- rulesets[].target, ref_patterns, check_integrations (#1413)"
+
+rs13() { # rs13 <entry lines (already indented)> -> a file with the base fixture and one entry
+  { cat "$base"; printf '%s\n' 'rulesets:' '  - name: t' "$@"; } >"$tmp/rs13.yml"
+}
+rs13 '    source: repo' '    target: tag' '    rule_types: [deletion]' '    ref_patterns: ["refs/tags/v*"]'
+assert_eq "a valid tag entry is complete" "complete" "$(run_check "$tmp/rs13.yml")"
+rs13 '    source: repo' '    rule_types: [required_status_checks]' '    required_checks: [lint]' '    check_integrations: {lint: 15368}'
+assert_eq "a branch entry with check_integrations is complete" "complete" "$(run_check "$tmp/rs13.yml")"
+rs13 '    source: repo' '    target: branch' '    rule_types: [deletion]' '    ref_patterns: null' '    check_integrations: null'
+assert_eq "an explicit branch target with null optional keys is complete" "complete" "$(run_check "$tmp/rs13.yml")"
+
+f13() { # f13 <label> <expected finding path> <entry lines...>
+  l=$1; w=$2; shift 2; rs13 "$@"
+  assert_eq "$l" "incomplete|invalid $w|2" "$(run_check "$tmp/rs13.yml" | sed -n '1p;2p' | awk 'NR==1{a=$0;next}{split($0,x," ");print a "|" x[1] " " x[2] "|" NR}')"
+}
+f13 "an unknown target is invalid" "rulesets[0].target" '    source: repo' '    target: ref' '    rule_types: [deletion]'
+f13 "a tag entry with source org is invalid" "rulesets[0].source" '    source: org' '    target: tag' '    rule_types: [deletion]' '    ref_patterns: [a]'
+f13 "a tag entry without ref_patterns is invalid" "rulesets[0].ref_patterns" '    source: repo' '    target: tag' '    rule_types: [deletion]'
+f13 "a tag entry with an empty ref_patterns is invalid" "rulesets[0].ref_patterns" '    source: repo' '    target: tag' '    rule_types: [deletion]' '    ref_patterns: []'
+f13 "a tag entry with a non-string pattern is invalid" "rulesets[0].ref_patterns" '    source: repo' '    target: tag' '    rule_types: [deletion]' '    ref_patterns: [1]'
+f13 "ref_patterns on a branch entry is invalid" "rulesets[0].ref_patterns" '    source: repo' '    rule_types: [deletion]' '    ref_patterns: [a]'
+f13 "required_checks on a tag entry is invalid" "rulesets[0].required_checks" '    source: repo' '    target: tag' '    rule_types: [deletion]' '    ref_patterns: [a]' '    required_checks: [lint]'
+f13 "a string check_integrations value is invalid" "rulesets[0].check_integrations" '    source: repo' '    rule_types: [deletion]' '    check_integrations: {lint: abc}'
+f13 "a zero check_integrations value is invalid" "rulesets[0].check_integrations" '    source: repo' '    rule_types: [deletion]' '    check_integrations: {lint: 0}'
+f13 "a negative check_integrations value is invalid" "rulesets[0].check_integrations" '    source: repo' '    rule_types: [deletion]' '    check_integrations: {lint: -3}'
+f13 "an integer check_integrations key is invalid, not unreadable" "rulesets[0].check_integrations" '    source: repo' '    rule_types: [deletion]' '    check_integrations: {1: 5}'
+f13 "a list check_integrations is invalid" "rulesets[0].check_integrations" '    source: repo' '    rule_types: [deletion]' '    check_integrations: [lint]'
+
 echo "# check -- lanes (WB-D34): the second optional key; null or a map with an absolute dir"
 
 lanes_fixture() { { cat "$base"; printf '%s\n' "$1"; } >"$2"; }

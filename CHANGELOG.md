@@ -25,6 +25,7 @@ the GitHub release notes.
 
 - `conventions.md` § *Bumping a pinned plugin* now covers a container that installs the plugin at user scope on start: check every entry by commit after the restart, and uninstall the project-scope entry and restore `.claude/settings.json` only when that entry is stale (#1478).
 - The not-visible `ruleset-drift.sh` line now carries `unpinned_checks` and `approval_params`; resume treats a non-empty `approval_params` there as not healthy and says "not seen" for what that line lists (#1418).
+- A `rulesets` entry takes optional `check_integrations` (check name to the App id it must be pinned to), `target` (`branch` or `tag`) and, for a tag entry, `ref_patterns`; `ruleset-drift.sh` ends the list-form line that carries `approval=` and the not-visible line with `wrong_pins=[..]` and `missing_refs=[..]`, and `schema-complete.sh`, `wow-preflight`, resume and the docs follow (#1413).
 
 ### Fixed
 

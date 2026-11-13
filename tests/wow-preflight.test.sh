@@ -230,6 +230,18 @@ setup_ok; put apps/glunk-dev '{"permissions":{"administration":"write"}}'; run
 check_missing "a dev App holding administration" "dev App permissions" "administration"
 setup_ok; put repos/o/r/rules/branches/main "$(printf '%s' "$rules_ok" | sed 's/"require_last_push_approval":true/"require_last_push_approval":false/')"; run
 check_missing "last-push approval off" "ruleset approval" "approval_params=[require_last_push_approval]"
+# a declared check_integrations: matching ids read ok, a different one reads missing (#1413)
+setup_ok; sed -i 's/^    required_checks: \[lint, test\]$/&\n    check_integrations: {lint: 15368}/' "$yml"; run
+assert_eq "a matching check_integrations: the row is ok" ok "$(state "ruleset checks")"
+setup_ok; sed -i 's/^    required_checks: \[lint, test\]$/&\n    check_integrations: {lint: 99}/' "$yml"; run
+check_missing "a wrong pin" "ruleset checks" "wrong_pins=[lint]"
+# a tag entry: healthy reads ok, a missing ref pattern reads missing
+tag_json='{"id":3,"target":"tag","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},"rules":[{"type":"deletion"}]}'
+setup_ok; printf '%s\n' '  - name: tags' '    source: repo' '    target: tag' '    rule_types: [deletion]' '    ref_patterns: ["refs/tags/v*"]' >>"$yml"
+put repos/o/r/rulesets '[{"id":1,"name":"checks"},{"id":2,"name":"approval"},{"id":3,"name":"tags"}]'; put repos/o/r/rulesets/3 "$tag_json"; run
+assert_eq "a healthy tag entry: the row is ok" ok "$(state "ruleset tags")"
+put repos/o/r/rulesets/3 "$(printf '%s' "$tag_json" | sed 's#refs/tags/v\*#refs/tags/x#')"; run
+check_missing "a missing ref pattern" "ruleset tags" "missing_refs=[refs/tags/v*]"
 setup_ok; sed -i '/name: approval/,$d' "$yml"; run
 check_missing "no entry declares pull_request" "approval rule parameters" "no rulesets entry declares a pull_request rule"
 # the checks entry's ruleset carries a pull_request rule (all four parameters at their values) its entry does not declare
@@ -296,7 +308,7 @@ setup_ok; printf 'rulesets: []\n' >"$yml"; run
 check_ui "an empty rulesets list" rulesets
 
 # --- a name that would forge the ok form -----------------------------------------------------
-forged='checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]'
+forged='checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]'
 setup_ok
 put repos/o/r/rules/branches/main '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'
 jq -n --arg n "$forged" '[{"id":1,"name":$n},{"id":2,"name":"approval"}]' >"$STUBS/repos_o_r_rulesets"
