@@ -3033,3 +3033,35 @@ can assume, and retired every Infisical identity but loop-orchestrator's, which 
 
 Sprint 18 closed on 2026-11-01; its last change to this repo is `a00405c` (PR #1201), the pin
 bump to `v0.28.0`.
+
+Sprint 19 (milestone 26, *Identity M5b: dev containers on the shared template*, then milestone
+30, *Second consumer: fixes from resume-orchestrator's cutover*, all their issues closed) moves
+this repo onto the shared dev-container template and brings in the first consuming repo. Milestone
+26 took route steps 1 to 6 of `WB-D42`: lanes in the plugin (#715, PR #1242), the owner-qualified
+token directory and the loopback `appPort` surface (#1276, PR #1341), the launcher's check of
+`.devcontainer/` against a fetched copy (#1339, PR #1343), this repo's container rebased on the
+dev-App image flavour (#1226, PR #1351), the add-a-repo host steps (#1165, PR #1363), the
+retirement of the bare `tokens/<repo>` layout (#1340, PRs #1347 and #1427) and the secret scan's
+ignore list for test fixtures (#1352, PR #1412). Milestone 30 fixed what resume-orchestrator's
+cutover (2026-11-07 to 11-09, glunk-works/resume-orchestrator#169) found: architect-review loads
+the approved spec under an identities map (#1368, PR #1387), critic-gate and spec-task have a stop
+rule (#1373, PR #1394), handoff's cursor-sync PRs are fewer and resume tolerates an open one
+(#1376, PR #1401, `WB-D47`), an approved spec is carried forward after a sibling merge (#1374,
+PR #1442), a null identities map is handled (#1375, PR #1420), a cutover preflight and a host
+prerequisite check exist (#1383, PR #1399; #1377, PR #1437), lane and driver paths come from the
+driver record (#1381, PR #1455), spec-task takes the answer branch (#1416, PR #1453), `wow-admin`
+checks the typed owner (#1425 with #1428, PR #1463) and the cutover read-back is corrected (#1287,
+PR #1452; #1289, PR #1459; #1405, PR #1467). It shipped in `v0.29.0` through `v0.33.0`, the last
+tagged at `2e32980` (PR #1475).
+
+Verified live: this repo's container on the template image, rebuilt with its live checks passed
+on 2026-11-07 (#1226); resume-orchestrator's container acting as the dev App (#1349); the
+start-time plugin install at the `v0.32.0` and `v0.33.0` bumps, with no stale project-scope entry
+either time (written up by #1478, PR #1479); the bare token directories removed on both homes on
+2026-11-13 (#1427's Migration line); and the lane and spec tabs showing the issue number (#1465,
+PR #1469), in an order Claude Code's generated title picks. Deferred and tracked:
+- the `sh.cmd` path of the launchers' `cygpath` conversion on a real Windows Git Bash (#885);
+- the step for a stale user-scope entry after a start-time install (#1480).
+
+Sprint 19 closed on 2026-11-13; its last change to this repo is `3e76053` (PR #1476), the pin
+bump to `v0.33.0`.
