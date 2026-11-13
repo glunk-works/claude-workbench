@@ -25,6 +25,10 @@ the GitHub release notes.
 
 - `conventions.md` § *Bumping a pinned plugin* now covers a container that installs the plugin at user scope on start: check every entry by commit after the restart, and uninstall the project-scope entry and restore `.claude/settings.json` only when that entry is stale (#1478).
 
+### Fixed
+
+- `ruleset-drift.sh` compares a required check whose name holds a comma as one name, no longer reporting it missing (`#1298`).
+
 ## [0.33.0] — 2026-11-12
 
 ### Added
