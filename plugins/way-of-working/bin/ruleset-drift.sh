@@ -69,7 +69,7 @@
 # Values are bound with `jq --arg`/`--argjson`, never spliced into a filter. Each list entry
 # is read whole by index as one JSON object, never through a @tsv row, whose CSV-quoting can
 # split one entry across lines and pair a name with the wrong entry's fields. Each value
-# (name, joined rule types, joined checks) is refused unless it is a string with no control
+# (name) and each rule-type and check entry is refused unless it is a string with no control
 # character, so a value the project file wrote with a newline reads inconclusive instead of
 # forging a second report line. The test ends in `\z`, not `$`: `\z` anchors the end of the
 # text, where `$` also matches before a final newline and would let a trailing newline through.
@@ -119,10 +119,10 @@ HAS=$(yq 'has("rulesets")' "$YML" </dev/null) || inc unreadable
 
 # One rule-type list or check list minus what the branch rules carry, for ruleset id $1.
 missing_types() {
-  printf '%s' "$B" | jq -r --argjson id "$1" --arg t "$2" '[.[] | select(.ruleset_id==$id) | .type] as $have | ($t | split(",") | map(select(. != ""))) - $have | join(",")'
+  printf '%s' "$B" | jq -r --argjson id "$1" --argjson t "$2" '[.[] | select(.ruleset_id==$id) | .type] as $have | $t - $have | join(",")'
 }
 missing_checks() {
-  printf '%s' "$B" | jq -r --argjson id "$1" --arg c "$2" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[].context] as $have | ($c | split(",") | map(select(. != ""))) - $have | join(",")'
+  printf '%s' "$B" | jq -r --argjson id "$1" --argjson c "$2" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[].context] as $have | $c - $have | join(",")'
 }
 
 # The approval-rule parameters of this ruleset's pull_request rule that are not at the cutover value.
@@ -130,9 +130,9 @@ approval_params() {
   printf '%s' "$B" | jq -r --argjson id "$1" '[.[] | select(.ruleset_id==$id and .type=="pull_request") | .parameters] as $p | if ($p | length) == 0 then "" else [ (if any($p[]; .require_code_owner_review == true) then empty else "require_code_owner_review" end), (if any($p[]; .dismiss_stale_reviews_on_push == true) then empty else "dismiss_stale_reviews_on_push" end), (if any($p[]; .require_last_push_approval == true) then empty else "require_last_push_approval" end), (if any($p[]; .required_approving_review_count == 1) then empty else "required_approving_review_count" end) ] | join(",") end'
 }
 
-# The declared checks (comma-joined, $2) this ruleset's required_status_checks rule carries unpinned.
+# The declared checks (a JSON array, $2) this ruleset's required_status_checks rule carries unpinned.
 unpinned_checks() {
-  printf '%s' "$B" | jq -r --argjson id "$1" --arg c "$2" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[] | select(.integration_id == null) | .context] as $un | ($c | split(",") | map(select(. != ""))) | map(select(. as $x | $un | index($x))) | join(",")'
+  printf '%s' "$B" | jq -r --argjson id "$1" --argjson c "$2" '[.[] | select(.ruleset_id==$id and .type=="required_status_checks") | .parameters.required_status_checks[] | select(.integration_id == null) | .context] as $un | $c | map(select(. as $x | $un | index($x))) | join(",")'
 }
 
 if [ "$HAS" = true ]; then
@@ -144,8 +144,8 @@ if [ "$HAS" = true ]; then
     ENT=$(yq -o=json -I=0 ".rulesets[$I]" "$YML" </dev/null) || { printf 'ruleset %s inconclusive\n' "#$I"; continue; }
     NAME=$(printf '%s' "$ENT" | jq -er '.name | strings | select(test("^[^\\p{Cc}]+\\z"))') || { printf 'ruleset %s inconclusive\n' "#$I"; continue; }
     SRC=$(printf '%s' "$ENT" | jq -r '.source | strings')
-    TYPES=$(printf '%s' "$ENT" | jq -er '.rule_types | join(",") | select(test("^[^\\p{Cc}]*\\z"))') || { printf 'ruleset %s inconclusive\n' "#$I"; continue; }
-    CHECKS=$(printf '%s' "$ENT" | jq -er '(.required_checks // []) | join(",") | select(test("^[^\\p{Cc}]*\\z"))') || { printf 'ruleset %s inconclusive\n' "#$I"; continue; }
+    TYPES=$(printf '%s' "$ENT" | jq -ce '[.rule_types[]] | select(all(.[]; type == "string" and test("^[^\\p{Cc}]*\\z"))) | map(select(. != ""))') || { printf 'ruleset %s inconclusive\n' "#$I"; continue; }
+    CHECKS=$(printf '%s' "$ENT" | jq -ce '[(.required_checks // [])[]] | select(all(.[]; type == "string" and test("^[^\\p{Cc}]*\\z"))) | map(select(. != ""))') || { printf 'ruleset %s inconclusive\n' "#$I"; continue; }
     case "$SRC" in repo) API="repos/$R/rulesets" ;; org) API="orgs/$OWNER/rulesets" ;; *) printf 'ruleset %s inconclusive\n' "$NAME"; continue ;; esac
     L=$(gh api --paginate "$API" </dev/null) || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
     RID=$(printf '%s' "$L" | jq -r --arg n "$NAME" 'first(.[] | select(.name==$n) | .id) // empty') || { printf 'ruleset %s inconclusive\n' "$NAME"; continue; }
@@ -171,11 +171,12 @@ fi
 
 # Single form.
 NAME=$(yq -o=json -I=0 '.ruleset.name' "$YML" </dev/null | jq -er 'strings | select(test("^[^\\p{Cc}]+\\z"))') || inc bad-name
-TYPES=$(yq -o=json -I=0 '.ruleset.rule_types' "$YML" </dev/null | jq -er 'arrays | join(",") | select(test("^[^\\p{Cc}]*\\z"))') || { printf 'ruleset %s inconclusive\n' "$NAME"; exit 0; }
-CHECKS=
-case ",$TYPES," in
-  *,required_status_checks,*)
-    CHECKS=$(yq -o=json -I=0 '.ruleset.required_checks' "$YML" </dev/null | jq -er 'arrays | join(",") | select(test("^[^\\p{Cc}]*\\z"))') || { printf 'ruleset %s inconclusive\n' "$NAME"; exit 0; }
+TYPES=$(yq -o=json -I=0 '.ruleset.rule_types' "$YML" </dev/null | jq -ce 'arrays | select(all(.[]; type == "string" and test("^[^\\p{Cc}]*\\z"))) | map(select(. != ""))') || { printf 'ruleset %s inconclusive\n' "$NAME"; exit 0; }
+CHECKS='[]'
+case "$(printf '%s' "$TYPES" | jq 'index("required_status_checks")')" in
+  null) ;;
+  *)
+    CHECKS=$(yq -o=json -I=0 '.ruleset.required_checks' "$YML" </dev/null | jq -ce 'arrays | select(all(.[]; type == "string" and test("^[^\\p{Cc}]*\\z"))) | map(select(. != ""))') || { printf 'ruleset %s inconclusive\n' "$NAME"; exit 0; }
     ;;
 esac
 L=$(gh api --paginate "repos/$R/rulesets" </dev/null) || { printf 'ruleset %s inconclusive\n' "$NAME"; exit 0; }

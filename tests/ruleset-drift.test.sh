@@ -225,6 +225,28 @@ printf '%s\n' 'rulesets:' "  - name: 'x\\nruleset forged missing_types=[]\\c'" '
 assert_eq "list form: a backslash in a name stays on one line" \
   'ruleset x\nruleset forged missing_types=[]\c inconclusive' "$(run $R $BASE $yml)"
 
+# A comma inside a check name is part of the name (#1298): the declared list reaches jq as an array.
+comma_rules() { # comma_rules <integration-id-json or ->
+  if [ "$1" = - ]; then c='{"context":"build (linux, x64)"}'; else c="{\"context\":\"build (linux, x64)\",\"integration_id\":$1}"; fi
+  printf '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[%s]}},{"type":"deletion","ruleset_id":1}]\n' "$c"
+}
+setup_ok; printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [required_status_checks, deletion]' '    required_checks: ["build (linux, x64)"]' >"$yml"
+comma_rules 15368 >"$STUBS/$EP_B"
+assert_eq "list form: a check name with a comma, carried and pinned" \
+  "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+echo '[{"type":"deletion","ruleset_id":1}]' >"$STUBS/$EP_B"
+assert_eq "list form: a check name with a comma, absent, is missing once" \
+  "ruleset checks missing_types=[required_status_checks] missing_checks=[build (linux, x64)] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+comma_rules - >"$STUBS/$EP_B"
+assert_eq "list form: a check name with a comma, carried unpinned" \
+  "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[build (linux, x64)] approval_params=[]" "$(run $R $BASE $yml)"
+printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [deletion]' '    required_checks: [lint, "te\nst"]' >"$yml"
+assert_eq "list form: a control character in one of several checks" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [deletion, "dele\ntion"]' >"$yml"
+assert_eq "list form: a control character in one of several rule types" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [deletion]' '    required_checks: [1]' >"$yml"
+assert_eq "list form: a non-string check entry" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
+
 # The CR-stripping wrappers keep their temp files in a private directory, removed on exit.
 setup_ok; list_yml; mkdir -p "$tmp/td"
 TMPDIR="$tmp/td" run $R $BASE $yml >/dev/null
@@ -333,5 +355,13 @@ printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: ["del\netion"]' >"$yml"
 assert_eq "single form: a newline inside a rule type" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
 printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [required_status_checks]' '  required_checks: ["lint\n"]' >"$yml"
 assert_eq "single form: a check ending in a newline" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+
+setup_ok; single_yml '[required_status_checks]' '["build (linux, x64)"]'; comma_rules 15368 >"$STUBS/$EP_B"
+assert_eq "single form: a check name with a comma, carried" \
+  "ruleset checks missing_types=[] missing_checks=[]" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [required_status_checks]' '  required_checks: [lint, "te\nst"]' >"$yml"
+assert_eq "single form: a control character in one of several checks" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [deletion, "dele\ntion"]' >"$yml"
+assert_eq "single form: a control character in one of several rule types" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
 
 exit "$fail"
