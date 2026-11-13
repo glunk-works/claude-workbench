@@ -143,7 +143,7 @@ else
           "$pre"*)
             rest=${line#"$pre"}
             ap=${rest%% *}
-            tail=" bypass_actors=0 unpinned_checks=[] approval_params=[]"
+            tail=" bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]"
             case "$ap" in
               '' | *[!0-9]*) ;;
               *)
@@ -155,11 +155,11 @@ else
             ;;
         esac
         if [ "$okfmt" = 1 ]; then
-          row "ruleset $nm" ok 'the App a check is pinned to, and checks the project file does not declare, are not judged'
+          row "ruleset $nm" ok 'the App a check is pinned to is judged only for checks the entry'"'"'s check_integrations names, and checks the project file does not declare are not judged'
         elif [ "$undeclared" = 1 ]; then
           row "ruleset $nm" missing 'the ruleset carries a pull_request rule its entry does not declare'
         elif [ "$line" = "ruleset $nm missing" ]; then
-          row "ruleset $nm" missing 'no ruleset of that name'
+          row "ruleset $nm" missing 'no ruleset of that name, or not an active tag ruleset'
         else
           case "$line" in
             "ruleset $nm missing_types="*) row "ruleset $nm" missing "${line#"ruleset $nm "}" ;;

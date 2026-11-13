@@ -117,8 +117,8 @@ assert_eq "a wrong argument count exits 2" "2" "$rc"
 # --- list form -----------------------------------------------------------------------------
 setup_ok; list_yml
 assert_eq "list form healthy" \
-"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 # --- approval_params (#1405) ---------------------------------------------------------------
 PRX='"type":"pull_request","ruleset_id":2'
@@ -129,74 +129,74 @@ approval_line() { # approval_line <rule-json-object-without-braces> -> the appro
   run $R $BASE $yml | sed -n 2p
 }
 pfx="ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[]"
-assert_eq "approval_params: all four at their values" "$pfx approval_params=[]" "$(approval_line "$PRX,\"parameters\":{$APP_OK}")"
-assert_eq "approval_params: code-owner review off" "$pfx approval_params=[require_code_owner_review]" \
+assert_eq "approval_params: all four at their values" "$pfx approval_params=[] wrong_pins=[] missing_refs=[]" "$(approval_line "$PRX,\"parameters\":{$APP_OK}")"
+assert_eq "approval_params: code-owner review off" "$pfx approval_params=[require_code_owner_review] wrong_pins=[] missing_refs=[]" \
   "$(approval_line "$PRX,\"parameters\":{\"require_code_owner_review\":false,\"dismiss_stale_reviews_on_push\":true,\"require_last_push_approval\":true,\"required_approving_review_count\":1}")"
-assert_eq "approval_params: stale-review dismissal off" "$pfx approval_params=[dismiss_stale_reviews_on_push]" \
+assert_eq "approval_params: stale-review dismissal off" "$pfx approval_params=[dismiss_stale_reviews_on_push] wrong_pins=[] missing_refs=[]" \
   "$(approval_line "$PRX,\"parameters\":{\"require_code_owner_review\":true,\"dismiss_stale_reviews_on_push\":false,\"require_last_push_approval\":true,\"required_approving_review_count\":1}")"
-assert_eq "approval_params: last-push approval off" "$pfx approval_params=[require_last_push_approval]" \
+assert_eq "approval_params: last-push approval off" "$pfx approval_params=[require_last_push_approval] wrong_pins=[] missing_refs=[]" \
   "$(approval_line "$PRX,\"parameters\":{\"require_code_owner_review\":true,\"dismiss_stale_reviews_on_push\":true,\"require_last_push_approval\":false,\"required_approving_review_count\":1}")"
-assert_eq "approval_params: review count 2" "$pfx approval_params=[required_approving_review_count]" \
+assert_eq "approval_params: review count 2" "$pfx approval_params=[required_approving_review_count] wrong_pins=[] missing_refs=[]" \
   "$(approval_line "$PRX,\"parameters\":{\"require_code_owner_review\":true,\"dismiss_stale_reviews_on_push\":true,\"require_last_push_approval\":true,\"required_approving_review_count\":2}")"
 assert_eq "approval_params: all four off, in the fixed order" \
-  "$pfx approval_params=[require_code_owner_review,dismiss_stale_reviews_on_push,require_last_push_approval,required_approving_review_count]" \
+  "$pfx approval_params=[require_code_owner_review,dismiss_stale_reviews_on_push,require_last_push_approval,required_approving_review_count] wrong_pins=[] missing_refs=[]" \
   "$(approval_line "$PRX,\"parameters\":{\"require_code_owner_review\":false,\"dismiss_stale_reviews_on_push\":false,\"require_last_push_approval\":false,\"required_approving_review_count\":0}")"
 assert_eq "approval_params: a pull_request rule with no parameters names all four" \
-  "$pfx approval_params=[require_code_owner_review,dismiss_stale_reviews_on_push,require_last_push_approval,required_approving_review_count]" \
+  "$pfx approval_params=[require_code_owner_review,dismiss_stale_reviews_on_push,require_last_push_approval,required_approving_review_count] wrong_pins=[] missing_refs=[]" \
   "$(approval_line "$PRX")"
 setup_ok; list_yml
 assert_eq "approval_params: a ruleset with no pull_request rule prints an empty list" \
-  "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml | sed -n 1p)"
+  "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml | sed -n 1p)"
 
 setup_ok; list_yml; echo '[{"id":2,"name":"approval"}]' >"$STUBS/$EP_L"
 assert_eq "list form missing" "ruleset checks missing
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml
 echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]' >"$STUBS/$EP_B"
 assert_eq "list form weakened names the absent type and check" \
-"ruleset checks missing_types=[deletion] missing_checks=[test] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[deletion] missing_checks=[test] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml
 echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":null},{"context":"test"},{"context":"extra"}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]' >"$STUBS/$EP_B"
 assert_eq "list form: a null or absent integration_id names the check; an undeclared check is not judged" \
-"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[lint,test] approval_params=[]
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[lint,test] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml
 echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]' >"$STUBS/$EP_B"
 assert_eq "list form: an absent check is missing, not unpinned" \
-"ruleset checks missing_types=[] missing_checks=[test] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[] missing_checks=[test] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; echo '{"bypass_actors":[{"actor_id":1}]}' >"$STUBS/repos_o_r_rulesets_2"
 assert_eq "list form drift: one bypass actor" \
-"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=1 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=1 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_2"
 assert_eq "list form bypass actors not visible" \
-"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]
-ruleset approval inconclusive (bypass actors not visible to this identity) missing_types=[] missing_checks=[] unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval inconclusive (bypass actors not visible to this identity) missing_types=[] missing_checks=[] unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_1"
 echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368}]}},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]' >"$STUBS/$EP_B"
 assert_eq "list form bypass actors not visible still names a missing type and check" \
-"ruleset checks inconclusive (bypass actors not visible to this identity) missing_types=[deletion] missing_checks=[test] unpinned_checks=[] approval_params=[]
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+"ruleset checks inconclusive (bypass actors not visible to this identity) missing_types=[deletion] missing_checks=[test] unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_1"
 echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test"}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]' >"$STUBS/$EP_B"
 assert_eq "list form bypass actors not visible still names an unpinned check" \
-"ruleset checks inconclusive (bypass actors not visible to this identity) missing_types=[] missing_checks=[] unpinned_checks=[test] approval_params=[]
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+"ruleset checks inconclusive (bypass actors not visible to this identity) missing_types=[] missing_checks=[] unpinned_checks=[test] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; echo '{"bypass_actors":null}' >"$STUBS/repos_o_r_rulesets_2"
 echo '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":false,"required_approving_review_count":1}}]' >"$STUBS/$EP_B"
 assert_eq "list form bypass actors not visible still names a weakened approval parameter" \
-"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]
-ruleset approval inconclusive (bypass actors not visible to this identity) missing_types=[] missing_checks=[] unpinned_checks=[] approval_params=[require_last_push_approval]" "$(run $R $BASE $yml)"
+"ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]
+ruleset approval inconclusive (bypass actors not visible to this identity) missing_types=[] missing_checks=[] unpinned_checks=[] approval_params=[require_last_push_approval] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 setup_ok; list_yml; touch "$STUBS/$EP_L.rc"
 assert_eq "list form: a failed rulesets-list read" "ruleset checks inconclusive
@@ -229,7 +229,7 @@ assert_eq "list form: a check ending in a newline" "ruleset #0 inconclusive" "$(
 setup_ok; list_yml; echo '[{"id":1.5,"name":"checks"},{"id":2,"name":"approval"}]' >"$STUBS/$EP_L"
 echo '{"bypass_actors":[]}' >"$STUBS/repos_o_r_rulesets_1.5"
 assert_eq "list form: a non-numeric ruleset id" "ruleset checks inconclusive
-ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+ruleset approval missing_types=[] missing_checks=[] approval=1 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 
 # A backslash in a name is no control character; echo in some shells would make it a new line.
 setup_ok
@@ -245,13 +245,13 @@ comma_rules() { # comma_rules <integration-id-json or ->
 setup_ok; printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [required_status_checks, deletion]' '    required_checks: ["build (linux, x64)"]' >"$yml"
 comma_rules 15368 >"$STUBS/$EP_B"
 assert_eq "list form: a check name with a comma, carried and pinned" \
-  "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+  "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 echo '[{"type":"deletion","ruleset_id":1}]' >"$STUBS/$EP_B"
 assert_eq "list form: a check name with a comma, absent, is missing once" \
-  "ruleset checks missing_types=[required_status_checks] missing_checks=[build (linux, x64)] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]" "$(run $R $BASE $yml)"
+  "ruleset checks missing_types=[required_status_checks] missing_checks=[build (linux, x64)] approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 comma_rules - >"$STUBS/$EP_B"
 assert_eq "list form: a check name with a comma, carried unpinned" \
-  "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[build (linux, x64)] approval_params=[]" "$(run $R $BASE $yml)"
+  "ruleset checks missing_types=[] missing_checks=[] approval=0 bypass_actors=0 unpinned_checks=[build (linux, x64)] approval_params=[] wrong_pins=[] missing_refs=[]" "$(run $R $BASE $yml)"
 printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [deletion]' '    required_checks: [lint, "te\nst"]' >"$yml"
 assert_eq "list form: a control character in one of several checks" "ruleset #0 inconclusive" "$(run $R $BASE $yml)"
 printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [deletion, "dele\ntion"]' >"$yml"
@@ -378,5 +378,53 @@ printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [required_status_checks
 assert_eq "single form: a control character in one of several checks" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
 printf '%s\n' 'ruleset:' '  name: checks' '  rule_types: [deletion, "dele\ntion"]' >"$yml"
 assert_eq "single form: a control character in one of several rule types" "ruleset checks inconclusive" "$(run $R $BASE $yml)"
+
+# --- check_integrations, target and ref_patterns (#1413) -----------------------------------
+pin_yml() { # pin_yml <check_integrations flow map>
+  printf '%s\n' 'rulesets:' '  - name: checks' '    source: repo' '    rule_types: [required_status_checks]' '    required_checks: [lint, test]' "    check_integrations: $1" >"$yml"
+}
+pin_line() { setup_ok; pin_yml "$1"; run $R $BASE $yml; }
+PINTAIL="approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]"
+assert_eq "pins: matching ids" "ruleset checks missing_types=[] missing_checks=[] $PINTAIL wrong_pins=[] missing_refs=[]" "$(pin_line '{lint: 15368, test: 15368}')"
+assert_eq "pins: a different id" "ruleset checks missing_types=[] missing_checks=[] $PINTAIL wrong_pins=[test] missing_refs=[]" "$(pin_line '{lint: 15368, test: 99}')"
+assert_eq "pins: two wrong ids, in declared order" "ruleset checks missing_types=[] missing_checks=[] $PINTAIL wrong_pins=[test,lint] missing_refs=[]" "$(pin_line '{test: 1, lint: 2}')"
+assert_eq "pins: a check the rule does not carry" "ruleset checks missing_types=[] missing_checks=[] $PINTAIL wrong_pins=[other] missing_refs=[]" "$(pin_line '{lint: 15368, other: 15368}')"
+setup_ok; pin_yml '{lint: 15368}'
+printf '[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":null},{"context":"test"}]}}]\n' >"$STUBS/$EP_B"
+assert_eq "pins: a null id" "ruleset checks missing_types=[] missing_checks=[] $PINTAIL wrong_pins=[lint] missing_refs=[]" "$(run $R $BASE $yml | sed 's/unpinned_checks=\[[^]]*\]/unpinned_checks=[]/')"
+for bad in 'false' '{lint: "x"}' '{lint: 0}' '{lint: -1}' '[lint]' '{lint: 1.5}'; do
+  assert_eq "pins: malformed check_integrations $bad" "ruleset checks inconclusive" "$(pin_line "$bad")"
+done
+
+TL='[{"id":1,"name":"checks"},{"id":3,"name":"tags"}]'
+tag_yml() { # tag_yml <extra entry lines...>
+  { printf '%s\n' 'rulesets:' '  - name: tags' '    source: repo' '    target: tag' '    rule_types: [deletion, non_fast_forward]' '    ref_patterns: ["refs/tags/v*"]'; for l in "$@"; do printf '%s\n' "$l"; done; } >"$yml"
+}
+tag_ok='{"id":3,"target":"tag","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"}]}'
+tag_run() { # tag_run <by-id json>
+  setup_ok; echo "$TL" >"$STUBS/$EP_L"; echo "$1" >"$STUBS/repos_o_r_rulesets_3"; run $R $BASE $yml
+}
+TT="approval=0 bypass_actors=0 unpinned_checks=[] approval_params=[]"
+tag_yml
+assert_eq "tag: healthy" "ruleset tags missing_types=[] missing_checks=[] $TT wrong_pins=[] missing_refs=[]" "$(tag_run "$tag_ok")"
+assert_eq "tag: a missing rule type" "ruleset tags missing_types=[non_fast_forward] missing_checks=[] $TT wrong_pins=[] missing_refs=[]" \
+  "$(tag_run "$(echo "$tag_ok" | jq -c '.rules = [{"type":"deletion"}]')")"
+assert_eq "tag: a missing ref pattern" "ruleset tags missing_types=[] missing_checks=[] $TT wrong_pins=[] missing_refs=[refs/tags/v*]" \
+  "$(tag_run "$(echo "$tag_ok" | jq -c '.conditions.ref_name.include = ["refs/tags/x"]')")"
+assert_eq "tag: a branch ruleset reads missing" "ruleset tags missing" "$(tag_run "$(echo "$tag_ok" | jq -c '.target = "branch"')")"
+assert_eq "tag: disabled reads missing" "ruleset tags missing" "$(tag_run "$(echo "$tag_ok" | jq -c '.enforcement = "disabled"')")"
+assert_eq "tag: evaluate reads missing" "ruleset tags missing" "$(tag_run "$(echo "$tag_ok" | jq -c '.enforcement = "evaluate"')")"
+setup_ok; echo "$TL" >"$STUBS/$EP_L"; echo 'not json <html>' >"$STUBS/repos_o_r_rulesets_3"
+assert_eq "tag: a by-id response that is not JSON is inconclusive" "ruleset tags inconclusive" "$(run $R $BASE $yml)"
+assert_eq "tag: rules not an array" "ruleset tags inconclusive" "$(tag_run "$(echo "$tag_ok" | jq -c '.rules = {}')")"
+assert_eq "tag: include not an array" "ruleset tags inconclusive" "$(tag_run "$(echo "$tag_ok" | jq -c '.conditions.ref_name.include = "x"')")"
+assert_eq "tag: a non-empty exclude" "ruleset tags inconclusive" "$(tag_run "$(echo "$tag_ok" | jq -c '.conditions.ref_name.exclude = ["refs/tags/old"]')")"
+assert_eq "tag: the not-visible line carries the new fields" \
+  "ruleset tags inconclusive (bypass actors not visible to this identity) missing_types=[] missing_checks=[] unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[refs/tags/v*]" \
+  "$(tag_run "$(echo "$tag_ok" | jq -c 'del(.bypass_actors) | .conditions.ref_name.include = []')")"
+tag_yml '    source_x: 1'; sed -i 's/source: repo/source: org/' "$yml"
+assert_eq "tag: source org is inconclusive" "ruleset tags inconclusive" "$(tag_run "$tag_ok")"
+printf '%s\n' 'rulesets:' '  - name: tags' '    source: repo' '    target: ref' '    rule_types: [deletion]' >"$yml"
+assert_eq "an unknown target is inconclusive" "ruleset tags inconclusive" "$(tag_run "$tag_ok")"
 
 exit "$fail"

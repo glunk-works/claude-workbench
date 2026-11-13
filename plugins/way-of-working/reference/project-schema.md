@@ -524,7 +524,7 @@ critics on a diff that does not build.
 ### `rulesets` (and its legacy alias `ruleset`)
 
 `rulesets` (`WB-D24`, `#378`) is a **non-empty list** of every ruleset that applies to
-`{pr_base}`; after a cutover that is more than one (the checks ruleset and the code-owner
+`{pr_base}`, or a tag ruleset declared with `target: tag`; after a cutover that is more than one (the checks ruleset and the code-owner
 approval ruleset, one of them possibly an organization's). Each entry is:
 
 - **`name`** — the ruleset's name, here and in the legacy `ruleset.name`. A reader binds it as a value (read into a variable, then `jq --arg`), never splices it into shell text. The checker holds both to one rule: a non-empty string with no control character (no newline or tab); a space, a `'` or a `$` is a legal name, because the binding, not the charset, keeps it inert.
@@ -536,8 +536,11 @@ approval ruleset, one of them possibly an organization's). Each entry is:
 - **`required_checks`** — optional, and only for an entry whose `rule_types` include
   `required_status_checks`: every check that ruleset requires. Everything said below about
   `required_checks` applies to it, and a reader takes the **union** of every entry's list.
+- **`check_integrations`** — optional. Absent or `null` means none; otherwise a map from a required check's name to the positive integer `integration_id` of the App that check must be pinned to. `ruleset-drift.sh` lists in `wrong_pins` each key the ruleset's `required_status_checks` rule does not carry with that id.
+- **`target`** — optional. Absent, `null` or `branch` is a branch ruleset judged from the branch rules; `tag` is a tag ruleset. A tag entry is a repository ruleset (`source: repo`), is judged from the ruleset itself read by id and not from the branch rules, must be active and exclude no ref, and carries no `required_checks` (so the union above stays branch-only).
+- **`ref_patterns`** — a non-empty list of strings exactly when `target` is `tag`, otherwise not present, or `null`: the patterns the tag ruleset's `conditions.ref_name.include` must contain, each compared as an exact string; the ones it lacks are listed in `missing_refs`.
 
-The checker confirms the sequence and each entry (`#452`): a map with a `name` (the rule above), a `source` of exactly `repo` or `org` and `rule_types` as a list, plus `required_checks` as a list when it is present and not `null` (`#527`). The elements of both lists stay the reader's to bind. Like the
+The checker confirms the sequence and each entry (`#452`): a map with a `name` (the rule above), a `source` of exactly `repo` or `org` and `rule_types` as a list, plus `required_checks` as a list when it is present and not `null` (`#527`). It also reports `invalid` for an unknown `target`; for a `tag` entry with `source: org`, with `required_checks` present and not `null`, or without `ref_patterns` as a non-empty list of non-empty strings; for `ref_patterns` present and not `null` on any other entry; and for a `check_integrations` that is neither `null` nor a map from non-empty names to positive integers (`#1413`). The elements of both lists stay the reader's to bind. Like the
 rest of this file, read it from the **default branch's** copy before enforcing anything from it.
 
 **Who reads the list (`#384`).** `/way-of-working:resume` reads it when it is present: its

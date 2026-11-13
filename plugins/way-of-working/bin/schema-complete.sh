@@ -722,21 +722,35 @@ EOF_ROWS
 # <entry-json> <name-json> <source-json> <rule_types-json> <required_checks-json>. The index is yq's
 # own integer, the flags are booleans computed inside yq and every json is `to_json(0)`, so a
 # value cannot forge a row (no raw tag or scalar text is read back).
+# Three more optional keys (#1413) follow, each with its flag and json column after the ones above:
+# `target` is absent, `null`, `branch` or `tag`; `ref_patterns` is a non-empty list of non-empty
+# strings with no control character exactly when `target` is `tag`, else absent or `null`;
+# `check_integrations` is absent, `null` or a map whose every key is a non-empty string with no control
+# character and whose every value is a positive integer. A `tag` entry must also have `source: repo`
+# (an org ruleset's repository conditions are not read, so the `source` finding names it) and no
+# `required_checks` (`pr-checks` reports the union of every entry's checks, which a tag entry must not
+# add to), so the `required_checks` finding names a present one.
 check_ruleset_entries() {
   expr='.rulesets | explode(.) | select(tag == "!!seq") | to_entries | .[] | (.key | to_string)
     + "\t" + ((.value | tag == "!!map") | to_string)
     + "\t" + ((((.value | select(tag == "!!map") | .name | select(tag == "!!str") | test("^[^\\p{Cc}]+$")) // false)) | to_string)
-    + "\t" + ((((.value | select(tag == "!!map") | .source | select(tag == "!!str") | (. == "repo" or . == "org")) // false)) | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | (((.target // "") == "tag") as $t | .source | select(tag == "!!str") | (. == "repo" or (. == "org" and ($t | not))))) // false)) | to_string)
     + "\t" + ((((.value | select(tag == "!!map") | .rule_types | kind == "seq") // false)) | to_string)
-    + "\t" + ((((.value | select(tag == "!!map") | [.required_checks | select(kind != "seq" and tag != "!!null")] | length == 0) // false)) | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | (((.target // "") == "tag") as $t | (([.required_checks | select(kind != "seq" and tag != "!!null")] | length == 0) and (($t | not) or (has("required_checks") | not) or (.required_checks | tag == "!!null"))))) // false)) | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | ((has("target") | not) or (.target | tag == "!!null") or (.target == "branch") or (.target == "tag"))) // false)) | to_string)
+    + "\t" + (((.value | select(tag == "!!map") | ((((.target // "") == "tag") and (.ref_patterns | ((kind == "seq") and (length > 0) and ((([.[] | select(tag == "!!str") | select(test("^[^\\p{Cc}]+$"))] | length)) == length)))) or ((((.target // "") == "tag") | not) and ((has("ref_patterns") | not) or (.ref_patterns | tag == "!!null"))))) // false) | to_string)
+    + "\t" + ((((.value | select(tag == "!!map") | ((has("check_integrations") | not) or (.check_integrations | (tag == "!!null" or (kind == "map" and (([to_entries[] | select(.key | tag == "!!str") | select(.key | test("^[^\\p{Cc}]+$")) | select(.value | tag == "!!int") | select(.value > 0)] | length) == length)))))) // false)) | to_string)
     + "\t" + (.value | to_json(0))
     + "\t" + ((.value | select(tag == "!!map") | .name | to_json(0)) // "null")
     + "\t" + ((.value | select(tag == "!!map") | .source | to_json(0)) // "null")
     + "\t" + ((.value | select(tag == "!!map") | .rule_types | to_json(0)) // "null")
-    + "\t" + ((.value | select(tag == "!!map") | .required_checks | to_json(0)) // "null")'
+    + "\t" + ((.value | select(tag == "!!map") | .required_checks | to_json(0)) // "null")
+    + "\t" + ((.value | select(tag == "!!map") | .target | to_json(0)) // "null")
+    + "\t" + ((.value | select(tag == "!!map") | .ref_patterns | to_json(0)) // "null")
+    + "\t" + ((.value | select(tag == "!!map") | .check_integrations | to_json(0)) // "null")'
   entry_rows=$(yq eval "$expr" "$FILE" 2>/dev/null) || { echo unreadable; exit 0; }
   [ -n "$entry_rows" ] || return 0
-  while IFS="$TAB" read -r idx is_map name_ok src_ok rt_ok rc_ok ejson njson sjson rjson cjson; do
+  while IFS="$TAB" read -r idx is_map name_ok src_ok rt_ok rc_ok tg_ok rp_ok ci_ok ejson njson sjson rjson cjson tjson pjson ijson; do
     case "$idx" in '' | *[!0-9]*) echo unreadable; exit 0 ;; esac
     if [ "$is_map" != true ]; then
       invalid_finding "rulesets[$idx]" "$ejson"; continue
@@ -745,6 +759,9 @@ check_ruleset_entries() {
     [ "$src_ok" = true ] || invalid_finding "rulesets[$idx].source" "$sjson"
     [ "$rt_ok" = true ] || invalid_finding "rulesets[$idx].rule_types" "$rjson"
     [ "$rc_ok" = true ] || invalid_finding "rulesets[$idx].required_checks" "$cjson"
+    [ "$tg_ok" = true ] || invalid_finding "rulesets[$idx].target" "$tjson"
+    [ "$rp_ok" = true ] || invalid_finding "rulesets[$idx].ref_patterns" "$pjson"
+    [ "$ci_ok" = true ] || invalid_finding "rulesets[$idx].check_integrations" "$ijson"
   done <<EOF_ENTRIES
 $entry_rows
 EOF_ENTRIES
