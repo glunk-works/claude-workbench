@@ -288,6 +288,21 @@ copy: a tree that reads dirty fails resume's clean-tree condition for auto-start
 `archive-sprint`'s precondition and `handoff`'s checks over a change that is not one. If
 `git diff` shows a real change, it is yours; leave it.
 
+**A repo whose container installs the plugin at user scope when the container starts** makes
+the same pin edit, but the rotation happens at the container restart, so the in-session
+commands under *What actually rotates the pin* are not the step. After the restart, list
+every entry for the plugin with the `jq` command under *Verify by commit* and compare each
+against the tag's commit from the `git ls-remote` line there. Claude Code may have created a
+project-scope entry for the repo folder beside the user entry, and a stale one overrides the
+user install. Only when that project-scope entry is not at the tag's commit, run
+`claude plugin uninstall <plugin>@<marketplace> --scope project`. The uninstall empties
+`enabledPlugins` in the tracked `.claude/settings.json`: run `git checkout -- .claude/settings.json`
+only when `git diff -- .claude/settings.json` shows nothing but that emptied `enabledPlugins`;
+otherwise put the plugin's `enabledPlugins` entry back by hand, since `git checkout` would
+also discard any other uncommitted edit to the file, the pin edit included. A running session
+keeps the copy it started with, so `/reload-plugins` or restart (not `/clear`) after the
+uninstall, then run the `jq` listing again and compare once more.
+
 **Verify by commit, never by version string.** The version is read from the plugin's
 `plugin.json`, so it reports whatever that file said at the commit installed — which is
 exactly right when the wrong commit is installed, and therefore proves nothing:
