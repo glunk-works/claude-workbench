@@ -1,0 +1,367 @@
+#!/bin/sh
+# Host command: after an admin token's life, a read-only read-back of rulesets and branch activity over a window (WB-D24, #1414).
+#
+#   wow-readback <owner/name> --since <time> [--until <time>]
+#
+# Each time is UTC in exactly the form YYYY-MM-DDTHH:MM:SSZ. wow-preflight checks the cutover
+# preconditions at one moment; this command looks for changes during a window. wow-admin keeps no
+# record of when a token was minted or revoked, so the operator supplies the window. --until bounds the
+# activity rows only (default-branch activity and admin App activity); when it is omitted they have no
+# upper bound. The ruleset rows have no upper bound: any time at or after --since is a fail. The two
+# by-hand steps print a window from --since with no end.
+#
+# Run it by its path, not through a symlink: it finds wow-common.sh, token-check.sh and
+# ruleset-drift.sh beside itself. It reads its expectations from the default branch's committed
+# .ai/project.yml, fetched through the contents endpoint into a private temporary file.
+#
+# This command itself needs an admin-capable token (a ruleset's bypass actors are withheld from a
+# caller that cannot edit the ruleset). The sequence, with the by-hand searches last:
+#   1. wow-admin <owner/name> --revoke               (the token whose life is being checked)
+#   2. wow-admin <owner/name> --perms administration=write,contents=read
+#   3. wow-readback <owner/name> --since <time> [--until <time>]
+#   4. wow-admin <owner/name> --revoke
+#   5. only then the two by-hand searches the output prints, so a default-branch change made during
+#      the fresh token's life falls inside them.
+# The fresh token elevates the repo's container while it is live (it is the file the container mounts),
+# as wow-preflight's does, and a change made after a row's read is not seen by that row.
+# The script, not the token, keeps the run to reads: every `gh api` call below is a GET with no method,
+# field or input flag. It reads the admin token file wow-admin writes and apps.json, and writes nothing
+# under $WOW_HOME.
+#
+# Checks, one line each:
+#   drift <ruleset>        ruleset-drift.sh against the project file: pass only on the exact healthy form
+#                          (all lists empty, bypass_actors=0, approval=1 exactly when the entry declares
+#                          a pull_request rule); anything else, `missing`, `inconclusive` and the
+#                          not-visible line included, is a fail
+#   by id <ruleset>        found by name in the rulesets list, read by id: created_at or updated_at at or
+#                          after --since is a fail (a deleted and recreated ruleset keeps its name), as is
+#                          a name with no match or more than one
+#   history <ruleset>      any history entry at or after --since is a fail
+#   tag bypass <ruleset>   for a `target: tag` entry: a bypass_actors list that is non-empty, absent, null
+#                          or not a list is a fail
+#   default-branch activity  any activity entry for the default branch's ref inside the window
+#   admin App activity     any activity entry on any ref inside the window whose actor is the admin App's
+#                          bot_user_id (apps.json) or null; a missing or non-numeric bot_user_id is a fail
+#   audit log ...          two `by hand` steps for an org owner (the REST audit log is not available on
+#                          this org's plan)
+# An entry with `source: org` is one fail line: a repo-scoped admin token cannot read an org ruleset, so
+# it is checked in the UI. A read that fails, or a GitHub time this command cannot parse, is a fail for
+# that check, never a pass. A project file with no rulesets list is one fail line; the activity rows still run.
+#
+# Output: a header line, then one line per check of three tab-separated fields: the check, its result
+# (`pass`, `fail` or `by hand`) and a detail. A value from GitHub or the project file is printed only
+# when it has no control character; an unprintable line prints `fail`. Exit 0 when no line is `fail`;
+# 1 when any line is `fail`, or when the token, a tool or a temporary directory is not usable before any
+# row; 2 on bad usage (a malformed owner/name, a missing or malformed --since, a malformed --until, a
+# --since later than --until or than now, or more than 365 days before now: the activity endpoint's
+# longest time_period is a year). The activity reads request time_period=year and are filtered to the
+# window by timestamp.
+#
+# Not checked: deploy keys, collaborators and teams, webhooks, and the active workflows, environments and repo
+# settings (the last three are #1488).
+# Residuals:
+#   - A change made with an App installation token was not probed.
+#   - Ref changes to tags are visible to neither the audit log nor the activity endpoint, so tags rely
+#     on a tag ruleset with no bypass actor.
+#   - A rename of the default branch away and a new branch made with the old name is bounded only by
+#     the activity check and any environment branch policy that names the branch.
+# Any entry in a row's window is a finding even when the maintainer made it, for the operator to judge.
+# Checks 1 to 5 trust the default branch's name and .ai/project.yml at the time of the run, so exit 0 means only that the automated rows passed, not that the
+# window is clean.
+#
+# Toolset: POSIX sh, gh, jq, yq (mikefarah v4), awk, plus what wow-common.sh and token-check.sh use.
+set -u
+set -f
+prog=wow-readback
+here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+. "$here/wow-common.sh"
+
+usage() { die "usage: wow-readback <owner/name> --since <time> [--until <time>]" 2; }
+
+repo= since= until=
+[ $# -ge 1 ] || usage
+repo=$1; shift
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --since) [ $# -ge 2 ] && [ -z "$since" ] || usage; since=$2; shift 2 ;;
+    --until) [ $# -ge 2 ] && [ -z "$until" ] || usage; until=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+case "$repo" in
+  '' | -* | /* | */ | */*/* | *[!A-Za-z0-9._/-]*) usage ;;
+  */*) ;;
+  *) usage ;;
+esac
+owner=${repo%%/*} name=${repo#*/}
+case "$owner" in . | ..) usage ;; esac
+check_repo "$name"
+timeshape() { case "$1" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) return 0 ;; *) return 1 ;; esac; }
+timeshape "$since" || usage
+[ -z "$until" ] || timeshape "$until" || usage
+
+T=
+cleanup() { [ -z "$T" ] || rm -rf -- "$T" || true; }
+trap cleanup EXIT
+trap 'exit 1' INT TERM HUP
+
+for tool in gh jq yq awk; do
+  command -v "$tool" >/dev/null 2>&1 || die "$tool not on PATH"
+done
+T=$(umask 077 && mktemp -d) || die "cannot make a temporary directory"
+
+# A native jq.exe or yq.exe under Git Bash can end each output line in CR (the sibling host scripts strip it);
+# these wrappers keep the exit status and drop the CR from every value read into a variable.
+jq() { _o=$(mktemp "$T/w.XXXXXX") || return 1; command jq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+yq() { _o=$(mktemp "$T/w.XXXXXX") || return 1; command yq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+
+# --- the window, in UTC seconds ---------------------------------------------------------------
+# A real date round-trips through todate; "2026-02-30T..." does not.
+utcsecs() { jq -nr --arg t "$1" 'try ($t | fromdateiso8601 | select(todate == $t)) catch empty' 2>/dev/null; }
+S=$(utcsecs "$since") && [ -n "$S" ] || usage
+case "$S" in *[!0-9]*) usage ;; esac
+if [ -n "$until" ]; then
+  U=$(utcsecs "$until") && [ -n "$U" ] || usage
+  case "$U" in *[!0-9]*) usage ;; esac
+  [ "$S" -le "$U" ] || usage
+else
+  U=null
+fi
+NOW=$(jq -nr 'now | floor') && [ -n "$NOW" ] || die "cannot read the clock"
+[ "$S" -le "$NOW" ] || usage
+[ "$S" -ge $((NOW - 365 * 86400)) ] || usage
+
+unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
+
+# --- the token: checked before any request ----------------------------------------------------
+tokfile=$wow_home/tokens/$owner/$name/admin-token
+stop_token() {
+  die "no usable admin token for $repo ($1); if one is on file, run: wow-admin $repo --revoke; then mint one with: wow-admin $repo --perms administration=write,contents=read"
+}
+TOK=$(sh "$here/token-check.sh" token "$tokfile" 2>/dev/null) && [ -n "$TOK" ] || stop_token "token file"
+GH_TOKEN=$TOK gh api --hostname github.com --paginate installation/repositories \
+  --jq '.repositories[].full_name' >"$T/inst" 2>/dev/null </dev/null || stop_token "installation read"
+: >"$T/none.yml"
+V=$(sh "$here/token-check.sh" verify admin "$repo" "$tokfile" "$T/inst" "$T/none.yml" 2>/dev/null) || stop_token "verify"
+[ "$V" = installation ] || stop_token "verify"
+export GH_TOKEN
+GH_TOKEN=$TOK
+TOK=
+
+# rd <outfile> <gh api args...>: one GET; stdout to the file, stderr to $T/err. Never prints.
+rd() { o=$1; shift; gh api --hostname github.com "$@" >"$o" 2>"$T/err" </dev/null; }
+# rdl <outfile> <endpoint>: a paginated list read; the pages (arrays, back to back) merged into one array.
+rdl() {
+  rd "$T/raw" --paginate "$2" || return 1
+  jq -s 'if length > 0 and all(.[]; type == "array") then add else error("shape") end' "$T/raw" >"$1" 2>/dev/null
+}
+
+# GitHub times: fractional seconds and a Z or +HH:MM / -HH:MM offset, converted to UTC seconds.
+TS='def ts: if type == "string" then
+      first(capture("^(?<b>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\\.[0-9]+)?(?<z>Z|[+-][0-9]{2}:[0-9]{2})$"), error("time"))
+      | ((.b + "Z") | fromdateiso8601)
+        - (if .z == "Z" then 0 else ((if .z[0:1] == "-" then -1 else 1 end) * ((.z[1:3] | tonumber) * 3600 + (.z[4:6] | tonumber) * 60)) end)
+    else error("time") end;'
+
+printf 'check\tresult\tdetail\n'
+anyfail=0
+
+# row <check> <result> <detail>: one line; a value with a control character is refused.
+clean() { [ "$(printf '%s' "$1" | tr -d '[:cntrl:]' | wc -c)" -eq "$(printf '%s' "$1" | wc -c)" ]; }
+row() {
+  if clean "$1" && clean "$2" && clean "$3"; then
+    [ "$2" != fail ] || anyfail=1
+    printf '%s\t%s\t%s\n' "$1" "$2" "$3"
+  else
+    anyfail=1
+    printf '%s\t%s\t%s\n' 'unprintable line' fail 'unprintable value'
+  fi
+}
+pass() { row "$1" pass "$2"; }
+fail() { row "$1" fail "$2"; }
+
+# --- the repo read and the project file -------------------------------------------------------
+base=
+if rd "$T/repo.json" "repos/$repo"; then
+  base=$(jq -er '.default_branch | strings' "$T/repo.json" 2>/dev/null) || base=
+  case "$base" in
+    '' | -* | /* | */ | *//* | . | .. | ./* | ../* | */. | */.. | */./* | */../* | *[!A-Za-z0-9._/-]*) base= ;;
+  esac
+fi
+yml=
+if [ -n "$base" ] && rd "$T/p.yml" -H 'Accept: application/vnd.github.raw+json' "repos/$repo/contents/.ai/project.yml?ref=$base" \
+   && yq '.' "$T/p.yml" >/dev/null 2>&1 </dev/null; then
+  yml=$T/p.yml
+fi
+
+# --- rows 1 to 4: the declared rulesets ---------------------------------------------------------
+n=
+if [ -z "$base" ]; then
+  fail rulesets 'the repo or its default branch could not be read'
+elif [ -z "$yml" ]; then
+  fail rulesets 'the default branch'"'"'s .ai/project.yml could not be read'
+else
+  n=$(yq -o=json -I=0 '.rulesets' "$yml" 2>/dev/null </dev/null | jq -r 'if type == "array" then length else empty end' 2>/dev/null) || n=
+  case "$n" in '' | *[!0-9]* | 0) fail rulesets 'the project file has no rulesets list'; n= ;; esac
+fi
+
+if [ -n "$n" ]; then
+  GH_HOST=github.com sh "$here/ruleset-drift.sh" "$repo" "$base" "$yml" >"$T/rd.out" 2>/dev/null </dev/null
+  rdrc=$?
+  rdlines=$(wc -l <"$T/rd.out" | tr -d ' ')
+  drift_ok=1
+  { [ "$rdrc" -eq 0 ] && [ "$rdlines" = "$n" ]; } || drift_ok=0
+  list_ok=1
+  rdl "$T/list.json" "repos/$repo/rulesets" || list_ok=0
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    ent=$(yq -o=json -I=0 ".rulesets[$i]" "$yml" 2>/dev/null </dev/null) || ent=
+    nm=$(printf '%s' "$ent" | jq -er '.name | strings | select(test("^[^\\p{Cc}]+\\z"))' 2>/dev/null) || nm=
+    src=$(printf '%s' "$ent" | jq -r '.source | strings' 2>/dev/null) || src=
+    tgt=$(printf '%s' "$ent" | jq -r '.target | strings' 2>/dev/null) || tgt=
+    if [ -z "$nm" ]; then
+      label="#$i"
+      fail "drift $label" 'the entry has no readable name'
+      fail "by id $label" 'the entry has no readable name'
+      fail "history $label" 'the entry has no readable name'
+      [ "$tgt" != tag ] || fail "tag bypass $label" 'the entry has no readable name'
+      i=$((i + 1)); continue
+    fi
+    if [ "$src" = org ]; then
+      fail "ruleset $nm" 'an org ruleset: a repo-scoped admin token cannot read it, so check it in the UI'
+      i=$((i + 1)); continue
+    fi
+
+    # row 1: drift
+    line=$(sed -n "$((i + 1))p" "$T/rd.out")
+    decl=
+    if printf '%s' "$ent" | jq -e '.rule_types | arrays' >/dev/null 2>&1; then
+      decl=0
+      printf '%s' "$ent" | jq -e '.rule_types | any(.[]; . == "pull_request")' >/dev/null 2>&1 && decl=1
+    fi
+    okfmt=0
+    if [ "$drift_ok" = 1 ] && [ -n "$decl" ]; then
+      pre="ruleset $nm missing_types=[] missing_checks=[] approval="
+      case "$line" in
+        "$pre"*)
+          rest=${line#"$pre"}
+          ap=${rest%% *}
+          tail=" bypass_actors=0 unpinned_checks=[] approval_params=[] wrong_pins=[] missing_refs=[]"
+          case "$ap" in
+            '' | *[!0-9]*) ;;
+            *) if [ "$rest" = "$ap$tail" ] && [ "$ap" = "$decl" ]; then okfmt=1; fi ;;
+          esac ;;
+      esac
+    fi
+    if [ "$okfmt" = 1 ]; then
+      pass "drift $nm" 'the healthy form'
+    elif [ "$drift_ok" != 1 ]; then
+      fail "drift $nm" 'ruleset-drift.sh failed or printed an unexpected number of lines'
+    elif [ -z "$decl" ]; then
+      fail "drift $nm" 'the entry'"'"'s rule types could not be read as a list'
+    else
+      case "$line" in
+        "ruleset $nm "*) fail "drift $nm" "${line#"ruleset $nm "}" ;;
+        *) fail "drift $nm" 'not the healthy form' ;;
+      esac
+    fi
+
+    # row 2: by id
+    id=
+    if [ "$list_ok" != 1 ]; then
+      fail "by id $nm" 'the rulesets list could not be read'
+    else
+      cnt=$(jq -r --arg n "$nm" '[.[] | select(.name == $n)] | length' "$T/list.json" 2>/dev/null) || cnt=
+      if [ "$cnt" = 0 ]; then
+        fail "by id $nm" 'no ruleset of that name in the rulesets list'
+      elif [ "$cnt" != 1 ]; then
+        fail "by id $nm" 'more than one ruleset of that name, or the list is unreadable'
+      else
+        id=$(jq -r --arg n "$nm" '[.[] | select(.name == $n)][0].id | if type == "number" and . == floor and . >= 0 then tostring else empty end' "$T/list.json" 2>/dev/null) || id=
+        case "$id" in '' | *[!0-9]*) id= ; fail "by id $nm" 'the ruleset id is not a number' ;; esac
+        if [ -n "$id" ]; then
+          if ! rd "$T/rs.$i.json" "repos/$repo/rulesets/$id"; then
+            fail "by id $nm" 'the ruleset read failed'
+          else
+            ch=$(jq -r --argjson s "$S" "$TS"' (.created_at | ts) as $c | (.updated_at | ts) as $u | [($c >= $s), ($u >= $s)] | map(tostring) | join(" ")' "$T/rs.$i.json" 2>/dev/null) || ch=
+            case "$ch" in
+              'false false') pass "by id $nm" 'created and updated before --since' ;;
+              'true '* | *' true') fail "by id $nm" 'created or updated at or after --since' ;;
+              *) fail "by id $nm" 'created_at or updated_at is absent or not a time' ;;
+            esac
+          fi
+        fi
+      fi
+    fi
+
+    # row 3: history
+    if [ -z "$id" ]; then
+      fail "history $nm" 'the ruleset id is not known'
+    elif ! rdl "$T/hist.json" "repos/$repo/rulesets/$id/history"; then
+      fail "history $nm" 'the history read failed'
+    else
+      hc=$(jq -r --argjson s "$S" "$TS"' [.[] | (.updated_at | ts) | select(. >= $s)] | length' "$T/hist.json" 2>/dev/null) || hc=
+      case "$hc" in
+        0) pass "history $nm" 'no entry at or after --since' ;;
+        '' | *[!0-9]*) fail "history $nm" 'a history time is absent or not a time' ;;
+        *) fail "history $nm" "$hc entries at or after --since" ;;
+      esac
+    fi
+
+    # row 4: tag bypass
+    if [ "$tgt" = tag ]; then
+      if [ ! -s "$T/rs.$i.json" ]; then
+        fail "tag bypass $nm" 'the ruleset read failed'
+      else
+        bc=$(jq -r '.bypass_actors | if type == "array" then length | tostring else "unknown" end' "$T/rs.$i.json" 2>/dev/null) || bc=unknown
+        case "$bc" in
+          0) pass "tag bypass $nm" 'no bypass actor' ;;
+          unknown | '') fail "tag bypass $nm" 'bypass_actors is absent, null or not a list' ;;
+          *) fail "tag bypass $nm" "$bc bypass actors" ;;
+        esac
+      fi
+    fi
+    i=$((i + 1))
+  done
+fi
+
+# --- row 5: default-branch activity --------------------------------------------------------------
+if [ -z "$base" ]; then
+  fail 'default-branch activity' 'the default branch could not be read'
+elif ! rdl "$T/act.json" "repos/$repo/activity?ref=refs/heads/$base&time_period=year&per_page=100"; then
+  fail 'default-branch activity' "the activity read for $base failed"
+else
+  ac=$(jq -r --argjson s "$S" --argjson u "$U" "$TS"' [.[] | (.timestamp | ts) | select(. >= $s and ($u == null or . <= $u))] | length' "$T/act.json" 2>/dev/null) || ac=
+  case "$ac" in
+    0) pass 'default-branch activity' "no activity on $base in the window" ;;
+    '' | *[!0-9]*) fail 'default-branch activity' "an activity entry for $base is unreadable" ;;
+    *) fail 'default-branch activity' "$ac entries on $base in the window" ;;
+  esac
+fi
+
+# --- row 6: admin App activity -------------------------------------------------------------------
+bid=$(app_get admin bot_user_id)
+case "$bid" in
+  '' | *[!0-9]*) fail 'admin App activity' 'apps.json has no numeric bot_user_id for the admin App' ;;
+  *)
+    if ! rdl "$T/actall.json" "repos/$repo/activity?time_period=year&per_page=100"; then
+      fail 'admin App activity' 'the activity read failed'
+    else
+      ac=$(jq -r --argjson s "$S" --argjson u "$U" --arg bid "$bid" "$TS"'
+        [.[] | select((.timestamp | ts) as $t | $t >= $s and ($u == null or $t <= $u))
+             | select((.actor | type) != "object" or (.actor.id | type) != "number" or (.actor.id | tostring) == $bid)] | length' "$T/actall.json" 2>/dev/null) || ac=
+      case "$ac" in
+        0) pass 'admin App activity' 'no entry by the admin App or an unknown actor in the window' ;;
+        '' | *[!0-9]*) fail 'admin App activity' 'an activity entry is unreadable' ;;
+        *) fail 'admin App activity' "$ac entries by the admin App or an unknown actor in the window" ;;
+      esac
+    fi ;;
+esac
+
+# --- row 7: by hand ------------------------------------------------------------------------------
+row 'audit log: default branch' 'by hand' "after the final revoke, search the org audit log web UI for: action:repo.update_default_branch repo:$repo, from $since to the time of the search"
+row 'audit log: rename' 'by hand' "after the final revoke, search the org audit log web UI org-wide for: action:repo.rename, from $since to the time of the search (a rename, a default-branch change and a rename back may not match a repo: filter)"
+
+echo "wow-readback: done; revoke the admin token now: wow-admin $repo --revoke" >&2
+[ "$anyfail" -eq 0 ] || exit 1
+exit 0

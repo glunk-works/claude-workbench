@@ -58,6 +58,7 @@
 #   - tests/review-image.test.sh needs `jq` and `yq`.
 #   - tests/ruleset-drift.test.sh needs `jq` and `yq` (and GNU `sed -i`) and skips the whole suite without them.
 #   - tests/wow-preflight.test.sh needs `jq` and `yq` (and GNU `sed -i`) and skips the whole suite without them.
+#   - tests/wow-readback.test.sh needs `jq` and `yq` (and GNU `date -d`) and skips the whole suite without them.
 #   - tests/review-verdict.test.sh needs `jq`.
 #   - tests/host-doctor.test.sh needs `yq` and `jq` (and `timeout`) and skips the whole suite without them.
 #   - tests/plan-gather.test.sh needs `yq` for its `authors` section and skips that section loudly
