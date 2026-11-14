@@ -324,7 +324,7 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    and re-check.
 
 5. **Open the PR against `{pr_base}`.**
-   `gh pr create --repo {repo} --base {pr_base} --head <branch> --title "$TITLE" --body "…"`
+   `gh pr create --repo {repo} --base {pr_base} --head <branch> --title "$TITLE" --body-file <file>`
    (`--repo` and `--head` name the destination; `gh` would otherwise pick the repo from ambient
    state, and the App-mode actor check below reads the PR from `{repo}`). Body: a `## What` / `## Why`
    summary, and the scope (which boundary changed). If `{review.ci_gate}` is set and this
@@ -335,8 +335,10 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    `gh api repos/{repo} --jq '.squash_merge_commit_message'`. Print one line,
    `Squash message: ` followed by `COMMIT_MESSAGES`, `PR_BODY`, `BLANK` or `unread` (a failed read
    or any other value is `unread`, never a stop). Act on it: under `PR_BODY` the PR body also
-   carries each spec trailer on its own line, in the body's final paragraph, the body passed by
-   `--body-file` from a file written with the Write tool. In the report, under `COMMIT_MESSAGES` say a trailer
+   carries each spec trailer on its own line, and those lines are the body's last lines: a final
+   paragraph holding only the trailer lines, after any footer (an attribution line included), with
+   nothing after them. The body is passed by `--body-file` from a file written with the Write
+   tool, under every squash-message value. In the report, under `COMMIT_MESSAGES` say a trailer
    only in the PR body does not reach `{pr_base}`; under `PR_BODY` say a trailer only in the
    commits does not; under `BLANK` say no trailer reaches `{pr_base}`; under `unread` say where
    trailers reach is unknown.
