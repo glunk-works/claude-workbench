@@ -512,8 +512,8 @@ only `/workspace`, and its `.git` file names a host path.
   - `failed` means the config probe or removal, or the prompt file removal, failed after the
     branch was deleted; finish by hand with `git config --remove-section branch.X` and `rm` of
     the prompt file.
-- **Drop** a lane that will not merge (driver, in `/workspace`, and only after the lane session has
-  exited): `lane.sh drop N [discard]`, through `/way-of-working:lanes`. It removes the worktree,
+- **Drop** a lane that will not merge (driver, in `/workspace`, and only after the maintainer says the
+  lane session has exited or was never started): `lane.sh drop N [discard]`, through `/way-of-working:lanes`. It removes the worktree,
   deletes the branch with `git update-ref -d` against the tip it counted, and removes the branch
   config and the prompt file, with the success lines `done` prints. It refuses with `pushed` when
   the branch exists on origin, `has-commits` when the branch holds a commit not on the base, and

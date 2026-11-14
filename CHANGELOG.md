@@ -21,12 +21,17 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- A lane that finds a defect in its approved spec's own text posts an escalation the answer route can redraft from, and `lane.sh drop N [discard]` removes a lane that never merged (#1421).
+
 ### Changed
 
 - The container review now binds the spec on a PR that closes folded issues, the one closing reference with an approved spec when every other's finder prints `none` (#1458, `WB-D49`).
-- A lane that finds a defect in its approved spec's own text posts an escalation the answer route can redraft from, and `lane.sh drop N [discard]` removes a lane that never merged (#1421).
 - A spec may carry an optional `### Trailers` section, checked by `spec-shape.sh` (new word `bad-trailers`) and written into the commit by `/way-of-working:ship`, which also prints a `Squash message:` line saying whether a trailer reaches the integration branch (#1422).
 - `/way-of-working:ship` puts the spec trailer lines last in a `PR_BODY` body, after any footer, and shows `gh pr create` with `--body-file`; `spec-shape.sh` refuses an at-sign, or an ampersand that could spell one as an HTML entity, on a trailer line (#1512).
+- The lanes skill's posted-spec review also requires `gh-identity.sh role` to print `dev_app` for the comment's author, read against the default branch's project file, and *drop* may also run for a lane whose session the maintainer says was never started (#1402, #1510).
+- Correction to the released v0.31.0 `#1370` entry: it reads as `lane.sh` gains a `groups M` mode; the lanes skill gains the driver's per-task procedure, which hands over the `-Spec` and `-SpecSweep` spec launcher commands, and a groups mode, which drafts the milestone's **Lanes:** line; `reference/cutover.md` gains an onboarding checklist for a consuming repo; the released entry is not edited (#1402).
 
 ## [0.34.0] — 2026-11-13
 
