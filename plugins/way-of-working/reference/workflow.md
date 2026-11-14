@@ -410,7 +410,8 @@ edits to the description and cannot be mistaken for the human's approval.
   lanes and drafts its **Lanes:** line. It also carries the driver's per-task procedure: hand over
   the spec launcher command, read the spec session's closing output, review a posted spec and advise
   before the maintainer reacts, start the lane, then take a lane's spec-defect report back to the
-  answer route. Each mode is one call to `bin/lane.sh`, which
+  answer route. `wait N` waits in the background, with no model turns, for the lane PR's review on
+  its current head and a final gate state. Each mode is one call to `bin/lane.sh`, which
   reads `lanes.dir`. It never drafts specs, starts a session, merges or approves.
 - **`/way-of-working:retro`** — a session-end look at *how the session worked*, and at the
   repo's other recent sessions (lane, spec, earlier driver ones): friction

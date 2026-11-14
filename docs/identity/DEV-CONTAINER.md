@@ -303,8 +303,8 @@ container can follow. A host worktree beside the checkout cannot be used: the co
 only `/workspace`, and its `.git` file names a host path.
 
 - **Prepare, report on and clean up lanes** (driver, in `/workspace`, the main worktree) through
-  `/way-of-working:lanes`, which calls the plugin's `bin/lane.sh` in five modes: `prep`, `status`,
-  `done`, `drop` and `groups`. `bin/lane.sh` runs only from the installed plugin, never as a working-tree copy by
+  `/way-of-working:lanes`, which calls the plugin's `bin/lane.sh` in six modes: `prep`, `status`,
+  `done`, `drop`, `groups` and `wait`. `bin/lane.sh` runs only from the installed plugin, never as a working-tree copy by
   path, because it finds its siblings beside itself; no lane is prepped until a release carrying it
   is installed. Prepare a lane with:
   ```sh

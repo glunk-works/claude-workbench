@@ -40,12 +40,11 @@
 # Exits 2, printing NOTHING to stdout, when the question cannot be answered: no gate
 # name, a malformed record, or a state/conclusion outside GitHub's documented
 # vocabulary; the stderr line then says why, not what the surfaces carried. The CALLER
-# decides policy for 2. Both callers in this plugin treat it as they treat any word but
-# "success": the gate is not green.
+# decides policy for 2.
 #
 # The caller must not let a failed `gh api` or a missing record file reach this script:
 # a document that never arrived is indistinguishable from one with no matching record,
-# and the answer would be "absent" -- a fail-open. Both callers chain every step that
+# and the answer would be "absent" -- a fail-open. Its callers in this plugin chain every step that
 # produces the input with `&&` and redirect from the file rather than piping through
 # `cat`, whose exit status a pipeline discards.
 #

@@ -6,7 +6,7 @@ description: >-
   prompt file for one task and prints the host command, status prints one table of the live lanes,
   groups M shows which open tasks on a milestone can run as parallel lanes and drafts its Lanes line,
   clean up removes a merged lane and says what the freed lane can take, drop removes a lane that
-  never merged. Run from the main worktree
+  never merged, wait N waits in the background, with no model turns, for the lane PR's review. Run from the main worktree
   by the driver session. Never drafts specs, plans or approves, never starts a session, never merges.
 ---
 
@@ -15,8 +15,8 @@ description: >-
 A lane is a second Claude session building one task in a worktree under `{lanes.dir}`. This
 skill is the driver's front for `lane.sh`, the plugin's script: each mode below is **one call** to
 it, run from the main worktree, and its output is printed as the script gives it. The skill reads no
-project file itself, bar the one in *Review the posted spec*: the default branch's committed
-`.ai/project.yml`, read for the role check. A repo with no `lanes` declared stops on the script's `no-lanes`. Before the
+project file itself, bar the one in *Review the posted spec* and *A lane reports a spec defect*:
+the default branch's committed `.ai/project.yml`, read for the role check. A repo with no `lanes` declared stops on the script's `no-lanes`. Before the
 modes, *The driver's per-task procedure* says in what order the driver uses them.
 
 `lane.sh` runs only from the installed plugin (it finds its sibling scripts beside itself), so call
@@ -50,7 +50,8 @@ For one task, in this order. Each step has a name, and this skill cites a step b
    and `.user.id` prints `dev_app`; note its id and `updated_at`. The role check reads the default
    branch's committed `.ai/project.yml` before the comment is read, as `/way-of-working:resume`'s
    *Author trust* paragraph does: the default branch's name from `gh repo view` on the `origin` URL
-   (`--json defaultBranchRef`), shape-checked, fetched with `git fetch -q origin
+   (`--json defaultBranchRef`), shape-checked by the rule the marker's `base=` gets below (not empty,
+   not starting with `-`, only `A-Za-z0-9._/-`), fetched with `git fetch -q origin
    "+refs/heads/D:refs/remotes/origin/D"`, then `git show "refs/remotes/origin/D:./.ai/project.yml"`
    into a temp file removed afterwards. It is never the working tree's copy and never the branch the
    marker's `base=` names, since the marker is part of the comment being judged. Any other word, or a
@@ -65,13 +66,16 @@ For one task, in this order. Each step has a name, and this skill cites a step b
    reacts at that `html_url`; the driver never reacts. An escalated comment is answered or replaced,
    never approved by a reaction.
 4. **Start the lane.** Only after the maintainer's approving reaction, run *start* and hand over the
-   lane command. When `prep`'s `found=` id or `updated_at` differ from those noted in *Review the
+   lane command, then start *wait* for `N` in the background. When `prep`'s `found=` id or `updated_at` differ from those noted in *Review the
    posted spec*, review the comment again before handing the command over; since `lane.sh done`
    removes only a merged lane, a lane whose new review advises against it stays prepped and the
    driver removes it with *drop*.
 5. **A lane reports a spec defect.** When the lane's closing output carries `escalated ID LOGIN URL
    LBL`, check the URL and the id as *Review the posted spec* does and fetch the comment as it does,
-   except that its first line must be the `spec-task-escalated:` marker naming `N`; then advise the
+   except that its first line must be the `spec-task-escalated:` marker naming `N`. The comment is
+   read only when `gh-identity.sh role`, run on its `.user.login` and `.user.id` against the default
+   branch's committed project file as in *Review the posted spec*, prints `dev_app`; any other word,
+   or a failed read, and the driver does not read it and tells the maintainer why. Then advise the
    maintainer. The maintainer removes every approving reaction by a declared maintainer from every
    `spec-task:` comment on `N` (so the finder reads `escalated`) and answers the escalated comment
    with `spec-task-answer: escalated=ID choice=apply`, or `choice=amend` with the corrected wording
@@ -133,6 +137,26 @@ lane that will not merge. Add `discard` only when the maintainer confirms the un
 drop N [discard]` and print its lines as for *clean up*. Its stop words, `pushed` and `has-commits`
 among them, are printed as the script gives them; on `pushed` or `has-commits` the lane is removed
 by hand, or merged and cleaned up with `done`.
+
+## wait `N`
+
+Run `lane.sh wait N` with the Bash tool's background option (`run_in_background`), once, right
+after handing over the lane command, never in a model-turn loop, `/loop` or a subagent. It polls
+GitHub with no model turns and prints one line; the harness re-invokes the session when it exits.
+Print that line and act on it:
+
+- `reviewed #P SHA WORD`: a reviewer-App review exists on the PR's current head and the gate is
+  final. Run `/way-of-working:pr-checks` on the PR, then give the driver's own merge assessment of
+  the review and the diff against the spec before the maintainer approves.
+- `merged #P` or `closed #P`: report it. *Clean up* or *drop* follow only after the maintainer says
+  the lane session has exited, as those sections say.
+- `timeout #P`: run `/way-of-working:pr-checks` on the PR, since a PR the gate exempts ends this way.
+- `no-pr`, `unreadable`, `no-gate` or any other stop word: report it, and start the wait again only
+  when the maintainer asks.
+
+Two limits. The wait reports only to the session that started it, so a driver session that ends or
+restarts loses it and starts it again. And a PR the gate exempts, or any lane PR in a repo whose
+`pr_base` is not the default branch, never ends `reviewed`.
 
 ## What this skill never does
 

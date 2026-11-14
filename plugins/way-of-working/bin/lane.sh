@@ -2,7 +2,7 @@
 # Prepare, report on and clean up coder lanes, and show which tasks can run as parallel lanes: a worktree under the lanes directory
 # (`lanes.dir`) and the prompt file its session reads. Wrapped by /way-of-working:lanes. Issue #715.
 # It runs only from the installed plugin, never as a working-tree copy by path: its siblings
-# (spec-find.sh, gh-identity.sh, prune-verdict.sh, lane-state.sh, lane-groups.sh) are found
+# (spec-find.sh, gh-identity.sh, prune-verdict.sh, lane-state.sh, lane-groups.sh, review-gate-state.sh) are found
 # beside it through $0.
 #
 # Usage:
@@ -11,6 +11,7 @@
 #   lane.sh done N
 #   lane.sh drop N [discard]
 #   lane.sh groups M
+#   lane.sh wait N
 #
 #   N        the task issue number, digits with no leading zero
 #   M        the milestone number the driver expects the task to be on (the driver's own
@@ -42,8 +43,9 @@
 #                    not owned by this user, or could not be made
 #   unreadable       a read failed or had an unexpected shape (the default-branch read, the
 #                    existence probes, the verdict inputs, groups: lane-state.sh's list or
-#                    lane-groups.sh's output), or this script sits inside the main
-#                    worktree or the lanes directory instead of the installed plugin
+#                    lane-groups.sh's output), wait: three failed polls in a row, or this script
+#                    sits inside the main worktree or the lanes directory instead of the
+#                    installed plugin
 #   repo-mismatch    the default branch's .repo is not the origin's nameWithOwner
 #   backlog-case     every mode: the default branch's backlog.repo names the origin's repository in
 #                    different letter case; set it to the origin's nameWithOwner, or null
@@ -61,12 +63,19 @@
 #   pushed           drop: one paginated matching-refs read keeps a row whose ref is exactly the
 #                    lane's branch (a longer ref with the branch as prefix does not count)
 #   has-commits      drop: the branch has a commit not on origin's BASE
-#   no-lane          done, drop: no worktree LANES/N on a branch that is neither BASE nor the
+#   no-lane          done, drop, wait: no worktree LANES/N on a branch that is neither BASE nor the
 #                    default branch
-#   missing          done, drop: the lane's worktree is listed but its directory is gone; run
+#   missing          done, drop, wait: the lane's worktree is listed but its directory is gone; run
 #                    `git worktree prune --dry-run -v` first
 #   not-merged       done: no same-repository PR from that branch merged into BASE
-#   ambiguous        done: more than one such PR
+#   ambiguous        done: more than one such PR; wait: more than one open same-repository PR
+#                    from the lane's branch into BASE
+#   no-gate          wait: the default branch's `identities.reviewer_app` is not a map that
+#                    `gh-identity.sh role` confirms as `reviewer_app`, or `review.ci_gate.check` is
+#                    not a non-empty single-line string; printed before any poll
+#   no-pr            wait: no open same-repository PR from the lane's branch after 120 polls
+#   timeout #P       wait: PR #P is open but has no reviewer-App review on its current head with a
+#                    final gate state after 120 polls
 #   kept X WORD      done, drop: prune-verdict.sh said WORD (not `delete`), or WORD is `moved` or
 #                    `checked-out`; the branch is kept. `checked-out` stops before anything is
 #                    removed unless the checkout appears between the pre-removal re-read and
@@ -98,6 +107,21 @@
 # `group none`. A missing lanes directory means no live lanes; a present one that fails the
 # checks above stops `unsafe-dir`.
 #
+# wait N polls GitHub, with no model turns, for the review of lane N's PR, and prints one line.
+# Exit 0: `reviewed #P SHA WORD` (a reviewer-App review exists on PR #P's current head SHA and the
+# gate's state, resolved by review-gate-state.sh over records not older than that review's
+# `submitted_at`, is WORD, `success` or `failure`), `merged #P` or `closed #P`. Every other line
+# is a stop and exits 1 (`no-gate`, `no-pr`, `timeout #P`, and the words above). Stage 1 looks for
+# the open PR every 120 seconds (at most 120 polls), stage 2 polls it every 90 seconds (at most 120
+# polls). The head is re-read every poll, so a push after a review keeps it waiting for a review
+# on the new head. A gate record older than the review never counts; a gate check-run with no
+# `started_at` is kept as pending. The reviewer App's id and the gate's check name come from the
+# default branch's project file (`identities.reviewer_app`, `review.ci_gate.check`).
+# Two stated limits: the wait reports only to the session that started it; and it ends `reviewed`
+# only on a PR the gate reviews. A PR the gate exempts (it touches nothing under the gate's
+# triggers, so the gate posts `success` with no review), and, in a repo whose `pr_base` is not
+# the default branch, every lane PR, gets no review, so its wait never ends `reviewed`.
+#
 # GitHub host. The script unsets GH_HOST and GH_ENTERPRISE_TOKEN once at the top. Each gh call
 # names its host or repository explicitly (--hostname github.com, --repo, a repos/ path);
 # GH_CONFIG_DIR still selects which config and token gh reads.
@@ -127,7 +151,7 @@
 #
 # Permitted toolset: POSIX sh plus `test -O` and `-ef`, git 2.36 or later (lane-state.sh's
 # floor), gh (with its own --jq), yq (mikefarah v4), sha256sum, awk, cut, sed, tr, grep, mktemp,
-# mkdir, ln, chmod, rm, rmdir, dirname, cat.
+# mkdir, ln, chmod, rm, rmdir, dirname, cat, sleep.
 set -eu
 set -f
 umask 077
@@ -143,7 +167,7 @@ trap '[ -z "$TMP" ] || rm -rf "$TMP"' EXIT
 trap 'exit 1' INT TERM HUP
 
 usage() {
-  echo "usage: lane.sh prep N M BRANCH CRITICS [ALSO] | lane.sh status | lane.sh done N | lane.sh drop N [discard] | lane.sh groups M" >&2
+  echo "usage: lane.sh prep N M BRANCH CRITICS [ALSO] | lane.sh status | lane.sh done N | lane.sh drop N [discard] | lane.sh groups M | lane.sh wait N" >&2
   exit 2
 }
 
@@ -298,6 +322,11 @@ case "$MODE" in
     M=$2
     num_ok "$M" || usage
     ;;
+  wait)
+    [ "$#" -eq 2 ] || usage
+    N=$2
+    num_ok "$N" || usage
+    ;;
   *) usage ;;
 esac
 
@@ -309,7 +338,7 @@ case "$0" in
   *) usage ;;
 esac
 BIN=$(cd -P "$(dirname -- "$0")" 2>/dev/null && pwd -P) || usage
-for sib in spec-find.sh gh-identity.sh prune-verdict.sh lane-state.sh lane-groups.sh; do
+for sib in spec-find.sh gh-identity.sh prune-verdict.sh lane-state.sh lane-groups.sh review-gate-state.sh; do
   [ -f "$BIN/$sib" ] || usage
 done
 LANES=
@@ -979,6 +1008,155 @@ lane_groups() {
   fi
 }
 
+# ---- wait -----------------------------------------------------------------------------------
+
+# Every read projects only the fields it uses, so no PR or review text reaches the temp files. No
+# value is spliced into a --jq filter; comparisons run in awk with the values in ENVIRON and both
+# sides forced to strings (awk would otherwise compare two numeric-looking shas as numbers).
+W_TS='^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$'
+
+# wait_find: 0 and P set for the one open same-repository PR, 1 for none, 2 for a failed read.
+wait_find() {
+  gh pr list --repo "$NAME" --base "$BASE" --head "$X" --state open \
+    --json number,isCrossRepository \
+    --jq '.[] | select(.isCrossRepository == false) | (.number|tostring)' \
+    >"$TMP/w1.txt" 2>/dev/null || return 2
+  awk -F'\t' 'NF!=1 || $1 !~ /^[1-9][0-9]*$/ {bad=1} END {exit bad}' "$TMP/w1.txt" || return 2
+  wf_rows=$(awk 'END {print NR}' "$TMP/w1.txt") || return 2
+  [ "$wf_rows" -ne 0 ] || return 1
+  [ "$wf_rows" -eq 1 ] || stop ambiguous
+  P=$(cat "$TMP/w1.txt") || return 2
+  num_ok "$P" || return 2
+  return 0
+}
+
+# wait_poll: ends the script on a final answer; returns 1 for not yet, 2 for a failed read.
+wait_poll() {
+  gh api "repos/$NAME/pulls/$P" \
+    --jq '[.state, (.merged | tostring), (.head.sha // ""), (.head.repo.full_name // "")] | @tsv' \
+    >"$TMP/w2.tsv" 2>/dev/null || return 2
+  awk -F'\t' 'NF!=4 {bad=1} END {exit (bad || NR!=1)}' "$TMP/w2.tsv" || return 2
+  wp_state=$(cut -f1 "$TMP/w2.tsv") || return 2
+  wp_merged=$(cut -f2 "$TMP/w2.tsv") || return 2
+  wp_sha=$(cut -f3 "$TMP/w2.tsv") || return 2
+  wp_repo=$(cut -f4 "$TMP/w2.tsv") || return 2
+  hex40 "$wp_sha" || return 2
+  [ "$wp_repo" = "$NAME" ] || return 2
+  case "$wp_state:$wp_merged" in
+    open:false) ;;
+    closed:true) printf 'merged #%s\n' "$P"; exit 0 ;;
+    closed:false) printf 'closed #%s\n' "$P"; exit 0 ;;
+    *) return 2 ;;
+  esac
+  # the newest used review on this head by the reviewer App
+  gh api --paginate "repos/$NAME/pulls/$P/reviews" \
+    --jq '.[] | [((.user.id // "") | tostring), (.commit_id // ""), (.state // ""), (.submitted_at // "")] | @tsv' \
+    >"$TMP/w3.tsv" 2>/dev/null || return 2
+  W_RID=$W_REVIEWER W_SHA=$wp_sha W_TS=$W_TS awk -F'\t' '
+    BEGIN { rid = ENVIRON["W_RID"]; sha = ENVIRON["W_SHA"]; shape = ENVIRON["W_TS"] }
+    NF != 4 { bad = 1; exit }
+    ("" $1 == "" rid) && $3 != "PENDING" && ("" $2 == "" sha) {
+      if ($4 !~ shape) { bad = 1; exit }
+      if (max == "" || ("" $4 > "" max)) max = $4
+    }
+    END { if (bad) exit 3; print max }' "$TMP/w3.tsv" >"$TMP/w3.out" || return 2
+  wp_rt=$(cat "$TMP/w3.out") || return 2
+  [ -n "$wp_rt" ] || return 1
+  # the gate on the head, on both surfaces, no record older than that review
+  gh api --paginate "repos/$NAME/commits/$wp_sha/status" \
+    --jq '.statuses[] | ["status", .context, .state, (.created_at // "")] | @tsv' \
+    >"$TMP/g1.tsv" 2>/dev/null \
+    && gh api --paginate "repos/$NAME/commits/$wp_sha/check-runs" \
+      --jq '.check_runs[] | ["check-run", .name, .status, (.conclusion // ""), (.started_at // "")] | @tsv' \
+      >"$TMP/g2.tsv" 2>/dev/null \
+    && W_RT=$wp_rt W_GATE=$W_GATE W_TS=$W_TS awk -F'\t' -v OFS='\t' '
+      BEGIN { rt = ENVIRON["W_RT"]; gate = ENVIRON["W_GATE"]; shape = ENVIRON["W_TS"] }
+      $1 == "status" {
+        if (NF != 4) { bad = 1; exit }
+        if ("" $2 == "" gate) {
+          if ($4 !~ shape) { bad = 1; exit }
+          if ("" $4 < "" rt) next
+        }
+        print $1, $2, $3
+        next
+      }
+      $1 == "check-run" {
+        if (NF != 5) { bad = 1; exit }
+        if ("" $2 == "" gate) {
+          if ($5 == "") { print $1, $2, "pending", ""; next }
+          if ($5 !~ shape) { bad = 1; exit }
+          if ("" $5 < "" rt) next
+        }
+        print $1, $2, $3, $4
+        next
+      }
+      { bad = 1; exit }
+      END { exit bad }' "$TMP/g1.tsv" "$TMP/g2.tsv" >"$TMP/g3.tsv" \
+    && wp_word=$(sh "$BIN/review-gate-state.sh" "$W_GATE" <"$TMP/g3.tsv" 2>/dev/null) || return 2
+  case "$wp_word" in
+    success | failure) printf 'reviewed #%s %s %s\n' "$P" "$wp_sha" "$wp_word"; exit 0 ;;
+    pending | absent) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+lane_wait() {
+  if [ -e "$LANES" ] || [ -L "$LANES" ]; then
+    lanes_check || stop unsafe-dir
+  fi
+  st=$(wt_state) || stop unreadable
+  case "$st" in
+    "branch refs/heads/"*) X=${st#branch refs/heads/} ;;
+    *) stop no-lane ;;
+  esac
+  branch_ok "$X" && [ "$X" != "$BASE" ] && [ "$X" != "$D" ] || stop no-lane
+  [ -d "$LANES/$N" ] || stop missing
+  # the reviewer App and the gate, from the default branch's project file
+  lw_row=$(yq -r 'explode(.) | .identities.reviewer_app | select(tag == "!!map" and ((.id | tag) == "!!int") and .id > 0 and ((.login | tag) == "!!str")) | [.login, .id] | @tsv' "$DEFFILE" 2>/dev/null) || stop no-gate
+  [ -n "$lw_row" ] || stop no-gate
+  lw_login=${lw_row%%"	"*}
+  W_REVIEWER=${lw_row#*"	"}
+  num_ok "$W_REVIEWER" || stop no-gate
+  [ "$(sh "$BIN/gh-identity.sh" role "$lw_login" "$W_REVIEWER" "$DEFFILE" 2>/dev/null)" = reviewer_app ] || stop no-gate
+  W_GATE=$(yq -r 'explode(.) | .review.ci_gate.check | select(tag == "!!str")' "$DEFFILE" 2>/dev/null) || stop no-gate
+  [ -n "$W_GATE" ] || stop no-gate
+  case "$W_GATE" in *'
+'*) stop no-gate ;; esac
+  # stage 1: the open PR
+  lw_n=0 lw_fail=0
+  while :; do
+    lw_n=$((lw_n + 1))
+    lw_rc=0
+    wait_find || lw_rc=$?
+    case "$lw_rc" in
+      0) break ;;
+      1) lw_fail=0 ;;
+      *)
+        lw_fail=$((lw_fail + 1))
+        [ "$lw_fail" -lt 3 ] || stop unreadable
+        ;;
+    esac
+    [ "$lw_n" -lt 120 ] || stop no-pr
+    sleep 120
+  done
+  # stage 2: the review
+  lw_n=0 lw_fail=0
+  while :; do
+    lw_n=$((lw_n + 1))
+    lw_rc=0
+    wait_poll || lw_rc=$?
+    case "$lw_rc" in
+      1) lw_fail=0 ;;
+      *)
+        lw_fail=$((lw_fail + 1))
+        [ "$lw_fail" -lt 3 ] || stop unreadable
+        ;;
+    esac
+    [ "$lw_n" -lt 120 ] || stop "timeout #$P"
+    sleep 90
+  done
+}
+
 FID= FUP=
 case "$MODE" in
   prep) prep ;;
@@ -986,4 +1164,5 @@ case "$MODE" in
   done) lane_done ;;
   drop) lane_drop ;;
   groups) lane_groups ;;
+  wait) lane_wait ;;
 esac
