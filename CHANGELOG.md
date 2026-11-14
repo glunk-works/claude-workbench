@@ -24,6 +24,7 @@ the GitHub release notes.
 ### Changed
 
 - The container review now binds the spec on a PR that closes folded issues, the one closing reference with an approved spec when every other's finder prints `none` (#1458, `WB-D49`).
+- A lane that finds a defect in its approved spec's own text posts an escalation the answer route can redraft from, and `lane.sh drop N [discard]` removes a lane that never merged (#1421).
 
 ## [0.34.0] — 2026-11-13
 
