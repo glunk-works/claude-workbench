@@ -27,6 +27,7 @@ the GitHub release notes.
 
 ### Changed
 
+- Under an identities map, `/way-of-working:critic-gate`'s diff mode hands its critics the approved spec as a file and the critics read no issue body or comments, pinned by invariants check 30 (#1423, `WB-D50`).
 - The container review now binds the spec on a PR that closes folded issues, the one closing reference with an approved spec when every other's finder prints `none` (#1458, `WB-D49`).
 - A spec may carry an optional `### Trailers` section, checked by `spec-shape.sh` (new word `bad-trailers`) and written into the commit by `/way-of-working:ship`, which also prints a `Squash message:` line saying whether a trailer reaches the integration branch (#1422).
 - `/way-of-working:ship` puts the spec trailer lines last in a `PR_BODY` body, after any footer, and shows `gh pr create` with `--body-file`; `spec-shape.sh` refuses an at-sign, or an ampersand that could spell one as an HTML entity, on a trailer line (#1512).
