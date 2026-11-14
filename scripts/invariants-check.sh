@@ -722,7 +722,7 @@ if [ -n "$gate_hits" ]; then
 fi
 fi
 
-# --- 15. architect-review never loads the task issue's body under an identities map (#566), and binds it from the closing reference (#1368) --
+# --- 15. architect-review never loads the task issue's body under an identities map (#566), and binds it from the closing reference (#1368, #1458) --
 if want 15; then
 #
 # resume and the coder's builder rule read only the approved spec comment under a map, because
@@ -766,6 +766,17 @@ if [ -n "$closing_hits" ]; then
   report "architect-review does not load the spec in the review container (#1368)" \
     "$closing_hits" \
     "The Map branch binds the task issue from the PR's closing reference and reads no state.json; keep it (WB-D45)."
+fi
+# A PR that closes folded issues binds the one closing reference with an approved spec (#1458, WB-D49).
+folded_hits=""
+for f in plugins/*/skills/architect-review/SKILL.md; do
+  [ -f "$f" ] || continue
+  grep -Fq '**Folded issues (`WB-D49`, `#1458`).**' "$f" || folded_hits+="$f (no Folded issues rule)"$'\n'
+done
+if [ -n "$folded_hits" ]; then
+  report "architect-review does not bind the spec on a PR that closes folded issues (#1458)" \
+    "$folded_hits" \
+    "The Map branch binds the one closing reference whose finder prints found when every other prints none (WB-D49)."
 fi
 fi
 

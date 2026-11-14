@@ -2,7 +2,7 @@
 # Fixture tests for scripts/invariants-check.sh's check 15: architect-review never loads the
 # task issue's body under an identities map, and the schema doc does not call it uncovered (#566);
 # its second report (#1368) fires when the skill skips the spec in the review container or lacks
-# closingIssuesReferences.
+# closingIssuesReferences; its third report (#1458) fires when the skill lacks the Folded issues rule.
 #
 # Each case mutates a COPY of the real tree and asserts the check fires (or stays silent), so
 # a check that only passes on the real tree cannot hide. Only check 15's own message is
@@ -61,6 +61,7 @@ sel=
 d="$(tree control)"
 assert_silent "real tree passes" "$d"
 if run "$d" | grep -qF -- "architect-review does not load the spec in the review container"; then echo "FAIL - real tree fires the #1368 report" >&2; fail=1; else echo "ok - real tree is silent on the #1368 report"; fi
+if run "$d" | grep -qF -- "architect-review does not bind the spec on a PR that closes folded issues"; then echo "FAIL - real tree fires the #1458 report" >&2; fail=1; else echo "ok - real tree is silent on the #1458 report"; fi
 sel="--only 15"
 
 # The map-mode rule removed fires.
@@ -93,6 +94,12 @@ d="$(tree noclosing)"
 f="$(ls "$d"/plugins/*/skills/architect-review/SKILL.md)"
 sed 's/closingIssuesReferences/closingRefs/g' "$f" >"$f.new" && mv "$f.new" "$f"
 if run "$d" | grep -qF -- "$MSG2"; then echo "ok - no closingIssuesReferences fires the #1368 report"; else echo "FAIL - missing closingIssuesReferences did not fire" >&2; fail=1; fi
+
+# Removing the Folded issues lead-in fires the #1458 report.
+d="$(tree nofolded)"
+f="$(ls "$d"/plugins/*/skills/architect-review/SKILL.md)"
+sed 's/Folded issues (`WB-D49`, `#1458`)/Folded issues removed/' "$f" >"$f.new" && mv "$f.new" "$f"
+if run "$d" | grep -qF -- "architect-review does not bind the spec on a PR that closes folded issues"; then echo "ok - no Folded issues lead-in fires the #1458 report"; else echo "FAIL - missing Folded issues lead-in did not fire" >&2; fail=1; fi
 
 # A tree with no architect-review skill fails, never passes.
 d="$(tree noskill)"

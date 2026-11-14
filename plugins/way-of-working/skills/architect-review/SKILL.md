@@ -211,16 +211,17 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      head re-read uses), read inside this recipe's one Bash call and never parsed from the PR
      body or title. Project the read at the source, `--jq '.closingIssuesReferences[] | [(.number|tostring),
      (.repository.owner.login + "/" + .repository.name)] | @tsv'` (gh's `closingIssuesReferences` carries no
-     `nameWithOwner`). Exactly one entry binds `I`: its number must be canonical decimal (anything
+     `nameWithOwner`). Exactly one entry binds `I` (or the *Folded issues* rule below binds one of
+     several): its number must be canonical decimal (anything
      else reads as `closing reference unreadable`) and its
      repository's `owner/name` must equal `{backlog.repo}` (`{repo}` when `null`). A non-zero
      exit or a line that does not split into two fields reads as `closing reference unreadable`;
      empty output with exit 0 is zero entries, `no closing reference`. A failed read, zero entries,
-     several entries and an entry in another repository each load no
+     several entries (unless that rule binds) and an entry in another repository each load no
      spec, with a fixed reason (`closing reference unreadable`, `no closing reference`,
      `several closing references`, `closing reference in another repository`) that never
      echoes the reference. `I` is never the source of a comment id. The comment id comes only
-     from the finder, run in this recipe's one Bash call after the binding:
+     from the finder, run in this recipe's one Bash call after the binding (or, on a multi-entry binding, inside it, and not again):
      `spec-find.sh find "$I" "$DEF_YML_FILE"` (`I` checked as digits with no leading
      zero). Its output must be exactly `found <id> <updated_at>`, `<id>` digits with no leading
      zero and `<updated_at>` `YYYY-MM-DDTHH:MM:SSZ`, parsed into `CID` and `CUP` in that call and
@@ -228,7 +229,20 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      a fresh `found`. Any other word (`none`, `unreacted`, `escalated`, `ambiguous`, `moved`, `unreadable`, `legacy`), a
      non-zero exit or empty output loads no spec, with that word as the reason (an exit or empty
      output reads as `unreadable`) — a stated limit, not a STOP. Never an id found in a PR body or
-     title, a comment list, or the issue. Fetch `#I` once, projected at the source (`gh api
+     title, a comment list, or the issue. **Folded issues (`WB-D49`, `#1458`).** The outcomes are
+     decided in this order: any entry whose number is not canonical, or a line that does not split,
+     reads `closing reference unreadable`; then any entry in another repository reads `closing
+     reference in another repository`; then more than five entries read `several closing
+     references`, with no finder run. With two to five entries that passed those checks, run
+     `spec-find.sh find "$J" "$DEF_YML_FILE"` once per entry inside the same one Bash call, in
+     list order, `J` being that entry's checked number. `I` binds to the one entry that prints a
+     `found` line (the shape check on `<id>` and `<updated_at>` unchanged) when exactly one does
+     and every other entry prints exactly `none`; that entry's `CID` and `CUP` are the ones
+     carried on. Anything else loads no spec with the existing fixed reason `several closing
+     references`: zero `found`, more than one `found`, any other word, a non-zero exit or empty
+     output from any run. The fixed reasons still never echo a reference, and `I` is still never
+     the source of a comment id. Everything after the binding runs on that `I` unchanged.
+     Fetch `#I` once, projected at the source (`gh api
      repos/{backlog.repo}/issues/I --jq '[.number, .user.login, .user.id, .state,
      (.milestone.number // "")] | @tsv'`, the milestone last so an empty field cannot shift the
      others), so its body never enters context; split the line into variables, check that
@@ -272,14 +286,17 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      and writes this label in the review body, naming the issue the spec came from, with
      "maintainer-authored" or "dev-App-authored" from the role above: "<role>-authored spec,
      maintainer-approved (reaction after its last edit), bound to #I by the PR's closing
-     reference". Any other result, an exit of 2 or unreadable
+     reference". On a multi-entry binding the label instead ends "bound to #I, the one of the
+     PR's closing references with an approved spec; the others (#A, #B) carry no approved spec,
+     and the review does not check that they belong to it", with the other entries' canonical
+     numbers. Any other result, an exit of 2 or unreadable
      ids loads no spec, with the reason `label mismatch`.
    - **Verdict against the spec.** When a Map-branch spec loaded, the verdict checks the diff
      against it: a changed file not listed under *Files touched* is a finding (an entry is the first backtick span of each top-level bullet; a path is listed when it equals an entry or lies under one, one trailing `/` removed); each *Done when*
      item is named met, unmet, or not witnessed; a change that does something listed under
      *Out of scope* is a finding.
    - **When anything is missing or fails** (legacy only: no `state.json`, no anchor, a `task_issue` or
-     `review_pr` mismatch; map only: a failed closing-reference read, none or several, one in another
+     `review_pr` mismatch; map only: a failed closing-reference read, none, several that the *Folded issues* rule does not bind, one in another
      repository, a closed issue, no milestone, an unreadable `planning.kind`, any finder result but `found`,
      a failed reactions fetch, no maintainer reaction, a label mismatch; either mode:
      a failed issue or comment fetch, an untrusted author, an `updated_at` mismatch, a comment not on `#I`; and an unreadable mode, where neither branch runs): load no task spec, still run
