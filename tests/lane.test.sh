@@ -176,7 +176,12 @@ case "$1 $2" in
   "repo view") [ "${FX_FAIL:-}" != repoview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/repo.json ;;
   "pr view") [ "${FX_FAIL:-}" != prview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prview.json ;;
   "api --hostname") [ "${FX_FAIL:-}" != reach ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/reach.json ;;
-  "api --paginate") [ "${FX_FAIL:-}" != refs ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/refs.json ;;
+  "api --paginate")
+    case "$3" in
+      repos/*/*/git/matching-refs/heads/*) ;;
+      *) echo "stub gh: unexpected: $*" >&2; exit 1 ;;
+    esac
+    [ "${FX_FAIL:-}" != refs ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/refs.json ;;
   "pr list") [ "${FX_FAIL:-}" != prlist ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prs.json ;;
   api\ repos/*/issues/*)
     [ "${FX_FAIL:-}" != issue ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }
@@ -994,6 +999,12 @@ refs_rows() { # <ref>...
     printf ']\n'
   } >"$CAN/refs.json"
 }
+# the stub's paginated arm answers only a matching-refs path
+stub_rc=0
+stub_err=$(PATH="$FB:$PATH" "$FB/gh" api --paginate repos/glunk-works/claude-workbench/pulls --jq . 2>&1 >/dev/null) || stub_rc=$?
+assert_eq "stub gh: another paginated call: exit" 1 "$stub_rc"
+assert_eq "stub gh: another paginated call: message" "stub gh: unexpected: api --paginate repos/glunk-works/claude-workbench/pulls --jq ." "$stub_err"
+
 lane_fresh
 run_lane drop $ISSUE
 assert_eq "drop: exit" 0 "$rc"
@@ -1047,9 +1058,14 @@ removed-prompt $LD/$ISSUE-prompt.md
 next none" "$out"
 assert_eq "drop discard: the worktree is gone" no "$([ -e "$LD/$ISSUE" ] && echo yes || echo no)"
 lane_fresh
-echo changed >"$LD/$ISSUE/dir/f" 2>/dev/null || echo changed >"$LD/$ISSUE/tracked-change"
+echo changed >"$LD/$ISSUE/dir/f"
 run_lane drop $ISSUE discard
 assert_eq "drop discard: a modified file: exit" 0 "$rc"
+
+lane_fresh
+echo changed >"$LD/$ISSUE/dir/f"
+stop_case "drop: a modified tracked file" 1 dirty drop $ISSUE
+assert_eq "drop: modified: the prompt file is still there" yes "$([ -e "$LD/$ISSUE-prompt.md" ] && echo yes || echo no)"
 
 lane_fresh
 $real_git -C "$R" worktree lock "$LD/$ISSUE"
