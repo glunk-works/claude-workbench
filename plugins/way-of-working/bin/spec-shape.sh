@@ -51,7 +51,7 @@
 # heading of any level) must hold at least one non-blank line, every non-blank line being one
 # trailer: a token of letters, digits and hyphens that starts with a letter, a colon, one space,
 # then a value with at least one non-blank character (a trailing carriage return is stripped
-# first). A trailer line holds no backtick, `$`, double quote, single quote or backslash, no
+# first). A trailer line holds no backtick, `$`, `@`, `&` (an HTML entity can spell an at-sign), double quote, single quote or backslash, no
 # GitHub closing keyword (close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved)
 # as a word (a word is a maximal run of ASCII letters, compared lowercased, so `(fixes` and
 # `FIXES` both count), and its token is not `Co-authored-by` or `Signed-off-by` in any case.
@@ -96,7 +96,7 @@ fi
 base=$(LC_ALL=C awk '
   function trailer_ok(l,   q, tok, rest, k, t, w, nw, i) {
     q = sprintf("%c", 39)
-    if (index(l, "`") || index(l, "$") || index(l, "\"") || index(l, q) || index(l, "\\")) return 0
+    if (index(l, "`") || index(l, "$") || index(l, "@") || index(l, "&") || index(l, "\"") || index(l, q) || index(l, "\\")) return 0
     if (l !~ /^[A-Za-z][A-Za-z0-9-]*: /) return 0
     k = index(l, ":")
     tok = tolower(substr(l, 1, k - 1))
