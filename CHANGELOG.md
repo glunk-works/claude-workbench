@@ -29,7 +29,7 @@ the GitHub release notes.
 ### Changed
 
 - The lanes skill's spec-defect step reads an escalated comment only when `gh-identity.sh role` prints `dev_app` for its author, and the default branch name from `gh repo view` gets the shape rule the marker's `base=` gets (#1517).
-- The `[Unreleased]` correction line for the released v0.31.0 `#1370` entry gives the text that entry should read, not what it already says (#1517).
+- Note on the `[Unreleased]` correction line for the v0.31.0 `#1370` entry: it gives the text that entry should read (#1517).
 - Under an identities map, `/way-of-working:critic-gate`'s diff mode hands its critics the approved spec as a file and the critics read no issue body or comments, pinned by invariants check 30 (#1423, `WB-D50`).
 - The container review now binds the spec on a PR that closes folded issues, the one closing reference with an approved spec when every other's finder prints `none` (#1458, `WB-D49`).
 - A spec may carry an optional `### Trailers` section, checked by `spec-shape.sh` (new word `bad-trailers`) and written into the commit by `/way-of-working:ship`, which also prints a `Squash message:` line saying whether a trailer reaches the integration branch (#1422).

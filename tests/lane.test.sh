@@ -1501,6 +1501,10 @@ jarr "$CAN/reviews.json" "$(rv $RID "\"$H0A\"" APPROVED "\"$T1\"")"
 wait_case "another user, an older head, a numerically equal sha and a pending review do not count" 0 "reviewed #9 $H0A success" "sleep 90"
 
 wait_ready
+jarr "$CAN/reviews.1.json" "$(rv $RID "\"$HS\"" DISMISSED "\"$T1\"")"
+wait_case "a dismissed reviewer-App review on the head does not end the wait" 0 "reviewed #9 $HS success" "sleep 90"
+
+wait_ready
 jarr "$CAN/reviews.json" "$(rv 4242 null COMMENTED null)" "$(rv 4242 "\"$HS\"" COMMENTED null)" "$(rv $RID null COMMENTED "\"$T1\"")" "$GOODREV"
 wait_case "null fields in rows that are not used are ignored" 0 "reviewed #9 $HS success" ""
 

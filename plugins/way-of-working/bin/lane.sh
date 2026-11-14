@@ -1055,7 +1055,7 @@ wait_poll() {
   W_RID=$W_REVIEWER W_SHA=$wp_sha W_TS=$W_TS awk -F'\t' '
     BEGIN { rid = ENVIRON["W_RID"]; sha = ENVIRON["W_SHA"]; shape = ENVIRON["W_TS"] }
     NF != 4 { bad = 1; exit }
-    ("" $1 == "" rid) && $3 != "PENDING" && ("" $2 == "" sha) {
+    ("" $1 == "" rid) && $3 != "PENDING" && $3 != "DISMISSED" && ("" $2 == "" sha) {
       if ($4 !~ shape) { bad = 1; exit }
       if (max == "" || ("" $4 > "" max)) max = $4
     }

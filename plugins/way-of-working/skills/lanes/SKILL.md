@@ -154,6 +154,10 @@ Print that line and act on it:
 - `no-pr`, `unreadable`, `no-gate` or any other stop word: report it, and start the wait again only
   when the maintainer asks.
 
+A wait whose command was stopped, so it ends with exit status 1 and no line, is started again once
+with the same command. Any other end without a line (a usage error, a missing script), a second one,
+or a stop the maintainer made is reported, and the wait starts again only when the maintainer asks.
+
 Two limits. The wait reports only to the session that started it, so a driver session that ends or
 restarts loses it and starts it again. And a PR the gate exempts, or any lane PR in a repo whose
 `pr_base` is not the default branch, never ends `reviewed`.
