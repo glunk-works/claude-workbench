@@ -231,6 +231,105 @@ else
   pcheck "empty project file is unreadable" unreadable "$f" "$(: >"$tmp/empty.yml"; echo "$tmp/empty.yml")"
 fi
 
+# Optional `### Trailers` section: between Out of scope and Restated, one trailer per line.
+# tr_draft <name> <trailer line>... : a full draft with a Trailers section holding the given lines.
+tr_draft() {
+  f="$tmp/$1"
+  shift
+  printf '%s\n\n### Goal\n\nx\n\n### Files touched\n\nx\n\n### Done when\n\nx\n\n### Tests\n\nx\n\n### Out of scope\n\nx\n\n### Trailers\n\n' '## Spec' >"$f"
+  for b in "$@"; do printf '%s\n' "$b" >>"$f"; done
+  printf '\n### Restated from the issue body\n\nx\n' >>"$f"
+  echo "$f"
+}
+check "Trailers: one well-formed line" ok "$(tr_draft tr1 'Decision: WB-D12')"
+check "Trailers: two lines" ok "$(tr_draft tr2 'Decision: WB-D12' 'Refs-Task: 1422 (see docs)')"
+f=$(tr_draft tr4 'Decision: WB-D12')
+sed 's/^### Trailers$/### Trailers  /' "$f" >"$f.x"
+check "Trailers: heading with trailing blanks" ok "$f.x"
+f=$(tr_draft tr5 'Decision: WB-D12')
+sed 's/$/\r/' "$f" >"$f.x"
+check "Trailers: CRLF line endings" ok "$f.x"
+check "Trailers: absent is as today" ok "$(d tr6 "$ALL")"
+check "Trailers: a token that only starts like Co-authored-by" ok "$(tr_draft tr7 'Co-authored-by-x: someone')"
+
+# Placement: before Out of scope, after Restated, twice.
+f="$tmp/trp1"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Trailers\nDecision: WB-D1\n### Out of scope\nx\n### Restated from the issue body\nx\n' >"$f"
+check "Trailers before Out of scope" bad-trailers "$f"
+f="$tmp/trp2"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n### Restated from the issue body\nx\n### Trailers\nDecision: WB-D1\n' >"$f"
+check "Trailers after Restated" bad-trailers "$f"
+f="$tmp/trp3"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n### Trailers\nDecision: WB-D1\n### Trailers\nDecision: WB-D2\n### Restated from the issue body\nx\n' >"$f"
+check "a second Trailers heading" bad-trailers "$f"
+f="$tmp/trp4"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n### Trailers\n\n  \n### Restated from the issue body\nx\n' >"$f"
+check "Trailers with no non-blank line" bad-trailers "$f"
+f="$tmp/trp5"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n### Trailers\nDecision: WB-D1\n## Notes\nnot a trailer\n### Restated from the issue body\nx\n' >"$f"
+check "text after a level-2 heading is not the Trailers body" ok "$f"
+
+# Heading look-alikes a Markdown reader would treat as the Trailers heading, and a 7-hash line.
+for v in ' ### Trailers' '### Trailers ###' '### Trailers:' '## Trailers' '#### Trailers'; do
+  f="$tmp/tl"
+  printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n### Trailers\nDecision: WB-D1\n%s\nSigned-off-by: M <m@x>\n### Restated from the issue body\nx\n' "$v" >"$f"
+  check "look-alike Trailers heading [$v]" bad-trailers "$f"
+done
+f="$tmp/tl2"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n### Trailers\nDecision: WB-D1\n####### x\nfixes #9\n### Restated from the issue body\nx\n' >"$f"
+check "seven hashes inside the section" bad-trailers "$f"
+
+f="$tmp/tl5"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n###\tTrailers\nSprint: 21\n### Restated from the issue body\nx\n' >"$f"
+check "tab after the hashes is a look-alike heading" bad-trailers "$f"
+f="$tmp/tl3"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n## Trailers\nx\n### Restated from the issue body\nx\n' >"$f"
+check "look-alike heading with no exact Trailers heading" bad-trailers "$f"
+f="$tmp/tl4"
+printf '### Goal\nx\n### Files touched\nx\n### Done when\nx\n### Tests\nx\n### Out of scope\nx\n### Restated from the issue body\n    ### Trailers is code\n' >"$f"
+check "four-space indent is not a heading" ok "$f"
+
+# Malformed lines.
+check "Trailers: no colon" bad-trailers "$(tr_draft tb1 'Decision WB-D12')"
+check "Trailers: no space after the colon" bad-trailers "$(tr_draft tb2 'Decision:WB-D12')"
+check "Trailers: empty value" bad-trailers "$(tr_draft tb3 'Decision: ')"
+check "Trailers: blank-only value" bad-trailers "$(tr_draft tb3b 'Decision:   ')"
+check "Trailers: token starts with a digit" bad-trailers "$(tr_draft tb4 '1Decision: x')"
+check "Trailers: token with an underscore" bad-trailers "$(tr_draft tb4b 'Dec_ision: x')"
+check "Trailers: leading blank" bad-trailers "$(tr_draft tb4c ' Decision: x')"
+check "Trailers: backtick in the value" bad-trailers "$(tr_draft tb5 'Decision: `x`')"
+check "Trailers: dollar in the value" bad-trailers "$(tr_draft tb6 'Decision: $x')"
+check "Trailers: double quote in the value" bad-trailers "$(tr_draft tb6b 'Decision: "x"')"
+check "Trailers: single quote in the value" bad-trailers "$(tr_draft tb6c "Decision: it's")"
+check "Trailers: backslash in the value" bad-trailers "$(tr_draft tb6d 'Decision: a\b')"
+check "Trailers: closing keyword in the value" bad-trailers "$(tr_draft tb7 'Decision: fixes #12')"
+check "Trailers: closing keyword after a parenthesis" bad-trailers "$(tr_draft tb8 'Decision: (fixes #12)')"
+check "Trailers: uppercase closing keyword" bad-trailers "$(tr_draft tb9 'Decision: FIXES x')"
+check "Trailers: closing keyword as the token" bad-trailers "$(tr_draft tb9b 'Closes: 12')"
+check "Trailers: a closing keyword only inside a longer word is fine" ok "$(tr_draft tb9c 'Decision: prefixes and closest')"
+check "Trailers: Signed-off-by token" bad-trailers "$(tr_draft tb10 'Signed-off-by: A <a@b.c>')"
+check "Trailers: Co-authored-by token in any case" bad-trailers "$(tr_draft tb11 'CO-AUTHORED-BY: A <a@b.c>')"
+check "Trailers: one bad line among good ones" bad-trailers "$(tr_draft tb12 'Decision: WB-D12' 'not a trailer')"
+
+# Precedence: has-marker and missing win over bad-trailers.
+f=$(tr_draft tp1 'bad line')
+printf 'spec-task: x\n' >>"$f"
+check "has-marker wins over bad-trailers" has-marker "$f"
+f=$(tr_draft tp2 'bad line')
+sed 's/^### Tests$/### Testsx/' "$f" >"$f.x"
+check "missing wins over bad-trailers" "missing Tests" "$f.x"
+if command -v yq >/dev/null 2>&1; then
+  f=$(tr_draft tp3 'bad line')
+  sed 's/^### Files touched$/&\n\n- `CHANGELOG.md` one entry/' "$f" >"$f.x"
+  printf 'append_only: [CHANGELOG.md]\n' >"$tmp/tp3.yml"
+  pcheck "bad-trailers wins over no-append" bad-trailers "$f.x" "$tmp/tp3.yml"
+  printf 'append_only: CHANGELOG.md\n' >"$tmp/tp3b.yml"
+  pcheck "bad-trailers wins over a project-file unreadable" bad-trailers "$f.x" "$tmp/tp3b.yml"
+  pcheck "bad-trailers wins over a missing project file" bad-trailers "$f" "$tmp/nope.yml"
+  f=$(tr_draft tp4 'Decision: WB-D12')
+  pcheck "a good Trailers section leaves the project-file result" ok "$f" "$tmp/tp3.yml"
+fi
+
 # Usage errors exit non-zero.
 for args in "" "check" "check a b c" "other $tmp/full" "$tmp/full"; do
   # shellcheck disable=SC2086

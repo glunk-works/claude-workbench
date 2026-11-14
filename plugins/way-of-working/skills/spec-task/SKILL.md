@@ -223,7 +223,7 @@ the draft* step) and relays its findings to the drafter.
    `ambiguous`, or a non-zero `ANSWER_RC`) stops with `stopped: answer <word>` and nothing is posted;
    for `ambiguous` the line adds that a maintainer deletes all but one answer.
 
-   **The redraft.** On `ok <choice>`, start from the escalated comment's six sections under a new title
+   **The redraft.** On `ok <choice>`, start from the escalated comment's sections under a new title
    line naming the escalated comment's id and the answer's id, apply every recommendation in its
    `### Open findings` except a split, then, under `amend`, the answer's changes on top.
    `### Restated from the issue body` adds one line naming the choice and, under `amend`, each change,
@@ -388,6 +388,10 @@ the draft* step) and relays its findings to the drafter.
    - `### Done when` — checkable conditions, each runnable or observable.
    - `### Tests` — the new fixtures, and the existing suites that must still pass.
    - `### Out of scope` — what a reader might assume is included and is not.
+   - `### Trailers` — optional. Written only when the issue body names a commit trailer other than
+     the task's closing reference that the task's commit must carry: one trailer per line, in the
+     form and within the limit the `spec-shape.sh` header documents. Each trailer it carries is also
+     named in `### Restated from the issue body`.
    - `### Restated from the issue body` — the requirements this draft takes from the body, as a
      short list, so the maintainer can see exactly what the issue contributed. Exactly
      `nothing` when the draft took nothing from it.
@@ -479,12 +483,12 @@ the draft* step) and relays its findings to the drafter.
    DD='<printed draft dir>' &&
    S=$(spec-shape.sh check "$DD/draft.md" "$DD/project.yml"); echo "SHAPE=$S"
    ```
-   `spec-shape.sh` prints `ok`, `missing <section>[,<section>…]`, `has-marker`, `no-append <path>[,<path>…]` or `unreadable`. On `no-append`, put a space and
-   `**(append)**` right after the closing backtick of every offending bullet for each named path and check once more, under the same one-fix rule as `missing` and `has-marker` (a second failure of any of the three kinds stops). On `missing`, fix
+   `spec-shape.sh` prints `ok`, `missing <section>[,<section>…]`, `has-marker`, `no-append <path>[,<path>…]`, `bad-trailers` or `unreadable`. On `no-append`, put a space and
+   `**(append)**` right after the closing backtick of every offending bullet for each named path and check once more, under the same one-fix rule as `missing` and `has-marker` (a second failure of any of these kinds stops). On `bad-trailers`, fix the `### Trailers` section (or drop it when the issue body names no such trailer), or reword any other line the `spec-shape.sh` header names as a Trailers look-alike, and check once more, under the same one-fix rule. On `missing`, fix
    those sections in the file and check once more; a second failure stops, naming the sections,
    and both directories are removed. On `has-marker`, reword each line that begins with
    `spec-task:` or `spec-task-escalated:` and check once more, under the same one-fix rule; a
-   second failure of any of the three kinds (a `missing` after a `has-marker` fix, or the reverse, included)
+   second failure of any of these kinds (a `missing` after a `has-marker` fix, or the reverse, included)
    stops, naming what the second check printed, and both directories are removed. `unreadable`, or anything else (an empty `SHAPE=` means
    `spec-shape.sh` is not on `PATH`), stops the same way.
 

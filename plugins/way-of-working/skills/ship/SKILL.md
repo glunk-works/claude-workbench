@@ -284,13 +284,19 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
 2. **Review the diff, then compose the commit.** `git status --short` + `git diff --staged`
    (stage with `git add` as needed). Write the message per `reference/conventions.md`
    § *Message grammar* — Conventional Commits, imperative subject, ≤72 chars, no trailing
-   period. Two things that need repo knowledge rather than the conventions file:
+   period. Things that need repo knowledge rather than the conventions file:
    - **The `scope` reuses one of this repo's own module boundaries**, so commit vocabulary
      matches architecture vocabulary. Those boundaries are local truth — read them from the
      repo's `CLAUDE.md` (or `.ai/context/`), not from this skill and not from memory.
    - **A `!` breaking-change marker carries whatever migration obligation this repo
      defines** for the surface being broken (a schema-version bump, a migration function, a
      documented upgrade note). If the repo defines one, it lands **in the same commit**.
+   - **Spec trailers.** When the session builds from an approved spec comment that has a
+     `### Trailers` section, the commit message ends with a trailer block carrying each of its
+     non-blank lines unchanged (a trailing carriage return removed), alongside any other trailer the commit carries. The lines come only from
+     the body `spec-comment.sh body` returned for the approved spec, taken from the line
+     `### Trailers` (optional trailing blanks) up to the next line that starts with `#`, and pass to git through a file
+     written with the Write tool (`git commit -F`), never a heredoc or a double-quoted argument.
    - If commits are signed, a signing *timeout* usually means the host pinentry is waiting
      for input — answer it and re-run the commit; it is not a commit failure.
 
@@ -323,6 +329,17 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    state, and the App-mode actor check below reads the PR from `{repo}`). Body: a `## What` / `## Why`
    summary, and the scope (which boundary changed). If `{review.ci_gate}` is set and this
    diff touches none of `{code_paths}`, note that the review gate is exempt for this PR.
+
+   **Read where the squash message comes from, before `gh pr create`** (new-PR path only; the
+   existing-PR path makes no PR body write). One read:
+   `gh api repos/{repo} --jq '.squash_merge_commit_message'`. Print one line,
+   `Squash message: ` followed by `COMMIT_MESSAGES`, `PR_BODY`, `BLANK` or `unread` (a failed read
+   or any other value is `unread`, never a stop). Act on it: under `PR_BODY` the PR body also
+   carries each spec trailer on its own line, in the body's final paragraph, the body passed by
+   `--body-file` from a file written with the Write tool. In the report, under `COMMIT_MESSAGES` say a trailer
+   only in the PR body does not reach `{pr_base}`; under `PR_BODY` say a trailer only in the
+   commits does not; under `BLANK` say no trailer reaches `{pr_base}`; under `unread` say where
+   trailers reach is unknown.
 
    **If this change relies on a blocking precondition, record its satisfaction here.** Read
    `pointers.sprint_plan` from `.ai/state.json` (skip this if there is no cursor or no sprint
@@ -495,7 +512,8 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    say the arm step was skipped on the existing-PR path, and, if you want, hand off to `/way-of-working:pr-checks <N>` to watch
    the required checks. **No `gh pr review --approve`, no `git push --force`, and no
    `gh pr merge` beyond the *Arm auto-merge* step's one `--auto` call** — an armed PR merges
-   when the rules on `{pr_base}` are met, and the approval they require is a human's.
+   when the rules on `{pr_base}` are met, and the approval they require is a human's. On the
+   new-PR path, also repeat the `Squash message:` line.
 
 ## Guardrail summary
 

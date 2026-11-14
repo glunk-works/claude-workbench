@@ -9,7 +9,8 @@
 # Prints exactly one of, and exits 0 (the caller decides policy):
 #   ok                          -- every required section heading is present, in order, every
 #                                  section has at least one non-blank line (`nothing` counts: it
-#                                  is text), and no line begins with either marker prefix
+#                                  is text), no line begins with either marker prefix, and any
+#                                  optional `### Trailers` section is well formed (below)
 #   has-marker                  -- a line begins with `spec-task:` or `spec-task-escalated:` (after
 #                                  a trailing carriage return is stripped), the rule spec-post.sh
 #                                  applies at the post, after the critic gate (it now stops such a
@@ -20,12 +21,16 @@
 #                                  absent, first appear before an earlier required heading, or
 #                                  have an empty body
 #   no-append <path>[,<path>...]
-#                               -- only with a project file, after `has-marker` and `missing` (both
-#                                  win): the declared `append_only` paths (comma-joined, each once, in
+#                               -- only with a project file, after `has-marker`, `missing` and `bad-trailers`
+#                                  (all win): the declared `append_only` paths (comma-joined, each once, in
 #                                  the order of their first offending bullet) that have a Files touched
 #                                  bullet whose closing backtick is not followed by exactly a space and
 #                                  `**(append)**`, the only form spec-fresh.sh skips; fix each bullet to
 #                                  read - `path` **(append)** ...
+#   bad-trailers                -- only for an otherwise `ok` draft: the optional `### Trailers` section
+#                                  is malformed (below). `has-marker` and `missing` win over it, and
+#                                  it wins over every project-file result (`no-append` and the
+#                                  project-file `unreadable`)
 #   unreadable                  -- (project-file cases below apply only to an otherwise `ok` draft) the file does not exist, is not a regular file, is empty, or
 #                                  cannot be read; with a project file, also when its `append_only` is
 #                                  not null, absent or a list whose every entry is a path (the entry
@@ -37,6 +42,24 @@
 # (spec-post.sh writes the marker line itself), and the prose between a heading and the next heading of any level
 # (`#` through `######`) is that section's body:
 #   Goal | Files touched | Done when | Tests | Out of scope | Restated from the issue body
+#
+# Optional section: `### Trailers` carries the commit trailers a task's commit must carry beyond
+# its closing reference (/way-of-working:ship writes them into the commit). A draft without the
+# heading is judged as without this section (bar the look-alike rule below). When the whole line `### Trailers` (optional trailing
+# blanks) is present it must appear exactly once, after the first `### Out of scope` heading and
+# before the first `### Restated from the issue body` heading, and its body (up to the next
+# heading of any level) must hold at least one non-blank line, every non-blank line being one
+# trailer: a token of letters, digits and hyphens that starts with a letter, a colon, one space,
+# then a value with at least one non-blank character (a trailing carriage return is stripped
+# first). A trailer line holds no backtick, `$`, double quote, single quote or backslash, no
+# GitHub closing keyword (close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved)
+# as a word (a word is a maximal run of ASCII letters, compared lowercased, so `(fixes` and
+# `FIXES` both count), and its token is not `Co-authored-by` or `Signed-off-by` in any case.
+# Any other line anywhere in the draft that starts with up to three spaces, hashes, a space or tab and
+# `trailers` in any case (a heading with closing hashes, trailing text or another hash count;
+# fenced code is not understood, so a line in a code block counts too), even in a draft with no
+# exact `### Trailers` line, and a line of seven or more hashes inside the section, are also
+# `bad-trailers`, so the validator and ship end the section at the same line.
 #
 # A heading counts only as a whole line, `### ` followed by exactly the name and optional
 # trailing blanks; `### Goal and more` is not `Goal`. A heading that first appears before an
@@ -70,8 +93,26 @@ if [ ! -f "$f" ] || [ ! -r "$f" ] || [ ! -s "$f" ]; then
   exit 0
 fi
 
-base=$(awk '
+base=$(LC_ALL=C awk '
+  function trailer_ok(l,   q, tok, rest, k, t, w, nw, i) {
+    q = sprintf("%c", 39)
+    if (index(l, "`") || index(l, "$") || index(l, "\"") || index(l, q) || index(l, "\\")) return 0
+    if (l !~ /^[A-Za-z][A-Za-z0-9-]*: /) return 0
+    k = index(l, ":")
+    tok = tolower(substr(l, 1, k - 1))
+    if (tok == "co-authored-by" || tok == "signed-off-by") return 0
+    rest = substr(l, k + 2)
+    if (rest !~ /[^ \t]/) return 0
+    t = tolower(l)
+    gsub(/[^a-z]+/, " ", t)
+    nw = split(t, w, " ")
+    for (i = 1; i <= nw; i++) if (w[i] in kw) return 0
+    return 1
+  }
   BEGIN {
+    split("close closes closed fix fixes fixed resolve resolves resolved", kws, " ")
+    for (i in kws) kw[kws[i]] = 1
+
     n = split("Goal|Files touched|Done when|Tests|Out of scope|Restated from the issue body", want, "|")
     for (i = 1; i <= n; i++) idx[want[i]] = i
     last_body = 0
@@ -81,8 +122,13 @@ base=$(awk '
     line = $0
     sub(/\r$/, "", line)
     if (line ~ /^spec-task:/ || line ~ /^spec-task-escalated:/) marker = 1
+    lt = tolower(line)
+    if (lt ~ /^ ? ? ?#+[ \t]+trailers/ && line !~ /^### Trailers[ \t]*$/) tother = 1
     if (line ~ /^#+ /) {
+      if (intr && line ~ /^#######/) tbad = 1
       cur = 0
+      intr = (line ~ /^### Trailers[ \t]*$/)
+      if (intr) { tcount++; if (tcount == 1) tpos = NR }
       if (line ~ /^### /) {
         name = substr(line, 5)
         sub(/[ \t]+$/, "", name)
@@ -92,6 +138,7 @@ base=$(awk '
       next
     }
     if (cur && first[cur] && line ~ /[^ \t]/) body[cur]++
+    if (intr && tcount == 1 && line ~ /[^ \t]/) { tbody++; if (!trailer_ok(line)) tbad = 1 }
   }
   END {
     if (marker) { print "has-marker"; exit }
@@ -101,7 +148,9 @@ base=$(awk '
       if (!pos[i] || pos[i] < maxpos || !body[i]) { out = out (out == "" ? "" : ",") want[i]; continue }
       maxpos = pos[i]
     }
-    if (out == "") print "ok"; else print "missing " out
+    if (out != "") { print "missing " out; exit }
+    if (tother || tcount > 1 || (tcount == 1 && (tpos < pos[5] || tpos > pos[6] || !tbody || tbad))) print "bad-trailers"
+    else print "ok"
   }
 ' <"$f")
 

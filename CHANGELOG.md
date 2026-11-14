@@ -25,6 +25,7 @@ the GitHub release notes.
 
 - The container review now binds the spec on a PR that closes folded issues, the one closing reference with an approved spec when every other's finder prints `none` (#1458, `WB-D49`).
 - A lane that finds a defect in its approved spec's own text posts an escalation the answer route can redraft from, and `lane.sh drop N [discard]` removes a lane that never merged (#1421).
+- A spec may carry an optional `### Trailers` section, checked by `spec-shape.sh` (new word `bad-trailers`) and written into the commit by `/way-of-working:ship`, which also prints a `Squash message:` line saying whether a trailer reaches the integration branch (#1422).
 
 ## [0.34.0] — 2026-11-13
 
