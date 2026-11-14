@@ -231,7 +231,7 @@ edited it. **Default to the full checklist whenever unsure.**
        `stored-login` and `unreadable` all wait.
 
        **The reader rule under a map** (every reader of the spec — this session, a `coder`
-       it delegates to, `/way-of-working:architect-review` — means exactly this by "run the
+       it delegates to, `/way-of-working:architect-review`, `/way-of-working:critic-gate`'s diff mode — means exactly this by "run the
        finder"):
        - **Where it runs.** Inside the Bash call that uses its result: `spec-find.sh find
          "$TASK" "$DEF_YML_FILE"`, `$DEF_YML_FILE` the default branch's copy this skill
