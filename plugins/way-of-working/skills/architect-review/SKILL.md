@@ -240,7 +240,8 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
      and every other entry prints exactly `none`; that entry's `CID` and `CUP` are the ones
      carried on. Anything else loads no spec with the existing fixed reason `several closing
      references`: zero `found`, more than one `found`, any other word, a non-zero exit or empty
-     output from any run. The fixed reasons still never echo a reference, and `I` is still never
+     output from any run. A `found` line that fails the shape check counts as any other word.
+     The fixed reasons still never echo a reference, and `I` is still never
      the source of a comment id. Everything after the binding runs on that `I` unchanged.
      Fetch `#I` once, projected at the source (`gh api
      repos/{backlog.repo}/issues/I --jq '[.number, .user.login, .user.id, .state,
