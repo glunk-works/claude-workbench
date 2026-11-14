@@ -8,7 +8,8 @@
 # call. bin/spec-find.sh also runs `check` (#1374), on older approved candidates, without `spec-comment.sh check` first. A `changed` mode (#1374) runs the same stages and, where `check` would print `stale <n>`, prints
 # the marker commit, the tip commit and the changed paths, for /way-of-working:spec-task's refresh branch.
 # Callers: /way-of-working:resume's map body read (and its stale branch's re-run) and the
-# coder agent's, each after `spec-comment.sh check` says `ok` and before `spec-comment.sh body`;
+# coder agent's, each after `spec-comment.sh check` says `ok` and before `spec-comment.sh body`, and
+# /way-of-working:critic-gate's diff mode (#1423), which runs `paths` there and no `check`;
 # /way-of-working:spec-task runs the `shape` mode on a draft before posting it and the `changed` mode on a stale
 # approved comment (its refresh branch), and bin/spec-answer.sh runs it on an
 # escalated comment's body (#790); bin/lane-groups.sh

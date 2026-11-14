@@ -32,7 +32,7 @@ report() {
 # the tests/invariants-*.test.sh fixtures, which copy the tree and look for one check's message.
 # It is an argument on purpose, never an environment variable, so nothing ambient can narrow a
 # gate run; the gate (CI, release, gates.green) never passes it.
-ALL_IDS=(1 2 2b 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29)
+ALL_IDS=(1 2 2b 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30)
 only=
 only_set=0
 usage() {
@@ -1805,6 +1805,44 @@ if [ -n "$skillarg_hits" ]; then
   report "a SKILL.md holds a bare \$<digit>, which the skill loader rewrites with the invocation argument (#1470)" \
     "$skillarg_hits" \
     "Write awk fields as \$(0), \$(1), \$(2) and shell positionals as \${1}."
+fi
+fi
+
+# --- 30. Diff-mode critics judge against the approved spec only under a map (#1423) -----------
+if want 30; then
+#
+# Under an identities map the builder never reads the task issue's body (WB-D24), but the critics
+# critic-gate's diff mode spawns carried no such rule, and two read the body and every comment on
+# the issue. critic-gate's diff mode now hands them the approved spec as a file and each critic's
+# instructions say to judge only against it and the git tree (WB-D50). The rule is prose, so this
+# check pins its lead-ins as fixed strings: one in critic-gate's SKILL.md, one in each of the three
+# critic agents, and none of the four files may name `--json body` or `--json comments`. A file that
+# is missing is a hit: a check that cannot look must not pass (as checks 15 and 28).
+critspec_hits=""
+critspec_gate_lead='**Under an identities map, the critics judge against the approved spec only.**'
+critspec_agent_lead='**Under an identities map, you judge against the approved spec only.**'
+critspec_seen=0
+for f in plugins/*/skills/critic-gate/SKILL.md; do
+  [ -f "$f" ] || continue
+  critspec_seen=1
+  grep -qF -- "$critspec_gate_lead" "$f" || critspec_hits+="  $f: lacks the critic-gate lead-in"$'\n'
+  grep -qF -e '--json body' -e '--json comments' "$f" && critspec_hits+="  $f: names --json body or --json comments"$'\n'
+done
+[ "$critspec_seen" -eq 1 ] || critspec_hits+="  (no plugins/*/skills/critic-gate/SKILL.md found)"$'\n'
+for a in architect security-critic docs-consistency; do
+  critspec_seen=0
+  for f in plugins/*/agents/"$a".md; do
+    [ -f "$f" ] || continue
+    critspec_seen=1
+    grep -qF -- "$critspec_agent_lead" "$f" || critspec_hits+="  $f: lacks the agent lead-in"$'\n'
+    grep -qF -e '--json body' -e '--json comments' "$f" && critspec_hits+="  $f: names --json body or --json comments"$'\n'
+  done
+  [ "$critspec_seen" -eq 1 ] || critspec_hits+="  (no plugins/*/agents/$a.md found)"$'\n'
+done
+if [ -n "$critspec_hits" ]; then
+  report "a diff-mode critic may judge against the task issue's body or comments under an identities map (#1423)" \
+    "$critspec_hits" \
+    "Keep both lead-ins and read the approved spec through the builder's read; name no issue body or comments read."
 fi
 fi
 

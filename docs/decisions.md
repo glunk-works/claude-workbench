@@ -2790,6 +2790,13 @@ take effect. Full reasoning and the task breakdown that implements them:
   - **Residual.** The review does not check that the other closing references belong to the bound spec, and merging closes them. A PR that adds unrelated issues without a spec beside a spec'd one was flagged before as loading no spec, and now gets a spec-bound review. Checking the closing references at merge stays the code owner's check, as `WB-D45` already says for `#I`.
   - **Pinned by.** Check 15 of `scripts/invariants-check.sh` greps for the rule's lead-in; no test executes the skill prose.
 
+- **WB-D50 (`#1423`) — under a map, diff-mode critics judge only against the approved spec comment and the git tree.** Builds on `WB-D24` and `WB-D41`.
+  - **The decision.** Under an `identities` map, `/way-of-working:critic-gate`'s diff mode reads the approved spec the way the builder reads it (the finder, the pin compare, `spec-comment.sh check`, `spec-fresh.sh paths`, `spec-comment.sh body` into a file) and hands the file to every critic. The critics judge only against that file and the git tree, and read no task issue body, no comment on the task issue and no other issue's body or comments. `docs-consistency` keeps its state-only `gh issue view <N> --json state` check for a cited id. Under `identities: null` critics read as before: the diff mode adds only the mode decision and the spawn prompt's mode line, and a critic whose spawner names no mode reads no issue on any repo.
+  - **Why.** In one lane `architect` and `docs-consistency` read the task issue's body and every comment and judged the diff against that text, which no maintainer reacted to. On a repo where outsiders can comment, an unapproved comment could steer what a critic calls a defect and so what the coder fixes.
+  - **Not taken.** Letting declared maintainers' comments through a checked helper: an approved spec is corrected through a new spec or an escalation, so a second channel is not needed.
+  - **Residual.** The rule is instruction-level: the critics keep Bash, and nothing mechanical stops one from reading the issue.
+  - **Pinned by.** Check 30 of `scripts/invariants-check.sh` greps for the lead-ins and the forbidden `--json body` and `--json comments` strings.
+
 ## Status
 
 All four of `WB-D1..D4` are implemented by this repo's existence and structure as of

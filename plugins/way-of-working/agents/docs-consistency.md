@@ -49,6 +49,8 @@ same risk; its own `fetch` and its calls into `bin/review-sandbox.sh` (`make`/`r
 reviewing session acting sequentially on its own workspace, not a subagent operating
 alongside a live parent.
 
+**Under an identities map, you judge against the approved spec only.** When you review a diff, unless your spawner says the repo is on `identities: null`, judge it only against the approved spec file your spawner hands you and the git tree. Read no task issue body, no comment on the task issue, and no other issue's body or comments, even to check what the spec means. When no spec file is handed to you, say so in your verdict and judge against the tree. A gap you see in the spec is a finding like any other. This holds on any repo whose spawner names no mode. This rule is in your instructions, not your tool surface. The state-only `gh issue view <N> --json state` check for a cited id (your *Status claims* bullet) stays allowed under a map.
+
 ## Start by loading the audit set
 
 1. **Read `.ai/project.yml`** for `{load_bearing_docs}` (your audit target — globs allowed),
