@@ -9,6 +9,7 @@
 #   lane.sh prep N M BRANCH CRITICS [ALSO]
 #   lane.sh status
 #   lane.sh done N
+#   lane.sh drop N [discard]
 #   lane.sh groups M
 #
 #   N        the task issue number, digits with no leading zero
@@ -18,6 +19,9 @@
 #   BRANCH   TYPE/SLUG: TYPE a commit type of reference/conventions.md, SLUG one or more of
 #            a-z, 0-9 and `-`, starting with a letter or digit
 #   CRITICS  a comma list of architect, security-critic, docs-consistency; no repeats
+#   discard  drop only, optional third argument: exactly the word `discard`, anything else is a
+#            usage error (exit 2, no git or gh call); it gives `git worktree remove` --force
+#            once, so uncommitted changes are discarded, but a locked worktree still stops `dirty`
 #   ALSO     optional: a comma list of the issue numbers folded into N, each digits with no
 #            leading zero, none empty, none repeated, none equal to N; each is checked like N
 #            and the prompt tells the lane its PR closes them too
@@ -52,24 +56,27 @@
 #                    milestone M, or not the number asked for
 #   failed           prep: a step from the base fetch on (or a signal from the lanes
 #                    directory step on) failed and what this run did was
-#                    undone as far as it could be; done: the branch config probe or removal,
+#                    undone as far as it could be; done, drop: the branch config probe or removal,
 #                    or the prompt file removal, failed (after the branch was deleted)
-#   no-lane          done: no worktree LANES/N on a branch that is neither BASE nor the
+#   pushed           drop: one paginated matching-refs read keeps a row whose ref is exactly the
+#                    lane's branch (a longer ref with the branch as prefix does not count)
+#   has-commits      drop: the branch has a commit not on origin's BASE
+#   no-lane          done, drop: no worktree LANES/N on a branch that is neither BASE nor the
 #                    default branch
-#   missing          done: the lane's worktree is listed but its directory is gone; run
+#   missing          done, drop: the lane's worktree is listed but its directory is gone; run
 #                    `git worktree prune --dry-run -v` first
 #   not-merged       done: no same-repository PR from that branch merged into BASE
 #   ambiguous        done: more than one such PR
-#   kept X WORD      done: prune-verdict.sh said WORD (not `delete`), or WORD is `moved` or
+#   kept X WORD      done, drop: prune-verdict.sh said WORD (not `delete`), or WORD is `moved` or
 #                    `checked-out`; the branch is kept. `checked-out` stops before anything is
 #                    removed unless the checkout appears between the pre-removal re-read and
 #                    the post-removal re-read; then, and always for `moved`, the worktree is
 #                    already gone and the prompt file stays. An `unreadable` from the
 #                    post-removal re-read leaves the same state (worktree gone, branch, config
 #                    and prompt file kept; finish by hand)
-#   dirty            done: git refused to remove the worktree (unclean or locked)
+#   dirty            done, drop: git refused to remove the worktree (unclean or locked)
 # Success. prep prints worktree=, branch=, found=ID UP, milestone=, prompt= and
-# prompt-sha256= lines; done prints removed-worktree PATH, deleted-branch X, then
+# prompt-sha256= lines; done and drop print removed-worktree PATH, deleted-branch X, then
 # removed-prompt PATH or no-prompt, then `next` lines. status prints one TSV row per lane,
 # ordered by issue: origin's nameWithOwner, `<backlog repo>#<N>`, branch, PR (`#P STATE`, `-`
 # for none, `ambiguous`), checks (`-` unless the PR is open, else fail, pending, pass, none or
@@ -78,7 +85,7 @@
 # done's `next <group> #a #b` lines come from lane-groups.sh, minus the issues of live lanes and
 # the issues whose `shared` field names one; `next none` or `next unreadable` otherwise. A live
 # lane is a lane worktree lane-state.sh lists (not a directory), and stays live until its own
-# `done`, merged or not. It is checked for path overlap whatever its issue's milestone, but only
+# `done` or `drop`, merged or not. It is checked for path overlap whatever its issue's milestone, but only
 # when lane-groups.sh could read its spec paths. A lane-state.sh list that fails or prints
 # `unreadable` makes the result `next unreadable`. The lines never change done's exit status.
 # groups M prints, on exit 0, the lines lane-groups.sh printed for milestone M, verbatim (one row
@@ -136,7 +143,7 @@ trap '[ -z "$TMP" ] || rm -rf "$TMP"' EXIT
 trap 'exit 1' INT TERM HUP
 
 usage() {
-  echo "usage: lane.sh prep N M BRANCH CRITICS [ALSO] | lane.sh status | lane.sh done N | lane.sh groups M" >&2
+  echo "usage: lane.sh prep N M BRANCH CRITICS [ALSO] | lane.sh status | lane.sh done N | lane.sh drop N [discard] | lane.sh groups M" >&2
   exit 2
 }
 
@@ -275,6 +282,16 @@ case "$MODE" in
     [ "$#" -eq 2 ] || usage
     N=$2
     num_ok "$N" || usage
+    ;;
+  drop)
+    [ "$#" -eq 2 ] || [ "$#" -eq 3 ] || usage
+    N=$2
+    num_ok "$N" || usage
+    DROP_DISCARD=
+    if [ "$#" -eq 3 ]; then
+      [ "$3" = discard ] || usage
+      DROP_DISCARD=discard
+    fi
     ;;
   groups)
     [ "$#" -eq 2 ] || usage
@@ -516,6 +533,17 @@ NOMILESTONE
   fi
   emit_prompt_sed <<'PROMPT' || return 1
 
+## When the spec's own text is defective
+
+This applies only when a finding of the `/way-of-working:critic-gate` run in *Order of work*, not from `security-critic`, shows that text the spec requires (a passage it says to write word for word, or a behaviour it states) is wrong, and fixing it means departing from the spec. A `security-critic` finding of that kind is reported in your final message and nothing is posted. Do not fix the text and do not ship. Instead:
+
+1. Make two fresh directories outside the worktree with `mktemp -d`; the second stays empty. Copy the default branch's committed `.ai/project.yml` into the first.
+2. With the Write tool, write `draft.md` in the first. It holds, in order: a title line that names the spec comment `@ID@` and says this is a lane's escalation of a defect in that spec's own text; a critic line in the grammar the `spec-post.sh` header defines (the critic names that run used, joined by a comma and a space; `1 round` when it ran one round, else the count and `rounds`; the stop `not converging`); the approved spec's six sections from its `### Goal` heading on, unchanged; then `### Open findings` with one bullet per finding, naming the section, the passage in paraphrase, what is wrong with the evidence as a repo-relative path and line, and the recommended corrected wording.
+3. Run `spec-shape.sh check` on it (the project copy as third argument) and `spec-fresh.sh shape` on it. Each must print `ok`; you get one fix each.
+4. Run `spec-post.sh escalate @N@ SHA DRAFT OUT`, SHA the approved comment's marker sha, DRAFT the draft's path and OUT the second directory. Report the line it printed in your final message and stop.
+
+This is the one post a lane makes, and for this case only it overrides the coder definition's rule that it never drafts or posts a spec. Never edit, delete or react to a comment, and never read the issue body. On any word but `escalated`, report the word and the draft path, post nothing else, and stop.
+
 ## Lane rules
 
 - Never run `/way-of-working:resume`, `/way-of-working:handoff`, `/way-of-working:plan-sprint` or `/way-of-working:archive-sprint`. Never write the `.ai/` cursor: `.ai/state.json`, `.ai/next-steps.md`, `.ai/parked/` or `.ai/archive/`. Write any other path under `.ai/` only when the spec's *Files touched* lists it.
@@ -734,7 +762,7 @@ lane_status() {
 
 # done_next: what the freed lane can take, from lane-groups.sh's groups minus the issues of live
 # lanes and the issues whose `shared` field names one. A live lane is a lane worktree lane-state.sh
-# lists (not a directory), and stays live until its own `done`, merged or not. Its issue number goes
+# lists (not a directory), and stays live until its own `done` or `drop`, merged or not. Its issue number goes
 # to lane-groups.sh, so it is checked for path overlap whatever its milestone, but only when
 # lane-groups.sh could read its spec paths. A lane-state.sh list that fails or prints `unreadable`
 # makes the result `next unreadable`. Display only: it never changes the exit status.
@@ -831,13 +859,25 @@ lane_done() {
   esac
   # 5.
   [ "$verdict" = delete ] || stop "kept $X $verdict"
+  lane_remove
+}
+
+# lane_remove: the steps `done` and `drop` share, from the second-worktree check on, for the branch
+# X at TIP. LR_FORCE non-empty gives `git worktree remove` --force once (a locked worktree still
+# stops dirty). Prints the success lines and done_next.
+LR_FORCE=
+lane_remove() {
   # 6. A branch checked out in a second worktree stops here, with nothing removed.
   git -C "$TOPLEVEL" worktree list --porcelain >"$TMP/wt.txt" 2>/dev/null || stop unreadable
   rows_rc=0
   rows=$(grep -Fx -c -- "branch refs/heads/$X" "$TMP/wt.txt") || rows_rc=$?
   case "$rows_rc" in 0 | 1) ;; *) stop unreadable ;; esac
   [ "$rows" -le 1 ] || stop "kept $X checked-out"
-  git -C "$TOPLEVEL" worktree remove "$LANES/$N" >/dev/null 2>&1 || stop dirty
+  if [ -n "$LR_FORCE" ]; then
+    git -C "$TOPLEVEL" worktree remove --force "$LANES/$N" >/dev/null 2>&1 || stop dirty
+  else
+    git -C "$TOPLEVEL" worktree remove "$LANES/$N" >/dev/null 2>&1 || stop dirty
+  fi
   # 7.
   git -C "$TOPLEVEL" worktree list --porcelain >"$TMP/wt.txt" 2>/dev/null || stop unreadable
   rows_rc=0
@@ -865,6 +905,35 @@ lane_done() {
     echo no-prompt
   fi
   done_next
+}
+
+# drop: remove a lane that never merged. Refuses a pushed branch or one with commits beyond BASE.
+lane_drop() {
+  if [ -e "$LANES" ] || [ -L "$LANES" ]; then
+    lanes_check || stop unsafe-dir
+  fi
+  # the lane
+  st=$(wt_state) || stop unreadable
+  case "$st" in
+    "branch refs/heads/"*) X=${st#branch refs/heads/} ;;
+    *) stop no-lane ;;
+  esac
+  branch_ok "$X" && [ "$X" != "$BASE" ] && [ "$X" != "$D" ] || stop no-lane
+  [ -d "$LANES/$N" ] || stop missing
+  # pushed: only a row whose ref is exactly this branch counts
+  gh api --paginate "repos/$NAME/git/matching-refs/heads/$X" \
+    --jq ".[] | select(.ref == \"refs/heads/$X\") | .ref" \
+    >"$TMP/refs.txt" 2>/dev/null || stop unreadable
+  [ ! -s "$TMP/refs.txt" ] || stop pushed
+  # commits
+  TIP=$(git -C "$TOPLEVEL" rev-parse --verify -q "refs/heads/$X^{commit}" 2>/dev/null) || stop unreadable
+  hex40 "$TIP" || stop unreadable
+  git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$BASE:refs/remotes/origin/$BASE" >/dev/null 2>&1 || stop unreadable
+  ld_n=$(git -C "$TOPLEVEL" rev-list --count "$TIP" "^refs/remotes/origin/$BASE" 2>/dev/null) || stop unreadable
+  case "$ld_n" in '' | *[!0-9]*) stop unreadable ;; esac
+  [ "$ld_n" -eq 0 ] || stop has-commits
+  [ "$DROP_DISCARD" = discard ] && LR_FORCE=1
+  lane_remove
 }
 
 # ---- groups ---------------------------------------------------------------------------------
@@ -915,5 +984,6 @@ case "$MODE" in
   prep) prep ;;
   status) lane_status ;;
   done) lane_done ;;
+  drop) lane_drop ;;
   groups) lane_groups ;;
 esac

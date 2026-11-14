@@ -143,6 +143,7 @@ EOF
 {"number":$ISSUE,"state":"open","title":"$SENT","body":"$SENT","user":{"login":"$SENT","id":9},"milestone":{"number":$MS,"title":"$SENT"}}
 EOF
   printf '[]\n' >"$CAN/prs.json"
+  printf '[]\n' >"$CAN/refs.json"
   printf '{"repositories":[{"full_name":"glunk-works/claude-workbench","description":"%s"}]}\n' "$SENT" >"$CAN/reach.json"
   printf '{"statusCheckRollup":[],"title":"%s"}\n' "$SENT" >"$CAN/prview.json"
   printf '[]\n' >"$CAN/state.json"
@@ -175,6 +176,7 @@ case "$1 $2" in
   "repo view") [ "${FX_FAIL:-}" != repoview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/repo.json ;;
   "pr view") [ "${FX_FAIL:-}" != prview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prview.json ;;
   "api --hostname") [ "${FX_FAIL:-}" != reach ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/reach.json ;;
+  "api --paginate") [ "${FX_FAIL:-}" != refs ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/refs.json ;;
   "pr list") [ "${FX_FAIL:-}" != prlist ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prs.json ;;
   api\ repos/*/issues/*)
     [ "${FX_FAIL:-}" != issue ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }
@@ -288,6 +290,13 @@ done
 argcase "ALSO newline" prep $ISSUE $MS $BR $CR "$(nl 728 730)"
 argcase "ALSO newline after a comma" prep $ISSUE $MS $BR $CR "728,$(nl 7 8)"
 argcase "done arg count" done 1 2
+argcase "drop N 0" drop 0
+argcase "drop N newline" drop "$(nl 7 8)"
+argcase "drop no N" drop
+argcase "drop a bad third word" drop 1 force
+argcase "drop a capitalised third word" drop 1 Discard
+argcase "drop an empty third word" drop 1 ''
+argcase "drop a fourth argument" drop 1 discard extra
 argcase "status arg count" status 1
 argcase "status with a stray empty argument" status ''
 for v in main feat/ sprint/1-x feat/A feat/a.b style/x feat/-a feat/a/b ''; do
@@ -546,6 +555,17 @@ If that check fails, stop and report.
 3. Run `/way-of-working:critic-gate` with no names on its invocation line. The driver's critics are `architect,security-critic`, given here as names this session holds: when critic-gate selects its critics by rule it unions them with its set and asks nothing; when it proposes, show both lists to the human in the pick-list, as before. That list is not the explicit-names shortcut, which only names the human types count for.
 4. Commit and open the PR with `/way-of-working:ship`. This is the explicit instruction to commit and push that `coder.md` asks for.
 5. Set this PR's milestone, only when ship's author check passed and ship reported the PR URL; `P` is the number at the end of that URL. In one Bash call, capture each value into a variable, check it is non-empty and chain with `&&`: require `P` to be digits with no leading zero; require `gh api repos/glunk-works/claude-workbench/pulls/$P --jq '.head.repo.full_name + " " + .head.ref'` to print `glunk-works/claude-workbench`, one space, then what `git branch --show-current` prints; require `gh api repos/glunk-works/claude-workbench/milestones/19 --jq .state` to print `open`; then run `gh api -X PATCH repos/glunk-works/claude-workbench/issues/$P -F milestone=19 --jq .milestone.number`, setting no other field. The milestone is set only when that last call prints `19`. Any other outcome (a `P` that is not digits, a head repository or branch mismatch, a closed milestone, a failed read, a PATCH that failed or the session refused, another number printed) is no further write. Report the outcome in your final message either way, and never retry with another value or another command.
+
+## When the spec's own text is defective
+
+This applies only when a finding of the `/way-of-working:critic-gate` run in *Order of work*, not from `security-critic`, shows that text the spec requires (a passage it says to write word for word, or a behaviour it states) is wrong, and fixing it means departing from the spec. A `security-critic` finding of that kind is reported in your final message and nothing is posted. Do not fix the text and do not ship. Instead:
+
+1. Make two fresh directories outside the worktree with `mktemp -d`; the second stays empty. Copy the default branch's committed `.ai/project.yml` into the first.
+2. With the Write tool, write `draft.md` in the first. It holds, in order: a title line that names the spec comment `5001` and says this is a lane's escalation of a defect in that spec's own text; a critic line in the grammar the `spec-post.sh` header defines (the critic names that run used, joined by a comma and a space; `1 round` when it ran one round, else the count and `rounds`; the stop `not converging`); the approved spec's six sections from its `### Goal` heading on, unchanged; then `### Open findings` with one bullet per finding, naming the section, the passage in paraphrase, what is wrong with the evidence as a repo-relative path and line, and the recommended corrected wording.
+3. Run `spec-shape.sh check` on it (the project copy as third argument) and `spec-fresh.sh shape` on it. Each must print `ok`; you get one fix each.
+4. Run `spec-post.sh escalate 727 SHA DRAFT OUT`, SHA the approved comment's marker sha, DRAFT the draft's path and OUT the second directory. Report the line it printed in your final message and stop.
+
+This is the one post a lane makes, and for this case only it overrides the coder definition's rule that it never drafts or posts a spec. Never edit, delete or react to a comment, and never read the issue body. On any word but `escalated`, report the word and the draft path, post nothing else, and stop.
 
 ## Lane rules
 
@@ -954,6 +974,117 @@ stop_case "done: repo-mismatch removes nothing" 1 repo-mismatch done $ISSUE
 lane_ready
 setyml '.backlog.repo = "Glunk-Works/Claude-Workbench"'
 stop_case "done: backlog-case removes nothing" 1 backlog-case done $ISSUE
+
+# ---- drop ----------------------------------------------------------------------------------
+# lane_fresh: prep only, no commit on the lane's branch and nothing pushed.
+lane_fresh() {
+  nc
+  prep_ok
+  $real_git -C "$R" config "branch.$BR.remote" origin
+  $real_git -C "$R" config "branch.$BR.merge" "refs/heads/$BR"
+}
+refs_rows() { # <ref>...
+  {
+    printf '['
+    sep=
+    for rr in "$@"; do
+      printf '%s{"ref":"%s","url":"%s","object":{"sha":"%s"}}' "$sep" "$rr" "$SENT" "$SENT"
+      sep=,
+    done
+    printf ']\n'
+  } >"$CAN/refs.json"
+}
+lane_fresh
+run_lane drop $ISSUE
+assert_eq "drop: exit" 0 "$rc"
+assert_eq "drop: the lines" "removed-worktree $LD/$ISSUE
+deleted-branch $BR
+removed-prompt $LD/$ISSUE-prompt.md
+next none" "$out"
+assert_eq "drop: the worktree is gone" no "$([ -e "$LD/$ISSUE" ] && echo yes || echo no)"
+assert_eq "drop: the branch is gone" gone "$($real_git -C "$R" rev-parse --verify -q "refs/heads/$BR" || echo gone)"
+assert_eq "drop: every branch.X.* key is gone" "" "$($real_git -C "$R" config --get-regexp '^branch\.feat/x\.' || :)"
+assert_eq "drop: the prompt file is gone" no "$([ -e "$LD/$ISSUE-prompt.md" ] && echo yes || echo no)"
+assert_has "drop: the exact matching-refs arguments" "$FX_GHLOG" "api --paginate repos/glunk-works/claude-workbench/git/matching-refs/heads/$BR --jq "
+assert_eq "drop: no PR list read" 0 "$(grep -c '^pr list' "$FX_GHLOG" || :)"
+
+lane_fresh
+rm -f "$LD/$ISSUE-prompt.md"
+run_lane drop $ISSUE
+assert_eq "drop: no prompt file" "removed-worktree $LD/$ISSUE
+deleted-branch $BR
+no-prompt
+next none" "$out"
+
+lane_fresh
+refs_rows "refs/heads/$BR"
+stop_case "drop: a pushed branch" 1 pushed drop $ISSUE
+stop_case "drop: a pushed branch, with discard" 1 pushed drop $ISSUE discard
+lane_fresh
+refs_rows "refs/heads/$BR-two" "refs/heads/$BR/sub"
+run_lane drop $ISSUE
+assert_eq "drop: only longer refs with the branch as prefix: exit" 0 "$rc"
+assert_eq "drop: only longer refs with the branch as prefix: first line" "removed-worktree $LD/$ISSUE" "$(printf '%s\n' "$out" | awk 'NR==1')"
+lane_fresh
+refs_rows "refs/heads/$BR-two" "refs/heads/$BR"
+stop_case "drop: the exact row among longer ones" 1 pushed drop $ISSUE
+
+lane_fresh
+$real_git -C "$LD/$ISSUE" commit -q --allow-empty -m work
+stop_case "drop: a commit beyond the base" 1 has-commits drop $ISSUE
+stop_case "drop: a commit beyond the base, with discard" 1 has-commits drop $ISSUE discard
+assert_eq "drop: has-commits: the prompt file is still there" yes "$([ -e "$LD/$ISSUE-prompt.md" ] && echo yes || echo no)"
+
+lane_fresh
+: >"$LD/$ISSUE/untracked"
+stop_case "drop: a dirty worktree" 1 dirty drop $ISSUE
+assert_eq "drop: dirty: the prompt file is still there" yes "$([ -e "$LD/$ISSUE-prompt.md" ] && echo yes || echo no)"
+run_lane drop $ISSUE discard
+assert_eq "drop discard: exit" 0 "$rc"
+assert_eq "drop discard: the lines" "removed-worktree $LD/$ISSUE
+deleted-branch $BR
+removed-prompt $LD/$ISSUE-prompt.md
+next none" "$out"
+assert_eq "drop discard: the worktree is gone" no "$([ -e "$LD/$ISSUE" ] && echo yes || echo no)"
+lane_fresh
+echo changed >"$LD/$ISSUE/dir/f" 2>/dev/null || echo changed >"$LD/$ISSUE/tracked-change"
+run_lane drop $ISSUE discard
+assert_eq "drop discard: a modified file: exit" 0 "$rc"
+
+lane_fresh
+$real_git -C "$R" worktree lock "$LD/$ISSUE"
+stop_case "drop: a locked worktree, even with discard" 1 dirty drop $ISSUE discard
+
+nc
+stop_case "drop: an absent lane" 1 no-lane drop $ISSUE
+lane_fresh
+$real_git -C "$LD/$ISSUE" checkout -q --detach
+stop_case "drop: a detached lane" 1 no-lane drop $ISSUE
+lane_fresh
+rm -rf "${LD:?}/$ISSUE"
+stop_case "drop: a lane whose directory is gone" 1 missing drop $ISSUE
+lane_fresh
+FX_FAIL=refs
+stop_case "drop: a failed matching-refs read" 1 unreadable drop $ISSUE
+lane_fresh
+FX_GIT_FAIL=" fetch -q origin +refs/heads/main:refs/remotes/origin/main"
+stop_case "drop: a failed base fetch" 1 unreadable drop $ISSUE
+FX_GIT_FAIL=
+lane_fresh
+FX_GIT_FAIL=" rev-list --count "
+stop_case "drop: a failed commit count" 1 unreadable drop $ISSUE
+FX_GIT_FAIL=
+lane_fresh
+setyml '.identities = null'
+stop_case "drop: not-map removes nothing" 1 not-map drop $ISSUE
+lane_fresh
+setyml '.repo = "other/repo"'
+stop_case "drop: repo-mismatch removes nothing" 1 repo-mismatch drop $ISSUE
+
+nc
+$real_git -C "$R" worktree add -q "$D/other2" -b other2
+CWD="$D/other2"
+stop_case "drop: from a linked worktree" 1 not-main drop $ISSUE
 
 # ---- done, the next lines ------------------------------------------------------------------
 TAB=$(printf '\t')

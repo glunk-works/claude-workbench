@@ -233,6 +233,11 @@ the draft* step) and relays its findings to the drafter.
    answer only steers the redraft: the redrafted `spec-task:` comment, like every spec, is used only
    after a declared maintainer's approving reaction made after its last edit.
 
+   A correction to an approved spec's own text that did not originate in the issue body (a lane's
+   escalation, whose title names the spec comment it was pinned to, or a maintainer's own) reaches a
+   redraft only as the escalated comment's `### Open findings` and the answer's `amend` lines, never
+   by editing `#N`'s body.
+
 3b. **Refresh branch (`#1374`).** Run only under a map (the *Fetch and check* step's printed `VERDICT` is
    not `legacy`) and only when the *Answer branch* printed `not-escalated` or `ignored`. Under a map the
    build refuses a spec whose listed paths changed on the base (`WB-D31`); this branch repairs that cheaply by

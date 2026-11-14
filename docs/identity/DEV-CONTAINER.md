@@ -303,8 +303,8 @@ container can follow. A host worktree beside the checkout cannot be used: the co
 only `/workspace`, and its `.git` file names a host path.
 
 - **Prepare, report on and clean up lanes** (driver, in `/workspace`, the main worktree) through
-  `/way-of-working:lanes`, which calls the plugin's `bin/lane.sh` in four modes: `prep`, `status`,
-  `done` and `groups`. `bin/lane.sh` runs only from the installed plugin, never as a working-tree copy by
+  `/way-of-working:lanes`, which calls the plugin's `bin/lane.sh` in five modes: `prep`, `status`,
+  `done`, `drop` and `groups`. `bin/lane.sh` runs only from the installed plugin, never as a working-tree copy by
   path, because it finds its siblings beside itself; no lane is prepped until a release carrying it
   is installed. Prepare a lane with:
   ```sh
@@ -321,7 +321,7 @@ only `/workspace`, and its `.git` file names a host path.
   `origin/<pr_base>` with `--no-track` (so nothing pushes to `main` by accident), and writes
   `N-prompt.md` in the lanes directory outside the worktree. The prompt names the task and milestone (the
   container clone has no `.ai/state.json`, so `coder.md`'s checks need them named), the installed
-  plugin's `agents/coder.md`, the spec pin (`PIN_ID`, `PIN_UP`), the mode, the critics, the closes line when `ALSO` is given, the lane rules
+  plugin's `agents/coder.md`, the spec pin (`PIN_ID`, `PIN_UP`), the mode, the critics, the closes line when `ALSO` is given, the section on a defect in the spec's own text, the lane rules
   and a `PATH` line that puts the installed plugin's `bin/` first. It never holds issue or
   comment text. It prints `worktree=`, `branch=`, `found=`, `milestone=`, `prompt=` and
   `prompt-sha256=`. If a step from the base fetch on fails it undoes what it did, as far as it
@@ -497,7 +497,7 @@ only `/workspace`, and its `.git` file names a host path.
   - After its success lines `done` prints `next` lines: the groups `lane-groups.sh` computes for the
     task's milestone, less the issues of live lanes and issues whose `shared` field names one, or
     `next none` or `next unreadable`. A live lane is a lane worktree `lane-state.sh` lists (not a
-    directory), and stays live until its own `done`, merged or not. It is checked for path overlap
+    directory), and stays live until its own `done` or `drop`, merged or not. It is checked for path overlap
     whatever its issue's milestone, but only when `lane-groups.sh` could read its spec paths. A
     `lane-state.sh list` that fails or prints `unreadable` makes the result `next unreadable`. The
     lines never change its exit status.
@@ -512,6 +512,13 @@ only `/workspace`, and its `.git` file names a host path.
   - `failed` means the config probe or removal, or the prompt file removal, failed after the
     branch was deleted; finish by hand with `git config --remove-section branch.X` and `rm` of
     the prompt file.
+- **Drop** a lane that will not merge (driver, in `/workspace`, and only after the lane session has
+  exited): `lane.sh drop N [discard]`, through `/way-of-working:lanes`. It removes the worktree,
+  deletes the branch with `git update-ref -d` against the tip it counted, and removes the branch
+  config and the prompt file, with the success lines `done` prints. It refuses with `pushed` when
+  the branch exists on origin, `has-commits` when the branch holds a commit not on the base, and
+  `dirty` for an unclean worktree unless `discard` is given, which discards uncommitted changes
+  only; a pushed or committed lane is removed by hand, or merged and cleaned up with `done`.
 - **Fallback**, untried: if lanes in one container stop working, use one full clone and one
   container per lane, as *Opening it* describes. Each clone gets its own home volume, so the
   Claude login and the plugin install happen once per clone.
