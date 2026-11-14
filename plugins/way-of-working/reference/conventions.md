@@ -59,7 +59,9 @@ Co-Authored-By: ...
   `fix(personas/ralph): gate task completion on successful edit application`.
 - **Trailers link a commit to the project's own ID space** — `Sprint: NN`,
   `Finding: <ID>`, `Closes: #N`. This is what makes "which commit closed this finding?"
-  a `git log --grep` instead of an archaeology session.
+  a `git log --grep` instead of an archaeology session. A task's trailers beyond its closing reference live in its spec's
+  optional `### Trailers` section, which ship carries into the commit, and a trailer reaches the
+  integration branch only from the source the repo's squash message is built from.
 
 ### PR titles use the same grammar — and are the enforced surface
 
