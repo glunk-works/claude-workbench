@@ -22,6 +22,7 @@ set -eu
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 script_src="$root_dir/plugins/way-of-working/bin/lane.sh"
 gi="$root_dir/plugins/way-of-working/bin/gh-identity.sh"
+rgs="$root_dir/plugins/way-of-working/bin/review-gate-state.sh"
 pv="$root_dir/plugins/way-of-working/bin/prune-verdict.sh"
 
 for tool in git yq jq; do
@@ -130,6 +131,7 @@ YML
   printf '#!/bin/sh\nprintf "%%s\\n" "$*" >"$FX_CANNED/groups.args"\ncat "$FX_GROUPS_FILE"\nexit "${FX_GROUPS_RC:-0}"\n' >"$PB/lane-groups.sh"
   cp "$gi" "$PB/gh-identity.sh"
   cp "$pv" "$PB/prune-verdict.sh"
+  cp "$rgs" "$PB/review-gate-state.sh"
   chmod +x "$PB"/*.sh
   put dir/f one
   $real_git -C "$R" add -A && $real_git -C "$R" commit -q -m a
@@ -172,6 +174,17 @@ for a in "$@"; do
   [ "$prev" = --jq ] && filt=$a
   prev=$a
 done
+# pick KEY: the canned file for this call of KEY: KEY.N.json when it exists (N counts the calls
+# of KEY, from 1), else KEY.json; KEY.N.fail makes this call fail.
+pick() {
+  n=0
+  [ ! -f "$FX_CANNED/cnt-$1" ] || n=$(cat "$FX_CANNED/cnt-$1")
+  n=$((n + 1))
+  echo "$n" >"$FX_CANNED/cnt-$1"
+  [ ! -f "$FX_CANNED/$1.$n.fail" ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }
+  f=$FX_CANNED/$1.json
+  [ ! -f "$FX_CANNED/$1.$n.json" ] || f=$FX_CANNED/$1.$n.json
+}
 case "$1 $2" in
   "repo view") [ "${FX_FAIL:-}" != repoview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/repo.json ;;
   "pr view") [ "${FX_FAIL:-}" != prview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prview.json ;;
@@ -179,10 +192,14 @@ case "$1 $2" in
   "api --paginate")
     case "$3" in
       repos/*/*/git/matching-refs/heads/*) ;;
+      repos/*/*/pulls/*/reviews) pick reviews; exec jq -r "$filt" "$f" ;;
+      repos/*/*/commits/*/status) pick status; exec jq -r "$filt" "$f" ;;
+      repos/*/*/commits/*/check-runs) pick checks; exec jq -r "$filt" "$f" ;;
       *) echo "stub gh: unexpected: $*" >&2; exit 1 ;;
     esac
     [ "${FX_FAIL:-}" != refs ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/refs.json ;;
-  "pr list") [ "${FX_FAIL:-}" != prlist ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prs.json ;;
+  "pr list") [ "${FX_FAIL:-}" != prlist ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; pick prs ;;
+  api\ repos/*/pulls/*) pick pull ;;
   api\ repos/*/issues/*)
     [ "${FX_FAIL:-}" != issue ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }
     f=$FX_CANNED/issue.json
@@ -196,7 +213,11 @@ FAKE_GH
 [ -z "${FX_LN_FAIL:-}" ] || exit 1
 exec "$FX_REAL_LN" "$@"
 FAKE_LN
-  chmod +x "$FB/git" "$FB/gh" "$FB/ln"
+  printf '#!/bin/sh\nprintf "sleep %%s\\n" "$*" >>"$FX_SLEEPLOG"\n' >"$FB/sleep"
+  chmod +x "$FB/git" "$FB/gh" "$FB/ln" "$FB/sleep"
+  FX_SLEEPLOG="$D/sleeplog"
+  : >"$FX_SLEEPLOG"
+  export FX_SLEEPLOG
   FX_LOG="$D/gitlog"
   FX_GHLOG="$D/ghlog"
   : >"$FX_LOG"
@@ -302,6 +323,11 @@ argcase "drop a bad third word" drop 1 force
 argcase "drop a capitalised third word" drop 1 Discard
 argcase "drop an empty third word" drop 1 ''
 argcase "drop a fourth argument" drop 1 discard extra
+argcase "wait N 0" wait 0
+argcase "wait N 012" wait 012
+argcase "wait N newline" wait "$(nl 7 8)"
+argcase "wait no N" wait
+argcase "wait arg count" wait 1 2
 argcase "status arg count" status 1
 argcase "status with a stray empty argument" status ''
 for v in main feat/ sprint/1-x feat/A feat/a.b style/x feat/-a feat/a/b ''; do
@@ -343,6 +369,8 @@ sibcase "a missing gh-identity.sh" s_nosib_gi
 sibcase "a missing prune-verdict.sh" s_nosib_pv
 sibcase "a missing lane-state.sh" s_nosib_ls
 sibcase "a missing lane-groups.sh" s_nosib_lg
+s_nosib_rg() { rm "$PB/review-gate-state.sh"; }
+sibcase "a missing review-gate-state.sh" s_nosib_rg
 
 # ---- the main-worktree check ---------------------------------------------------------------
 nc
@@ -1371,6 +1399,205 @@ nc
 $real_git -C "$R" worktree add -q "$D/other" -b other
 CWD="$D/other"
 stop_case "status: not-main from a linked worktree" 1 not-main status
+
+# ---- wait ----------------------------------------------------------------------------------
+HS=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+HB=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+RID=3001
+T0=2026-11-14T09:00:00Z
+T1=2026-11-14T10:00:00Z
+T2=2026-11-14T10:05:00Z
+jarr() { # <file> <objects...>: a JSON array
+  jf=$1
+  shift
+  {
+    printf '['
+    jsep=
+    for jo in "$@"; do printf '%s%s' "$jsep" "$jo"; jsep=,; done
+    printf ']\n'
+  } >"$jf"
+}
+jwrap() { # <file> <key> <objects...>: {"key":[objects]}
+  jwf=$1 jwk=$2
+  shift 2
+  jarr "$CAN/jw.tmp" "$@"
+  printf '{"%s":%s}\n' "$jwk" "$(cat "$CAN/jw.tmp")" >"$jwf"
+}
+pullj() { # <file> <state> <merged> <sha> [repo]
+  printf '{"state":"%s","merged":%s,"head":{"sha":"%s","repo":{"full_name":"%s"}},"title":"%s"}\n' "$2" "$3" "$4" "${5:-glunk-works/claude-workbench}" "$SENT" >"$1"
+}
+rv() { # <user id> <commit_id json> <state> <submitted_at json>
+  printf '{"user":{"id":%s,"login":"%s"},"commit_id":%s,"state":"%s","submitted_at":%s,"body":"%s"}' "$1" "$SENT" "$2" "$3" "$4" "$SENT"
+}
+gst() { # <state> <created_at json> [context]
+  printf '{"context":"%s","state":"%s","created_at":%s,"description":"%s"}' "${3:-architect-review}" "$1" "$2" "$SENT"
+}
+gcr() { # <status> <conclusion json> <started_at json> [name]
+  printf '{"name":"%s","status":"%s","conclusion":%s,"started_at":%s,"output":{"title":"%s"}}' "${4:-architect-review}" "$1" "$2" "$3" "$SENT"
+}
+GOODREV=$(rv $RID "\"$HS\"" APPROVED "\"$T1\"")
+# wait_ready: a lane with a reviewer App and a gate declared on the default branch, an open PR #9
+# on HS, a review by the reviewer App on HS, and a gate success posted after it.
+wait_ready() {
+  nc
+  setyml '.identities.reviewer_app = {"login": "r", "id": 3001} | .review.ci_gate.check = "architect-review"'
+  prep_ok
+  jarr "$CAN/prs.json" '{"number":9,"isCrossRepository":false,"title":"'"$SENT"'"}'
+  pullj "$CAN/pull.json" open false $HS
+  jarr "$CAN/reviews.json" "$GOODREV"
+  jwrap "$CAN/status.json" statuses "$(gst success "\"$T2\"")"
+  jwrap "$CAN/checks.json" check_runs
+}
+wait_case() { # <desc> <rc> <stdout> <sleeplog>
+  : >"$FX_SLEEPLOG"
+  run_lane wait $ISSUE
+  assert_eq "wait $1: exit" "$2" "$rc"
+  assert_eq "wait $1: stdout" "$3" "$out"
+  assert_eq "wait $1: sleeps" "$4" "$(cat "$FX_SLEEPLOG")"
+}
+nsleeps() { # <n> <seconds>: n lines of `sleep <seconds>`
+  i=0
+  while [ "$i" -lt "$1" ]; do
+    [ "$i" -eq 0 ] || printf '\n'
+    printf 'sleep %s' "$2"
+    i=$((i + 1))
+  done
+}
+
+wait_ready
+jarr "$CAN/prs.1.json"
+jarr "$CAN/reviews.1.json"
+wait_case "review on the head, then gate success after it" 0 "reviewed #9 $HS success" "sleep 120
+sleep 90"
+assert_has "wait: the pr list arguments" "$FX_GHLOG" "pr list --repo glunk-works/claude-workbench --base main --head $BR --state open --json number,isCrossRepository --jq "
+
+wait_ready
+wait_case "an immediate answer sleeps not at all" 0 "reviewed #9 $HS success" ""
+
+wait_ready
+jwrap "$CAN/status.1.json" statuses "$(gst failure "\"$T0\"")"
+wait_case "a stale gate failure before the review does not end the wait" 0 "reviewed #9 $HS success" "sleep 90"
+
+wait_ready
+jwrap "$CAN/status.json" statuses "$(gst failure "\"$T2\"")"
+wait_case "a gate failure after the review" 0 "reviewed #9 $HS failure" ""
+
+wait_ready
+jwrap "$CAN/status.json" statuses "$(gst failure "\"$T2\"")"
+for k in 1 2 3; do jwrap "$CAN/checks.$k.json" check_runs "$(gcr queued '""' null)"; done
+wait_case "a check-run with a null started_at is pending, not a failed read" 0 "reviewed #9 $HS failure" "$(nsleeps 3 90)"
+
+wait_ready
+jwrap "$CAN/status.json" statuses "$(gst failure "\"$T2\"")"
+jwrap "$CAN/checks.json" check_runs "$(gcr queued '""' null)"
+wait_case "a check-run with a null started_at never lets a failure end it" 1 "timeout #9" "$(nsleeps 119 90)"
+
+wait_ready
+H0A=0e11111111111111111111111111111111111111
+H0B=0e22222222222222222222222222222222222222
+pullj "$CAN/pull.json" open false $H0A
+jarr "$CAN/reviews.1.json" "$(rv 4242 "\"$H0A\"" APPROVED "\"$T1\"")" "$(rv $RID "\"$HB\"" APPROVED "\"$T1\"")" "$(rv $RID "\"$H0B\"" APPROVED "\"$T1\"")" "$(rv $RID "\"$H0A\"" PENDING null)"
+jarr "$CAN/reviews.json" "$(rv $RID "\"$H0A\"" APPROVED "\"$T1\"")"
+wait_case "another user, an older head, a numerically equal sha and a pending review do not count" 0 "reviewed #9 $H0A success" "sleep 90"
+
+wait_ready
+jarr "$CAN/reviews.1.json" "$(rv $RID "\"$HS\"" DISMISSED "\"$T1\"")"
+wait_case "a dismissed reviewer-App review on the head does not end the wait" 0 "reviewed #9 $HS success" "sleep 90"
+
+wait_ready
+jarr "$CAN/reviews.json" "$(rv 4242 null COMMENTED null)" "$(rv 4242 "\"$HS\"" COMMENTED null)" "$(rv $RID null COMMENTED "\"$T1\"")" "$GOODREV"
+wait_case "null fields in rows that are not used are ignored" 0 "reviewed #9 $HS success" ""
+
+wait_ready
+pullj "$CAN/pull.1.json" open false $HS
+pullj "$CAN/pull.2.json" open false $HB
+pullj "$CAN/pull.json" open false $HB
+jarr "$CAN/reviews.1.json"
+jarr "$CAN/reviews.2.json" "$GOODREV"
+jarr "$CAN/reviews.json" "$GOODREV" "$(rv $RID "\"$HB\"" APPROVED "\"$T1\"")"
+wait_case "a new head keeps it waiting for a review on that head" 0 "reviewed #9 $HB success" "$(nsleeps 2 90)"
+
+wait_ready
+pullj "$CAN/pull.json" closed true $HS
+wait_case "a merged PR" 0 "merged #9" ""
+wait_ready
+pullj "$CAN/pull.json" closed false $HS
+wait_case "a closed PR" 0 "closed #9" ""
+wait_ready
+pullj "$CAN/pull.json" closed true $HS glunk-works/other
+wait_case "a head repository that is not this one is a failed read" 1 unreadable "$(nsleeps 2 90)"
+
+wait_ready
+jarr "$CAN/prs.json"
+wait_case "no PR within 120 polls" 1 no-pr "$(nsleeps 119 120)"
+wait_ready
+jarr "$CAN/prs.json" '{"number":9,"isCrossRepository":true}'
+wait_case "only a cross-repository PR" 1 no-pr "$(nsleeps 119 120)"
+wait_ready
+jarr "$CAN/reviews.json"
+wait_case "no review within 120 polls" 1 "timeout #9" "$(nsleeps 119 90)"
+wait_ready
+jarr "$CAN/prs.json" '{"number":9,"isCrossRepository":false}' '{"number":10,"isCrossRepository":false}'
+wait_case "two open same-repository PRs" 1 ambiguous ""
+
+wait_ready
+for k in 1 2 3; do : >"$CAN/pull.$k.fail"; done
+wait_case "three failed reads in a row" 1 unreadable "$(nsleeps 2 90)"
+wait_ready
+: >"$CAN/pull.1.fail"
+: >"$CAN/pull.3.fail"
+: >"$CAN/pull.5.fail"
+jarr "$CAN/reviews.1.json"
+jarr "$CAN/reviews.2.json"
+wait_case "a failure then a successful poll resets the count" 0 "reviewed #9 $HS success" "$(nsleeps 5 90)"
+wait_ready
+: >"$CAN/prs.1.fail"
+: >"$CAN/prs.2.fail"
+: >"$CAN/prs.3.fail"
+wait_case "three failed PR lists in a row" 1 unreadable "$(nsleeps 2 120)"
+
+wait_ready
+jwrap "$CAN/status.json" statuses "$(gst success '"2026-11-14 10:05"')"
+wait_case "a gate status whose time is malformed" 1 unreadable "$(nsleeps 2 90)"
+wait_ready
+jwrap "$CAN/checks.json" check_runs "$(gcr completed '"success"' '"yesterday"')"
+wait_case "a gate check-run whose time is malformed" 1 unreadable "$(nsleeps 2 90)"
+wait_ready
+jarr "$CAN/reviews.json" "$(rv $RID "\"$HS\"" APPROVED '"10:00"')"
+wait_case "a used review whose time is malformed" 1 unreadable "$(nsleeps 2 90)"
+wait_ready
+jwrap "$CAN/status.json" statuses "$(gst failure '"nonsense"' other-context)" "$(gst success "\"$T2\"")"
+wait_case "a malformed time on another context is ignored" 0 "reviewed #9 $HS success" ""
+wait_ready
+jwrap "$CAN/status.json" statuses "$(gst success "\"$T2\"" other-context)"
+wait_case "a status of another context does not make the gate" 1 "timeout #9" "$(nsleeps 119 90)"
+
+wait_ready
+yq -i '.identities.reviewer_app = null' "$R/.ai/project.yml"
+bump
+wait_case "reviewer_app null" 1 no-gate ""
+assert_eq "wait: no-gate polls nothing" 0 "$(grep -c 'pr list' "$FX_GHLOG" || :)"
+wait_ready
+yq -i '.identities.reviewer_app = {"login": "d", "id": 2001}' "$R/.ai/project.yml"
+bump
+wait_case "reviewer_app with the dev App's id" 1 no-gate ""
+assert_eq "wait: the dev App's id polls nothing" 0 "$(grep -c 'pr list' "$FX_GHLOG" || :)"
+wait_ready
+yq -i '.review.ci_gate = null' "$R/.ai/project.yml"
+bump
+wait_case "ci_gate null" 1 no-gate ""
+assert_eq "wait: ci_gate null polls nothing" 0 "$(grep -c 'pr list' "$FX_GHLOG" || :)"
+wait_ready
+yq -i '.review.ci_gate.check = ""' "$R/.ai/project.yml"
+bump
+wait_case "an empty gate name" 1 no-gate ""
+nc
+setyml '.identities.reviewer_app = {"login": "r", "id": 3001} | .review.ci_gate.check = "architect-review"'
+stop_case "wait: no lane worktree" 1 no-lane wait $ISSUE
+wait_ready
+CWD="$D/other"
+$real_git -C "$R" worktree add -q "$D/other" -b other
+stop_case "wait: not-main from a linked worktree" 1 not-main wait $ISSUE
 
 # ---- the sentinel --------------------------------------------------------------------------
 if grep -F "$SENT" "$tmp/allout" >/dev/null; then
