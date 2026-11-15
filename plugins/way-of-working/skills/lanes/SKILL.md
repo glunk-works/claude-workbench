@@ -111,8 +111,9 @@ the prompt tells the lane its PR closes them too.
 ## groups `M`
 
 Run `lane.sh groups M` once. It prints one row per open task on milestone `M`, then the `group`
-lines, then `live #a #b` or `live none`. Show the rows as one table and the groups and the live line
-as lines. Any stop word it prints (`not-main`, `no-lanes`, `unsafe-dir`, `unreadable`,
+lines, then, when a live lane's spec paths could not be read, a `live-unknown #a,#b` line, then
+`live #a #b` or `live none`. Show the rows as one table and the groups, the `live-unknown` line (printed
+as it is, beside the drafted Lanes line) and the live line as lines. Any stop word it prints (`not-main`, `no-lanes`, `unsafe-dir`, `unreadable`,
 `repo-mismatch`, `backlog-case`, `not-map`) is printed and the mode stops.
 
 Then draft and print one line beginning `**Lanes:**` that names each group's issues, or `none` on
@@ -129,7 +130,8 @@ verdict point at `/way-of-working:pr-checks`.
 
 Only after the maintainer says the lane session has exited. Run `lane.sh done N` and print its
 lines. The `next` lines are what the freed lane can take; `next none` and `next unreadable` are
-printed as they are.
+printed as they are. `next caution:` lines after them name live lanes whose spec paths could not be
+read, so a `next` candidate may still overlap them; they are printed as they are.
 
 ## drop `N [discard]`
 

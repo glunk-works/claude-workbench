@@ -97,14 +97,17 @@
 # the issues whose `shared` field names one; `next none` or `next unreadable` otherwise. A live
 # lane is a lane worktree lane-state.sh lists (not a directory), and stays live until its own
 # `done` or `drop`, merged or not. It is checked for path overlap whatever its issue's milestone, but only
-# when lane-groups.sh could read its spec paths. A lane-state.sh list that fails or prints
+# when lane-groups.sh could read its spec paths; one whose paths it could not read is named on a
+# `next caution: live lane #a paths unknown` line after the `next` lines, so a candidate may still
+# overlap it. A lane-state.sh list that fails or prints
 # `unreadable` makes the result `next unreadable`. The lines never change done's exit status.
 # groups M prints, on exit 0, the lines lane-groups.sh printed for milestone M, verbatim (one row
-# per open issue, then one `group` line each, or `group none`), then `live #a #b` (ascending, the
+# per open issue, then one `group` line each, or `group none`, then a `live-unknown #a,#b` line
+# when lane-groups.sh printed one, tab separated), then `live #a #b` (ascending, the
 # live lanes' issues as `done` takes them) or `live none`. The groups ignore live lanes: the issues
 # of live lanes are passed to lane-groups.sh only for its path overlap, and none is dropped. It
 # stops `unreadable`, printing nothing else, when lane-state.sh's list fails or has an unexpected
-# shape, when lane-groups.sh exits non-zero or prints a line outside the row and group shapes
+# shape, when lane-groups.sh exits non-zero or prints a line outside the row, group and `live-unknown` shapes
 # `done` accepts (its own `unreadable` included), or when it prints no `group` line and not
 # `group none`. A missing lanes directory means no live lanes; a present one that fails the
 # checks above stops `unsafe-dir`.
@@ -807,7 +810,10 @@ lane_status() {
 # lanes and the issues whose `shared` field names one. A live lane is a lane worktree lane-state.sh
 # lists (not a directory), and stays live until its own `done` or `drop`, merged or not. Its issue number goes
 # to lane-groups.sh, so it is checked for path overlap whatever its milestone, but only when
-# lane-groups.sh could read its spec paths. A lane-state.sh list that fails or prints `unreadable`
+# lane-groups.sh could read its spec paths. A well-formed trailing `live-unknown #a,#b` line from
+# lane-groups.sh (live lanes whose spec paths it could not read) becomes one
+# `next caution: live lane #a paths unknown` line per issue after the `next` lines (`next none`
+# included); a malformed one makes the result `next unreadable`, with no caution lines. A lane-state.sh list that fails or prints `unreadable`
 # makes the result `next unreadable`. Display only: it never changes the exit status.
 done_next() {
   dn_ms=$(gh api "repos/$BACKLOG/issues/$N" --jq '(.milestone.number // 0) | tostring' 2>/dev/null) || dn_ms=
@@ -853,6 +859,11 @@ done_next() {
       next
     }
     $0 == "group none" { seen = 1; next }
+    NF==2 && $1 == "live-unknown" && $2 ~ /^#[0-9]+(,#[0-9]+)*$/ {
+      cn = split($2, cu, ",")
+      for (j = 1; j <= cn; j++) caution[++nc] = "next caution: live lane " cu[j] " paths unknown"
+      next
+    }
     NF==3 && $1 == "group" && $2 ~ /^[1-9][0-9]*$/ && $3 ~ /^#[0-9]+( #[0-9]+)*$/ {
       seen = 1
       m = split($3, g, " "); line = ""
@@ -865,6 +876,7 @@ done_next() {
       if (bad || !seen) exit 3
       if (c == 0) print "next none"
       for (j = 1; j <= c; j++) print out[j]
+      for (j = 1; j <= nc; j++) print caution[j]
     }' "$TMP/groups.tsv") || dn_out="next unreadable"
   printf '%s\n' "$dn_out"
 }
@@ -1011,6 +1023,7 @@ lane_groups() {
   awk -F'\t' '
     NF==5 && $1 ~ /^[1-9][0-9]*$/ { next }
     $0 == "group none" { seen = 1; next }
+    NF==2 && $1 == "live-unknown" && $2 ~ /^#[0-9]+(,#[0-9]+)*$/ { next }
     NF==3 && $1 == "group" && $2 ~ /^[1-9][0-9]*$/ && $3 ~ /^#[0-9]+( #[0-9]+)*$/ { seen = 1; next }
     { bad = 1 }
     END { exit (bad || !seen) }' "$TMP/groups.tsv" || stop unreadable

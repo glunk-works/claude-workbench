@@ -499,8 +499,9 @@ only `/workspace`, and its `.git` file names a host path.
     `next none` or `next unreadable`. A live lane is a lane worktree `lane-state.sh` lists (not a
     directory), and stays live until its own `done` or `drop`, merged or not. It is checked for path overlap
     whatever its issue's milestone, but only when `lane-groups.sh` could read its spec paths. A
-    `lane-state.sh list` that fails or prints `unreadable` makes the result `next unreadable`. The
-    lines never change its exit status.
+    `lane-state.sh list` that fails or prints `unreadable` makes the result `next unreadable`. A live
+    lane whose spec paths `lane-groups.sh` could not read is named on a `next caution:` line after the
+    `next` lines, rather than left out silently. The lines never change its exit status.
   - `not-main`, `no-lanes`, `unsafe-dir`, `unreadable`, `repo-mismatch`, `backlog-case`, `not-map`, `no-lane`,
     `not-merged`, `ambiguous` and `kept X unreadable` remove nothing, and so does
     `kept X checked-out` unless the second checkout appears just before the worktree is removed.

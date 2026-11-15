@@ -413,7 +413,17 @@ assert_eq "a live issue sharing nothing: output unchanged" "$base" "$(run 5 "$ym
 spec 900 901 '- `p/a` **(append)**'
 assert_eq "a live issue with only an append bullet on the path: shares nothing" "$base" "$(run 5 "$yml" 900)"
 printf 'none\n' >"$stubs/finder.900"
-assert_eq "a live issue with unknown paths: shares nothing" "$base" "$(run 5 "$yml" 900)"
+assert_eq "a live issue with unknown paths: shares nothing, and is named on a live-unknown line" "$base${nl}live-unknown${tab}#900" "$(run 5 "$yml" 900)"
+printf 'none\n' >"$stubs/finder.902"
+assert_eq "two live issues with unknown paths, given descending: named ascending on one line" "$base${nl}live-unknown${tab}#900,#902" "$(run 5 "$yml" 902 900)"
+rm -f "$stubs/finder.902"
+spec 900 901 '- `p/z`'
+assert_eq "a live issue with known paths: no live-unknown line" "$base" "$(run 5 "$yml" 900)"
+printf 'none\n' >"$stubs/finder.801"
+want="$(row 800 found p/a - -)$nl$(row 801 none '?' '?' -)${nl}group${tab}1${tab}#800${nl}live-unknown${tab}#801"
+assert_eq "a live issue that is an open row with unknown paths: named, its row unchanged" "$want" "$(run 5 "$yml" 801)"
+spec 801 802 '- `p/b`'
+printf 'none\n' >"$stubs/finder.900"
 spec 900 901 '- `p/a`'
 spec 901 903 '- `p/b`'
 want="$(row 800 found p/a '#900' -)$nl$(row 801 found p/b '#901' -)${nl}group${tab}1${tab}#800 #801"
