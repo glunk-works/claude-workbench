@@ -1,9 +1,9 @@
 #!/bin/sh
-# spec-task's refresh carry-forward compare (`norm()`, `anorm()`, `head_ok()`) as the skill loader hands it
+# spec-task's refresh carry-forward compare (`norm()`, `anorm()`, `head_ok()`, `nasec()`) as the skill loader hands it
 # over with an argument (#1470). Before the fix the loader replaced the bare `$0` in those awk
 # programs with the argument, so two drafts with the same number of lines and different text would compare equal.
 #
-# The three function lines are extracted from spec-task's SKILL.md, each `$0` is replaced with a
+# The four function lines are extracted from spec-task's SKILL.md, each `$0` is replaced with a
 # fixed number (the loader's substitution, the one #1466 saw), then they are defined and run.
 #
 # Permitted toolset: POSIX sh and its standard utilities.

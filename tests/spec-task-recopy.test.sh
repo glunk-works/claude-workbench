@@ -6,7 +6,9 @@
 # The block is the fenced bash block that contains the line printing RECOPY=ok (not the first
 # fence), extracted with DD='<printed draft dir>' replaced by a scratch directory, and run under
 # sh with stub gh and git at the front of PATH, driven by GHRC, FETCHRC, SHOWRC (exit codes),
-# SHOWOUT (git show output) and DEFNAME (the default branch name gh prints).
+# SHOWOUT (git show output) and DEFNAME (the default branch name gh prints). `run` passes them
+# through `env` after fixed defaults (GHRC=0, FETCHRC=0, SHOWRC=0, SHOWOUT empty, DEFNAME=main),
+# so a knob given to one case cannot reach another.
 # Permitted toolset: POSIX sh, awk, sed.
 set -eu
 
@@ -49,12 +51,12 @@ exit 0
 G
 chmod +x "$bin"/*
 
-run() { # <name> -> sets OUT ERR RC, draft dir DD with a stale project.yml
-  DD="$tmp/dd-$1"; mkdir -p "$DD"
+run() { # <name> [KNOB=value ...] -> sets OUT ERR RC, draft dir DD with a stale project.yml
+  DD="$tmp/dd-$1"; shift; mkdir -p "$DD"
   printf 'old\n' >"$DD/project.yml"
   sed "s|^DD='<printed draft dir>'|DD='$DD'|" "$tmp/raw.sh" >"$tmp/snippet.sh"
   RC=0
-  env PATH="$bin:$PATH" sh "$tmp/snippet.sh" >"$tmp/out" 2>"$tmp/err" || RC=$?
+  env PATH="$bin:$PATH" GHRC=0 FETCHRC=0 SHOWRC=0 SHOWOUT= DEFNAME=main "$@" sh "$tmp/snippet.sh" >"$tmp/out" 2>"$tmp/err" || RC=$?
   OUT=$(cat "$tmp/out"); ERR=$(cat "$tmp/err")
 }
 
@@ -65,18 +67,18 @@ kept_old() { # <label> : failure path keeps the old copy and nothing else
   assert_eq "$1: only project.yml remains" "project.yml" "$(ls -A "$DD")"
 }
 
-SHOWOUT='new: 1' run ok
+run ok 'SHOWOUT=new: 1'
 assert_eq "success: exit 0" "0" "$RC"
 assert_eq "success: RECOPY=ok" "RECOPY=ok" "$OUT"
 assert_eq "success: project.yml holds the new content" "new: 1" "$(cat "$DD/project.yml")"
 assert_eq "success: only project.yml remains" "project.yml" "$(ls -A "$DD")"
 
-GHRC=1 SHOWOUT='new: 1' run ghfail;   kept_old "gh repo view fails"
-FETCHRC=1 SHOWOUT='new: 1' run fetchfail; kept_old "git fetch fails"
-SHOWRC=1 SHOWOUT='new: 1' run showfail; kept_old "git show fails"
-SHOWOUT= run emptyshow;               kept_old "git show prints nothing"
-DEFNAME='bad name;x' SHOWOUT='new: 1' run badname; kept_old "branch name outside the allowlist"
-DEFNAME='-evil' SHOWOUT='new: 1' run dashname;  kept_old "branch name with a leading dash"
-DEFNAME= SHOWOUT='new: 1' run emptyname;       kept_old "empty branch name"
+run ghfail GHRC=1 'SHOWOUT=new: 1'; kept_old "gh repo view fails"
+run fetchfail FETCHRC=1 'SHOWOUT=new: 1'; kept_old "git fetch fails"
+run showfail SHOWRC=1 'SHOWOUT=new: 1'; kept_old "git show fails"
+run emptyshow SHOWOUT=; kept_old "git show prints nothing"
+run badname 'DEFNAME=bad name;x' 'SHOWOUT=new: 1'; kept_old "branch name outside the allowlist"
+run dashname DEFNAME=-evil 'SHOWOUT=new: 1'; kept_old "branch name with a leading dash"
+run emptyname DEFNAME= 'SHOWOUT=new: 1'; kept_old "empty branch name"
 
 exit "$fail"

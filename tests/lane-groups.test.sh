@@ -429,8 +429,10 @@ rm -f "$stubs/finder.902"
 spec 900 901 '- `p/z`'
 assert_eq "a live issue with known paths: no live-unknown line" "$base" "$(run 5 "$yml" 900)"
 printf 'none\n' >"$stubs/finder.801"
-want="$(row 800 found p/a - -)$nl$(row 801 none '?' '?' -)${nl}group${tab}1${tab}#800${nl}live-unknown${tab}#801"
-assert_eq "a live issue that is an open row with unknown paths: named, its row unchanged" "$want" "$(run 5 "$yml" 801)"
+nolive="$(run 5 "$yml")"
+want="$(row 800 found p/a - -)$nl$(row 801 none '?' '?' -)${nl}group${tab}1${tab}#800"
+assert_eq "an open row with unknown paths and no live issue: its row content" "$want" "$nolive"
+assert_eq "a live issue that is an open row with unknown paths: named, its row unchanged" "$nolive${nl}live-unknown${tab}#801" "$(run 5 "$yml" 801)"
 spec 801 802 '- `p/b`'
 # the wait read: one `read` per milestone issue, none for a live issue off the milestone
 reset; list 5 800 801
@@ -448,7 +450,6 @@ assert_eq "a live issue that is a milestone row: one read, not two" "read 800${n
 spec 902 903 '- `p/c`'
 run 5 "$yml" 900 902 >/dev/null
 assert_eq "two live issues off the milestone: no read names either" "read 800${nl}read 801" "$(grep '^read' "$stubs/pd.log")"
-printf 'none\n' >"$stubs/finder.900"
 spec 900 901 '- `p/a`'
 spec 901 903 '- `p/b`'
 want="$(row 800 found p/a '#900' -)$nl$(row 801 found p/b '#901' -)${nl}group${tab}1${tab}#800 #801"
