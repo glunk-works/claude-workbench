@@ -1214,6 +1214,38 @@ assert_eq "done next: lane-groups exiting 2: exit" 0 "$rc"
 FX_GROUPS_RC=0
 export FX_GROUPS_RC
 
+# a trailing live-unknown line: one caution line per named issue, after the next lines
+lane_ready
+printf '800\tfound\tp/a\t-\t-\ngroup\t1\t#800\nlive-unknown\t#900\n' >"$CAN/groups.txt"
+run_lane done $ISSUE
+assert_eq "done next: live-unknown: the next lines, then the caution line" "removed-worktree $LD/$ISSUE
+deleted-branch $BR
+removed-prompt $LD/$ISSUE-prompt.md
+next 1 #800
+next caution: live lane #900 paths unknown" "$out"
+assert_eq "done next: live-unknown: exit" 0 "$rc"
+lane_ready
+printf '800\tfound\tp/a\t-\t-\ngroup\t1\t#800\nlive-unknown\t#800\n' >"$CAN/groups.txt"
+live_800
+run_lane done $ISSUE
+assert_eq "done next: every candidate dropped: next none, then the caution line" "next none
+next caution: live lane #800 paths unknown" "$(printf '%s\n' "$out" | tail -n 2)"
+lane_ready
+printf '800\tfound\tp/a\t-\t-\ngroup none\nlive-unknown\t#900,#901\n' >"$CAN/groups.txt"
+run_lane done $ISSUE
+assert_eq "done next: two named issues: two caution lines in order" "next none
+next caution: live lane #900 paths unknown
+next caution: live lane #901 paths unknown" "$(printf '%s\n' "$out" | tail -n 3)"
+for bad in 'live-unknown\t#1 #2' 'live-unknown\t#x' 'live-unknown\t#1\textra' 'live-unknown\t' 'live-unknown\t#1,' 'live-unknown #1'; do
+  lane_ready
+  printf "800\tfound\tp/a\t-\t-\ngroup\t1\t#800\n$bad\n" >"$CAN/groups.txt"
+  run_lane done $ISSUE
+  assert_eq "done next: malformed [$bad]: next unreadable" "next unreadable" "$(printf '%s\n' "$out" | tail -n 1)"
+  assert_eq "done next: malformed [$bad]: no caution line" 0 "$(printf '%s\n' "$out" | grep -c '^next caution')"
+  assert_eq "done next: malformed [$bad]: exit" 0 "$rc"
+  assert_eq "done next: malformed [$bad]: the lane is still removed" no "$([ -e "$LD/$ISSUE" ] && echo yes || echo no)"
+done
+
 # a live lane on another milestone: lane-state.sh lists it, lane-groups.sh gets it as an argument
 lane_ready
 printf '[{"issue":900,"branch":"feat/y-900","worktree":"%s/900","spec":"none","pr":null}]\n' "$LD" >"$CAN/state.json"
@@ -1298,6 +1330,19 @@ groups_two
 printf '[]\n' >"$CAN/state.json"
 run_lane groups $MS
 assert_eq "groups: an empty live list" "live none" "$(printf '%s\n' "$out" | tail -n 1)"
+nc
+printf '800\tfound\tp/a\t-\t-\ngroup\t1\t#800\nlive-unknown\t#900,#901\n' >"$CAN/groups.txt"
+run_lane groups $MS
+assert_eq "groups: a live-unknown line is printed verbatim before live none" "800	found	p/a	-	-
+group	1	#800
+live-unknown	#900,#901
+live none" "$out"
+assert_eq "groups: live-unknown: exit" 0 "$rc"
+for bad in 'live-unknown\t#1 #2' 'live-unknown\t#x' 'live-unknown\t#1\textra' 'live-unknown\t' 'live-unknown #1'; do
+  nc
+  printf "group none\n$bad\n" >"$CAN/groups.txt"
+  stop_case "groups: malformed [$bad]" 1 unreadable groups $MS
+done
 for bad in 'unreadable' 'garbage line' '800\tfound\tp/a\t-\t-' 'group\t1\t#800 evil' 'group\tnone' ''; do
   nc
   printf "$bad\n" >"$CAN/groups.txt"
