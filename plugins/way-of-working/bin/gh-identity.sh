@@ -101,7 +101,7 @@
 # and its fixtures hold it to it.
 #
 # role is the lookup itself, for a caller that needs WHICH declared account is acting
-# (token-check.sh, #436; spec-comment.sh, #660). It prints maintainer, dev_app, reviewer_app or loop_app; undeclared
+# (token-check.sh, #436; spec-comment.sh, #660; plan-sprint's findings mode, which requires a fold target's author to read dev_app). It prints maintainer, dev_app, reviewer_app or loop_app; undeclared
 # when identities is a map and the account is not in it; legacy when identities is null.
 # Exit 2 only on bad input (the cases author shares: a bad login or id, an unreadable or absent
 # file or key, a non-map identities, an id declared twice or under another login, an id in

@@ -1,0 +1,337 @@
+#!/bin/sh
+# The mechanical half of /way-of-working:plan-sprint's `findings` mode: which open issues are the
+# declared reviewer App's grouped review-finding issues, how one issue's body unpacks into findings,
+# whether a cited path still exists, whether a composed text passes the screens, and whether a
+# mapping comment names every finding. The judgment (the table, the destinations, the dialogue) stays
+# in the skill body, as for the rest of plan-sprint; this script only reads, parses and screens.
+#
+# Usage:
+#   plan-findings.sh list <repo> <project.yml>
+#   plan-findings.sh unpack <issue.json>
+#   plan-findings.sh exists <ref>                      (paths one per line on stdin)
+#   plan-findings.sh screen <file>
+#   plan-findings.sh covers <N> <rows-file> <comment-file>
+#
+#   list      <project.yml> is the DEFAULT branch's committed copy, already written to a file. The
+#             sibling declared-ids.sh runs on it (as `sh`, found only beside this script) and its line
+#             must start with `ok `; then `.identities.reviewer_app.id` is read with yq. A missing or
+#             null reviewer App, `no-map`, `unreadable`, or a non-zero exit or empty output from
+#             declared-ids.sh exits 1 with a stderr line and nothing on stdout. Fetches every open
+#             issue of <repo> (paginated, to a file by direct redirection, the way plan-gather.sh
+#             fetches), keeps true issues (pull requests dropped) whose author's NUMERIC ID equals
+#             that id (a login is never compared), and prints TSV: number, created_at, milestone
+#             number or `none`, comma-joined `area/` labels or `none`. Sorted ascending by number
+#             under LC_ALL=C. A failed `gh` call exits non-zero, never reads as zero rows; empty stdout
+#             with exit 0 legitimately means none.
+#   unpack    No `gh` call. <issue.json> is the caller's own fetch of ONE issue. The body is split on
+#             LF only and one trailing CR is removed from each line before matching. For issue N it
+#             prints TSV rows: `source`, N, the source PR number parsed from the `review of <repo>#digits at `
+#             part of the body's first line (or `none` when that line has no such part); then per finding `finding`, `N.k`, `open` or `ticked`, the finding's
+#             title (tabs and control characters replaced by a space); then one `path`, `N.k`, <path>
+#             row per distinct backtick span in that finding's block that has a slash, uses only
+#             letters, digits, `.`, `_`, `-` and `/`, and has no empty, `.` or `..` segment.
+#             A finding is a column-0 `- [ ] Finding k` or `- [x] Finding k` line, the layout
+#             `file_findings` in scripts/identity/wow-review writes (each finding's text indented two
+#             spaces inside a fence of three or more backticks, its title the first non-blank line after the
+#             opening fence line), so a look-alike line inside the indented block is never a finding. A
+#             finding's block runs from its finding line to the next non-blank column-0 line (a line of
+#             spaces only is blank). The title is the first non-blank line after the opening fence line
+#             (the first line of backticks only in the block; a `Paths:` line before it is never the
+#             title), its two-space indent removed; fence lines are never part of a backtick span. Finding numbers must each be at least 1 and strictly increasing, gaps
+#             allowed. A column-0 `- Finding K: also reported in #M` line, `#M` one or more `#digits` joined by a comma and a space, is accepted: it is never a
+#             finding, its number is not checked and it adds no row. Any other column-0 line that
+#             starts with `- [` or `- Finding`, a body with no finding line, and a repeated or
+#             decreasing finding number make it print only `unparsed N` (a space, not a tab), exit 0.
+#   exists    Reads paths one per line on stdin; prints `path`, a tab, then `present`, `absent` or
+#             `bad-name` per line: `bad-name` fails the `path` row's character rule above, `absent` is
+#             no such path in the tree at <ref> (read in the current directory's git repository), else
+#             `present`. No `gh` call. <ref> must resolve to a commit, else exit 1.
+#   screen    One word on stdout, exit 0: `ok`, `refused <reason>` or `unreadable`. Refuses the forms
+#             spec-issue.sh's hidden-text screen refuses (its HID, HREF and LDEF lines, copied byte for
+#             byte from spec-fresh.sh, and its awk program, copied byte for byte from spec-issue.sh;
+#             tests/plan-findings.test.sh pins both), then any shape the sibling leak-screen.sh reports
+#             (its verdict passed through as the reason), then any `@` followed by a letter or digit
+#             (a mention). Never prints matched text.
+#   covers    `none` when <rows-file> (the concatenated `unpack` output) has no `finding` row for issue
+#             <N> (an `unparsed N` issue included); else `ok` when <comment-file> names every `N.k` the
+#             rows list for <N> (each as `#N.k` followed by a non-digit or the end of a line), else
+#             `missing k1,k2,...`.
+#
+# Exit codes: a wrong argument count, an unknown subcommand or a non-digit <N> prints a usage line on
+# stderr, nothing on stdout, and exits 2. Every other failure exits 1 with a stderr line. The
+# verdict words of screen and covers go on stdout with exit 0.
+#
+# Permitted toolset: POSIX sh, awk, grep, sed, sort, tr, mktemp, git (exists only), yq (mikefarah v4;
+# list and unpack), `gh` using only its own embedded --jq (list only), and the siblings
+# declared-ids.sh and leak-screen.sh, run as `sh` and found only as $(dirname "$0")/<name>.
+set -eu
+LC_ALL=C
+export LC_ALL
+
+tab="$(printf '\t')"
+
+usage() {
+  echo "plan-findings.sh: usage: plan-findings.sh list <repo> <project.yml>" >&2
+  echo "                         plan-findings.sh unpack <issue.json>" >&2
+  echo "                         plan-findings.sh exists <ref>   (paths on stdin)" >&2
+  echo "                         plan-findings.sh screen <file>" >&2
+  echo "                         plan-findings.sh covers <N> <rows-file> <comment-file>" >&2
+}
+
+mode="${1:-}"
+case "$mode" in
+  list) [ "$#" -eq 3 ] || { usage; exit 2; } ;;
+  unpack | exists | screen) [ "$#" -eq 2 ] || { usage; exit 2; } ;;
+  covers) [ "$#" -eq 4 ] || { usage; exit 2; } ;;
+  *) usage; exit 2 ;;
+esac
+
+tmp="$(mktemp -d)" || { echo "plan-findings.sh: could not create a temp dir" >&2; exit 1; }
+trap 'rm -rf "$tmp"' EXIT
+
+is_digits() { # true iff $1 is one or more ASCII digits
+  case "$1" in
+    '' | *[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+sibling() { # sibling <name> -- the path of a script beside this one, or exit 1
+  case "$0" in
+    */*) _s="$(dirname "$0")/$1" ;;
+    *) echo "plan-findings.sh: must be run by path (a slash-less \$0 cannot locate $1)" >&2; exit 1 ;;
+  esac
+  [ -f "$_s" ] || { echo "plan-findings.sh: $1 not beside this script" >&2; exit 1; }
+  printf '%s' "$_s"
+}
+
+# =============================================================================
+if [ "$mode" = list ]; then
+  repo="$2"; yml="$3"
+  di="$(sibling declared-ids.sh)"
+  [ -f "$yml" ] && [ -r "$yml" ] || { echo "plan-findings.sh: list: project file is not a readable file" >&2; exit 1; }
+  command -v yq >/dev/null 2>&1 || { echo "plan-findings.sh: list: yq not on PATH" >&2; exit 1; }
+  line=""
+  if ! line="$(sh "$di" "$yml" 2>/dev/null)"; then
+    echo "plan-findings.sh: list: declared-ids.sh failed on the project file" >&2
+    exit 1
+  fi
+  case "$line" in
+    "ok "*) ;;
+    *) echo "plan-findings.sh: list: no identities map is declared (declared-ids.sh did not print ok)" >&2; exit 1 ;;
+  esac
+  rid="$(yq -r 'explode(.) | .identities.reviewer_app | select(tag == "!!map") | .id' "$yml" 2>/dev/null)" || rid=""
+  case "$rid" in
+    '' | 0* | *[!0-9]*) echo "plan-findings.sh: list: no reviewer_app is declared" >&2; exit 1 ;;
+  esac
+  # The author's numeric id and the pull-request flag are projected and compared HERE, in awk, so
+  # the filter is the script's own shell code and a fixture can exercise it.
+  if ! gh api --paginate "repos/$repo/issues?state=open" --jq \
+       '.[] | [.number, .created_at, (.milestone.number // "none" | tostring),
+               ([.labels[].name | select(startswith("area/"))] | join(",") | if . == "" then "none" else . end),
+               (.user.id | tostring), (has("pull_request") | tostring)] | @tsv' \
+       >"$tmp/rows" 2>"$tmp/err"; then
+    echo "plan-findings.sh: gh api failed fetching open issues for $repo:" >&2
+    cat "$tmp/err" >&2
+    exit 1
+  fi
+  awk -F "$tab" -v rid="$rid" 'NF == 6 && $5 == rid && $6 == "false" { print $1 "\t" $2 "\t" $3 "\t" $4 }' "$tmp/rows" >"$tmp/kept"
+  sort -t "$tab" -k1,1n "$tmp/kept"
+  exit 0
+fi
+
+# =============================================================================
+if [ "$mode" = unpack ]; then
+  f="$2"
+  [ -f "$f" ] && [ -r "$f" ] || { echo "plan-findings.sh: unpack: not a readable file" >&2; exit 1; }
+  command -v yq >/dev/null 2>&1 || { echo "plan-findings.sh: unpack: yq not on PATH" >&2; exit 1; }
+  num="$(yq -p=json -r '.number' "$f" 2>/dev/null)" || num=""
+  case "$num" in
+    '' | 0* | *[!0-9]*) echo "plan-findings.sh: unpack: the issue number is not a positive integer" >&2; exit 1 ;;
+  esac
+  yq -p=json -r '.body // ""' "$f" >"$tmp/body" 2>/dev/null || { echo "plan-findings.sh: unpack: no body" >&2; exit 1; }
+  pr="$(sed -n 1p "$tmp/body" | tr -d '\r' | awk '{ if (match($0, /review of [^ ]+#[0-9]+ at /)) { s = substr($0, RSTART, RLENGTH); sub(/ at $/, "", s); sub(/^.*#/, "", s); print s } else print "none" }')"
+  awk -v n="$num" -v pr="$pr" '
+    function ctl(s) { gsub(/[\001-\037\177]/, " ", s); return s }
+    # good_path -- the path row rule
+    function good_path(p,    k, parts, i) {
+      if (p !~ /\//) return 0
+      if (p !~ /^[A-Za-z0-9._\/-]+$/) return 0
+      k = split(p, parts, "/")
+      for (i = 1; i <= k; i++) if (parts[i] == "" || parts[i] == "." || parts[i] == "..") return 0
+      return 1
+    }
+    function add_path(p) {
+      if (cur == "" || !good_path(p)) return
+      if ((cur SUBSEP p) in seen) return
+      seen[cur SUBSEP p] = 1
+      out = out "path\t" n "." cur "\t" p "\n"
+    }
+    # spans -- every single-backtick span of one line
+    function spans(s,    i, j, c, r, len) {
+      len = length(s)
+      i = 1
+      while (i <= len) {
+        if (substr(s, i, 1) != "`") { i++; continue }
+        r = 0
+        while (substr(s, i + r, 1) == "`") r++
+        if (r != 1) { i += r; continue }
+        j = i + 1
+        while (j <= len && substr(s, j, 1) != "`") j++
+        if (j > len) return
+        r = 0
+        while (substr(s, j + r, 1) == "`") r++
+        if (r == 1) { add_path(substr(s, i + 1, j - i - 1)); i = j + 1 }
+        else i = j + r
+      }
+    }
+    BEGIN { bad = 0; last = 0; nf = 0; cur = ""; out = ""; havetitle = 1 }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      blank = (line ~ /^ *$/)
+      col0 = (!blank && line !~ /^[ \t]/)
+      if (col0) {
+        cur = ""
+        if (line ~ /^- \[[ x]\] Finding [0-9]+$/) {
+          k = line
+          sub(/^- \[[ x]\] Finding /, "", k)
+          if (k !~ /^[1-9][0-9]*$/ || length(k) > 9 || k + 0 <= last) bad = 1
+          else {
+            last = k + 0; nf++; cur = k
+            state = (line ~ /^- \[x\]/) ? "ticked" : "open"
+            out = out "finding\t" n "." k "\t" state "\t\n"
+            havetitle = 0; fenced = 0
+            titles[k] = ""
+          }
+        } else if (line ~ /^- Finding [0-9]+: also reported in #[0-9]+(, #[0-9]+)*$/) {
+          # accepted, no row
+        } else if (line ~ /^- \[/ || line ~ /^- Finding/) {
+          bad = 1
+        }
+        next
+      }
+      if (cur == "" || blank) next
+      t = line
+      gsub(/ /, "", t)
+      if (length(t) >= 3 && t ~ /^`+$/) { fenced = 1; next }
+      if (fenced && !havetitle) {
+        t = line
+        sub(/^  /, "", t)
+        titles[cur] = ctl(t)
+        havetitle = 1
+      }
+      spans(line)
+    }
+    END {
+      if (bad || nf == 0) { print "unparsed " n; exit 0 }
+      # rebuild the finding rows with their titles, keeping each finding followed by its paths
+      print "source\t" n "\t" pr
+      m = split(out, rows, "\n")
+      for (i = 1; i < m; i++) {
+        r = rows[i]
+        if (r ~ /^finding\t/) {
+          split(r, p, "\t")
+          kk = p[2]; sub(/^[0-9]+\./, "", kk)
+          print "finding\t" p[2] "\t" p[3] "\t" titles[kk]
+        } else print r
+      }
+    }
+  ' "$tmp/body"
+  exit 0
+fi
+
+# =============================================================================
+if [ "$mode" = exists ]; then
+  ref="$2"
+  case "$ref" in '' | -*) echo "plan-findings.sh: exists: bad ref" >&2; exit 1 ;; esac
+  git rev-parse --verify -q "$ref^{commit}" >/dev/null 2>&1 || { echo "plan-findings.sh: exists: ref does not resolve to a commit" >&2; exit 1; }
+  while IFS= read -r p || [ -n "$p" ]; do
+    word=present
+    case "$p" in
+      */*) ;;
+      *) word=bad-name ;;
+    esac
+    case "$p" in
+      *[!A-Za-z0-9._/-]*) word=bad-name ;;
+      /* | */ | *//* | ./* | */./* | */. | . | ../* | */../* | */..) word=bad-name ;;
+    esac
+    if [ "$word" = present ]; then
+      git cat-file -e "$ref:$p" >/dev/null 2>&1 || word=absent
+    fi
+    printf '%s\t%s\n' "$p" "$word"
+  done
+  exit 0
+fi
+
+# =============================================================================
+if [ "$mode" = screen ]; then
+  file="$2"
+  stop() {
+    case "$1" in
+      hidden) echo "refused hidden" ;;
+      *) echo "$1" ;;
+    esac
+    exit 0
+  }
+  [ -f "$file" ] && [ -r "$file" ] || stop unreadable
+  # HID, HREF, LDEF: spec-fresh.sh's three lines, byte for byte, and the awk program below spec-issue.sh's (the hidden-text screen)
+  HID="$(printf '\302\255|\315\217|\330\234|\341\205[\237-\240]|\341\236[\264-\265]|\341\240[\213-\217]|\342\200[\213-\217]|\342\200[\252-\256]|\342\201[\240-\257]|\343\205\244|\357\270[\200-\217]|\357\273\277|\357\276\240|\357\277[\260-\270]|\360\233\262[\240-\243]|\360\235\205[\263-\272]|\363\240[\200-\277][\200-\277]')"
+  HREF='&#[0-9xX]|&shy|&(zwnj|zwj|lrm|rlm|ZeroWidthSpace|NegativeVeryThinSpace|NegativeThinSpace|NegativeMediumSpace|NegativeThickSpace|NoBreak|ApplyFunction|af|InvisibleTimes|it|InvisibleComma|ic);'
+  LDEF='^ ? ? ?\[[^]]+\]:'
+  for f in "$file"; do
+    hid_word="$(LC_ALL=C SI_HID="$HID" SI_HREF="$HREF" SI_LDEF="$LDEF" awk '
+      BEGIN { hid = ENVIRON["SI_HID"]; href = ENVIRON["SI_HREF"]; ldef = ENVIRON["SI_LDEF"]; bad = 0 }
+      {
+        line = $0
+        sub(/\r$/, "", line)
+        if (line ~ /<[!?]/ || line ~ /<\/[^A-Za-z]/ || line ~ /<\/$/) bad = 1
+        if (index(line, "\r") > 0) bad = 1
+        if (line ~ hid) bad = 1
+        if (line ~ href) bad = 1
+        if (line ~ ldef) bad = 1
+      }
+      END { print (bad ? "hidden" : "clean") }
+    ' "$f" 2>/dev/null)" || stop unreadable
+    case "$hid_word" in
+      clean) : ;;
+      hidden) stop hidden ;;
+      *) stop unreadable ;;
+    esac
+  done
+  ls_script="$(sibling leak-screen.sh)"
+  lrc=0
+  lverdict="$(sh "$ls_script" "$file" 2>/dev/null)" || lrc=$?
+  case "$lverdict" in
+    ok) ;;
+    "leak "*) echo "refused $lverdict"; exit 0 ;;
+    *) stop unreadable ;;
+  esac
+  grep -q -E -e '@[A-Za-z0-9]' -- "$file" >/dev/null 2>&1 && rc=0 || rc=$?
+  case "$rc" in
+    0) echo "refused mention"; exit 0 ;;
+    1) ;;
+    *) stop unreadable ;;
+  esac
+  stop ok
+fi
+
+# =============================================================================
+# mode = covers
+n="$2"; rows="$3"; comment="$4"
+is_digits "$n" && [ "${n#0}" = "$n" ] || { usage; exit 2; }
+[ -f "$rows" ] && [ -r "$rows" ] || { echo "plan-findings.sh: covers: rows file is not a readable file" >&2; exit 1; }
+[ -f "$comment" ] && [ -r "$comment" ] || { echo "plan-findings.sh: covers: comment file is not a readable file" >&2; exit 1; }
+awk -F "$tab" -v n="$n" '$1 == "finding" { split($2, p, "."); if (p[1] == n && p[2] ~ /^[0-9]+$/) print p[2] }' "$rows" >"$tmp/ks"
+if [ ! -s "$tmp/ks" ]; then
+  echo none
+  exit 0
+fi
+miss=""
+while IFS= read -r k; do
+  if ! grep -q -E -e "#$n\\.$k([^0-9]|\$)" -- "$comment" >/dev/null 2>&1; then
+    miss="${miss:+$miss,}$k"
+  fi
+done <"$tmp/ks"
+if [ -z "$miss" ]; then echo ok; else echo "missing $miss"; fi
+exit 0

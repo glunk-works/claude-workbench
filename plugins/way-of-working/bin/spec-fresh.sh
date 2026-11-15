@@ -89,7 +89,7 @@
 # character from HID, which is exactly Unicode's Default_Ignorable_Code_Point set (U+00AD, U+034F,
 # U+061C, U+115F-1160, U+17B4-17B5, U+180B-180F, U+200B-200F, U+202A-202E, U+2060-206F, U+3164,
 # U+FE00-FE0F, U+FEFF, U+FFA0, U+FFF0-FFF8, U+1BCA0-1BCA3, U+1D173-1D17A, U+E0000-E0FFF; Unicode 15.0
-# data). HID, HREF and LDEF are byte-for-byte copies in spec-issue.sh and spec-post.sh (#757); the
+# data). HID, HREF and LDEF are byte-for-byte copies in spec-issue.sh, spec-post.sh and plan-findings.sh (#757, #1516); the
 # opener and CR tests are inline in each awk program. Other hiding forms stay open (WB-D31 residual 19).
 #
 # Permitted toolset: POSIX sh, git, yq (mikefarah v4), awk, mktemp and tr. Runs under LC_ALL=C.
