@@ -312,7 +312,7 @@ only `/workspace`, and its `.git` file names a host path.
   ```
   `M` is the milestone the driver expects the task to be on, `BRANCH` is `TYPE/SLUG` and
   `CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`. `ALSO`, when
-  given, is a comma list of issues folded into `N`: each is checked open, not a pull request and on `M`, like the task, and the
+  given, is a comma list of issues folded into `N`: each is checked open, not a pull request and on `M`, like the task, and one with a lane worktree, prompt file or registered worktree of its own stops `exists`; the
   prompt names them as issues the PR also closes. It reads the
   project file from the default branch's committed copy (the lanes directory is its `lanes.dir`) and
   its sibling scripts from the installed plugin, needs an installation token that reaches the

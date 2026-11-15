@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- `lane.sh prep` now stops `exists` when a folded (ALSO) issue already has a lane of its own, and the lanes skill names every folded-issue check (#1319, #1320).
+
 ### Changed
 
 - `spec-task` posts the tightenings its critic gate did not apply in a last `### Not applied (tightenings)` section of the spec comment, so the approver reads them before reacting; `security-critic`'s stay in the printed outcome, and the refresh compare and critic-gate's refresh target ignore the approved comment's section, and the answer redraft drops it (#1369).

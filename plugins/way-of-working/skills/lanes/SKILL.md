@@ -92,8 +92,9 @@ the finder.
 
 `N` is the task issue, `M` the milestone the driver expects it on, `BRANCH` is `TYPE/SLUG` and
 `CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`. `ALSO`, when
-given, is the comma list of issues folded into `N`, each checked open and on `M`, which the prompt
-tells the lane its PR closes too.
+given, is the comma list of issues folded into `N`, each checked open, not a pull request and on `M`, like the task, and
+refused with `exists` when it has a lane worktree, prompt file or registered worktree of its own;
+the prompt tells the lane its PR closes them too.
 
 1. Run `lane.sh prep N M BRANCH CRITICS [ALSO]`. A stop word it prints (`not-main`, `no-lanes`,
    `unsafe-dir`, `unreadable`, `repo-mismatch`, `backlog-case`, `unreached`, `not-map`, `finder: WORD`,

@@ -775,6 +775,34 @@ also_case() { # <desc> <word> <n> <jq expression>
   also_canon "$3" "$4"
   stop_case "ALSO $1" 1 "$2" prep $PREP 728,730
 }
+# a folded issue with a lane of its own stops exists, before any issue is read
+also_lane_case() { # <desc> <setup function>
+  nc
+  mkdir -m 700 "$LD"
+  also_mk 728
+  also_mk 730
+  $2
+  stop_case "ALSO $1" 1 exists prep $PREP 728,730
+  if grep -F -- "/issues/" "$FX_GHLOG" >/dev/null 2>&1; then
+    echo "FAIL - ALSO $1: an issue was read" >&2
+    fail=1
+  else
+    echo "ok - ALSO $1: no issue read"
+  fi
+}
+sa_dir() { mkdir "$LD/728"; }
+sa_prompt() { : >"$LD/728-prompt.md"; }
+sa_dangling() { ln -s "$D/nowhere" "$LD/728-prompt.md"; }
+sa_gonewt() {
+  $real_git -C "$R" worktree add -q "$LD/728" -b other
+  rm -rf "${LD:?}/728"
+}
+sa_second() { mkdir "$LD/730"; }
+also_lane_case "folded lane directory" sa_dir
+also_lane_case "folded prompt file" sa_prompt
+also_lane_case "folded dangling prompt link" sa_dangling
+also_lane_case "folded registered worktree whose directory is gone" sa_gonewt
+also_lane_case "second folded item's lane directory" sa_second
 also_case "closed" bad-issue 730 '.state = "closed"'
 also_case "a pull request" bad-issue 728 '. + {pull_request: {url: "x"}}'
 also_case "on another milestone" bad-issue 730 '.milestone.number = 3'
