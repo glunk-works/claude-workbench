@@ -188,11 +188,20 @@ pick() {
 case "$1 $2" in
   "repo view") [ "${FX_FAIL:-}" != repoview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/repo.json ;;
   "pr view") [ "${FX_FAIL:-}" != prview ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/prview.json ;;
-  "api --hostname") [ "${FX_FAIL:-}" != reach ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }; f=$FX_CANNED/reach.json ;;
+  "api --hostname")
+    [ "${FX_FAIL:-}" != reach ] || { echo "gh: $FX_SENT $FX_ORIGIN" >&2; exit 1; }
+    case "$4" in
+      apps/*)
+        pick app
+        [ ! -f "$FX_CANNED/app-${4#apps/}.json" ] || f=$FX_CANNED/app-${4#apps/}.json ;;
+      *) f=$FX_CANNED/reach.json ;;
+    esac ;;
   "api --paginate")
     case "$3" in
       repos/*/*/git/matching-refs/heads/*) ;;
       repos/*/*/pulls/*/reviews) pick reviews; exec jq -r "$filt" "$f" ;;
+      repos/*/*/rules/branches/*) pick rules; exec jq -r "$filt" "$f" ;;
+      repos/*/*/commits/*/statuses) pick statuses; exec jq -r "$filt" "$f" ;;
       repos/*/*/commits/*/status) pick status; exec jq -r "$filt" "$f" ;;
       repos/*/*/commits/*/check-runs) pick checks; exec jq -r "$filt" "$f" ;;
       *) echo "stub gh: unexpected: $*" >&2; exit 1 ;;
@@ -1549,11 +1558,29 @@ pullj() { # <file> <state> <merged> <sha> [repo]
 rv() { # <user id> <commit_id json> <state> <submitted_at json>
   printf '{"user":{"id":%s,"login":"%s"},"commit_id":%s,"state":"%s","submitted_at":%s,"body":"%s"}' "$1" "$SENT" "$2" "$3" "$4" "$SENT"
 }
-gst() { # <state> <created_at json> [context]
-  printf '{"context":"%s","state":"%s","created_at":%s,"description":"%s"}' "${3:-architect-review}" "$1" "$2" "$SENT"
+gst() { # <state> <created_at json> [context] [creator type] [creator login]
+  gc=
+  [ -z "${4:-}" ] || gc=$(printf ',"creator":{"type":"%s","login":"%s"}' "$4" "${5:-}")
+  printf '{"context":"%s","state":"%s","created_at":%s,"description":"%s"%s}' "${3:-architect-review}" "$1" "$2" "$SENT" "$gc"
 }
-gcr() { # <status> <conclusion json> <started_at json> [name]
-  printf '{"name":"%s","status":"%s","conclusion":%s,"started_at":%s,"output":{"title":"%s"}}' "${4:-architect-review}" "$1" "$2" "$3" "$SENT"
+gcr() { # <status> <conclusion json> <started_at json> [name] [app id]
+  ga=
+  [ -z "${5:-}" ] || ga=$(printf ',"app":{"id":%s}' "$5")
+  printf '{"name":"%s","status":"%s","conclusion":%s,"started_at":%s,"output":{"title":"%s"}%s}' "${4:-architect-review}" "$1" "$2" "$3" "$SENT" "$ga"
+}
+rulesj() { # [pinned app id...]: the base branch's rules, one required_status_checks entry per id (no id: one unpinned entry)
+  rj=
+  rsep=
+  [ $# -gt 0 ] || set -- ''
+  for ri in "$@"; do
+    if [ -n "$ri" ]; then rj="$rj$rsep{\"context\":\"architect-review\",\"integration_id\":$ri}"; else rj="$rj$rsep{\"context\":\"architect-review\"}"; fi
+    rsep=,
+  done
+  printf '[{"type":"pull_request","parameters":{}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"other","integration_id":777},%s]}}]\n' "$rj" >"$CAN/rules.json"
+}
+exset() { # <objects...>: both status surfaces, the same rows
+  jwrap "$CAN/status.json" statuses "$@"
+  jarr "$CAN/statuses.json" "$@"
 }
 GOODREV=$(rv $RID "\"$HS\"" APPROVED "\"$T1\"")
 # wait_ready: a lane with a reviewer App and a gate declared on the default branch, an open PR #9
@@ -1565,8 +1592,9 @@ wait_ready() {
   jarr "$CAN/prs.json" '{"number":9,"isCrossRepository":false,"title":"'"$SENT"'"}'
   pullj "$CAN/pull.json" open false $HS
   jarr "$CAN/reviews.json" "$GOODREV"
-  jwrap "$CAN/status.json" statuses "$(gst success "\"$T2\"")"
+  exset "$(gst success "\"$T2\"")"
   jwrap "$CAN/checks.json" check_runs
+  rulesj ''
 }
 wait_case() { # <desc> <rc> <stdout> <sleeplog>
   : >"$FX_SLEEPLOG"
@@ -1587,6 +1615,7 @@ nsleeps() { # <n> <seconds>: n lines of `sleep <seconds>`
 wait_ready
 jarr "$CAN/prs.1.json"
 jarr "$CAN/reviews.1.json"
+jwrap "$CAN/status.1.json" statuses "$(gst failure "\"$T2\"")"
 wait_case "review on the head, then gate success after it" 0 "reviewed #9 $HS success" "sleep 120
 sleep 90"
 assert_has "wait: the pr list arguments" "$FX_GHLOG" "pr list --repo glunk-works/claude-workbench --base main --head $BR --state open --json number,isCrossRepository --jq "
@@ -1618,10 +1647,12 @@ H0B=0e22222222222222222222222222222222222222
 pullj "$CAN/pull.json" open false $H0A
 jarr "$CAN/reviews.1.json" "$(rv 4242 "\"$H0A\"" APPROVED "\"$T1\"")" "$(rv $RID "\"$HB\"" APPROVED "\"$T1\"")" "$(rv $RID "\"$H0B\"" APPROVED "\"$T1\"")" "$(rv $RID "\"$H0A\"" PENDING null)"
 jarr "$CAN/reviews.json" "$(rv $RID "\"$H0A\"" APPROVED "\"$T1\"")"
+jwrap "$CAN/status.1.json" statuses "$(gst failure "\"$T2\"")"
 wait_case "another user, an older head, a numerically equal sha and a pending review do not count" 0 "reviewed #9 $H0A success" "sleep 90"
 
 wait_ready
 jarr "$CAN/reviews.1.json" "$(rv $RID "\"$HS\"" DISMISSED "\"$T1\"")"
+jwrap "$CAN/status.1.json" statuses "$(gst failure "\"$T2\"")"
 wait_case "a dismissed reviewer-App review on the head does not end the wait" 0 "reviewed #9 $HS success" "sleep 90"
 
 wait_ready
@@ -1635,6 +1666,8 @@ pullj "$CAN/pull.json" open false $HB
 jarr "$CAN/reviews.1.json"
 jarr "$CAN/reviews.2.json" "$GOODREV"
 jarr "$CAN/reviews.json" "$GOODREV" "$(rv $RID "\"$HB\"" APPROVED "\"$T1\"")"
+jwrap "$CAN/status.1.json" statuses "$(gst failure "\"$T2\"")"
+jwrap "$CAN/status.2.json" statuses "$(gst failure "\"$T2\"")"
 wait_case "a new head keeps it waiting for a review on that head" 0 "reviewed #9 $HB success" "$(nsleeps 2 90)"
 
 wait_ready
@@ -1655,6 +1688,7 @@ jarr "$CAN/prs.json" '{"number":9,"isCrossRepository":true}'
 wait_case "only a cross-repository PR" 1 no-pr "$(nsleeps 119 120)"
 wait_ready
 jarr "$CAN/reviews.json"
+jwrap "$CAN/status.json" statuses "$(gst failure "\"$T2\"")"
 wait_case "no review within 120 polls" 1 "timeout #9" "$(nsleeps 119 90)"
 wait_ready
 jarr "$CAN/prs.json" '{"number":9,"isCrossRepository":false}' '{"number":10,"isCrossRepository":false}'
@@ -1669,6 +1703,8 @@ wait_ready
 : >"$CAN/pull.5.fail"
 jarr "$CAN/reviews.1.json"
 jarr "$CAN/reviews.2.json"
+jwrap "$CAN/status.1.json" statuses "$(gst failure "\"$T2\"")"
+jwrap "$CAN/status.2.json" statuses "$(gst failure "\"$T2\"")"
 wait_case "a failure then a successful poll resets the count" 0 "reviewed #9 $HS success" "$(nsleeps 5 90)"
 wait_ready
 : >"$CAN/prs.1.fail"
@@ -1691,6 +1727,176 @@ wait_case "a malformed time on another context is ignored" 0 "reviewed #9 $HS su
 wait_ready
 jwrap "$CAN/status.json" statuses "$(gst success "\"$T2\"" other-context)"
 wait_case "a status of another context does not make the gate" 1 "timeout #9" "$(nsleeps 119 90)"
+
+# ---- wait: exempt (#1547) and the review-time filter on check-runs (#1525) -----------------
+SLUG=gate-app
+PIN=123
+OTHERAPP=456
+printf '{"id":%s}\n' "$PIN" >"$CAN/app-$SLUG.json"
+exempt_ready() { # a PR with no used review on the head and the gate's success posted by a status
+  wait_ready
+  jarr "$CAN/reviews.json"
+  printf '{"id":%s}\n' "$PIN" >"$CAN/app-$SLUG.json"
+  printf '{"id":%s}\n' "$OTHERAPP" >"$CAN/app-other-app.json"
+}
+OKST=$(gst success "\"$T2\"" architect-review Bot "$SLUG[bot]")
+exempt_ready
+wait_case "exempt: no review, the only gate status success, nothing pinned" 0 "exempt #9 $HS" ""
+assert_has "exempt: the rules read names the base branch" "$FX_GHLOG" "api --paginate repos/glunk-works/claude-workbench/rules/branches/main --jq "
+assert_has "exempt: the statuses read names the head" "$FX_GHLOG" "api --paginate repos/glunk-works/claude-workbench/commits/$HS/statuses --jq "
+assert_eq "exempt: nothing pinned makes no app lookup" 0 "$(grep -c 'apps/' "$FX_GHLOG" || :)"
+
+for st in failure pending; do
+  exempt_ready
+  exset "$(gst $st "\"$T2\"")"
+  jwrap "$CAN/checks.json" check_runs "$(gcr completed '"success"' "\"$T2\"")"
+  wait_case "exempt: the newest status $st beside a passing check-run, no pin" 1 "timeout #9" "$(nsleeps 119 90)"
+done
+
+exempt_ready
+rulesj $PIN
+exset "$OKST"
+wait_case "exempt: pin met by a status" 0 "exempt #9 $HS" ""
+assert_has "exempt: the app lookup's arguments" "$FX_GHLOG" "api --hostname github.com apps/$SLUG --jq "
+
+exempt_ready
+rulesj $PIN
+exset
+jwrap "$CAN/checks.json" check_runs "$(gcr completed '"success"' "\"$T2\"" architect-review $PIN)"
+wait_case "exempt: pin met by a check-run, no status" 0 "exempt #9 $HS" ""
+assert_eq "exempt: a check-run pin makes no app lookup" 0 "$(grep -c 'apps/' "$FX_GHLOG" || :)"
+
+exempt_ready
+exset
+jwrap "$CAN/checks.json" check_runs "$(gcr completed '"neutral"' "\"$T2\"")"
+wait_case "exempt: no pin, no status, a neutral check-run" 0 "exempt #9 $HS" ""
+
+exempt_ready
+rulesj $PIN
+exset "$(gst success "\"$T2\"" architect-review Bot other-app'[bot]')"
+wait_case "exempt: pin not met, the newest status is from another app" 1 "timeout #9" "$(nsleeps 119 90)"
+
+exempt_ready
+rulesj $PIN
+exset "$(gst success "\"$T2\"" architect-review User octocat)"
+wait_case "exempt: pin not met, the newest status is from a user" 1 "timeout #9" "$(nsleeps 119 90)"
+
+exempt_ready
+rulesj $PIN
+exset
+jwrap "$CAN/checks.json" check_runs "$(gcr completed '"success"' "\"$T2\"" architect-review $OTHERAPP)"
+wait_case "exempt: pin not met, the only passing check-run is from another app" 1 "timeout #9" "$(nsleeps 119 90)"
+
+exempt_ready
+rulesj $PIN
+exset "$(gst success "\"$T2\"" architect-review Bot other-app'[bot]')"
+jwrap "$CAN/checks.json" check_runs "$(gcr completed '"success"' "\"$T2\"" architect-review $PIN)"
+wait_case "exempt: the newest status decides alone, another app's status beside a pinned check-run" 1 "timeout #9" "$(nsleeps 119 90)"
+
+exempt_ready
+rulesj $PIN
+exset "$(gst failure "\"$T2\"" architect-review Bot "$SLUG[bot]")"
+jwrap "$CAN/checks.json" check_runs "$(gcr completed '"success"' "\"$T2\"" architect-review $PIN)"
+wait_case "exempt: the newest status decides alone, the pinned app's failure beside a pinned check-run" 1 "timeout #9" "$(nsleeps 119 90)"
+
+exempt_ready
+rulesj $PIN
+jwrap "$CAN/status.json" statuses "$OKST"
+jarr "$CAN/statuses.json" "$OKST" "$(gst success "\"$T0\"" architect-review Bot other-app'[bot]')"
+wait_case "exempt: two statuses, the pinned app's first" 0 "exempt #9 $HS" ""
+
+exempt_ready
+rulesj $PIN
+jwrap "$CAN/status.json" statuses "$OKST"
+jarr "$CAN/statuses.json" "$(gst success "\"$T2\"" architect-review Bot other-app'[bot]')" "$(gst success "\"$T0\"" architect-review Bot "$SLUG[bot]")"
+wait_case "exempt: two statuses, another creator's first" 1 "timeout #9" "$(nsleeps 119 90)"
+
+exempt_ready
+rulesj $PIN $OTHERAPP
+exset "$OKST"
+wait_case "exempt: two pins on the context, one met and one not" 1 "timeout #9" "$(nsleeps 119 90)"
+
+for creator in "Bot $SLUG" "Bot Bad.Slug[bot]" "Bot -x[bot]" "User $SLUG[bot]" "Bot [bot]"; do
+  exempt_ready
+  rulesj $PIN
+  # shellcheck disable=SC2086
+  set -- $creator
+  exset "$(gst success "\"$T2\"" architect-review "$1" "$2")"
+  wait_case "exempt: under a pin, the creator [$creator] is matched to no app" 1 "timeout #9" "$(nsleeps 119 90)"
+  assert_eq "exempt: the creator [$creator] makes no app lookup" 0 "$(grep -c 'apps/' "$FX_GHLOG" || :)"
+done
+exempt_ready
+rulesj $PIN
+exset "$(gst success "\"$T2\"")"
+wait_case "exempt: under a pin, a status with no creator is matched to no app" 1 "timeout #9" "$(nsleeps 119 90)"
+assert_eq "exempt: a status with no creator makes no app lookup" 0 "$(grep -c 'apps/' "$FX_GHLOG" || :)"
+
+exempt_ready
+jwrap "$CAN/status.json" statuses "$(gst failure '"nonsense"' other-context)" "$(gst success "\"$T2\"")"
+jarr "$CAN/statuses.json" "$(gst bogus '"nonsense"' other-context)" "$(gst success "\"$T2\"")"
+wait_case "exempt: a malformed status of another context is ignored" 0 "exempt #9 $HS" ""
+
+exempt_ready
+exset "$(gst bogus "\"$T2\"")"
+wait_case "exempt: a malformed state on the gate's own status is a failed read" 1 unreadable "$(nsleeps 2 90)"
+
+exempt_ready
+jwrap "$CAN/status.json" statuses "$(gst success '"2026-11-14 10:05"')"
+wait_case "exempt: the gate's status with a malformed time is a failed read" 1 unreadable "$(nsleeps 2 90)"
+
+exempt_ready
+rulesj $PIN
+exset "$OKST"
+printf '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"architect-review","integration_id":"x1"}]}}]\n' >"$CAN/rules.json"
+wait_case "exempt: a rule entry with a malformed integration_id is a failed read" 1 unreadable "$(nsleeps 2 90)"
+
+# a gated PR with no review yet waits, and a review on a later poll still ends reviewed
+wait_ready
+jarr "$CAN/reviews.1.json"
+jwrap "$CAN/status.1.json" statuses "$(gst failure "\"$T0\"")"
+wait_case "gated, no review yet: waits, then reviewed" 0 "reviewed #9 $HS success" "sleep 90"
+wait_ready
+jarr "$CAN/reviews.json"
+exset
+wait_case "gated, no review and no gate record: waits" 1 "timeout #9" "$(nsleeps 119 90)"
+
+# a push between polls: the second head is exempt
+wait_ready
+jarr "$CAN/reviews.json"
+pullj "$CAN/pull.1.json" open false $HS
+pullj "$CAN/pull.json" open false $HB
+jwrap "$CAN/status.1.json" statuses "$(gst failure "\"$T2\"")"
+wait_case "a push between polls: the new head is exempt" 0 "exempt #9 $HB" "sleep 90"
+assert_has "a push between polls: the new head's gate is read" "$FX_GHLOG" "commits/$HB/statuses"
+
+# three failed reads in a row on each exempt read
+exempt_ready
+for k in 1 2 3; do : >"$CAN/rules.$k.fail"; done
+wait_case "exempt: three failed rules reads" 1 unreadable "$(nsleeps 2 90)"
+exempt_ready
+for k in 1 2 3; do : >"$CAN/statuses.$k.fail"; done
+wait_case "exempt: three failed statuses reads" 1 unreadable "$(nsleeps 2 90)"
+exempt_ready
+rulesj $PIN
+exset "$OKST"
+for k in 1 2 3; do : >"$CAN/app.$k.fail"; done
+wait_case "exempt: three failed app lookups" 1 unreadable "$(nsleeps 2 90)"
+exempt_ready
+rulesj $PIN
+exset "$OKST"
+printf '{"id":"abc"}\n' >"$CAN/app-$SLUG.json"
+wait_case "exempt: an app lookup that is not an id" 1 unreadable "$(nsleeps 2 90)"
+
+# the review-time filter on check-runs (#1525)
+wait_ready
+jwrap "$CAN/status.json" statuses
+jwrap "$CAN/checks.1.json" check_runs "$(gcr completed '"failure"' "\"$T0\"")"
+jwrap "$CAN/checks.json" check_runs "$(gcr completed '"success"' "\"$T2\"")"
+wait_case "a check-run older than the review is dropped, a later one ends the wait" 0 "reviewed #9 $HS success" "sleep 90"
+wait_ready
+jwrap "$CAN/status.json" statuses
+jwrap "$CAN/checks.json" check_runs "$(gcr completed '"success"' "\"$T2\"")"
+wait_case "a gate check-run after the review with no status" 0 "reviewed #9 $HS success" ""
 
 wait_ready
 yq -i '.identities.reviewer_app = null' "$R/.ai/project.yml"
