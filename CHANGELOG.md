@@ -24,6 +24,7 @@ the GitHub release notes.
 ### Fixed
 
 - `lane.sh prep` now stops `exists` when a folded (ALSO) issue already has a lane of its own, and the lanes skill names every folded-issue check (#1319, #1320).
+- spec-task's *Critic-gate the draft* step re-reads the default branch's committed `.ai/project.yml` before its final shape re-check, so an `append_only` change merged during the critic rounds is caught there rather than as `bad-shape` at post (#1316).
 
 ### Changed
 
