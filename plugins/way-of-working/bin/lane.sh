@@ -581,6 +581,7 @@ This is the one post a lane makes, and for this case only it overrides the coder
 - Never merge, approve or force-push.
 - Work only in `@LANES@/@N@`, never in `@TOPLEVEL@`'s working tree.
 - A session that read the issue body or drafted the spec never builds the issue.
+- The spec's `### Not applied (tightenings)` section is optional guidance only as far as `coder.md` says, and a note in it is not text the spec requires for the *When the spec's own text is defective* section.
 
 ## Identity
 

@@ -26,17 +26,21 @@ line() { # <name>: the function's line, leading spaces and a trailing && removed
 n=$(line norm)
 a=$(line anorm)
 h=$(line head_ok)
+ns=$(line nasec)
 [ -n "$n" ] || { echo "FAIL - no norm() { line in spec-task's SKILL.md" >&2; exit 1; }
 [ -n "$a" ] || { echo "FAIL - no anorm() { line in spec-task's SKILL.md" >&2; exit 1; }
 [ -n "$h" ] || { echo "FAIL - no head_ok() { line in spec-task's SKILL.md" >&2; exit 1; }
+[ -n "$ns" ] || { echo "FAIL - no nasec() { line in spec-task's SKILL.md" >&2; exit 1; }
 
 # The loader's substitution: a bare $0 becomes the argument (a fixed number here).
 n=$(printf '%s\n' "$n" | sed 's/\$0/7/g')
 h=$(printf '%s\n' "$h" | sed 's/\$0/7/g')
 a=$(printf '%s\n' "$a" | sed 's/\$0/7/g')
+ns=$(printf '%s\n' "$ns" | sed 's/\$0/7/g')
 eval "$n"
 eval "$a"
 eval "$h"
+eval "$ns"
 
 mk() { # <file> <second-line-before-goal> <body-line>
   printf 'spec-task: issue=1 base=main sha=abc\n%s\n\n### Goal\n\n%s\n\nmore\n' "$2" "$3" >"$1"
@@ -81,5 +85,25 @@ mkna "$tmp/ap4" "$NA" 'text' ''
 mkna "$tmp/dr4" "$NA" 'text' ''
 [ "$(cmp_ap "$tmp/ap4" "$tmp/dr4")" = equal ] && ok "a section heading before Goal does not cut the approved side" || no "a section heading before Goal does not cut the approved side"
 grep -q 'more' "$tmp/x.a" && ok "the approved side kept its text after Goal" || no "the approved side kept its text after Goal"
+
+# nasec: the approved comment's section, carried forward (#1533)
+mkna "$tmp/n1" '' 'text' "$NA"
+printf '\n\n' >>"$tmp/n1"
+rc=0; nasec "$tmp/n1" >"$tmp/n1.out" || rc=$?
+exp=$(printf '%s\n\nTightenings the critic gate did not apply.\n- a bullet\n' "$NA")
+[ "$rc" -eq 0 ] && [ "$(cat "$tmp/n1.out")" = "$(printf '%s' "$exp")" ] && [ "$(tail -n 1 "$tmp/n1.out")" = '- a bullet' ] && ok "nasec prints the trailing section with trailing empty lines dropped" || no "nasec prints the trailing section with trailing empty lines dropped"
+mkna "$tmp/n2" '' 'text' ''
+rc=0; nasec "$tmp/n2" >"$tmp/n2.out" || rc=$?
+[ "$rc" -eq 0 ] && [ ! -s "$tmp/n2.out" ] && ok "nasec prints nothing when there is no section" || no "nasec prints nothing when there is no section"
+mkna "$tmp/n3" "$NA" 'text' ''
+rc=0; nasec "$tmp/n3" >"$tmp/n3.out" || rc=$?
+[ "$rc" -eq 0 ] && [ ! -s "$tmp/n3.out" ] && ok "nasec does not take a section heading before Goal" || no "nasec does not take a section heading before Goal"
+mkna "$tmp/n4" '' 'text' "$NA"
+sed 's/$/\r/' "$tmp/n4" >"$tmp/n4crlf"
+rc=0; nasec "$tmp/n4crlf" >"$tmp/n4.out" || rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$tmp/n4.out" ] && ! grep -q "$(printf '\r')" "$tmp/n4.out"; then ok "nasec strips CR from CRLF line ends"; else no "nasec strips CR from CRLF line ends"; fi
+printf 'no goal here\n%s\n' "$NA" >"$tmp/n5"
+rc=0; nasec "$tmp/n5" >/dev/null || rc=$?
+[ "$rc" -eq 3 ] && ok "nasec exits 3 without a Goal heading" || no "nasec exits 3 without a Goal heading (exit $rc)"
 
 [ "$fail" -eq 0 ]
