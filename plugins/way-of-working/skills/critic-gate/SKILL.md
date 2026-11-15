@@ -329,7 +329,7 @@ after its rewrite goes to the human with the open findings, as at the cap.
 mode only), scoped to that edit. It applies no fix and counts as one round against the cap; when
 the cap is spent, or the round finds a defect, the edit goes to the human with the open
 findings, as at the cap. The second-opinion round's own re-run is not this round. Spec mode runs
-no verify-only round.
+no such round, only its own slip round (*Spec mode*'s *Stopping* bullet).
 
 **Never stop on the round that applied fixes.** At minimum one re-run must come back
 tightenings-only. Skipping it is the single most expensive shortcut available here, because the
@@ -419,8 +419,8 @@ line or an escalation, never a question.
   `{load_bearing_docs}` entry (exact, or as a shell glob, since the schema allows globs) or is a
   `.md` file marked **(new)** outside `{code_paths}` (the diff mode's newly-added-doc row). Only
   critics in `{agents.enabled}` run. When `architect` is not enabled the mode does not run and
-  the caller stops (`spec-task`'s `no-critics`). The spend is bounded by the cap: at most 3
-  rounds (the initial pass and 2 fix-and-re-run rounds) of at most 3 critics per draft.
+  the caller stops (`spec-task`'s `no-critics`). The spend is bounded by the cap: at most 4
+  rounds (the initial pass, 2 fix-and-re-run rounds and at most one slip round) of at most 3 critics per draft.
 - **Spawns.** The registration check of the *On confirmation, spawn only the approved critics*
   step applies first; the caller (`spec-task`) stops on it as it does for `no-critics`. Each
   critic is a separate read-only subagent, spawned by the session itself (none
@@ -449,15 +449,41 @@ line or an escalation, never a question.
 - **Stopping.** The *Convergence* rules apply (severity and provenance, never stop on the round
   that applied fixes, the hard cap of 2 fix-and-re-run rounds, the non-convergence rule), except
   that reaching the cap or not converging ends in the escalation below instead of a question to
-  the human, and *The second-opinion round* is never offered in spec mode. The only ends are
+  the human, that the slip round below is an exception to the hard cap's "then stop", to the
+  non-convergence rule's "say so and stop" and to the block-rewrite rule's send-to-the-human end,
+  and that *The second-opinion round* is never offered in spec mode. The only ends are
   converged, cap reached and not converging. No step of spec mode asks the human anything or
-  waits for a reply.
+  waits for a reply. The slip round:
+  1. **When.** An end would be `cap reached` or `not converging`, at least one fix round has run,
+     and every open defect, each verified against the pinned tree the way the *Aggregate the
+     findings* step verifies one, lies wholly inside the lines the last fix round added or
+     changed. Those lines are the diff between the last two numbered draft copies the *Fixes*
+     bullet already keeps. If any open defect lies outside that diff, there is no slip round and
+     the end escalates as today.
+  2. **The fix.** The drafter fixes each such defect only by deleting text inside that diff. It
+     adds and rewords nothing. The resulting draft is kept as a new numbered copy. For the defects
+     rule 1 accepts, this deletion takes the place of the two-rounds block-rewrite rule in
+     *Convergence*: it is not a patch that rule forbids, and that rule's send-to-the-human end does
+     not apply to them.
+  3. **The verify-only round.** Every critic the selection chose runs once more. Each is scoped to
+     the deletion (the diff between the last two copies), to each open defect from rule 1, and to
+     each earlier finding whose fixing text the deletion touches, so that a deletion which misses
+     its defect or reopens an earlier one is caught. The round applies no fix.
+  4. **Its end.** If the round returns no defect, the gate ends `converged` and the copy after the
+     deletion is the draft. If it returns any defect, the gate ends in the escalation it would
+     have reached without the slip round: the copy before the deletion is the draft, with the same
+     stop word (`cap reached` or `not converging`) and the open defects that started the slip
+     round, plus any slip-round defect that holds on that copy, in `### Open findings`.
+  5. **Bounds.** The slip round does not count against the cap of 2 fix-and-re-run rounds that the
+     *Convergence* hard-cap sentence sets. It runs at most once per pass, and its own findings
+     never lead to another slip round or fix round. It is not *The second-opinion round*, which
+     spec mode still never offers.
 - **Result.** The critic line, in the grammar the `spec-post.sh` header defines (repeated here):
 
   `Critic gate: <critic>[, <critic>...]; <k> rounds; <stop>.`
 
   with `1 round` as the only singular, where `<k>` counts every critic round run, the initial
-  pass included, and `<stop>` is `converged`, `cap reached` or `not converging`. The carried-forward line
+  pass and the slip round included, and `<stop>` is `converged`, `cap reached` or `not converging`. The carried-forward line
   `Critic gate: none; 0 rounds; carried forward.`, which `spec-task` writes when a refresh keeps the approved text
   unchanged, is not a gate result: no critic ran, and it is outside this grammar. On either
   escalation end, also an `### Open findings` section: each open finding with its critic and

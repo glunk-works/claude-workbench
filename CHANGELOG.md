@@ -24,6 +24,7 @@ the GitHub release notes.
 ### Changed
 
 - `spec-task` posts the tightenings its critic gate did not apply in a last `### Not applied (tightenings)` section of the spec comment, so the approver reads them before reacting; `security-critic`'s stay in the printed outcome, and the refresh compare and critic-gate's refresh target ignore the approved comment's section, and the answer redraft drops it (#1369).
+- Spec mode's critic gate now ends a pass whose only open defects lie in the last fix round's own changes with one deletion-only fix and one verify-only round, instead of escalating (#1501).
 
 ## [0.35.0] — 2026-11-14
 
