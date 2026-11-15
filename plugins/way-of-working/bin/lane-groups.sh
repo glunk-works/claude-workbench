@@ -42,7 +42,9 @@
 # path rule; a state other than `found` or `stale` gives unknown paths). Such a row only fills the
 # `shared` field of the milestone rows: it is never printed, never in a group, never counted as
 # open for the waits and never makes another row's paths unknown. A live issue that is already open
-# on the milestone adds nothing, since it has a row. With no live issues the output is unchanged.
+# on the milestone adds nothing to `shared`, since it has a row. A live issue with unknown paths,
+# either kind, is named on the trailing `live-unknown` line. With no live issues, or none with
+# unknown paths, the output is unchanged.
 #
 # Two issues share a path when a path of one equals a path of the other, or either begins with
 # the other followed by a slash.
@@ -64,11 +66,12 @@
 #           for a row with unknown paths
 #   waits   `#a,#b`, `-` or `order-unreadable`
 # then one line per group: `group` TAB <group number from 1> TAB `#a #b`; or the single line
-# `group none`. An issue is ready when its state is `found`, its paths are known and its waits
-# field is `-`. Ready issues are taken in build-order position, then the unlisted ones ascending by
+# `group none`; then, only when a live issue given has unknown paths (`?`: an open row on the
+# milestone or an extra row alike), one line `live-unknown` TAB `#a,#b`, ascending, each once.
+# An issue is ready when its state is `found`, its paths are known and its waits field is `-`. Ready issues are taken in build-order position, then the unlisted ones ascending by
 # number, and each goes into the first group none of whose issues it shares a path with. A stale
 # spec is listed with its paths and is in no group. Groups ignore live lanes: the live issues given
-# only fill `shared`.
+# only fill `shared` and, when their paths are unknown, the `live-unknown` line.
 # A config read, the milestone listing, the description fetch or the final pass that builds the
 # rows and groups failing prints only `unreadable` (exit 0), as does a listed number with a
 # leading zero. That pass writes to a file under the script's own temp directory, printed only
@@ -298,7 +301,7 @@ for n in $live; do
 done
 
 # --- shared paths, waits and groups ----------------------------------------------------------
-if ! LG_ORDER="$order_list" LG_ORDER_OK="$order_ok" awk -F '\t' '
+if ! LG_ORDER="$order_list" LG_ORDER_OK="$order_ok" LG_LIVE="$live" awk -F '\t' '
   function overlap(a, b,    i, j, na, nb, qa, qb, x, y) {
     na = split(a, qa, " "); nb = split(b, qb, " ")
     for (i = 1; i <= na; i++) for (j = 1; j <= nb; j++) {
@@ -316,6 +319,8 @@ if ! LG_ORDER="$order_list" LG_ORDER_OK="$order_ok" awk -F '\t' '
     no = split(ENVIRON["LG_ORDER"], ord, " ")
     for (i = 1; i <= no; i++) pos[ord[i]] = i
     ok = ENVIRON["LG_ORDER_OK"] + 0
+    nl = split(ENVIRON["LG_LIVE"], lv, " ")
+    for (i = 1; i <= nl; i++) islive[lv[i]] = 1
   }
   X { xn++; xnum[xn] = $1; xpa[xn] = $3; next }
   { n++; num[n] = $1; st[n] = $2; pa[n] = $3; kind[n] = $4; wl[n] = $5; open[$1] = 1 }
@@ -357,7 +362,9 @@ if ! LG_ORDER="$order_list" LG_ORDER_OK="$order_ok" awk -F '\t' '
       }
       waits[i] = w
       printf "%s\t%s\t%s\t%s\t%s\n", num[i], st[i], pa[i], sh, w
+      if (pa[i] == "?" && (num[i] in islive)) unk[++nu] = num[i] + 0
     }
+    for (j = 1; j <= xn; j++) if (xpa[j] == "?") unk[++nu] = xnum[j] + 0
     # ready issues: build-order position first, then the unlisted ones ascending
     nr = 0
     for (k = 1; k <= no; k++) for (i = 1; i <= n; i++) if (num[i] == ord[k]) cand[++nr] = i
@@ -382,6 +389,17 @@ if ! LG_ORDER="$order_list" LG_ORDER_OK="$order_ok" awk -F '\t' '
       s = ""
       for (m = 1; m <= gn[g]; m++) s = s (m > 1 ? " " : "") "#" num[gm[g, m]]
       printf "group\t%d\t%s\n", g, s
+    }
+    # live issues whose spec paths are unknown, ascending
+    for (a = 2; a <= nu; a++) {
+      v = unk[a]
+      for (b = a - 1; b >= 1 && unk[b] > v; b--) unk[b + 1] = unk[b]
+      unk[b + 1] = v
+    }
+    if (nu > 0) {
+      s = ""
+      for (a = 1; a <= nu; a++) s = s (a > 1 ? "," : "") "#" unk[a]
+      printf "live-unknown\t%s\n", s
     }
   }
 ' "$tmp/rows" X=1 "$tmp/xrows" >"$tmp/out" 2>/dev/null; then
