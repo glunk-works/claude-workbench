@@ -25,7 +25,8 @@
 #            once, so uncommitted changes are discarded, but a locked worktree still stops `dirty`
 #   ALSO     optional: a comma list of the issue numbers folded into N, each digits with no
 #            leading zero, none empty, none repeated, none equal to N; each is checked like N
-#            and the prompt tells the lane its PR closes them too
+#            and the prompt tells the lane its PR closes them too; each is also
+#            refused (`exists`) when it has a lane of its own
 #
 # The lanes directory is `lanes.dir` of the default branch's committed .ai/project.yml
 # (project-schema.md, `lanes`): an absolute path of A-Za-z0-9._/-, with no `//`, no `.` or
@@ -51,7 +52,8 @@
 #                    different letter case; set it to the origin's nameWithOwner, or null
 #   unreached        prep: the installation token's repositories do not list origin's repository
 #   not-map          `identities` is not a map; lanes rely on the finder
-#   exists           prep: the worktree path, prompt file, branch or branch config is taken
+#   exists           prep: the worktree path, prompt file, branch or branch config is taken, or a
+#                    folded (ALSO) issue's worktree path, prompt file or registered worktree is taken
 #   finder: WORD     prep: the finder printed WORD (none, unreacted, escalated, ambiguous,
 #                    moved or unreadable) instead of `found`
 #   bad-issue        prep: the task or a folded (ALSO) issue is closed, a pull request, off
@@ -603,6 +605,18 @@ prep() {
   wt_rc=0
   grep -Fx -- "worktree $LANES/$N" "$TMP/wt.txt" >/dev/null 2>&1 || wt_rc=$?
   case "$wt_rc" in 0) stop exists ;; 1) ;; *) stop unreadable ;; esac
+  # each folded (ALSO) issue's own lane path, before any issue is read; ALSO items passed also_ok
+  if [ -n "$ALSO" ]; then
+    ex_rest="$ALSO,"
+    while [ -n "$ex_rest" ]; do
+      ex_a=${ex_rest%%,*}
+      ex_rest=${ex_rest#*,}
+      [ ! -e "$LANES/$ex_a" ] && [ ! -L "$LANES/$ex_a" ] && [ ! -e "$LANES/$ex_a-prompt.md" ] && [ ! -L "$LANES/$ex_a-prompt.md" ] || stop exists
+      wt_rc=0
+      grep -Fx -- "worktree $LANES/$ex_a" "$TMP/wt.txt" >/dev/null 2>&1 || wt_rc=$?
+      case "$wt_rc" in 0) stop exists ;; 1) ;; *) stop unreadable ;; esac
+    done
+  fi
   refs=$(git -C "$TOPLEVEL" for-each-ref --format=x "refs/heads/$BRANCH" "refs/remotes/origin/$BRANCH" 2>/dev/null) || stop unreadable
   [ -z "$refs" ] || stop exists
   pb_rc=0
