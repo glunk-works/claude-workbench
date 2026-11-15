@@ -4,7 +4,7 @@
 # Each case builds a scratch repository with a local bare `origin` (no network) whose path
 # carries a sentinel. Its default branch commits an .ai/project.yml that declares `lanes.dir`.
 # The script under test runs as a copy in a scratch plugin `bin/`, beside stub spec-find.sh
-# (prints a canned line), lane-state.sh and lane-groups.sh (print canned files; the latter also records its arguments) and the real
+# (prints a canned line), lane-state.sh and lane-groups.sh (print canned files; the latter also records its arguments; one contract case feeds it the real lane-groups.sh's output) and the real
 # gh-identity.sh and prune-verdict.sh, with an agents/coder.md one level up. A stub `gh` and a logging `git` wrapper go first on PATH. The stub gh
 # holds canned RAW API JSON and applies the caller's own --jq argument with the real `jq -r`,
 # the way tests/invariants-files-filter.test.sh reads a canned page, so the script's filters are
@@ -1288,6 +1288,52 @@ assert_eq "done next: lane-state exiting non-zero: the lane is still removed" no
 FX_STATE_RC=0
 export FX_STATE_RC
 printf '[]\n' >"$CAN/state.json"
+
+# The contract case (#1294): the REAL lane-groups.sh's output for a milestone with no ready issue,
+# fed unchanged to `done`. The no-group line is never typed here, so a change to it on either side
+# turns the `next none` assertion red. The producer runs as a copy beside stub spec-find.sh (always
+# `none`) and the real plan-depends.sh and spec-fresh.sh, with a stub gh first on PATH for this run only.
+lane_ready
+LGB=$D/lgbin
+LGS=$D/lgstub
+mkdir -p "$LGB" "$LGS"
+for s in lane-groups.sh plan-depends.sh spec-fresh.sh; do
+  cp "$root_dir/plugins/way-of-working/bin/$s" "$LGB/$s"
+done
+printf '#!/bin/sh\necho none\n' >"$LGB/spec-find.sh"
+chmod 755 "$LGB"/*.sh
+LGREPO=$(yq -r .repo "$R/.ai/project.yml")
+printf 'repo: %s\nbacklog:\n  repo: null\n' "$LGREPO" >"$LGS/project.yml"
+printf '[{"number":800},{"number":9999,"pull_request":{}}]\n' >"$LGS/list.json"
+printf '{"description":"no build order here"}\n' >"$LGS/ms.json"
+cat >"$LGS/gh" <<'LG_GH'
+#!/bin/sh
+[ "$1" = api ] || exit 9
+shift
+url=; jqf=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --paginate) shift ;;
+    --jq) jqf=$2; shift 2 ;;
+    *) url=$1; shift ;;
+  esac
+done
+case "$url" in
+  "repos/$LG_REPO/issues?milestone=$LG_MS&state=open") f=$LG_DIR/list.json ;;
+  "repos/$LG_REPO/milestones/$LG_MS") f=$LG_DIR/ms.json ;;
+  *) exit 9 ;;
+esac
+exec jq -r "$jqf" "$f"
+LG_GH
+chmod 755 "$LGS/gh"
+lg_rc=0
+(cd "$R" && PATH="$LGS:$PATH" LG_REPO=$LGREPO LG_MS=$MS LG_DIR=$LGS "$LGB/lane-groups.sh" $MS "$LGS/project.yml") >"$LGS/real.txt" 2>/dev/null || lg_rc=$?
+assert_eq "done next contract: the real lane-groups.sh exits 0" 0 "$lg_rc"
+assert_eq "done next contract: the real lane-groups.sh's first row is issue 800" 800 "$(awk -F'\t' 'NR==1 {print $1}' "$LGS/real.txt")"
+cp "$LGS/real.txt" "$CAN/groups.txt"
+run_lane done $ISSUE
+assert_eq "done next contract: the real no-group output is next none" "next none" "$(printf '%s\n' "$out" | tail -n 1)"
+assert_eq "done next contract: exit" 0 "$rc"
 
 # ---- groups --------------------------------------------------------------------------------
 for v in '' 0 012 abc; do
