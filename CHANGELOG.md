@@ -27,6 +27,7 @@ the GitHub release notes.
 
 ### Changed
 
+- critic-gate's spec-mode text now states the slip round is outside the cap, limits the slip round's deletion to text the last fix round introduced, and names the `Not applied (tightenings)` section in its *Fixes* bullet (#1532, #1534).
 - `spec-task` posts the tightenings its critic gate did not apply in a last `### Not applied (tightenings)` section of the spec comment, so the approver reads them before reacting; `security-critic`'s stay in the printed outcome, and the refresh compare and critic-gate's refresh target ignore the approved comment's section, and the answer redraft drops it (#1369).
 - Spec mode's critic gate now ends a pass whose only open defects lie in the last fix round's own changes with one deletion-only fix and one verify-only round, instead of escalating (#1501).
 
