@@ -102,6 +102,8 @@ check "Restated reads nothing" ok "$(d r3 "$ALL")"
 RESTATED='- one
 - two'
 check "Restated with several lines" ok "$(d r4 "$ALL")"
+RESTATED='nothing'
+check "a trailing Not applied (tightenings) section is accepted" ok "$(d na1 "$ALL|Not applied (tightenings)")"
 
 # A later heading ends the last section, so text under it is not the last section's body.
 f="$tmp/r5"

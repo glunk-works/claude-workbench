@@ -313,7 +313,7 @@ the class being one of the five bullets above (`false-statement`, `contradiction
 `operationally-wrong`, `newly-introduced`, `trust-boundary`), or `tightening`. A `trust-boundary`
 finding is never a tightening. A `tightening` is never
 applied inside a gated pass, so no round is spent applying them: the diff mode lists them in its
-*Report and stop* summary, and spec mode in the session's printed outcome only. A finding with no
+*Report and stop* summary, and spec mode, on a converged end, in the spec comment's `### Not applied (tightenings)` section (`spec-task`'s *Critic-gate the draft* step, which keeps `security-critic`'s in the printed outcome only) as well as in the session's printed outcome. A finding with no
 valid label is classed by the session when it verifies it (*Aggregate the findings*), and counts
 as a defect when it cannot be classed. The session also changes any finding that opens or
 weakens a trust boundary to `defect:trust-boundary`, whatever label it carries, and never moves a
@@ -409,7 +409,7 @@ line or an escalation, never a question.
   commit and the changed paths, and the draft's pinned commit is the base tip the refresh printed. Each critic
   then confines its three checks, below, to the draft's text about the changed paths, checked against the pinned
   commit with the diff of those paths from the marker commit to it, and to the lines that differ between
-  `approved.md` and the draft. Everything else in the draft was approved on the marker commit and is not graded
+  `approved.md` (with its `### Not applied (tightenings)` section cut, as the carry-forward compare cuts it, so that section's absence from the draft is not graded and every draft line from a `### Not applied (tightenings)` heading on is) and the draft. Everything else in the draft was approved on the marker commit and is not graded
   again. Selection, the cap, the ends and the result grammar are unchanged.
 - **Selection by rule.** The keys below are read from the pinned base commit's `.ai/project.yml`
   (the read `spec-task`'s *Critic-gate the draft* step gives, with `SHA` bound and checked), never the
@@ -435,7 +435,7 @@ line or an escalation, never a question.
   observable); the trust boundaries the spec touches.
 - **Fixes.** Each finding is verified against the tree before it is acted on (the *Aggregate the
   findings* step's rule), and only `defect:<class>` findings are applied; spec mode never applies
-  or posts tightenings. The drafting session applies the fixes. When an `architect` subagent
+  tightenings, and posts them only in that section. The drafting session applies the fixes. When an `architect` subagent
   drafted, the parent sends the findings to that same subagent by SendMessage and writes the text
   it returns, and never edits a draft from memory. Where the host cannot message it again, the
   parent spawns a fresh `architect` drafter that runs `spec-task`'s fetch and body read itself,

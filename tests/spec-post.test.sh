@@ -230,7 +230,7 @@ SHA="$("$real_git" -C "$origin" rev-parse HEAD)"
 SIDE="$("$real_git" -C "$co" -c user.name=fx -c user.email=fx@example.test commit-tree "HEAD^{tree}" -p HEAD -m side)"
 GONE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
-# _mk <file> <critic-line> <extra> <later> <findings> -- the shared layout of mkdraft and mkesc
+# _mk <file> <critic-line> <extra> <later> <findings> [not-applied-section-body] -- the shared layout of mkdraft and mkesc
 _mk() {
   {
     printf '%s\n' 'Spec for the thing. Drafted against main at abc1234. Back\slash and {pr_base} braces.'
@@ -244,6 +244,7 @@ _mk() {
     [ -z "$4" ] || printf '%s\n' "$4"
     printf '\n### Out of scope\nNothing else.\n'
     printf '\n### Restated from the issue body\nnothing\n'
+    [ -z "${6:-}" ] || printf '\n### Not applied (tightenings)\n%s\n' "$6"
     [ -z "$5" ] || printf '\n### Open findings\n%s\n' "$5"
   } >"$1"
 }
@@ -255,6 +256,9 @@ mkdraft() { # mkdraft <file> [extra-line] [later-line] -- a draft in the fixed s
 mkesc() { # mkesc <file> [extra-line] [later-line] -- the same layout, a cap-reached critic line and an Open findings section
   _mk "$1" "$CL_ESC" "${2:-}" "${3:-}" 'A finding (architect, high): the task is too large. Recommend a split.'
 }
+
+NA_BODY='Tightenings the critic gate did not apply. They are not part of this spec, and the build does not apply them.
+- A passage in Goal could name the file (architect).'
 
 mkissue_to() { # mkissue_to <file> <login> <id-json> <assoc-json> [state] [locked] [pr|-] [updated_at] [title-json] [body-json]
   st="${5:-open}"
@@ -421,6 +425,15 @@ api|--hostname|github.com|--method|POST|repos/acme/backlog/issues/661/comments|-
 assert_eq "$desc (no label call)" 0 "$(( $(lblcalls read) + $(lblcalls write) ))"
 assert_eq "$desc (the draft keeps its backslash and braces)" 2 "$(grep -c -e 'back\\slash' -e '{pr_base}' "$o/comment.md" || true)"
 
+desc="pass with a Not applied (tightenings) section after Restated"
+drn="$(newdir)"
+_mk "$drn/draft.md" "$CL_OK" '' '' '' "$NA_BODY"
+o="$(newdir)"
+post "$drn/draft.md" "$o"
+assert_eq "$desc (line)" "posted 777 dev[bot] https://github.com/acme/backlog/issues/661#issuecomment-777" "$out"
+assert_eq "$desc (rc)" 0 "$rc"
+assert_eq "$desc (section kept in the body)" 1 "$(grep -c '^### Not applied (tightenings)$' "$o/comment.md")"
+
 # -- escalate (#746) -----------------------------------------------------------------------------
 eexpect="$tmp/eexpect.md"
 { printf 'spec-task-escalated: issue=661 base=main sha=%s\n\n' "$SHA"; "$real_cat" "$dre/draft.md"; } >"$eexpect"
@@ -442,6 +455,15 @@ api|--hostname|github.com|graphql|-f|query={ viewer { login databaseId } }|--jq|
 api|--hostname|github.com|--method|POST|repos/acme/backlog/issues/661/comments|-F|body=@-|
 api|--hostname|github.com|repos/acme/backlog/labels?per_page=100|--paginate|--jq|.[].name|
 api|--hostname|github.com|--method|POST|repos/acme/backlog/issues/661/labels|-f|labels[]=status/needs-human|" "$("$real_cat" "$glog")"
+
+desc="escalate: a Not applied (tightenings) section before Open findings escalates"
+drn="$(newdir)"
+_mk "$drn/draft.md" "$CL_ESC" '' '' 'A finding (architect, high): the task is too large. Recommend a split.' "$NA_BODY"
+o="$(newdir)"
+esc "$drn/draft.md" "$o"
+assert_eq "$desc (line)" "escalated 777 dev[bot] $ehurl labelled" "$out"
+assert_eq "$desc (rc)" 0 "$rc"
+assert_eq "$desc (section kept in the body)" 1 "$(grep -c '^### Not applied (tightenings)$' "$o/comment.md")"
 
 desc="escalate: the label is absent from the repository"
 printf 'bug\nstatus/needs-human-not\n' >"$tmp/labels.txt"

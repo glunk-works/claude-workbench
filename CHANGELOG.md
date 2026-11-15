@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- `spec-task` posts the tightenings its critic gate did not apply in a last `### Not applied (tightenings)` section of the spec comment, so the approver reads them before reacting; `security-critic`'s stay in the printed outcome, and the refresh compare and critic-gate's refresh target ignore the approved comment's section, and the answer redraft drops it (#1369).
+
 ## [0.35.0] — 2026-11-14
 
 ### Added
