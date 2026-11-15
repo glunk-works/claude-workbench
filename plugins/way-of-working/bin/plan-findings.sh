@@ -126,7 +126,7 @@ if [ "$mode" = list ]; then
   esac
   # The author's numeric id and the pull-request flag are projected and compared HERE, in awk, so
   # the filter is the script's own shell code and a fixture can exercise it.
-  if ! gh api --paginate "repos/$repo/issues?state=open" --jq \
+  if ! gh api --paginate "repos/$repo/issues?state=open&per_page=100" --jq \
        '.[] | [.number, .created_at, (.milestone.number // "none" | tostring),
                ([.labels[].name | select(startswith("area/"))] | join(",") | if . == "" then "none" else . end),
                (.user.id | tostring), (has("pull_request") | tostring)] | @tsv' \

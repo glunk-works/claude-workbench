@@ -1104,20 +1104,23 @@ It runs the **Preconditions** and the **Resume-safety preamble** as above, then:
      file followed by one blank line and the screened `fold-<T>.txt`, built with `cat`, never shell
      interpolation (the one exception to the `read-` and Bash-built-file rules, which no other write
      has); fetch the body again into `read-fold-<T>-recheck.txt` and `cmp` it with
-     `read-fold-<T>.txt`; then send `foldbody-<T>.txt` with `gh issue edit --body-file` and read it
+     `read-fold-<T>.txt`; then send `foldbody-<T>.txt` with `gh issue edit <T> --repo {backlog.repo} --body-file
+     "<scratch>/foldbody-<T>.txt"` and read it
      back and compare. A failed recheck or a `cmp` difference before the send leaves that fold
      undone; a read-back difference after the send is reported as an unconfirmed fold, whose body
      may have changed, with the stale-reaction line still said. Either way, every source issue with
      a finding in `fold-<T>.txt` stays open. At each such edit say that it makes a declared
      maintainer's reaction on `#T` stale, so `/way-of-working:spec-task` needs a fresh one.
-   - **Combined issues.** Filed with `gh issue create --title "$(cat combined-title-<k>.txt)"
-     --body-file combined-<k>.txt` (full, literal scratch paths), the title passed by the existing
+   - **Combined issues.** Filed with `gh issue create --repo {backlog.repo} --title "$(cat
+     "<scratch>/combined-title-<k>.txt")" --body-file "<scratch>/combined-<k>.txt"` (`<scratch>` the
+     full, literal scratch directory), the title passed by the existing
      **Titles** rule of **Apply & stage**; their
      placement goes through the **Sequence confirm** and **Apply & stage** steps exactly as a
      confirmed **Recommend** placement does.
    - **Closing.** Per source issue, a mapping comment naming each `#N.k` and its destination (an
      issue number, or the decline reason), checked with `plan-findings.sh covers` (which must print
-     `ok`), posted with `gh issue comment --body-file`. The issue is closed only after that comment
+     `ok`), posted with `gh issue comment <N> --repo {backlog.repo} --body-file "<scratch>/map-<N>.txt"`.
+     The issue is closed, with `gh issue close <N> --repo {backlog.repo}`, only after that comment
      posted and only when every destination write for its findings read back ok; otherwise it stays
      open and the Report names it. An `unparsed` issue is never closed.
 5. **Report.** Per finding its destination and outcome; every issue written, filed or closed;

@@ -43,7 +43,7 @@ cat >"$fakebin/gh" <<'FAKE_GH'
 set -eu
 [ "$1" = api ] || { echo "fake gh: unsupported command $1" >&2; exit 1; }
 case "$*" in
-  *"issues?state=open"*) ;;
+  *"issues?state=open&per_page=100"*) ;;
   *) echo "fake gh: unrecognised args $*" >&2; exit 1 ;;
 esac
 [ "${FAKE_FAIL:-0}" = 1 ] && { echo "fake gh: simulated failure" >&2; exit 1; }
