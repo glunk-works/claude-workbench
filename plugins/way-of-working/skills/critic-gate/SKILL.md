@@ -213,7 +213,7 @@ script then reads `{pr_base}`, `{code_paths}`, `{agents.enabled}` and `{load_bea
 4. **Aggregate the findings.** Collect each critic's ranked findings into one list, deduped,
    most-severe/most-reachable first. Tag each with its source critic and confidence, and keep
    the label each critic gave it (`defect:<class>` or `tightening`), except where *Convergence*
-   reclassifies it (the trust-boundary raise, the code-comment rule). A deduped finding keeps its
+   reclassifies it (the trust-boundary raise, the code-comment rule, the missing-test raise). A deduped finding keeps its
    most severe label, any `defect:<class>` over `tightening`. A finding
    with no valid label (a repo-local critic's, for one) is classed by this session when it
    verifies it, and counts as a defect when it cannot be classed. Drop
@@ -318,6 +318,11 @@ valid label is classed by the session when it verifies it (*Aggregate the findin
 as a defect when it cannot be classed. The session also changes any finding that opens or
 weakens a trust boundary to `defect:trust-boundary`, whatever label it carries, and never moves a
 finding away from `defect:trust-boundary`.
+
+**A missing test case is a defect in spec mode.** A finding that a branch, output word or refusal the
+draft introduces has no case in the draft's *Tests* section is a defect, never a `tightening`: the session
+raises such a finding labelled `tightening`, or with no valid label, to `defect:operationally-wrong`, and a
+finding already labelled `defect:<class>` keeps its class. The diff mode is unchanged.
 
 **A finding about a code comment alone is a tightening** unless the comment states something
 checkable against the code or live state, or the finding is `defect:trust-boundary`. **A block that drew a defect finding in two rounds is

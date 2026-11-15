@@ -400,8 +400,8 @@ the draft* step) and relays its findings to the drafter.
    - `### Restated from the issue body` — the requirements this draft takes from the body, as a
      short list, so the maintainer can see exactly what the issue contributed. Exactly
      `nothing` when the draft took nothing from it.
-   - `### Not applied (tightenings)` — never drafted: the *Critic-gate the draft* step adds it, on a converged
-     end only.
+   - `### Not applied (tightenings)` — never drafted: the *Critic-gate the draft* step adds it on a converged
+     end, or carries the approved one forward on an equal refresh.
 
    `spec-post.sh` refuses a draft with any of six leak shapes, checked in this order, so the
    whole draft carries none of them: `drive` (the drive-letter regex `(^|[^A-Za-z0-9])[A-Za-z]:[/\\]`),
@@ -510,10 +510,20 @@ the draft* step) and relays its findings to the drafter.
    Nothing is posted before both say `ok`.
 
 7. **Critic-gate the draft.** Only when both shape checks said `ok`. **On the refresh path with `COMPARE=equal`
-   this step runs only its critic-line placement and its shape re-checks**: add the line `Critic gate: none; 0 rounds;
+   this step runs only its critic-line placement, its section carry-forward and its shape re-checks**: add the line `Critic gate: none; 0 rounds;
    carried forward.` on its own line right under the title line (under the `Model provenance:` line when there is one),
+   then carry the approved comment's `### Not applied (tightenings)` section forward in one Bash call, binding `RD` and `DD` by value
+   from their printed lines. The call defines `nasec` on its own line and appends the section to `draft.md` when `approved.md` has one:
+   ```bash
+   RD='<printed refresh dir>' DD='<printed draft dir>' S= &&
+   nasec() { awk '{ sub(/\r$/, "") } !f && /^### Goal[ \t]*$/ { f = 1 } f && /^### Not applied \(tightenings\)[ \t]*$/ { s = 1 } s { a[++n] = $(0) } END { if (!f) exit 3; while (n > 0 && a[n] == "") n--; for (i = 1; i <= n; i++) print a[i] }' "${1}"; } &&
+   S=$(nasec "$RD/approved.md") && if [ -n "$S" ]; then printf '\n%s\n' "$S" >>"$DD/draft.md"; fi &&
+   if [ -n "$S" ]; then echo "CARRIED=yes"; else echo "CARRIED=no"; fi
+   ```
+   The section's text is copied from `approved.md` by the shell, never retyped, and lies outside the carry-forward compare (which
+   already cuts it from the approved side). A non-zero exit stops `not posted: unreadable`, as a failed re-check does. Then
    run the *project file re-copy* block below, then `spec-shape.sh check` (with the same `"$DD/project.yml"`, which the block has just replaced) and `spec-fresh.sh shape` again on the final file, and go to the *Post or hold* step.
-   There is no fix here: a failed re-check stops (`not posted: <word>`), since the text from the Goal heading on, which compared equal, is what
+   There is no fix here: a failed re-check stops (`not posted: <word>`), since the text from the Goal heading on, which compared equal, plus the carried section, is what
    posts; it reads none of the gate's keys, makes no `no-critics` stop and runs no gate. On the refresh path with
    `COMPARE=different` the gate runs in its spec mode with the refresh target (`/way-of-working:critic-gate`'s
    *Refresh target* bullet: `approved.md`, the marker commit and the changed paths), and the outcome is handled as
@@ -545,14 +555,14 @@ the draft* step) and relays its findings to the drafter.
      after `### Restated from the issue body`;
    - on a converged end that left at least one tightening unapplied that `security-critic` did not raise,
      add `### Not applied (tightenings)` as the draft's last section, after `### Restated from the issue body`
-     and any `### Trailers` already placed before it. Its body is one fixed lead line, `Tightenings the critic gate did not apply. They are not part of this spec, and the build does not apply them.`,
+     and any `### Trailers` already placed before it. Its body is one fixed lead line, `Tightenings the critic gate did not apply. They are optional notes for the builder: following one is not a departure from this spec, and leaving one out is not a miss.`,
      then one bullet per unapplied tightening, except one raised by `security-critic`, which stays in the
      printed outcome only, naming the section and passage it concerns (in paraphrase), what it would change,
      and the critic that raised it. The bullets are written in the session's own words, never pasted from a
      critic's report, with repo-relative paths only, and obey every drafting rule of the *Draft against the
      base's tree, fetched first* step (no leak shape, no opener or reference forms, no marker prefix). No
-     section is added on a converged end with no such tightening, on either escalation end, or on the refresh
-     path with `COMPARE=equal` (no gate ran);
+     section is added on a converged end with no such tightening or on either escalation end (on the refresh
+     path with `COMPARE=equal` no gate ran, and the equal-path carry-forward above handles the section);
    - run the *project file re-copy* block below, then `spec-shape.sh check` (passing the same `"$DD/project.yml"` as its third argument, which the block has just replaced) and `spec-fresh.sh shape` again on the final file, with the same
      one-fix rule as the *Write the draft and check its shape* step.
 
@@ -577,7 +587,7 @@ the draft* step) and relays its findings to the drafter.
    directories (and, on the refresh path, the refresh directory) are removed. A failed re-read is a stop, never a fall-back to the old copy.
 
 8. **Post or hold.** Only when the gate has ended (or, on the refresh path with `COMPARE=equal`, the
-   critic-line placement is done) and both shape checks said `ok` on the final file. Run the one posting command, binding every value by value from its printed line (`N`
+   critic-line placement and the section carry are done) and both shape checks said `ok` on the final file. Run the one posting command, binding every value by value from its printed line (`N`
    the digits, `SHA` from the pin step, `DD` and `OO` from the directory line, `MODE` `post`
    when the gate converged or the refresh carried the text forward unchanged, and `escalate` when it ended on the cap or on non-convergence),
    never as an expansion of anything else:

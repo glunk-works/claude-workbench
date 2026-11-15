@@ -295,7 +295,10 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
    - **Verdict against the spec.** When a Map-branch spec loaded, the verdict checks the diff
      against it: a changed file not listed under *Files touched* is a finding (an entry is the first backtick span of each top-level bullet; a path is listed when it equals an entry or lies under one, one trailing `/` removed); each *Done when*
      item is named met, unmet, or not witnessed; a change that does something listed under
-     *Out of scope* is a finding.
+     *Out of scope* is a finding. The spec's scope is *Files touched*, *Done when* and *Out of scope* only. A change
+     that follows a note in a `### Not applied (tightenings)` section the `coder.md` rule makes optional is named in
+     the review as following that note, not as a departure from the spec. A note never widens *Files touched* or
+     overrides *Out of scope* or *Done when*.
    - **When anything is missing or fails** (legacy only: no `state.json`, no anchor, a `task_issue` or
      `review_pr` mismatch; map only: a failed closing-reference read, none, several that the *Folded issues* rule does not bind, one in another
      repository, a closed issue, no milestone, an unreadable `planning.kind`, any finder result but `found`,
