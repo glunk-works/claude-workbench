@@ -28,6 +28,7 @@ the GitHub release notes.
 
 ### Changed
 
+- `lane-groups.sh` no longer runs a wait read for a live issue that is not on the milestone, and its output is unchanged (#1335).
 - Spec mode now raises a finding that a new branch, output word or refusal has no case in the draft's *Tests* section from a tightening to `defect:operationally-wrong`; the `### Not applied (tightenings)` section gets a new lead line that makes its notes optional for the builder, and `coder.md`, the lane prompt and `architect-review` treat them as non-binding; an equal refresh carries the approved comment's section forward unchanged (#1520, #1533).
 - `lane-groups.sh` names live lanes whose spec paths are unknown, and `lane.sh done` prints a caution for each (#1334).
 - critic-gate's spec-mode text now states the slip round is outside the cap, limits the slip round's deletion to text the last fix round introduced, and names the `Not applied (tightenings)` section in its *Fixes* bullet (#1532, #1534).
