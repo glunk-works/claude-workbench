@@ -419,8 +419,8 @@ line or an escalation, never a question.
   `{load_bearing_docs}` entry (exact, or as a shell glob, since the schema allows globs) or is a
   `.md` file marked **(new)** outside `{code_paths}` (the diff mode's newly-added-doc row). Only
   critics in `{agents.enabled}` run. When `architect` is not enabled the mode does not run and
-  the caller stops (`spec-task`'s `no-critics`). The spend is bounded by the cap: at most 4
-  rounds (the initial pass, 2 fix-and-re-run rounds and at most one slip round) of at most 3 critics per draft.
+  the caller stops (`spec-task`'s `no-critics`). The spend is bounded: at most 4
+  rounds (the initial pass and the cap's 2 fix-and-re-run rounds, plus at most one slip round outside the cap) of at most 3 critics per draft.
 - **Spawns.** The registration check of the *On confirmation, spawn only the approved critics*
   step applies first; the caller (`spec-task`) stops on it as it does for `no-critics`. Each
   critic is a separate read-only subagent, spawned by the session itself (none
@@ -435,7 +435,7 @@ line or an escalation, never a question.
   observable); the trust boundaries the spec touches.
 - **Fixes.** Each finding is verified against the tree before it is acted on (the *Aggregate the
   findings* step's rule), and only `defect:<class>` findings are applied; spec mode never applies
-  tightenings, and posts them only in that section. The drafting session applies the fixes. When an `architect` subagent
+  tightenings, and posts them as *Convergence* says (the spec comment's `### Not applied (tightenings)` section, except `security-critic`'s). The drafting session applies the fixes. When an `architect` subagent
   drafted, the parent sends the findings to that same subagent by SendMessage and writes the text
   it returns, and never edits a draft from memory. Where the host cannot message it again, the
   parent spawns a fresh `architect` drafter that runs `spec-task`'s fetch and body read itself,
@@ -460,8 +460,10 @@ line or an escalation, never a question.
      changed. Those lines are the diff between the last two numbered draft copies the *Fixes*
      bullet already keeps. If any open defect lies outside that diff, there is no slip round and
      the end escalates as today.
-  2. **The fix.** The drafter fixes each such defect only by deleting text inside that diff. It
-     adds and rewords nothing. The resulting draft is kept as a new numbered copy. For the defects
+  2. **The fix.** The drafter fixes each such defect only by deleting text the last fix round
+     introduced inside that diff. On a changed line, that is only the text the fix round added there,
+     never text the line carried before it. It adds and rewords nothing. A defect that cannot be
+     fixed this way leaves no slip round, and the end escalates as today. The resulting draft is kept as a new numbered copy. For the defects
      rule 1 accepts, this deletion takes the place of the two-rounds block-rewrite rule in
      *Convergence*: it is not a patch that rule forbids, and that rule's send-to-the-human end does
      not apply to them.
