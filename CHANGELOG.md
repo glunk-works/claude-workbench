@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-11-15
+
+**⚠️ Migration** — reinstall the host tools in every home before any repo bumps its plugin pin to this release: the review session installs the reviewed repo's pinned plugin, and an older launcher refuses a findings file carrying `paths` as `findings not filed (findings-shape)`, filing nothing (#1515).
+
 ### Changed
 
 - `lane-groups.sh` no longer runs a wait read for a live issue that is not on the milestone, and its output is unchanged (#1335).
@@ -31,7 +35,7 @@ the GitHub release notes.
 - Spec mode's critic gate now ends a pass whose only open defects lie in the last fix round's own changes with one deletion-only fix and one verify-only round, instead of escalating (#1501).
 - `lane.sh wait` ends `exempt #P SHA` on a lane PR the review gate exempts, the lanes skill names the background timeout, and the check-run cases of the review-time filter are tested (#1547, #1525).
 - `/way-of-working:plan-sprint findings` unpacks the reviewer App's grouped review-finding issues into one row per finding, proposes a fold, a combined per-area issue or a decline for each, and on confirmation applies them and closes each source issue with a comment mapping every finding; its selector, path check, text screen and mapping check are the new `bin/plan-findings.sh` (#1516).
-- `wow-review` files findings under a descriptive title (`triage findings from #N: ` and the first findings' titles), gives each finding a `Paths:` line from the new optional `paths` key of the findings file, and links a finding already reported in an open issue the reviewer App filed instead of filing it again; when every finding matches nothing is filed. **⚠️ Migration** — reinstall the host tools in every home before any repo bumps its plugin pin to this release: the review session installs the reviewed repo's pinned plugin, and an older launcher refuses a findings file carrying `paths` as `findings not filed (findings-shape)`, filing nothing.
+- `wow-review` files findings under a descriptive title (`triage findings from #N: ` and the first findings' titles), gives each finding a `Paths:` line from the new optional `paths` key of the findings file, and links a finding already reported in an open issue the reviewer App filed instead of filing it again; when every finding matches nothing is filed.
 
 ### Fixed
 
