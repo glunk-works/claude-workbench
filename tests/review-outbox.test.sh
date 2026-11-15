@@ -319,6 +319,26 @@ findings_refused "not JSON" unreadable 'not json'
 findings_refused "an object, not an array" shape "$F1"
 findings_refused "a number in the array" shape '[1]'
 findings_refused "an extra key" shape '[{"title":"T","body":"B","type":"bug","extra":1}]'
+findings_ok "a finding with paths" '[{"title":"T","body":"B","type":"bug","paths":["scripts/a.sh",".github/x.yml","_a/b-c.d"]}]'
+findings_ok "five paths" '[{"title":"T","body":"B","type":"bug","paths":["a","b","c","d","e"]}]'
+findings_ok "a path of 200 characters" "[{\"title\":\"T\",\"body\":\"B\",\"type\":\"bug\",\"paths\":[\"$(printf 'a%.0s' $(seq 1 200))\"]}]"
+pf() { printf '[{"title":"T","body":"B","type":"bug","paths":%s}]' "$1"; }
+findings_refused "paths not an array" paths "$(pf '"a"')"
+findings_refused "an empty paths array" paths "$(pf '[]')"
+findings_refused "six paths" paths "$(pf '["a","b","c","d","e","f"]')"
+findings_refused "a non-string path" paths "$(pf '[1]')"
+findings_refused "a path of 201 characters" paths "$(pf "[\"$(printf 'a%.0s' $(seq 1 201))\"]")"
+findings_refused "an empty path" paths "$(pf '[""]')"
+findings_refused "a leading dash" paths "$(pf '["-a"]')"
+findings_refused "a leading slash" paths "$(pf '["/a"]')"
+findings_refused "a trailing slash" paths "$(pf '["a/"]')"
+findings_refused "an empty segment" paths "$(pf '["a//b"]')"
+findings_refused "a dot segment" paths "$(pf '["a/./b"]')"
+findings_refused "a dot-dot segment" paths "$(pf '["a/../b"]')"
+findings_refused "a dot-dot path" paths "$(pf '[".."]')"
+findings_refused "a space in a path" paths "$(pf '["a b"]')"
+findings_refused "an at sign in a path" paths "$(pf '["a@b"]')"
+findings_refused "a token-shaped path" secret "$(pf "[\"ghp_$TOKEN36\"]")"
 findings_refused "a missing key" shape '[{"title":"T","type":"bug"}]'
 findings_refused "a non-string title" shape '[{"title":1,"body":"B","type":"bug"}]'
 findings_refused "a non-string area" shape '[{"title":"T","body":"B","type":"bug","area":1}]'
@@ -391,7 +411,7 @@ LC_ALL=C grep -Eq 'gh[spour]_[A-Za-z0-9._-]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk
 zw1=$(printf '\342\200'); zwlo=$(printf '\213'); zwhi=$(printf '\217'); bom=$(printf '\357\273\277')
 if LC_ALL=C grep -q '^Host: ' "$B" || LC_ALL=C grep -Eq "^([[:space:]*_>#\`~|-]|${zw1}[${zwlo}-${zwhi}]|${bom})*Host: (no findings to file|findings not filed|[0-9]+ findings will be filed)" "$B"
 jq -e 'all(.[]; type == "object"
-and ((keys - ["area"]) | sort) == ["body", "title", "type"]
+and ((keys - ["area", "paths"]) | sort) == ["body", "title", "type"]
 LITERALS
 n=0
 while IFS= read -r lit || [ -n "$lit" ]; do
@@ -409,6 +429,7 @@ for rule in \
   "jq -e 'all(.[]; (.body | utf8bytelength) <= 4000)'" \
   "jq -e 'all(.[]; .type == \"bug\" or .type == \"feature\" or .type == \"chore\" or .type == \"docs\")'" \
   "jq -e 'all(.[]; (has(\"area\") | not) or (.area | test(\"\\\\Aarea/[a-z0-9-]+\\\\z\")))'" \
+  "jq -e 'all(.[]; (has(\"paths\") | not) or (.paths | type == \"array\" and length >= 1 and length <= 5 and all(.[]; type == \"string\" and length >= 1 and length <= 200 and test(\"\\\\A[A-Za-z0-9._][A-Za-z0-9._/-]*\\\\z\") and (split(\"/\") | all(. != \"\" and . != \".\" and . != \"..\")))))'" \
   "jq -e 'all(.[]; ((.title | explode | any(. < 32 or (. >= 127 and . <= 159))) or (.body | explode | any((. < 32 and . != 9 and . != 10) or (. >= 127 and . <= 159)))) | not)'"; do
   check "findings rule appears in both: $rule" sh -c 'grep -qF -- "$1" "$2" && grep -qF -- "$1" "$3"' x "$rule" "$script" "$launcher"
 done

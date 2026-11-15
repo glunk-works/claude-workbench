@@ -75,11 +75,15 @@
 # Residuals:
 #  - A misleading pass can post. The checks are mechanical, not a judgement of the review's
 #    content; the maintainer's code-owner approval still stops a bad merge.
-#  - Junk issues: at most one per head (but see the next bullet), with fixed-template, fenced, mention-free and
-#    secret-free bodies.
-#  - A create that succeeds but whose number read fails leaves the ledger empty, so --rerun
-#    would file a duplicate.
-#  - Timeline events: an owner/repo#N reference or a URL in the review body
+#  - Junk issues: at most one per head (but see the next bullet), with fixed-template, mention-free and
+#    secret-free bodies; the title and each `Paths:` line carry finding text outside the fence.
+#  - A create that succeeds but whose number read fails leaves the ledger empty, so a --rerun
+#    then files only the findings the repeat check does not match: a finding the earlier issue
+#    holds is filed again only once that issue is closed or under a differently worded title.
+#  - A finding title in an open issue the reviewer App filed (written by an earlier review session,
+#    and editable by anyone who can edit that issue) stops a later finding with the same normalized
+#    title from being filed, so that finding reaches only the review body.
+#  - Timeline events: an owner/repo#N reference or a URL in the review body or in a finding title
 #    still adds a timeline event to that issue or PR.
 #  - What the session can send out. The proxy bounds the host, not the recipient: a session given
 #    a credential in the PR text can send anything it read to any account on github.com or
@@ -933,7 +937,7 @@ validate_findings() {
   jq -e . <"$F" >/dev/null 2>&1 || { nf findings-unreadable; return; }
   jq -e -s 'length == 1 and (.[0] | type) == "array"' <"$F" >/dev/null 2>&1 || { nf findings-shape; return; }
   jq -e 'all(.[]; type == "object"
-      and ((keys - ["area"]) | sort) == ["body", "title", "type"]
+      and ((keys - ["area", "paths"]) | sort) == ["body", "title", "type"]
       and (.title | type) == "string" and (.body | type) == "string" and (.type | type) == "string"
       and ((has("area") | not) or (.area | type) == "string"))' <"$F" >/dev/null 2>&1 || { nf findings-shape; return; }
   jq -e 'length <= 5' <"$F" >/dev/null 2>&1 || { nf findings-count; return; }
@@ -941,8 +945,9 @@ validate_findings() {
   jq -e 'all(.[]; (.body | utf8bytelength) <= 4000)' <"$F" >/dev/null 2>&1 || { nf findings-body; return; }
   jq -e 'all(.[]; .type == "bug" or .type == "feature" or .type == "chore" or .type == "docs")' <"$F" >/dev/null 2>&1 || { nf findings-type; return; }
   jq -e 'all(.[]; (has("area") | not) or (.area | test("\\Aarea/[a-z0-9-]+\\z")))' <"$F" >/dev/null 2>&1 || { nf findings-area; return; }
+  jq -e 'all(.[]; (has("paths") | not) or (.paths | type == "array" and length >= 1 and length <= 5 and all(.[]; type == "string" and length >= 1 and length <= 200 and test("\\A[A-Za-z0-9._][A-Za-z0-9._/-]*\\z") and (split("/") | all(. != "" and . != "." and . != "..")))))' <"$F" >/dev/null 2>&1 || { nf findings-paths; return; }
   jq -e 'all(.[]; ((.title | explode | any(. < 32 or (. >= 127 and . <= 159))) or (.body | explode | any((. < 32 and . != 9 and . != 10) or (. >= 127 and . <= 159)))) | not)' <"$F" >/dev/null 2>&1 || { nf findings-control; return; }
-  jq -r '.[] | .title, .body' <"$F" >"$HDIR/findings-text" 2>/dev/null || { nf findings-unreadable; return; }
+  jq -r '.[] | .title, .body, (.paths // [])[]' <"$F" >"$HDIR/findings-text" 2>/dev/null || { nf findings-unreadable; return; }
   if has_mention "$HDIR/findings-text"; then nf findings-mention; return; fi
   if has_secret "$HDIR/findings-text"; then nf findings-secret; return; fi
   NFIND=$(jq -r 'length' <"$F" | tr -d '\r')
@@ -1158,25 +1163,68 @@ EOF
   filing_tok=$TOK
   # The read token may have been replaced by the gate poll: read it again.
   RTOK=$(tc token "$HDIR/read-token") && [ -n "$RTOK" ] || { say "cannot read the read token; nothing filed"; return 0; }
-  # One issue for the whole review. Labels: the union of every finding's, in first-seen order,
+  # The repeat check: the finding titles in the open issues the reviewer App opened in the backlog repo
+  # (the read token). Text read from them is only compared; only issue numbers reach the new issue.
+  case $vid in ''|*[!0-9]*) say "the filing token's viewer id is not digits; nothing filed"; return 0 ;; esac
+  TOK=$RTOK
+  gh_api --paginate "repos/$BREPO/issues?state=open&per_page=100" --jq '.[] | select(has("pull_request") | not) | {number: .number, uid: (.user.id | tostring), body: (.body // "")} | tojson' >"$HDIR/open-issues.jsonl" \
+    || { TOK=$filing_tok; say "reading the open issues failed; nothing filed"; return 0; }
+  TOK=$filing_tok
+  jq -c --slurpfile iss "$HDIR/open-issues.jsonl" --arg vid "$vid" '
+    def norm: ascii_downcase | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "");
+    def titles:
+      (split("\n") | map(sub("\r$"; ""))) as $L
+      | [range(0; $L | length) | select($L[.] | test("^- \\[[ xX]\\] Finding [0-9]+$"))]
+      | map(. as $i
+          | (first(range($i + 1; $L | length) | select($L[.] | test("^  `{3,}$"))) // null) as $f
+          | select($f != null and $L[$f + 1] != null
+              and ([range($i + 1; $f) | $L[.] | select(. != "" and (startswith("  Paths:") | not))] | length) == 0)
+          | $L[$f + 1] | sub("^  "; "") | norm);
+    [$iss[] | select(.uid == $vid) | {number: .number, titles: (.body | titles)}] as $open
+    | [.[] | (.title | norm) as $t | [$open[] | select(.titles | index($t)) | .number] | unique]' \
+    <"$HDIR/ob-findings" >"$HDIR/matches.json" || { say "comparing the open issues failed; nothing filed"; return 0; }
+  if [ "$(jq -r 'all(.[]; length > 0)' <"$HDIR/matches.json" | tr -d '\r')" = true ]; then
+    nums=$(jq -r '[.[][]] | unique | map("#" + tostring) | join(", ")' <"$HDIR/matches.json" | tr -d '\r')
+    say "every finding is already reported in the open issues $nums; nothing filed"
+    return 0
+  fi
+  # Labels: the union of the filed findings', in first-seen order,
   # each kept only where the repository answers a read of the label (the read token).
   labels='[]'
-  for lab in $(jq -r '[.[] | "type/" + .type, (.area // empty)] | reduce .[] as $l ([]; if index($l) then . else . + [$l] end) | .[]' <"$HDIR/ob-findings" | tr -d '\r'); do
+  for lab in $(jq -r --slurpfile m "$HDIR/matches.json" '[to_entries[] | select($m[0][.key] | length == 0) | .value | "type/" + .type, (.area // empty)] | reduce .[] as $l ([]; if index($l) then . else . + [$l] end) | .[]' <"$HDIR/ob-findings" | tr -d '\r'); do
     enc=$(printf '%s' "$lab" | jq -Rr '@uri' | tr -d '\r')
     TOK=$RTOK
     if gh_api "repos/$BREPO/labels/$enc" >/dev/null 2>&1; then labels=$(printf '%s' "$labels" | jq -c --arg l "$lab" '. + [$l]' | tr -d '\r'); fi
   done
   TOK=$filing_tok
-  short=$(printf '%.12s' "$pin")
-  jq -c --argjson labels "$labels" --arg title "triage the non-blocking findings from the review of $repo#$num at $short" --arg opening "Non-blocking findings from the automated architect review of $repo#$num at $pin: $rurl. Written by the review session; not yet read by a human." '
+  if [ "$(lower "$BREPO")" = "$(lower "$repo")" ]; then ref="#$num"; else ref="$name#$num"; fi
+  jq -c --slurpfile m "$HDIR/matches.json" --argjson labels "$labels" --arg ref "$ref" --arg opening "Non-blocking findings from the automated architect review of $repo#$num at $pin: $rurl. Written by the review session; not yet read by a human." '
     def item($k; $f):
       ([($f.title + $f.body) | scan("`+") | length] | max // 0) as $run
       | ([$run + 1, 3] | max) as $n
       | ([range($n)] | map("`") | join("")) as $fence
       | ($fence + "\n" + $f.title + "\n\n" + $f.body + "\n" + $fence | split("\n") | map("  " + .) | join("\n")) as $block
-      | "\n\n- [ ] Finding \($k)\n\n" + $block;
+      | (if ($f.paths // []) | length == 0 then "none" else $f.paths | map("`" + . + "`") | join(", ") end) as $pl
+      | "\n\n- [ ] Finding \($k)\n\n  Paths: " + $pl + "\n\n" + $block;
+    def sfx($k): if $k > 0 then " +\($k)" else "" end;
+    def mk_title($subj):
+      ("triage findings from " + $ref) as $lead
+      | ($subj | length) as $nf
+      | if $nf >= 2 and (($lead + ": " + $subj[0] + "; " + $subj[1] + sfx($nf - 2)) | length) <= 72
+          then $lead + ": " + $subj[0] + "; " + $subj[1] + sfx($nf - 2)
+        elif (($lead + ": " + $subj[0] + sfx($nf - 1)) | length) <= 72
+          then $lead + ": " + $subj[0] + sfx($nf - 1)
+        else (72 - (($lead + ": ") | length) - 3 - (sfx($nf - 1) | length)) as $avail
+          | if $avail >= 1 then $lead + ": " + $subj[0][0:$avail] + "..." + sfx($nf - 1)
+            else $lead + sfx($nf) end
+        end;
     . as $all
-    | {title: $title, body: ($opening + ([range($all | length)] | map(item(. + 1; $all[.])) | join(""))), labels: $labels}' \
+    | [range($all | length) | select($m[0][.] | length == 0)] as $new
+    | [range($all | length) | select($m[0][.] | length > 0)] as $dup
+    | {title: mk_title([$new[] | $all[.].title]),
+       body: ($opening + ($new | map(item(. + 1; $all[.])) | join(""))
+              + ($dup | map("\n\n- Finding \(. + 1): also reported in " + ($m[0][.] | map("#" + tostring) | join(", "))) | join(""))),
+       labels: $labels}' \
     <"$HDIR/ob-findings" >"$HDIR/issue.json" || { say "cannot build the issue request"; return 0; }
   out=$(gh_api -X POST "repos/$BREPO/issues" --input "$(hp "$HDIR/issue.json")" --jq .number) \
     || { say "creating the findings issue failed; it may not have been filed"; return 0; }
