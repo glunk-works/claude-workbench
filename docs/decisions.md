@@ -1612,6 +1612,11 @@ take effect. Full reasoning and the task breakdown that implements them:
        - `restrict-updates-to-main` is removed at each repo's cutover. 603-Identity, on the
          Team plan, carries the approval rules as an org ruleset with an explicit include
          list.
+         **Interim repo rulesets (2026-11-15, #411, maintainer decision):** until every
+         603-Identity repo has cut over, each cut-over repo carries its approval and checks
+         rules as repo rulesets, not through the org ruleset's include list, so no org-wide
+         rule reaches a repo still on the old model. #399 moves them to the org ruleset once
+         every repo has cut over.
     3. **Merging is mechanical.** `ship` arms auto-merge (`--auto --squash
        --match-head-commit`) only where the repo allows it and the base requires a code-owner
        approval (`gh pr merge --auto` merges a mergeable PR at once, so elsewhere arming is an
