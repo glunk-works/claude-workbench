@@ -49,7 +49,8 @@ literal. Then, in the *Fetch and check* step, the repo, the backlog repo, the ba
 ones used from there on: the working tree's copy is editable by the branch you are on, and would
 otherwise choose which repository's issue gets read and which tree the draft is checked against.
 The *Write the draft and check its shape* step copies the default branch's committed `.ai/project.yml` for `spec-shape.sh`, as `spec-post.sh` reads it,
-which reads `append_only` from it; this skill reads no value of that key itself.
+which reads `append_only` from it; this skill reads no value of that key itself. The *Critic-gate the draft* step copies it
+again before its final re-check, so that re-check reads what `spec-post.sh` will read.
 
 ## Run it on the right model, at the right time
 
@@ -511,9 +512,9 @@ the draft* step) and relays its findings to the drafter.
 7. **Critic-gate the draft.** Only when both shape checks said `ok`. **On the refresh path with `COMPARE=equal`
    this step runs only its critic-line placement and its shape re-checks**: add the line `Critic gate: none; 0 rounds;
    carried forward.` on its own line right under the title line (under the `Model provenance:` line when there is one),
-   run `spec-shape.sh check` (with the same `"$DD/project.yml"`) and `spec-fresh.sh shape` again on the final file, and go to the *Post or hold* step.
+   run the *project file re-copy* block below, then `spec-shape.sh check` (with the same `"$DD/project.yml"`, which the block has just replaced) and `spec-fresh.sh shape` again on the final file, and go to the *Post or hold* step.
    There is no fix here: a failed re-check stops (`not posted: <word>`), since the text from the Goal heading on, which compared equal, is what
-   posts; it reads no config, makes no `no-critics` stop and runs no gate. On the refresh path with
+   posts; it reads none of the gate's keys, makes no `no-critics` stop and runs no gate. On the refresh path with
    `COMPARE=different` the gate runs in its spec mode with the refresh target (`/way-of-working:critic-gate`'s
    *Refresh target* bullet: `approved.md`, the marker commit and the changed paths), and the outcome is handled as
    below. On every other path, and on `COMPARE=different` before the gate runs, first read the three keys the
@@ -552,8 +553,28 @@ the draft* step) and relays its findings to the drafter.
      base's tree, fetched first* step (no leak shape, no opener or reference forms, no marker prefix). No
      section is added on a converged end with no such tightening, on either escalation end, or on the refresh
      path with `COMPARE=equal` (no gate ran);
-   - run `spec-shape.sh check` (passing the same `"$DD/project.yml"` as its third argument) and `spec-fresh.sh shape` again on the final file, with the same
+   - run the *project file re-copy* block below, then `spec-shape.sh check` (passing the same `"$DD/project.yml"` as its third argument, which the block has just replaced) and `spec-fresh.sh shape` again on the final file, with the same
      one-fix rule as the *Write the draft and check its shape* step.
+
+   **The project file re-copy,** run before the final `spec-shape.sh check` on both paths that re-check. The critic rounds can
+   outlast a merge of an `append_only` change to the default branch, and `spec-post.sh` reads the default branch's file again at post
+   time, so the copy the *Write the draft and check its shape* step made may be stale. The block reads the default branch's committed `.ai/project.yml` the way that step does,
+   into a new file in the draft directory, and moves it over `project.yml` only when the read succeeded and the file is not empty, so a
+   failed read never leaves a truncated copy. Bind `DD` by value from the printed directory line of that step:
+   ```bash
+   DD='<printed draft dir>' F= DEF= &&
+   TOPLEVEL=$(git rev-parse --show-toplevel) && [ -n "$TOPLEVEL" ] &&
+   F=$(mktemp "$DD/project.XXXXXX") && [ -n "$F" ] &&
+   DEF=$(gh repo view "$(git -C "$TOPLEVEL" remote get-url origin)" --json defaultBranchRef --jq '.defaultBranchRef.name // ""') &&
+   case "$DEF" in ''|-*|*[!A-Za-z0-9._/-]*) false ;; esac &&
+   git -C "$TOPLEVEL" fetch -q origin "+refs/heads/$DEF:refs/remotes/origin/$DEF" &&
+   git -C "$TOPLEVEL" show "refs/remotes/origin/$DEF:./.ai/project.yml" >"$F" && [ -s "$F" ] &&
+   mv -f "$F" "$DD/project.yml" &&
+   echo "RECOPY=ok" ||
+   { echo "stopped: no project file" >&2; if [ -n "$F" ] && [ -f "$F" ]; then rm -f "$F"; fi; false; }
+   ```
+   A failure of the block (no `RECOPY=ok`, or a non-zero exit) stops `not posted: no project file`: nothing is posted, and both
+   directories (and, on the refresh path, the refresh directory) are removed. A failed re-read is a stop, never a fall-back to the old copy.
 
 8. **Post or hold.** Only when the gate has ended (or, on the refresh path with `COMPARE=equal`, the
    critic-line placement is done) and both shape checks said `ok` on the final file. Run the one posting command, binding every value by value from its printed line (`N`
