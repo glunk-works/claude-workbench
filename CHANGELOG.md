@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- Spec mode's critic gate now ends a pass whose only open defects lie in the last fix round's own changes with one deletion-only fix and one verify-only round, instead of escalating (#1501).
+
 ## [0.35.0] — 2026-11-14
 
 ### Added
