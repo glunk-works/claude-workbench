@@ -971,6 +971,9 @@ take effect. Full reasoning and the task breakdown that implements them:
     draft's bug), and the staged script the calling environment's write-classifier forces is
     constrained to three fixed line shapes with digit-validated arguments, printed verbatim in
     the session's report rather than left for the human to run unread.
+    *Amended by `#1516`: the `findings` mode has one exception to the file-editing-tool rule. A fold's new
+    body is a freshly fetched `read-` file followed by a screened section written with the file-editing tool,
+    joined with `cat`, never built by shell interpolation.*
 
 - **WB-D19 (`#197`) — `/way-of-working:plan-sprint` leads with a recommendation; the human
   still decides.** The skill `WB-D18` shipped (#152) scoped itself, in its own Goal line,
@@ -1003,6 +1006,9 @@ take effect. Full reasoning and the task breakdown that implements them:
     `author_association`. Read-only copies use a `read-` filename family disjoint from the
     staged script's `title-`/`description-` families, so a fetched description can never be
     mistaken for one staged to be written. No new `.ai/project.yml` key.
+    *Amended by `#1516`: the `findings` mode's fold is the one place a `read-` file is joined into a file that is
+    then written: a freshly fetched `read-` copy of the task body, then one blank line and the screened section,
+    joined with `cat`.*
   - **Side-finding from the same run: `due_on` is always sent as midday UTC.** A milestone
     created with `due_on=2026-10-16T00:00:00Z` stored 2026-10-15; the skill's date-only
     read-back caught it, and resending as `T12:00:00Z` stored the intended day. The earlier
@@ -2473,6 +2479,8 @@ take effect. Full reasoning and the task breakdown that implements them:
        *Amended by `#757`: `HREF` and `LDEF` join `HID` as byte-for-byte copies, held by fixtures. The opener
        test stays inline in each awk program, held by behaviour fixtures and by a fixture that holds the
        two hidden-screen awk programs equal.*
+       *Amended by `#1516`: `plan-findings.sh screen` (the `findings` mode of `/way-of-working:plan-sprint`) is a
+       further copy of `HID`, `HREF`, `LDEF` and the `hidden` screen's awk program, held by fixtures.*
     9. *Amended by `#709`: the `hidden` screen now also refuses Unicode tag characters and soft
        hyphens.*
        The `hidden` check is a filter, not a boundary, and this list is not exhaustive. It refuses `<!`

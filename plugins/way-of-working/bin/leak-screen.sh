@@ -3,7 +3,7 @@
 #
 # Usage: leak-screen.sh FILE
 #
-# Who calls it: /way-of-working:retro, over the transcript-reader's report (written to a file by the
+# Who calls it: plan-findings.sh `screen`, over the texts the plan-sprint findings mode composes, and /way-of-working:retro, over the transcript-reader's report (written to a file by the
 # session) before any of the report is used (#914). The reader can Read any path, so text injected
 # into a transcript could steer it to a credentials file and into its paraphrase; this is the filter
 # between that paraphrase and anything retro then does with it. A filter on obvious shapes, not a boundary: a
