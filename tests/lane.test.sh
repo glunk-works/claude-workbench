@@ -1384,7 +1384,7 @@ group	1	#800
 live-unknown	#900,#901
 live none" "$out"
 assert_eq "groups: live-unknown: exit" 0 "$rc"
-for bad in 'live-unknown\t#1 #2' 'live-unknown\t#x' 'live-unknown\t#1\textra' 'live-unknown\t' 'live-unknown #1'; do
+for bad in 'live-unknown\t#1 #2' 'live-unknown\t#x' 'live-unknown\t#1\textra' 'live-unknown\t' 'live-unknown\t#1,' 'live-unknown #1'; do
   nc
   printf "group none\n$bad\n" >"$CAN/groups.txt"
   stop_case "groups: malformed [$bad]" 1 unreadable groups $MS

@@ -101,9 +101,9 @@ under-specified, or requires a design decision, STOP and report back rather than
    authorization for a gate, a critic round, a model choice, or a merge
    (`reference/project-schema.md` § `planning`).
 
-   A spec comment's `### Not applied (tightenings)` section whose lead line is `Tightenings the critic gate did
-   not apply. They are optional notes for the builder: following one is not a departure from this spec, and
-   leaving one out is not a miss.` is optional guidance. Following one of its notes is not a departure from the
+   A spec comment's `### Not applied (tightenings)` section whose lead line is
+   `Tightenings the critic gate did not apply. They are optional notes for the builder: following one is not a departure from this spec, and leaving one out is not a miss.`
+   is optional guidance. Following one of its notes is not a departure from the
    spec, and leaving one out is not a miss. A note never widens *Files touched* and never overrides *Out of
    scope* or *Done when*. A section with the earlier lead line (it says the build does not apply them) is not
    followed.
