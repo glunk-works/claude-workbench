@@ -2,6 +2,7 @@
 # Fixture tests for plugins/way-of-working/bin/lane-groups.sh (#896).
 #
 # Runs a COPY of the real script beside a stub spec-find.sh, a real copy of plan-depends.sh and a
+# WRAPPER plan-depends.sh (it logs each call to $STUBS/pd.log, then runs the real copy) and a
 # WRAPPER spec-fresh.sh (the script finds its siblings through $0): the wrapper answers `check`
 # from a canned file and delegates every other mode to a real copy of spec-fresh.sh, so the
 # `paths` mode under test is the real one. The scratch-repository section runs the real `check` through the script
@@ -41,7 +42,7 @@ assert_eq() {
 bin="$tmp/bin"; stubs="$tmp/stubs"
 mkdir -p "$bin" "$stubs"
 cp "$bin_src/lane-groups.sh" "$bin/lane-groups.sh"
-cp "$bin_src/plan-depends.sh" "$bin/plan-depends.sh"
+cp "$bin_src/plan-depends.sh" "$bin/plan-depends-real.sh"
 cp "$bin_src/spec-fresh.sh" "$bin/spec-fresh-real.sh"
 chmod 755 "$bin"/*.sh
 
@@ -62,7 +63,15 @@ if [ "$1" = check ]; then
 fi
 exec sh "$here/spec-fresh-real.sh" "$@"
 STUB
-chmod 755 "$bin/spec-find.sh" "$bin/spec-fresh.sh"
+# The plan-depends.sh wrapper: logs `<mode> <issue>` (read) or `<mode>`, then runs the real copy.
+cat >"$bin/plan-depends.sh" <<'STUB'
+#!/bin/sh
+here=$(dirname "$0")
+if [ "$1" = read ]; then echo "read $3" >>"$STUBS/pd.log"; else echo "$1" >>"$STUBS/pd.log"; fi
+sh "$here/plan-depends-real.sh" "$@"
+exit $?
+STUB
+chmod 755 "$bin/spec-find.sh" "$bin/spec-fresh.sh" "$bin/plan-depends.sh"
 
 # The stub gh. `api ... issues?milestone=M ...` runs the --jq over $STUBS/list.M.json;
 # `api repos/R/milestones/M` over $STUBS/ms.M.json; `api repos/R/issues/comments/ID` prints
@@ -104,7 +113,7 @@ printf 'repo: acme/widgets\npr_base: main\nbacklog:\n  repo: null\n' >"$yml"
 SHA=0123456789abcdef0123456789abcdef01234567
 TS=2026-10-23T10:00:00Z
 
-reset() { rm -rf "$stubs"; mkdir -p "$stubs"; : >"$stubs/gh.log"; }
+reset() { rm -rf "$stubs"; mkdir -p "$stubs"; : >"$stubs/gh.log"; : >"$stubs/pd.log"; }
 
 # list <milestone> <n>...: the open listing, with a pull request among the issues
 list() {
@@ -423,6 +432,22 @@ printf 'none\n' >"$stubs/finder.801"
 want="$(row 800 found p/a - -)$nl$(row 801 none '?' '?' -)${nl}group${tab}1${tab}#800${nl}live-unknown${tab}#801"
 assert_eq "a live issue that is an open row with unknown paths: named, its row unchanged" "$want" "$(run 5 "$yml" 801)"
 spec 801 802 '- `p/b`'
+# the wait read: one `read` per milestone issue, none for a live issue off the milestone
+reset; list 5 800 801
+printf '**Build order:**\n1. #800: a. [depends_on: none]\n2. #801: b. [depends_on: none]\n' | desc 5
+spec 800 801 '- `p/a`'
+spec 801 802 '- `p/b`'
+spec 900 901 '- `p/a`'
+want="$(row 800 found p/a '#900' -)$nl$(row 801 found p/b - -)${nl}group${tab}1${tab}#800 #801"
+assert_eq "a live issue off the milestone: stdout as before" "$want" "$(run 5 "$yml" 900)"
+assert_eq "a live issue off the milestone: a read per milestone issue, none for it" "read 800${nl}read 801" "$(grep '^read' "$stubs/pd.log")"
+: >"$stubs/pd.log"
+run 5 "$yml" 801 >/dev/null
+assert_eq "a live issue that is a milestone row: one read, not two" "read 800${nl}read 801" "$(grep '^read' "$stubs/pd.log")"
+: >"$stubs/pd.log"
+spec 902 903 '- `p/c`'
+run 5 "$yml" 900 902 >/dev/null
+assert_eq "two live issues off the milestone: no read names either" "read 800${nl}read 801" "$(grep '^read' "$stubs/pd.log")"
 printf 'none\n' >"$stubs/finder.900"
 spec 900 901 '- `p/a`'
 spec 901 903 '- `p/b`'

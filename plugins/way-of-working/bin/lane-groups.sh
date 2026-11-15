@@ -41,7 +41,7 @@
 # a milestone row's are (the same finder, comment fetch, `spec-fresh.sh check` and `paths`, the same
 # path rule; a state other than `found` or `stale` gives unknown paths). Such a row only fills the
 # `shared` field of the milestone rows: it is never printed, never in a group, never counted as
-# open for the waits and never makes another row's paths unknown. A live issue that is already open
+# open for the waits and never makes another row's paths unknown; such a row reads no wait. A live issue that is already open
 # on the milestone adds nothing to `shared`, since it has a row. A live issue with unknown paths,
 # either kind, is named on the trailing `live-unknown` line. With no live issues, or none with
 # unknown paths, the output is unchanged.
@@ -207,9 +207,11 @@ if o=$("$pd" order "$tmp/desc" 2>/dev/null </dev/null); then
 fi
 
 # --- one row per issue ---------------------------------------------------------------------
-# row_of <issue> prints that issue's row: number, state, paths, wait kind, wait list.
+# row_of <issue> [nowait] prints that issue's row: number, state, paths, wait kind, wait list;
+# `nowait` skips the wait read (the defaults print), for rows whose waits are never used.
 row_of() {
   n=$1
+  nw=${2:-}
   state=unreadable
   paths='?'
   have=0
@@ -268,7 +270,7 @@ row_of() {
   # the wait kind: ind, after <list> or all
   wkind=all
   wlist=
-  if [ "$order_ok" -eq 1 ]; then
+  if [ "$order_ok" -eq 1 ] && [ "$nw" != nowait ]; then
     if r=$("$pd" read "$tmp/desc" "$n" 2>/dev/null </dev/null); then
       case "$r" in
         *'
@@ -297,7 +299,7 @@ for n in $live; do
   while IFS= read -r m || [ -n "$m" ]; do
     [ "$m" = "$n" ] && onms=1
   done <"$tmp/nums"
-  [ "$onms" -eq 1 ] || row_of "$n" >>"$tmp/xrows"
+  [ "$onms" -eq 1 ] || row_of "$n" nowait >>"$tmp/xrows"
 done
 
 # --- shared paths, waits and groups ----------------------------------------------------------
