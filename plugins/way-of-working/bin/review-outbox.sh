@@ -42,7 +42,7 @@
 #           git, yq and jq.
 # findings  copies <file> to findings.json only if it passes the launcher's findings rules plus
 #           the outbox reader's file cap. A refusal prints one reason word: not-regular, too-big,
-#           control, unreadable, shape, count, title, body, type, area, mention or secret. Needs jq.
+#           control, unreadable, shape, count, title, body, type, area, paths, mention or secret. Needs jq.
 # verdict   writes the word and a newline to the outbox file `verdict`: `pass`, or `changes-needed`
 #           when the review has at least one blocking finding. Any other word, or a malformed <sha>, is
 #           exit 2. <sha> gets the same environment-equality guard as outcome (a wrong one refuses
@@ -247,7 +247,7 @@ case $cmd in
     jq -e . <"$F" >/dev/null 2>&1 || nf unreadable
     jq -e -s 'length == 1 and (.[0] | type) == "array"' <"$F" >/dev/null 2>&1 || nf shape
     jq -e 'all(.[]; type == "object"
-        and ((keys - ["area"]) | sort) == ["body", "title", "type"]
+        and ((keys - ["area", "paths"]) | sort) == ["body", "title", "type"]
         and (.title | type) == "string" and (.body | type) == "string" and (.type | type) == "string"
         and ((has("area") | not) or (.area | type) == "string"))' <"$F" >/dev/null 2>&1 || nf shape
     jq -e 'length <= 5' <"$F" >/dev/null 2>&1 || nf count
@@ -255,8 +255,9 @@ case $cmd in
     jq -e 'all(.[]; (.body | utf8bytelength) <= 4000)' <"$F" >/dev/null 2>&1 || nf body
     jq -e 'all(.[]; .type == "bug" or .type == "feature" or .type == "chore" or .type == "docs")' <"$F" >/dev/null 2>&1 || nf type
     jq -e 'all(.[]; (has("area") | not) or (.area | test("\\Aarea/[a-z0-9-]+\\z")))' <"$F" >/dev/null 2>&1 || nf area
+    jq -e 'all(.[]; (has("paths") | not) or (.paths | type == "array" and length >= 1 and length <= 5 and all(.[]; type == "string" and length >= 1 and length <= 200 and test("\\A[A-Za-z0-9._][A-Za-z0-9._/-]*\\z") and (split("/") | all(. != "" and . != "." and . != "..")))))' <"$F" >/dev/null 2>&1 || nf paths
     jq -e 'all(.[]; ((.title | explode | any(. < 32 or (. >= 127 and . <= 159))) or (.body | explode | any((. < 32 and . != 9 and . != 10) or (. >= 127 and . <= 159)))) | not)' <"$F" >/dev/null 2>&1 || nf control
-    jq -r '.[] | .title, .body' <"$F" >"$SCRATCH/text" 2>/dev/null || nf unreadable
+    jq -r '.[] | .title, .body, (.paths // [])[]' <"$F" >"$SCRATCH/text" 2>/dev/null || nf unreadable
     if has_mention "$SCRATCH/text"; then nf mention; fi
     if has_secret "$SCRATCH/text"; then nf secret; fi
 

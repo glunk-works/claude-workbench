@@ -402,6 +402,7 @@ EOF
   printf '{"check_runs":[{"name":"ci","status":"completed","conclusion":"success"},{"name":"gate","status":"completed","conclusion":"skipped"}]}\n' >"$g/repos_o_r_commits_${SHA}_check-runs"
   printf '[]\n' >"$g/repos_o_r_pulls_7_reviews"
   for l in bug feature chore docs; do printf '{"name":"type/%s"}\n' "$l" >"$g/repos_o_backlog_labels_type%2F$l"; done
+  printf '[]\n' >"$g/repos_o_backlog_issues_state_open_per_page_100"; printf '[]\n' >"$g/repos_o_r_issues_state_open_per_page_100"
   : >"$STUB/events"; : >"$STUB/docker.calls"; : >"$STUB/gh.calls"; : >"$STUB/mint.calls"
   set_compare ahead 2 '[{"filename":"docs/readme.md"}]'
   set_outcome "review 7 $SHA"
@@ -455,11 +456,11 @@ run() {
 # What must hold across every run: the stub gh's write surface, tokens and config; the credential.
 invariants() {
   if [ -f "$STUB/gh.calls" ] && [ -s "$STUB/gh.calls" ]; then
-    badw=$(awk -F'|' '
+    badw=$(awk -F'|' -v alt="${ALT_REPO:-r}" '
       $7 == "graphql" { next }
       $5 == "" && $8 == "" { next }
-      $5 == "POST" && $8 != "" && $7 == "repos/o/r/pulls/7/reviews" { next }
-      $5 == "POST" && $8 != "" && ($7 == "repos/o/r/issues" || $7 == "repos/o/backlog/issues") { next }
+      $5 == "POST" && $8 != "" && ($7 == "repos/o/r/pulls/7/reviews" || $7 == "repos/o/" alt "/pulls/7/reviews") { next }
+      $5 == "POST" && $8 != "" && ($7 == "repos/o/r/issues" || $7 == "repos/o/backlog/issues" || $7 == "repos/O/R/issues") { next }
       $5 == "DELETE" && $8 == "" && $7 == "installation/token" { next }
       { print }' "$STUB/gh.calls")
     [ -z "$badw" ] || bad "a gh write other than the three allowed: $badw"
@@ -549,6 +550,17 @@ findings_case() { # findings_case <label> <code> <findings json>
   assert_eq "findings ($1): the footer" "Host: findings not filed ($2)" "$(post_body | tail -1)"
   assert_eq "findings ($1): nothing filed" 0 "$(n_issues)"
 }
+issue_in() { grep '|POST||repos/o/[a-z]*/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}'; }
+issue_f() { jq -r "$1" <"$STUB/inputs/$(issue_in)"; } # issue_f <jq expr>: a field of the backlog issue request
+set_open() { printf '%s\n' "$1" >"$STUB/gh/repos_o_backlog_issues_state_open_per_page_100"; }
+open_issue() { # open_issue <number> <uid> <body> [pr]: one element of the open-issues list
+  jq -nc --argjson n "$1" --argjson u "$2" --arg b "$3" --arg pr "${4:-}" '{number: $n, user: {id: $u}, body: $b} + (if $pr == "" then {} else {pull_request: {}} end)'
+}
+fnd_body() { # fnd_body <ticked: " " or X> <title> [paths line]: an earlier launcher issue body with one finding
+  printf 'Non-blocking findings from the automated architect review of o/r#3 at abc: https://github.com/o/r/pull/3#pullrequestreview-1. Written by the review session; not yet read by a human.\n\n- [%s] Finding 1\n\n' "$1"
+  [ -z "${3:-}" ] || printf '  %s\n\n' "$3"
+  printf '  ```\n  %s\n  \n  detail\n  ```' "$2"
+}
 FIND1='[{"title":"T","body":"b","type":"bug"}]'
 BEFORE=2026-10-17T16:00:00Z; AFTER=2026-10-17T17:00:00Z; SUBMITTED=2026-10-17T16:35:56Z
 glog() { cat "$home"/review-logs/*.log; }
@@ -613,7 +625,7 @@ sec_golden() {
 # =========================================================================================
 new_case
 set_yml '.backlog.repo = "o/backlog"'
-set_findings '[{"title":"Missing test for x","body":"Detail with a ```` run of four backticks.","type":"bug","area":"area/x"},{"title":"Second with a ``` run","body":"plain","type":"docs"}]'
+set_findings '[{"title":"Missing test for x","body":"Detail with a ```` run of four backticks.","type":"bug","area":"area/x","paths":["scripts/a.sh","docs/b.md"]},{"title":"Second with a ``` run","body":"plain","type":"docs"}]'
 mkdir -p "$home/review-tokens/r"; printf 'untouched\n' >"$home/review-tokens/r/reviewer-token"
 printf 'x\n' >"$STUB/wait.sleep.unused"; printf '3\n' >"$STUB/wait.sleep"
 run o/r 7
@@ -764,12 +776,14 @@ check "golden: both networks removed" has "$STUB/events" "docker-net-rm wow-revi
 check "golden: both volumes removed" has "$STUB/events" "docker-vol-rm -f wow-review-work-"
 check "golden: the lock was released during the wait" has "$STUB/wait.notes" lock-gone
 # the footer, filing
-assert_eq "golden: the issue title" "triage the non-blocking findings from the review of o/r#7 at $(printf '%.12s' "$SHA")" "$(jq -r .title <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "golden: the issue title" "triage findings from r#7: Missing test for x; Second with a \`\`\` run" "$(jq -r .title <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
 assert_eq "golden: the issue request has exactly title, body and labels" 'body,labels,title' "$(jq -r 'keys | join(",")' <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
 assert_eq "golden: the issue body, a fenced item per finding" \
   "Non-blocking findings from the automated architect review of o/r#7 at $SHA: https://github.com/o/r/pull/7#pullrequestreview-555. Written by the review session; not yet read by a human.
 
 - [ ] Finding 1
+
+  Paths: \`scripts/a.sh\`, \`docs/b.md\`
 
   \`\`\`\`\`
   Missing test for x
@@ -778,6 +792,8 @@ assert_eq "golden: the issue body, a fenced item per finding" \
   \`\`\`\`\`
 
 - [ ] Finding 2
+
+  Paths: none
 
   \`\`\`\`
   Second with a \`\`\` run
@@ -1480,6 +1496,104 @@ new_case; set_findings '[{"title":"T","body":"b","type":"bug"},{"title":"U","bod
 run o/r 7
 assert_eq "a failed create files nothing, the exit stays 0" 0 "$rc"
 assert_eq "a failed create: the ledger is empty or absent" "" "$(cat "$(entry_dir)/filed" 2>/dev/null)"
+
+# --- paths ------------------------------------------------------------------------------------
+findings_case "paths not an array" findings-paths '[{"title":"t","body":"b","type":"bug","paths":"a/b"}]'
+findings_case "an empty paths array" findings-paths '[{"title":"t","body":"b","type":"bug","paths":[]}]'
+findings_case "six paths" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a","b","c","d","e","f"]}]'
+findings_case "a non-string path" findings-paths '[{"title":"t","body":"b","type":"bug","paths":[1]}]'
+findings_case "a path of 201 characters" findings-paths "$(jq -nc '[{title:"t",body:"b",type:"bug",paths:[("a"*201)]}]')"
+findings_case "a leading dash" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["-a"]}]'
+findings_case "a leading slash" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["/a"]}]'
+findings_case "a trailing slash" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a/"]}]'
+findings_case "an empty segment" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a//b"]}]'
+findings_case "a dot segment" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a/./b"]}]'
+findings_case "a dot-dot segment" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a/../b"]}]'
+findings_case "a space in a path" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a b"]}]'
+findings_case "a backtick in a path" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a`b"]}]'
+findings_case "a token-shaped path" findings-secret '[{"title":"t","body":"b","type":"bug","paths":["ghp_0123456789abcdefghijklmnopqrstuvwxyzABCD"]}]'
+
+# --- the title ---------------------------------------------------------------------------------
+title_case() { # title_case <label> <expected title> <findings json> [yq edit]
+  new_case; [ -z "${4:-}" ] || set_yml "$4"
+  set_findings "$3"
+  run o/r 7
+  assert_eq "title ($1): one issue" 1 "$(n_issues)"
+  assert_eq "title ($1): the title" "$2" "$(issue_f .title)"
+}
+BL='.backlog.repo = "o/backlog"'
+T30a=$(printf 'a%.0s' $(seq 1 30)); T30b=$(printf 'b%.0s' $(seq 1 30)); T120=$(printf 'x%.0s' $(seq 1 120))
+title_case "one finding" "triage findings from r#7: T" "$FIND1" "$BL"
+title_case "two findings that fit" "triage findings from r#7: T; U" '[{"title":"T","body":"b","type":"bug"},{"title":"U","body":"b","type":"bug"}]' "$BL"
+title_case "four findings" "triage findings from r#7: a; b +2" '[{"title":"a","body":"b","type":"bug"},{"title":"b","body":"b","type":"bug"},{"title":"c","body":"b","type":"bug"},{"title":"d","body":"b","type":"bug"}]' "$BL"
+title_case "only the first fits" "triage findings from r#7: $T30a +1" "[{\"title\":\"$T30a\",\"body\":\"b\",\"type\":\"bug\"},{\"title\":\"$T30b\",\"body\":\"b\",\"type\":\"bug\"}]" "$BL"
+title_case "the first is cut" "triage findings from r#7: $(printf 'x%.0s' $(seq 1 40))... +1" "[{\"title\":\"$T120\",\"body\":\"b\",\"type\":\"bug\"},{\"title\":\"y\",\"body\":\"b\",\"type\":\"bug\"}]" "$BL"
+title_case "a null backlog names the PR as #N" "triage findings from #7: T" "$FIND1"
+new_case; set_yml '.backlog.repo = "O/R"'; set_findings "$FIND1"
+printf '[]\n' >"$STUB/gh/repos_O_R_issues_state_open_per_page_100"
+run o/r 7
+assert_eq "title (the backlog in other letter case): one issue" 1 "$(grep -c '|POST||repos/O/R/issues|' "$STUB/gh.calls")"
+assert_eq "title (the backlog in other letter case): #N" "triage findings from #7: T" "$(jq -r .title <"$STUB/inputs/$(grep '|POST||repos/O/R/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+
+# a PR repository name too long for any subject: the lead stays whole, the count covers every finding
+LONG=$(printf 'n%.0s' $(seq 1 50))
+new_case; set_yml "$BL"; set_findings '[{"title":"T","body":"b","type":"bug"},{"title":"U","body":"b","type":"bug"}]'
+ALT_REPO=$LONG; export ALT_REPO
+for f in "$STUB"/gh/*o_r*; do mv "$f" "$(printf '%s' "$f" | sed "s/o_r\([^a-z]\|\$\)/o_${LONG}\1/")"; done
+for f in "$STUB"/gh/*; do sed -i "s#o/r\([^a-z]\|\$\)#o/$LONG\1#g" "$f"; done
+run "o/$LONG" 7
+assert_eq "title (a long repository name): one issue" 1 "$(n_issues)"
+assert_eq "title (a long repository name): REF whole, every finding counted" "triage findings from $LONG#7 +2" "$(issue_f .title)"
+unset ALT_REPO
+
+# --- the repeat check --------------------------------------------------------------------------
+RF='[{"title":"Alpha one","body":"b1","type":"bug"},{"title":"Beta two","body":"b2","type":"docs"},{"title":"Gamma three","body":"b3","type":"docs"}]'
+# no match: filed as before
+new_case; set_yml "$BL"; set_findings "$RF"
+set_open "[$(open_issue 50 4242 "$(fnd_body ' ' 'Something else' 'Paths: none')")]"
+run o/r 7
+assert_eq "repeat check (no match): filed" 1 "$(n_issues)"
+assert_eq "repeat check (no match): no linked line" 0 "$(issue_f .body | grep -c 'also reported')"
+assert_eq "repeat check (no match): three items" 3 "$(issue_f .body | grep -c '^- \[ \] Finding')"
+# a match: linked, not an item; other authors, pull requests and non-matches are not named
+new_case; set_yml "$BL"; set_findings "$RF"
+set_open "[$(open_issue 50 4242 "$(fnd_body X 'Alpha one' | sed 's/$/\r/')"), $(open_issue 51 4242 "$(fnd_body ' ' '  alpha   ONE ' 'Paths: `a`')"), $(open_issue 52 4242 "$(fnd_body ' ' 'Beta two' 'Paths: none')" pr), $(open_issue 53 9999 "$(fnd_body ' ' 'Beta two' 'Paths: none')")]"
+run o/r 7
+assert_eq "repeat check (match): filed" 1 "$(n_issues)"
+assert_eq "repeat check (match): the linked line, ascending" "- Finding 1: also reported in #50, #51" "$(issue_f .body | grep 'also reported')"
+assert_eq "repeat check (match): the items are Findings 2 and 3 only" "- [ ] Finding 2
+- [ ] Finding 3" "$(issue_f .body | grep '^- \[ \] Finding')"
+assert_eq "repeat check (match): the linked line is after the items" "" "$(issue_f .body | sed -n '/also reported/,$p' | grep -v 'also reported' | grep -v '^$')"
+assert_eq "repeat check (match): the title is built from the rest" "triage findings from r#7: Beta two; Gamma three" "$(issue_f .title)"
+assert_eq "repeat check (match): labels from the rest" '["type/docs"]' "$(issue_f '.labels | tojson')"
+assert_eq "repeat check (match): the pull request and the other author are not named" 0 "$(issue_f .body | grep -c '#52\|#53')"
+# an old-format body parses: this one has no Paths line
+new_case; set_yml "$BL"; set_findings "$FIND1"
+set_open "[$(open_issue 60 4242 "$(fnd_body ' ' 'T')")]"
+run o/r 7
+assert_eq "repeat check (an old-format body): nothing filed" 0 "$(n_issues)"
+# all matched: no issue, the ledger unchanged, the say line
+new_case; set_yml "$BL"; set_findings '[{"title":"Alpha one","body":"b1","type":"bug"},{"title":"Beta two","body":"b2","type":"bug"}]'
+set_open "[$(open_issue 70 4242 "$(fnd_body ' ' 'Alpha one' 'Paths: none')"), $(open_issue 71 4242 "$(fnd_body ' ' 'beta TWO' 'Paths: none')")]"
+run o/r 7
+assert_eq "repeat check (all matched): exit 0" 0 "$rc"
+assert_eq "repeat check (all matched): no issue POST" 0 "$(n_issues)"
+assert_eq "repeat check (all matched): the ledger is empty or absent" "" "$(cat "$(entry_dir)/filed" 2>/dev/null)"
+check "repeat check (all matched): the say line names the issues" grep -qF 'every finding is already reported in the open issues #70, #71; nothing filed' "$tmp/err"
+assert_eq "repeat check (all matched): the footer is the one posted before filing" "Host: 2 findings will be filed in o/backlog" "$(post_body | tail -1)"
+# a finding body that holds its own item line and fence contributes no title
+new_case; set_yml "$BL"; set_findings '[{"title":"fake title","body":"b","type":"bug"}]'
+EARLIER=$(printf 'Intro\n\n- [ ] Finding 1\n\n  Paths: none\n\n  ````\n  Real one\n\n  - [ ] Finding 9\n  ```\n  fake title\n  ```\n  ````')
+set_open "[$(open_issue 80 4242 "$EARLIER")]"
+run o/r 7
+assert_eq "repeat check (an inner item line): the inner title is not a title" 1 "$(n_issues)"
+# a failed open-issues read files nothing
+new_case; set_yml "$BL"; set_findings "$FIND1"
+: >"$STUB/gh/repos_o_backlog_issues_state_open_per_page_100.fail"
+run o/r 7
+assert_eq "repeat check (a failed read): exit 0" 0 "$rc"
+assert_eq "repeat check (a failed read): nothing filed" 0 "$(n_issues)"
+check "repeat check (a failed read): said so" grep -qF 'reading the open issues failed; nothing filed' "$tmp/err"
 :
 }
 
