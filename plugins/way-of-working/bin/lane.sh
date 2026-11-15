@@ -115,7 +115,12 @@
 # wait N polls GitHub, with no model turns, for the review of lane N's PR, and prints one line.
 # Exit 0: `reviewed #P SHA WORD` (a reviewer-App review exists on PR #P's current head SHA and the
 # gate's state, resolved by review-gate-state.sh over records not older than that review's
-# `submitted_at`, is WORD, `success` or `failure`), `merged #P` or `closed #P`. Every other line
+# `submitted_at`, is WORD, `success` or `failure`), `exempt #P SHA` (no used reviewer-App review exists
+# on PR #P's current head SHA, and the gate resolves to `success` there through review-gate-state.sh
+# with no record dropped by time, attributed by the rule in wait_attribute: the newest status for the
+# gate's context is `success`, or with no such status a passing gate check-run exists, and under a
+# `required_status_checks` pin on that context in the base branch's rules, from the pinned app),
+# `merged #P` or `closed #P`. Every other line
 # is a stop and exits 1 (`no-gate`, `no-pr`, `timeout #P`, and the words above). Stage 1 looks for
 # the open PR every 120 seconds (at most 120 polls), stage 2 polls it every 90 seconds (at most 120
 # polls). The head is re-read every poll, so a push after a review keeps it waiting for a review
@@ -124,8 +129,13 @@
 # default branch's project file (`identities.reviewer_app`, `review.ci_gate.check`).
 # Two stated limits: the wait reports only to the session that started it; and it ends `reviewed`
 # only on a PR the gate reviews. A PR the gate exempts (it touches nothing under the gate's
-# triggers, so the gate posts `success` with no review), and, in a repo whose `pr_base` is not
-# the default branch, every lane PR, gets no review, so its wait never ends `reviewed`.
+# triggers, so the gate posts `success` with no review) ends `exempt` instead of `timeout #P`; in a
+# repo whose `pr_base` is not the default branch, every lane PR gets no review, so its wait never ends
+# `reviewed`. Two residuals of `exempt`: where the base rule pins the gate's context to no app, any
+# writer of that context's statuses or check-runs can produce it; and a review dismissed after the
+# gate posted `success` leaves that `success` standing, so such a head ends `exempt` too. The head is
+# re-read every poll, so a push that adds a gated path sends the gate back to pending or failure and
+# the wait back to waiting for a review.
 #
 # GitHub host. The script unsets GH_HOST and GH_ENTERPRISE_TOKEN once at the top. Each gh call
 # names its host or repository explicitly (--hostname github.com, --repo, a repos/ path);
@@ -1089,16 +1099,34 @@ wait_poll() {
     }
     END { if (bad) exit 3; print max }' "$TMP/w3.tsv" >"$TMP/w3.out" || return 2
   wp_rt=$(cat "$TMP/w3.out") || return 2
-  [ -n "$wp_rt" ] || return 1
+  [ -n "$wp_rt" ] || { wait_exempt; return $?; }
   # the gate on the head, on both surfaces, no record older than that review
+  wait_gate "$wp_rt" '' || return 2
+  case "$wp_word" in
+    success | failure) printf 'reviewed #%s %s %s\n' "$P" "$wp_sha" "$wp_word"; exit 0 ;;
+    pending | absent) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+# wait_gate RT APPJQ: resolves the gate's state on the head into wp_word; 1 when a read or check
+# failed. RT is a review's submitted_at (a gate record older than it is dropped) or empty (none is
+# dropped). APPJQ is empty, or a jq tail that adds the check-run's app id as one more column.
+wait_gate() {
+  wg_cols='.status, (.conclusion // ""), (.started_at // "")'
+  wg_nf=5
+  if [ -n "$2" ]; then
+    wg_cols="$wg_cols, $2"
+    wg_nf=6
+  fi
   gh api --paginate "repos/$NAME/commits/$wp_sha/status" \
     --jq '.statuses[] | ["status", .context, .state, (.created_at // "")] | @tsv' \
     >"$TMP/g1.tsv" 2>/dev/null \
     && gh api --paginate "repos/$NAME/commits/$wp_sha/check-runs" \
-      --jq '.check_runs[] | ["check-run", .name, .status, (.conclusion // ""), (.started_at // "")] | @tsv' \
+      --jq ".check_runs[] | [\"check-run\", .name, $wg_cols] | @tsv" \
       >"$TMP/g2.tsv" 2>/dev/null \
-    && W_RT=$wp_rt W_GATE=$W_GATE W_TS=$W_TS awk -F'\t' -v OFS='\t' '
-      BEGIN { rt = ENVIRON["W_RT"]; gate = ENVIRON["W_GATE"]; shape = ENVIRON["W_TS"] }
+    && W_RT=$1 W_NF=$wg_nf W_GATE=$W_GATE W_TS=$W_TS awk -F'\t' -v OFS='\t' '
+      BEGIN { rt = ENVIRON["W_RT"]; gate = ENVIRON["W_GATE"]; shape = ENVIRON["W_TS"]; cnf = ENVIRON["W_NF"] + 0 }
       $1 == "status" {
         if (NF != 4) { bad = 1; exit }
         if ("" $2 == "" gate) {
@@ -1109,7 +1137,7 @@ wait_poll() {
         next
       }
       $1 == "check-run" {
-        if (NF != 5) { bad = 1; exit }
+        if (NF != cnf) { bad = 1; exit }
         if ("" $2 == "" gate) {
           if ($5 == "") { print $1, $2, "pending", ""; next }
           if ($5 !~ shape) { bad = 1; exit }
@@ -1120,12 +1148,95 @@ wait_poll() {
       }
       { bad = 1; exit }
       END { exit bad }' "$TMP/g1.tsv" "$TMP/g2.tsv" >"$TMP/g3.tsv" \
-    && wp_word=$(sh "$BIN/review-gate-state.sh" "$W_GATE" <"$TMP/g3.tsv" 2>/dev/null) || return 2
+    && wp_word=$(sh "$BIN/review-gate-state.sh" "$W_GATE" <"$TMP/g3.tsv" 2>/dev/null) || return 1
+  return 0
+}
+
+# wait_exempt: no used review on the head. Ends the script with `exempt` when the gate resolves
+# to success on the head and passes wait_attribute; 1 for not yet, 2 for a failed read.
+wait_exempt() {
+  wait_gate '' '(.app.id // "" | tostring)' || return 2
   case "$wp_word" in
-    success | failure) printf 'reviewed #%s %s %s\n' "$P" "$wp_sha" "$wp_word"; exit 0 ;;
-    pending | absent) return 1 ;;
+    success) ;;
+    pending | failure | absent) return 1 ;;
     *) return 2 ;;
   esac
+  we_rc=0
+  wait_attribute || we_rc=$?
+  [ "$we_rc" -eq 0 ] || return "$we_rc"
+  printf 'exempt #%s %s\n' "$P" "$wp_sha"
+  exit 0
+}
+
+# wait_attribute: whether the gate's success comes from where the base branch's rule says it must.
+# It applies the order of /way-of-working:pr-checks's (a2) block, pinned or not: the gate
+# context's newest status, if any, decides alone (success, and under a pin from the pinned app,
+# matched through its Bot creator `<slug>[bot]` and GET apps/<slug>); with no status for the
+# context, a passing gate check-run counts (under a pin, from the pinned app, read from g2.tsv's
+# app id column). 0 for met, 1 for unmet, 2 for a failed read or a row that fails its checks.
+wait_attribute() {
+  gh api --paginate "repos/$NAME/rules/branches/$BASE" \
+    --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | [((.integration_id // "") | tostring), (.context // "")] | @tsv' \
+    >"$TMP/a1.tsv" 2>/dev/null \
+    && gh api --paginate "repos/$NAME/commits/$wp_sha/statuses" \
+      --jq '.[] | [(.creator.type // ""), (.creator.login // ""), (.state // ""), (.context // "")] | @tsv' \
+      >"$TMP/a2.tsv" 2>/dev/null \
+    && W_GATE=$W_GATE awk -F'\t' '
+      BEGIN { gate = ENVIRON["W_GATE"] }
+      NF != 2 { bad = 1; exit }
+      "" $2 == "" gate {
+        if ($1 != "" && $1 !~ /^[1-9][0-9]*$/) { bad = 1; exit }
+        if ($1 != "") print $1
+      }
+      END { exit bad }' "$TMP/a1.tsv" >"$TMP/a3.txt" \
+    && W_GATE=$W_GATE awk -F'\t' -v OFS='\t' '
+      BEGIN { gate = ENVIRON["W_GATE"] }
+      NF != 4 { bad = 1; exit }
+      "" $4 == "" gate {
+        if ($3 !~ /^(error|failure|pending|success)$/) { bad = 1; exit }
+        if (!seen) { seen = 1; print $1, $2, $3 }
+      }
+      END { exit bad }' "$TMP/a2.tsv" >"$TMP/a4.tsv" || return 2
+  wa_pins=$(cat "$TMP/a3.txt") || return 2
+  if [ -s "$TMP/a4.tsv" ]; then
+    wa_type=$(cut -f1 "$TMP/a4.tsv") || return 2
+    wa_login=$(cut -f2 "$TMP/a4.tsv") || return 2
+    wa_state=$(cut -f3 "$TMP/a4.tsv") || return 2
+    [ "$wa_state" = success ] || return 1
+    [ -n "$wa_pins" ] || return 0
+    wa_slug=
+    case "$wa_login" in *'[bot]') wa_slug=${wa_login%'[bot]'} ;; esac
+    case "$wa_slug" in '' | [!a-z0-9]* | *[!a-z0-9_-]*) wa_slug= ;; esac
+    [ "$wa_type" = Bot ] || wa_slug=
+    [ -n "$wa_slug" ] || return 1
+    wa_id=$(gh api --hostname github.com "apps/$wa_slug" --jq .id </dev/null 2>/dev/null) || return 2
+    num_ok "$wa_id" || return 2
+    for wa_pin in $wa_pins; do
+      [ "$wa_pin" = "$wa_id" ] || return 1
+    done
+    return 0
+  fi
+  # no status for the context: a completed passing gate check-run, from the pinned app under a pin
+  if [ -z "$wa_pins" ]; then
+    wait_run_hit '' || return $?
+    return 0
+  fi
+  for wa_pin in $wa_pins; do
+    wait_run_hit "$wa_pin" || return $?
+  done
+  return 0
+}
+
+# wait_run_hit PIN: 0 when g2.tsv holds a completed gate check-run that passed (success, neutral or
+# skipped) and, with a PIN, carries that app id; 1 when none does; 2 for a failed read.
+wait_run_hit() {
+  wh_out=$(W_GATE=$W_GATE W_PIN=$1 awk -F'\t' '
+    BEGIN { gate = ENVIRON["W_GATE"]; pin = ENVIRON["W_PIN"] }
+    $1 == "check-run" && "" $2 == "" gate && $3 == "completed" \
+      && ($4 == "success" || $4 == "neutral" || $4 == "skipped") \
+      && (pin == "" || "" $6 == "" pin) { print "hit"; exit }' "$TMP/g2.tsv") || return 2
+  [ -n "$wh_out" ] || return 1
+  return 0
 }
 
 lane_wait() {

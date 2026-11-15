@@ -143,27 +143,35 @@ by hand, or merged and cleaned up with `done`.
 
 ## wait `N`
 
-Run `lane.sh wait N` with the Bash tool's background option (`run_in_background`), once, right
-after handing over the lane command, never in a model-turn loop, `/loop` or a subagent. It polls
+Run `lane.sh wait N` with the Bash tool's background option (`run_in_background`) and its `timeout`
+set to the tool's maximum for a background command, once, right after handing over the lane
+command, never in a model-turn loop, `/loop` or a subagent. It polls
 GitHub with no model turns and prints one line; the harness re-invokes the session when it exits.
 Print that line and act on it:
 
 - `reviewed #P SHA WORD`: a reviewer-App review exists on the PR's current head and the gate is
   final. Run `/way-of-working:pr-checks` on the PR, then give the driver's own merge assessment of
   the review and the diff against the spec before the maintainer approves.
+- `exempt #P SHA`: the gate reads `success` on the PR's current head and no live reviewer-App
+  review exists there, so no reviewer saw this head. Two residuals: where the base rule pins the
+  gate's context to no app, any writer of that context's statuses or check-runs can produce this
+  line; and a review dismissed after the gate posted `success` leaves that `success` standing.
+  Run `/way-of-working:pr-checks` on the PR; the driver's own merge assessment of the diff against
+  the spec is the only review before the maintainer approves.
 - `merged #P` or `closed #P`: report it. *Clean up* or *drop* follow only after the maintainer says
   the lane session has exited, as those sections say.
-- `timeout #P`: run `/way-of-working:pr-checks` on the PR, since a PR the gate exempts ends this way.
+- `timeout #P`: run `/way-of-working:pr-checks` on the PR.
 - `no-pr`, `unreadable`, `no-gate` or any other stop word: report it, and start the wait again only
   when the maintainer asks.
 
-A wait whose command was stopped, so it ends with exit status 1 and no line, is started again once
+A wait whose command was stopped (the harness stops a background command at its `timeout`, which
+ends it with exit status 1 and no line), is started again once
 with the same command. Any other end without a line (a usage error, a missing script), a second one,
 or a stop the maintainer made is reported, and the wait starts again only when the maintainer asks.
 
 Two limits. The wait reports only to the session that started it, so a driver session that ends or
-restarts loses it and starts it again. And a PR the gate exempts, or any lane PR in a repo whose
-`pr_base` is not the default branch, never ends `reviewed`.
+restarts loses it and starts it again. And any lane PR in a repo whose `pr_base` is not the
+default branch never ends `reviewed`.
 
 ## What this skill never does
 
