@@ -1,22 +1,22 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 21** (cursor id `sprint-21`), status **implementing**, on milestone 21, *Identity M6: devcontainers cut over*. Its one item, #411, is now an actor-split checklist; the driver drives it with the maintainer and a host admin session.
+**Now:** **Sprint 21** (cursor id `sprint-21`), status **implementing**, on milestone 21, *Identity M6: devcontainers cut over*. Build order: #1568, then #411's step 10.
 
-**Just done (2026-11-15, driver session, opus):**
-- Confirmed this repo's pin bump (#1560) and both plugin install entries at the `v0.36.0` tag commit.
-- First real run of `/way-of-working:plan-sprint findings`: #1553, #1555 and #1558 unpacked into #1562 (milestone 33) and #1563 (milestone 29), mapping comments posted, sources closed; milestone 29 and 33 build orders written through `milestone-desc.sh` (auto mode, not denied).
-- Filed #1564 (findings mode labels combined issues; milestone 36, whose description is current) and #1566 (labels synced by workflow, suggested by PR; unmilestoned).
-- Rewrote #411's body: who does each step (the maintainer only where no session can), repo rulesets for now, devcontainers gets its own `-dev` container on the template with a pinned image tag, the host admin session runs from the plain clone; two critic rounds (docs-consistency, security-critic), last edits not re-run.
-- Recorded the interim repo-rulesets decision under WB-D24's 603-Identity amendment: merged in #1565 (`7ea9833`).
+**Just done (2026-11-15 to 16, driver session, opus):**
+- #411 steps 1 to 9 on 603-Identity/devcontainers: plugin pin `v0.36.0` (devcontainers#527), CODEOWNERS (#528), approval ruleset `main-approval` created and read back with no bypass, `restrict-updates-to-main` deleted, identities map and plugin gate (#530), old gate removed (#532), its own `.devcontainer/` (#535); `wow-readback` rows all accounted for and both audit-log searches empty.
+- #411's body kept current as steps changed: `release-tags` keeps its admin bypass until devcontainers#529; PR 3 carries no verify caller until devcontainers#534; step 10 waits on #1568.
+- Filed #1568 (a per-home tokens root, so a second org's home reaches the template's token mount) on milestone 21; milestone 21's build order written through `milestone-desc.sh`.
+- #1564's rerun picked up the answer (`ANSWERCHECK=ok apply`) and posted spec comment 6901042032; its build waits on the maintainer's reaction.
+- The security-critic item from #411's rewrite is recorded privately.
 
-**Next:** drive #411 with the maintainer and a host admin session: step 1 (the maintainer creates the 603-Identity Apps) and step 3 (a devcontainers session bumps its pin) can start in parallel; check each finished step against 603-Identity/devcontainers' public state. Alongside, once the maintainer has answered the #1564 escalation and rerun its spec, check that transcript early for `ANSWER=` and `ANSWERCHECK=ok`. Model: opus (architect).
+**Next:** launch the #1568 spec as its own `-Spec` session, check its transcript and the reaction, then run its lane; run the #1564 lane once the maintainer reacts to its spec. #411 step 10 starts only after #1568 is released and the host tools are reinstalled in both homes. Model: opus (architect).
 
-**HITL Gate: NONE OPEN** — next gate: the maintainer answers the 1564 escalation and starts step 1 of 411
+**HITL Gate: NONE OPEN** — next gate: the maintainer reacts to the 1568 spec once it posts
 
 **Maintainer actions:**
-- On #1564, post `spec-task-answer: escalated=6900755949 choice=apply` as Seuss27, then rerun `-Spec 1564`.
-- Record in the private security-audits repo the item from #411's security-critic round (given in the driver chat, 2026-11-15).
-- Before #411 step 2: confirm what the existing 603-Identity identity home on the host covers; `DEV-CONTAINER.md` does not describe a second org's home.
+- React to #1564's spec comment 6901042032 when you want its build.
+- Before #411 step 10: devcontainers' Allow auto-merge back on (step 8), if not already done; delete the temporary `devcontainers-bootstrap` clone.
+- devcontainers follow-ups, for its `-dev` container after step 10: #529 (release tags without a bypass), #531 and #533 (threat model and roadmap after the cutover), #534 (verify on its own `.devcontainer/`, plus a Dependabot entry), #536 (lint `.devcontainer/Dockerfile`).
 - #1562 and #1563: spec at lane time, not now (each is last in its milestone's build order).
 - Carried: bump each consuming repo's pin to `v0.36.0`; milestone 34 starts with #1429 (bounty-infra).
 - Carried: the host files the review findings from #1521, #1522 and #1526; #223's refresh pass; the first spec `### Trailers` squash check (#1518); resume-orchestrator PR #186 and its home-volume cleanup; the extended live-run check after the next `FROM` bump (`docs/identity/DEV-CONTAINER.md`, *Opening it*).
@@ -25,6 +25,6 @@
 **Follow-ups outside this repo (not sprint work):**
 - The remaining items of #419's private record (the Infisical identity list and the Cloudflare token audit). global-bootstrap #71 and #68 can be closed; #67 and #69 stay open. bounty-infra #196, #197 (docs) and #194 (Gemini key). loop-orchestrator #216. Delete the leftover serverless-bedrock-rag folder in Infisical.
 
-**Critic pass:** no code diff this session. The #411 body ran docs-consistency and security-critic, 2 rounds plus fixes, cap called by the driver; its final wording was not re-run.
+**Critic pass:** no code diff in this repo this session; the devcontainers PRs each had a fresh-session architect review there.
 
 **Pointers:** [docs/decisions.md](../docs/decisions.md) · [milestone 21](https://github.com/glunk-works/claude-workbench/milestone/21) · [.ai/parked/](parked/)
