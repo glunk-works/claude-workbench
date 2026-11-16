@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- With no `-WowHome`, `wow-driver.ps1` and `wow-lane.ps1` now use the identity home their installed copy sits in (the parent of its `bin`) and ignore `WOW_HOME`; a given `-WowHome` that names another home is still refused (#1577).
+
 ## [0.37.0] — 2026-11-16
 
 ### Added

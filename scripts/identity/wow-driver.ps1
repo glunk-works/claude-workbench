@@ -9,7 +9,7 @@
   "Adding a repo to this host" section of claude-workbench's docs/identity/DEV-CONTAINER.md describes
   and its .ai/project.yml at -Base holds the keys the -Reference help names.
   Run it from pwsh 7.2+ on the host, from the installed copy in
-  $WOW_HOME\bin (install-host-tools.ps1), never from a checkout.
+  an identity home's bin (install-host-tools.ps1), never from a checkout.
 
 .DESCRIPTION
   Two paths, chosen by the clone's containers: those on its <leaf>-tmp volume, plus those whose
@@ -72,13 +72,13 @@
   so those exit 2 only once a record is found;
   1 for every refusal (a one-line reason on stderr); otherwise the session's own exit code.
   PowerShell's own binding errors (an unknown parameter, a stray positional argument) exit 1 with
-  PowerShell's message.
+  PowerShell's message. With no -WowHome, a script folder not named bin is refused (exit 1) before the argument checks.
 
   Honest limit. The MANIFEST check below catches running from a checkout by mistake. It is not a
   boundary: whoever can write this script can write the MANIFEST. A container that can write the
   Reference clone can plant git config or hooks that run when this script runs git there, which is
   host code execution beside the App keys; the Reference must be a clone no container opens. git
-  never runs in the Clone, whose .git a container can write.
+  never runs in the Clone, whose .git a container can write. With no -WowHome the home is the parent of the script's final, link-resolved folder, so a link in the script path, or any installed copy in a folder named bin with a MANIFEST that matches, picks the home.
 
 .PARAMETER Repo
   owner/name, each half letters, digits, . _ -: the repository whose driver record supplies -Clone and
@@ -95,7 +95,8 @@
   record's origin when there is one.
 
 .PARAMETER WowHome
-  Default: $env:WOW_HOME, else $HOME/.config/glunk-identity. The Clone may not contain it.
+  Default: the identity home this copy is installed in (the parent of its bin folder), whatever WOW_HOME says; a given
+  value must name that same home. The Clone may not contain it.
   On Windows an MSYS form (/c/x) is converted with cygpath -w through the first sh on PATH, as the register scripts do;
   with no sh it falls back to the drive-form conversion (any other /-leading value is refused). A // value is refused.
 
@@ -110,7 +111,7 @@ param(
   [string]$Repo,
   [string]$Clone,
   [string]$Reference,
-  [string]$WowHome = $(if ($env:WOW_HOME) { $env:WOW_HOME } else { Join-Path $HOME '.config/glunk-identity' }),
+  [string]$WowHome,
   [string]$Remote = 'origin',
   [string]$Base = 'main'
 )
@@ -119,7 +120,7 @@ $ErrorActionPreference = 'Stop'
 
 # The installed-copy guard: before the helper is dot-sourced, and before anything else runs.
 $notInstalled = {
-  [Console]::Error.WriteLine('wow-driver: run the installed copy in $WOW_HOME/bin (install-host-tools.ps1)')
+  [Console]::Error.WriteLine('wow-driver: run the installed copy in the bin folder of an identity home (install-host-tools.ps1)')
   exit 1
 }
 # First-message template: only @ORIGIN@ is filled, from the Reference's origin repository.
@@ -146,10 +147,16 @@ try {
   # --- arguments: exit 2, before any external call (the one exception: the sh run for an MSYS-form -WowHome) ---
   # -Repo: the two paths come from the driver record, then go through the checks a given pair goes through.
   $wowP = $null
+  if (-not $PSBoundParameters.ContainsKey('WowHome')) {
+    # No -WowHome: the home is the parent of this copy's own final folder, which must be a bin folder.
+    $selfDir = Get-FinalPath $PSScriptRoot
+    if ([IO.Path]::GetFileName($selfDir) -ine 'bin') { & $notInstalled }
+    $wowP = [IO.Path]::GetDirectoryName($selfDir)
+  }
   if ($PSBoundParameters.ContainsKey('Repo')) {
     Assert-RepoArgument $Repo
     if ($PSBoundParameters.ContainsKey('Clone') -or $PSBoundParameters.ContainsKey('Reference')) { Stop-BadArgument '-Repo cannot be combined with -Clone or -Reference' }
-    $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain
+    if ($null -eq $wowP) { $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain }
     $found = Find-RecordByRepo $wowP $Repo
     $Clone = $found.Clone
     $Reference = $found.Reference

@@ -73,7 +73,7 @@
     pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -Issue N -Hash HASH
     pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -EndDay
   With an MSYS-form WOW_HOME (/c/...) the $env:WOW_HOME script path in those commands does not resolve in
-  pwsh, so give the installed copy's path in Windows form; the launchers convert their own default -WowHome.
+  pwsh, so give the installed copy's path in Windows form.
   yq (mikefarah v4, v4.54.1 or newer; the launchers refuse an older or unidentifiable yq) must be on PowerShell's PATH too. It runs only from there: it checks the MANIFEST.
   The driver launcher also needs gh on PowerShell's PATH, on both paths (attach too), and for a start of day a gh login that can read the origin repository.
 
