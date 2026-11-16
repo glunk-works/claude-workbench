@@ -185,7 +185,10 @@ function Get-TokensRoot {
   $b = [IO.Path]::GetFullPath($dh).TrimEnd('\', '/')
   if ($a -ieq $b) { throw "$msg, and the default home itself takes no tokens-root file" }
   $text = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($f))
-  if ($text -cne 'default-home' -and $text -cne "default-home`n" -and $text -cne "default-home`r`n") { throw $msg }
+  # ordinal: -ceq is culture-aware, and under ICU a NUL byte compares as ignorable
+  $okForm = $false
+  foreach ($w in @('default-home', "default-home`n", "default-home`r`n")) { if ([string]::Equals($text, $w, [StringComparison]::Ordinal)) { $okForm = $true } }
+  if (-not $okForm) { throw $msg }
   @{ Root = (Join-Path $dh 'tokens'); Shared = $true }
 }
 

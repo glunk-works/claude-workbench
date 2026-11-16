@@ -251,7 +251,9 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
           $ta = [IO.Path]::GetFullPath($WowHome).TrimEnd('\', '/')
           $tb = [IO.Path]::GetFullPath($dh).TrimEnd('\', '/')
           $tt = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($trFile))
-          if ($ta -ine $tb -and ($tt -ceq 'default-home' -or $tt -ceq "default-home`n" -or $tt -ceq "default-home`r`n")) {
+          $okForm = $false # ordinal: -ceq is culture-aware, and under ICU a NUL byte compares as ignorable
+          foreach ($w in @('default-home', "default-home`n", "default-home`r`n")) { if ([string]::Equals($tt, $w, [StringComparison]::Ordinal)) { $okForm = $true } }
+          if ($ta -ine $tb -and $okForm) {
             $trBad = $false
             $tokensRoot = Join-Path $dh 'tokens'
           }
