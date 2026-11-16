@@ -10,7 +10,7 @@
 # format are laid out per case. The stub docker answers its Nth `ps` call of each kind (volume, label)
 # from ps.<kind>.<N>, else ps.<kind>, else empty.
 #
-#   not installed   no MANIFEST (a checkout), a wrong hash for either file, a missing row, a bin outside
+#   not installed   (with no -WowHome the home is the copy's own: a second home, a folder not named bin)  no MANIFEST (a checkout), a wrong hash for either file, a missing row, a bin outside
 #                   -WowHome: exit 1 before any stub call; a -WowHome reached through a link passes
 #   bad arguments   missing/related/linked/odd-leaf -Clone and -Reference, a .git file, a bad -Remote or
 #                   -Base, a -Clone holding -WowHome, a -WowHome that is or sits inside -Reference, & or % in a parent: exit 2, no stub or git call
@@ -30,7 +30,7 @@
 #                   restarting/paused, a failed docker ps, a missing tool
 #   yq minimum      the host yq version check: the pure comparison on stubbed version lines, both launchers refuse a
 #                   stub yq below v4.54.1 or an unreadable one (the lane through an exit-0 stub printing another yq's form) before any docker or git call, and the number is in neither launcher file
-#   -Repo (#1381)   the five-field record (a start of day writes the Reference path; a four-field record still reads and is
+#   -Repo (#1381)   (with no -WowHome, the record is read from the copy's own home)  the five-field record (a start of day writes the Reference path; a four-field record still reads and is
 #                   replaced), wow-driver and wow-lane -Repo from the record (start of day, attach, -Issue/-Hash, -Spec,
 #                   -SpecSweep) making the calls the long form makes, and each -Repo refusal before any external call; -EndDay:
 #                   idle (a docker stop of the recorded id), a dirty relay probe, a running claude in a lane leaf
@@ -264,6 +264,9 @@ install_to() { # install_to <bin dir>: the three scripts and a MANIFEST in insta
   } >"$b/MANIFEST"
 }
 install_to "$home/bin"; install_to "$tmp/other/bin"
+# A second identity home (its own scratch directory) and a copy installed in a folder not named bin.
+home2="$tmp/home2"; mkdir -p "$home2/bin" "$tmp/nonbin/sbin"
+install_to "$home2/bin"; install_to "$tmp/nonbin/sbin"
 STUB_RECORD="$home/driver/wb-driver.json"; export STUB_RECORD
   # A file symlink for the cases that need one, and the clone paths the sections pass to the launchers.
   echo x >"$tmp/link-target"; ln -s "$tmp/link-target" "$tmp/probe-link" 2>/dev/null || :
@@ -409,6 +412,13 @@ cp "$tmp/keep" "$home/bin/MANIFEST"
 reset; run_with "$tmp/other/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")"
 check "not installed: a bin outside -WowHome exits 1" test "$rc" -eq 1
 check "not installed: ...before any stub call" none_called
+reset; echo "$ID1 exited" >"$stubdir/ps.vol.1"; echo "$ID1 running" >"$stubdir/ps.vol.3"
+WOW_HOME=$(wp "$home") run_with "$home2/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")"
+check "not installed: no -WowHome, a second home's copy passes the bin check whatever WOW_HOME says" test "$rc" -eq 7
+check "not installed: ...and every process runs from the second home" cwd_all "$(wp "$home2")" 11
+reset; run_with "$tmp/nonbin/sbin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")"
+check "not installed: no -WowHome, a copy in a folder not named bin exits 1" test "$rc" -eq 1
+check "not installed: ...naming the installed copy, before any call" sh -c "grep -q 'installed copy' '$tmp/err' && ! test -s '$stubdir/calls.log' && ! test -s '$stubdir/git.log'"
 if mklink_dir "$tmp/homelink" "$home"; then
   reset; echo "$ID1 exited" >"$stubdir/ps.vol.1"; echo "$ID1 running" >"$stubdir/ps.vol.3"
   run_with "$home/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$tmp/homelink")"
@@ -747,6 +757,11 @@ cp "$tmp/keep" "$home/bin/MANIFEST"
 reset; run_with "$tmp/other/bin/wow-lane.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")" -Issue 5 -Hash "$LHASH"
 check "wow-lane not installed: a bin outside -WowHome exits 1" test "$rc" -eq 1
 check "wow-lane not installed: ...before any stub or git call" none_called
+reset; WOW_HOME=$(wp "$home") run_with "$home2/bin/wow-lane.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -Issue 5 -Hash "$LHASH"
+check "wow-lane: no -WowHome, a second home's copy is not refused as not installed" sh -c "! grep -q 'installed copy' '$tmp/err'"
+reset; run_with "$tmp/nonbin/sbin/wow-lane.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -Issue 5 -Hash "$LHASH"
+check "wow-lane: no -WowHome, a copy in a folder not named bin exits 1" test "$rc" -eq 1
+check "wow-lane: ...naming the installed copy, before any stub or git call" sh -c "grep -q 'installed copy' '$tmp/err' && ! test -s '$stubdir/calls.log' && ! test -s '$stubdir/git.log'"
 reset; run_with "$home/bin/wow-lane.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$tmp/nothere")" -Issue 5 -Hash "$LHASH"
 check "wow-lane: a bad -WowHome exits 2 before the installed-copy check" test "$rc" -eq 2
 
@@ -1483,6 +1498,18 @@ echo '{' >"$home/driver/.junk.json"; write_record5 "$ID3" "$c1" "$(wp "$tmp/clon
 run_repo_drv -Repo acme/widgets
 check "-Repo: a hidden file and a record of another repository do not stop a start of day" test "$rc" -eq 7
 
+# no -WowHome: the record is read from the home the copy is installed in, whatever WOW_HOME says
+reset; echo "$ID1 running" >"$stubdir/ps.vol.3"; write_record5 "$ID2" "$c1" "$(json_clone)" "$(json_ref)"
+mkdir -p "$home2/driver"; mv "$home/driver/wb-driver.json" "$home2/driver/wb-driver.json"
+WOW_HOME=$(wp "$home") run_with "$home2/bin/wow-driver.ps1" -Repo Acme/Widgets
+check "-Repo with no -WowHome: a record only in the copy's own home is found" test "$rc" -eq 7
+check "-Repo with no -WowHome: ...and the processes run from that home" cwd_all "$(wp "$home2")" 11
+rm -rf "$home2/driver"
+reset; write_record5 "$ID2" "$c1" "$(json_clone)" "$(json_ref)"
+WOW_HOME=$(wp "$home") run_with "$home2/bin/wow-driver.ps1" -Repo Acme/Widgets
+check "-Repo with no -WowHome: a record only in another home is not found (exit 1)" test "$rc" -eq 1
+check "-Repo with no -WowHome: ...naming the missing record, before any call" sh -c "grep -q 'no driver record names' '$tmp/err' && ! test -s '$stubdir/calls.log' && ! test -s '$stubdir/git.log'"
+
 # attach from the record
 running1; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; run_drv; long_calls=$(non_ps)
 running1; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; cp "$home/driver/wb-driver.json" "$tmp/snap"
@@ -1677,6 +1704,9 @@ check "Get-Help wow-lane.ps1: the Synopsis begins with the .SYNOPSIS text" help_
 help_names_home() { out=$(help_synopsis "$1"); case "$out" in *"the -WowHome identity home serves"*) return 0 ;; esac; return 1; }
 check "wow-driver.ps1's .SYNOPSIS names the identity home the org is read from" help_names_home wow-driver.ps1
 check "wow-lane.ps1's .SYNOPSIS names the identity home the org is read from" help_names_home wow-lane.ps1
+no_env_home() { ! grep -q 'env:WOW_HOME' "$root_dir/scripts/identity/$1"; }
+check "wow-driver.ps1 does not read env:WOW_HOME" no_env_home wow-driver.ps1
+check "wow-lane.ps1 does not read env:WOW_HOME" no_env_home wow-lane.ps1
 no_bare_any_repo() { ! grep -q 'Any repository of the org works' "$root_dir/scripts/identity/wow-driver.ps1" "$root_dir/scripts/identity/wow-lane.ps1"; }
 check "neither launcher says \"Any repository of the org works\"" no_bare_any_repo
 

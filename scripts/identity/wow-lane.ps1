@@ -10,7 +10,7 @@
   "Adding a repo to this host" section of claude-workbench's docs/identity/DEV-CONTAINER.md describes
   and its .ai/project.yml at -Base holds the keys the -Reference help names.
   Run it from pwsh 7.2+ on the host,
-  from the installed copy in $WOW_HOME\bin (install-host-tools.ps1), never from a checkout. Use
+  from the installed copy in an identity home's bin (install-host-tools.ps1), never from a checkout. Use
   `pwsh -File`: from a pwsh prompt `-Spec 1,2` binds as `1 2` and is refused with exit 2.
 
 .DESCRIPTION
@@ -46,6 +46,7 @@
   lines it prints, and -EndDay its own step 7, the end-of-day script, then docker stop of the container):
     1. The MANIFEST check, inline, before the helper is dot-sourced (as wow-driver.ps1 does it).
     2. The arguments (exit 2, before any external call, except the sh run that converts an MSYS-form -WowHome).
+       With no -WowHome, a script folder not named bin is refused first (exit 1).
     3. Installed from bin under the final -WowHome.
     4. git, docker and yq (a yq below the minimum wow-launch-common.ps1 holds, or one whose version cannot
        be read, is refused). No devcontainer: this launcher never runs it.
@@ -76,13 +77,15 @@
   with -Repo the record lookup (exit 1 when it refuses) runs before the checks of -Remote, -Base and the mode,
   so those exit 2 only once a record is found;
   1 for every refusal (a one-line reason on stderr) and for a spec worktree that was kept rather than
-  removed; otherwise the session's own exit code.
+  removed; otherwise the session's own exit code. With no -WowHome, a script folder not named bin is refused (exit 1)
+  before the argument checks.
 
   Honest limit. The spec record and the busy check are accident guards like the rest: a same-user
   process can write a record or run under the name claude. Two -Spec runs can both pass the check before
   either one's session has started. A session started before the record existed, or one whose worktree
   the post-session cleanup removed under it, has no record and reads as unknown, which refuses every
   -Spec run until it is stopped. The MANIFEST check catches running from a checkout by mistake, and is not a boundary.
+  With no -WowHome the home is the parent of the script's final, link-resolved folder, so a link in the script path, or any installed copy in a folder named bin with a MANIFEST that matches, picks the home.
   Every in-container check runs as app, the same user as every lane, so a same-user process can defeat
   them. GIT_NO_REPLACE_OBJECTS=1 keeps a refs/replace/<commit> in the shared /workspace/.git from
   swapping the pinned commit's tree, but loose-object tampering in that .git is not caught, worktree
@@ -106,7 +109,7 @@
   lanes directory (lanes.dir) and models.coder or models.architect.
 
 .PARAMETER WowHome
-  As wow-driver.ps1. Default: $env:WOW_HOME, else $HOME/.config/glunk-identity.
+  As wow-driver.ps1.
 
 .PARAMETER Remote
   The remote in the Reference only (default origin). In the container the clone's remote is always the
@@ -140,7 +143,7 @@ param(
   [string]$Repo,
   [string]$Clone,
   [string]$Reference,
-  [string]$WowHome = $(if ($env:WOW_HOME) { $env:WOW_HOME } else { Join-Path $HOME '.config/glunk-identity' }),
+  [string]$WowHome,
   [string]$Remote = 'origin',
   [string]$Base = 'main',
   [string]$Issue,
@@ -154,7 +157,7 @@ $ErrorActionPreference = 'Stop'
 
 # The installed-copy guard: before the helper is dot-sourced, and before anything else runs.
 $notInstalled = {
-  [Console]::Error.WriteLine('wow-lane: run the installed copy in $WOW_HOME/bin (install-host-tools.ps1)')
+  [Console]::Error.WriteLine('wow-lane: run the installed copy in the bin folder of an identity home (install-host-tools.ps1)')
   exit 1
 }
 try {
@@ -311,10 +314,16 @@ try {
   # --- arguments: exit 2, before any external call (the one exception: the sh run for an MSYS-form -WowHome) ---
   # -Repo: the two paths come from the driver record, then go through the checks a given pair goes through.
   $wowP = $null
+  if (-not $PSBoundParameters.ContainsKey('WowHome')) {
+    # No -WowHome: the home is the parent of this copy's own final folder, which must be a bin folder.
+    $selfDir = Get-FinalPath $PSScriptRoot
+    if ([IO.Path]::GetFileName($selfDir) -ine 'bin') { & $notInstalled }
+    $wowP = [IO.Path]::GetDirectoryName($selfDir)
+  }
   if ($PSBoundParameters.ContainsKey('Repo')) {
     Assert-RepoArgument $Repo
     if ($PSBoundParameters.ContainsKey('Clone') -or $PSBoundParameters.ContainsKey('Reference')) { Stop-BadArgument '-Repo cannot be combined with -Clone or -Reference' }
-    $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain
+    if ($null -eq $wowP) { $wowP = Resolve-LaunchDir '-WowHome' (ConvertFrom-MsysDrivePath '-WowHome' $WowHome) -Plain }
     $found = Find-RecordByRepo $wowP $Repo
     $Clone = $found.Clone
     $Reference = $found.Reference

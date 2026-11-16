@@ -69,6 +69,7 @@ that serves the host's git credential (see Hazards that remain).
   names the repository, when the match has no `reference` (an older record), or when a file in
   `driver\` does not read, and exits 2 combined with `-Clone` or `-Reference`.
   The path is `$env:WOW_HOME\bin`, or `$HOME\.config\glunk-identity\bin` when `WOW_HOME` is unset.
+  Each launcher takes its identity home from the folder it is installed in (the parent of its `bin`), not from `WOW_HOME`; for these two launchers `WOW_HOME` only spells the script path in the commands shown.
   Set `WOW_HOME` once as a user-level environment variable (not only in one shell's profile),
   written as a drive letter, a colon, then forward slashes throughout, with no backslash and no
   trailing slash; pwsh and Git Bash both accept that form:
@@ -80,7 +81,7 @@ that serves the host's git credential (see Hazards that remain).
   token mount reads the repo's `tokens/` subdirectory under that default directory, and nothing
   else, whatever `WOW_HOME` says. If the bin directory goes on Git Bash's `PATH`, add it in the
   form `cygpath -u` prints, because `PATH` splits at the drive colon.
-  If `WOW_HOME` is already in MSYS form (`/c/...`), both launchers convert `-WowHome` with
+  If `WOW_HOME` is already in MSYS form (`/c/...`), both launchers convert a given `-WowHome` value with
   `cygpath -w` through the first `sh` on PowerShell's `PATH`, as the register scripts and `broker.ps1`
   do; with no `sh` there they convert only the drive form and refuse any other `/`-leading form. A
   failed conversion is refused and says to give the Windows form. A forward-slash UNC `WowHome`
@@ -97,7 +98,7 @@ that serves the host's git credential (see Hazards that remain).
     **`-Reference`** is a different full clone that no container opens, with a different folder name from the clone (the two would share the `<leaf>-tmp` volume), for example the one
     `install-host-tools.ps1` installs from (its `.git` a directory, not a worktree's file); git runs
     there and never in the clone, whose `.git` config and hooks a container can write. **`-WowHome`**
-    defaults as in `install-host-tools.ps1`. After its argument checks the driver launcher starts every
+    defaults to the home the launcher is installed in, and a given value must name that home or the launcher refuses with the installed-copy refusal (exit 1). After its argument checks the driver launcher starts every
     process from it, never from the directory it was started in, and refuses (exit 2) a `-WowHome` that is or
     sits inside `-Reference`, so no process it starts has the clone or the Reference as its working directory.
     `-Remote` (default `origin`) and `-Base` (default `main`)
@@ -336,7 +337,7 @@ change. Steps, on the host:
    is built from `USERPROFILE`, pwsh's `$HOME` is that directory, and a user-set Git Bash `HOME` would make the sh
    commands look elsewhere.
 4. Run `wow-admin`, `wow-preflight` and `wow-readback` for that org's repos with `WOW_HOME` set to the second home for
-   that command only; the user-level `WOW_HOME` stays the default home.
+   that command only; the user-level `WOW_HOME` stays the default home. A copy of the driver or lane launcher in that home's `bin` takes the home from its own path, with no `WOW_HOME` and no `-WowHome`. A launcher keeps its driver records in the home it runs from, so every launch for one repo (its first start of day and its `-Repo` spec and lane commands) uses one home's copy. The sh tools this step names still take `WOW_HOME` for each command.
 5. **Register that home's review poller, before the first gated PR is opened.** A repo whose `.ai/project.yml`
    sets `review.ci_gate` gets a red gate check on every PR head until that home's reviewer App posts a review, and
    only a poller, or a hand run, launches one. Each home's poller polls only the repos in its own

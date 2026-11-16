@@ -7,7 +7,7 @@
 .DESCRIPTION
   Functions only, with no top-level statements: a launcher dot-sources this file only after its own
   inline MANIFEST check, and nothing here runs before that check. Like the launchers it runs only
-  from the installed copy in $WOW_HOME/bin (install-host-tools.ps1), never from a checkout.
+  from the installed copy in an identity home's bin (install-host-tools.ps1), never from a checkout.
 
   What is here: the argument checks and the canonical-path resolution; tool resolution and the host yq
   version check; the two process runners (every external call goes through ProcessStartInfo.ArgumentList, one element per
