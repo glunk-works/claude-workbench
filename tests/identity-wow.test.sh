@@ -807,7 +807,7 @@ for form in 'default-home\n\n' 'default-home\r\n\r\n' 'default-home\r' 'default-
   assert_eq "tokens root refused [$form] revoke curl uncalled" 0 "$(calls)"
   [ ! -e "$fh/.config" ] && ok || bad "tokens root refused [$form]" "created the default home"
 done
-for pair in 'nul-inside:default-\0home\n' 'nul-after:default-home\0' 'nul-before-LF:default-home\0\n'; do
+for pair in 'nul-inside:default-\000home\n' 'nul-after:default-home\000' 'nul-before-LF:default-home\000\n'; do
   newfh; shared_home nul "${pair#*:}"
   mint_in "$h"
   assert_eq "tokens root [${pair%%:*}]: mint rc" 1 "$rc"

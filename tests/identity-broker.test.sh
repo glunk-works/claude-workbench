@@ -726,7 +726,7 @@ refused() { # refused <label>: exit 2, a setup: line naming the file, nothing mi
   check "tokens root $1: mint.sh and the account read never called" test "$(calls mint-calls)" -eq 0 -a "$(calls print-calls)" -eq 0
   check "tokens root $1: the default home is not created" test ! -e "$fh/.config"
 }
-for pair in 'nul-inside:default-\0home\n' 'nul-after:default-home\0' 'nul-before-LF:default-home\0\n' 'two-LF:default-home\n\n' 'two-CRLF:default-home\r\n\r\n' 'other-content:elsewhere\n' 'empty:' 'trailing-text:default-home x'; do
+for pair in 'nul-inside:default-\000home\n' 'nul-after:default-home\000' 'nul-before-LF:default-home\000\n' 'two-LF:default-home\n\n' 'two-CRLF:default-home\r\n\r\n' 'other-content:elsewhere\n' 'empty:' 'trailing-text:default-home x'; do
   tr_reset; printf "${pair#*:}" >"$home/tokens-root"
   run_broker
   refused "${pair%%:*}"
