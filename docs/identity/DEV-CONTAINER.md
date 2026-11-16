@@ -292,6 +292,20 @@ Do the steps in order. It documents the steps and performs none.
    agent-socket check under *What it still carries from the template*; and the live-run check
    under *Opening it*, whose `docker inspect` steps run on the host and whose other steps run in
    that `docker exec` shell.
+8. **Confirm a review poller covers the repo (the operator, on the host).** When the repo sets `review.ci_gate`,
+   its home's poller task is registered (`glunk-wow-review-poll` for the default home, the home's own name for a
+   second org's home, step 5 of *A second org's home*) and its `review-poll.json` lists the repo; the entry step 4
+   added is picked up on the next tick, with no re-registration. Confirm it on the repo's first gated PR: the home's
+   `review-poll.log` names the PR, and its review posts. A PR with a red gate check and no review usually means no
+   poller covers its home, or another required check on the head is failing, which the poller skips with the
+   reason in `review-poll.log`.
+
+Per identity home, the host side is then:
+
+- [ ] its broker task is registered (`glunk-wow-broker`, or `glunk-wow-broker-<suffix>` for a second org's home);
+- [ ] `broker.json` and `review-poll.json` list each of its repos as `owner/name`;
+- [ ] its review poller task is registered under a name of its own, from a current clone, `-WhatIf` first;
+- [ ] its `review-poll.log` shows `poll start`, and the first gated PR's review has posted.
 
 ## A second org's home
 
@@ -307,14 +321,15 @@ change. Steps, on the host:
    ignoring case, the name half of any entry in the default home's `broker.json`, and the default home's
    `broker.json` must name no entry whose owner is that org, ignoring case (its owner is an unchecked label, so such an entry
    would write the default org's token into that org's mounted directory).
+   Name its tasks after a short suffix for the home, used in both task names below: `glunk-wow-broker-<suffix>` and
+   `glunk-wow-review-poll-<suffix>` (for 603-Identity's home, `603id`).
 2. Write the `tokens-root` file in the second home, a regular file holding exactly `default-home` (one LF or CRLF may
    follow). Any other content, an empty file, a symbolic link, a directory, an empty `HOME`, or the file in the default
    home itself is refused by every command that reads it (a `setup:` line in `broker.log` and exit 2 for the broker), except the
    install, which warns and creates no token directory; it is never read as the home's own `tokens/`. Run the sh commands from a
    copy installed at this release or later (the second home's install copies them), because an older copy ignores `tokens-root`.
-3. Run `register-broker-task.ps1` with `-WowHome` naming the second home and a `-TaskName` other than
-   `glunk-wow-broker` (reusing a registered name replaces that task), and the same for
-   `register-review-poll-task.ps1` with a name other than `glunk-wow-review-poll` when that home polls reviews. The
+3. Run `register-broker-task.ps1` with `-WowHome` naming the second home and `-TaskName glunk-wow-broker-<suffix>`
+   (reusing a registered name replaces that task). The
    broker reads the file once at start, so re-run the register script after any change to it. The second home's install
    creates the default home and its `tokens/` when absent, so a host working only in another org needs nothing else for the
    template's mount source. Git Bash's `HOME` must be the user profile directory: the template's mount source
@@ -322,6 +337,43 @@ change. Steps, on the host:
    commands look elsewhere.
 4. Run `wow-admin`, `wow-preflight` and `wow-readback` for that org's repos with `WOW_HOME` set to the second home for
    that command only; the user-level `WOW_HOME` stays the default home.
+5. **Register that home's review poller, before the first gated PR is opened.** A repo whose `.ai/project.yml`
+   sets `review.ci_gate` gets a red gate check on every PR head until that home's reviewer App posts a review, and
+   only a poller, or a hand run, launches one. Each home's poller polls only the repos in its own
+   `review-poll.json`, so the default home's poller never covers this home's repos. (603-Identity/devcontainers ran
+   without one: its first reviews were hand runs, which read as automatic, and five PRs then sat on a red gate.)
+   1. **Prove the home once by hand.** The live run in `REVIEW-LIVE-RUN.md` is done once per host, for its
+      Docker daemon and review image. A second home needs one hand run of its own installed `wow-review` (with
+      `WOW_HOME` set to it, as *A second home's poller* there says) that posts a review on a gated PR; that is what
+      proves its reviewer App credential and its state directory.
+   2. **Write `review-poll.json`** in the home, shaped `{"repos": ["owner/name"]}`, every entry in GitHub's
+      canonical case.
+   3. **Pick the source clone.** The register script installs `bin` from the HEAD of the clone it runs from, and
+      it accepts any commit already merged to origin's `main`, an older one included, so a stale clone silently
+      rolls back the home's installed scripts. Use a claude-workbench clone no container opens (the driver's
+      `-Reference` clone qualifies), fast-forwarded to origin's `main` first, and check its HEAD is the commit in
+      the home's `bin\MANIFEST`, or newer (for a new home, the default home's `bin\MANIFEST`).
+   4. **Dry run, then register,** from a PowerShell 7.2+ prompt, with the same command twice, `-WhatIf` the first time:
+      ```powershell
+      & '<clone>\scripts\identity\register-review-poll-task.ps1' `
+        -WowHome '<the second home>' `
+        -SourceRepo '<clone>' `
+        -TaskName 'glunk-wow-review-poll-<suffix>' `
+        -IntervalMinutes 2 `
+        -Sh 'C:\Program Files\Git\bin\sh.exe' `
+        -WhatIf
+      ```
+      `-TaskName` is the one argument that must not be left off: the default is the default home's
+      `glunk-wow-review-poll`, and the script registers with `-Force`, so without it the default home's poller is
+      silently replaced by one that points at this home. `-WhatIf` shows the task name and the home it would carry;
+      check both before the real run. Pass `-Sh` explicitly, as Git for Windows' `bin\sh.exe`, never
+      `usr\bin\sh.exe`.
+   5. **Verify it.** The home's `review-poll.log` shows `poll start`, then a line for each gated PR (`qualifies`
+      or a `skip` with its reason), and the first qualifying PR's review posts, which turns its gate check green. A
+      review takes several minutes, and at most `WOW_REVIEW_MAX` (2 when unset) run at once.
+
+   A later repo of the same home is one more `review-poll.json` entry: the poller reads the file on every tick, so
+   nothing is re-registered.
 
 In a home with the file the broker checks each entry's owner against the dev installation's account before every mint,
 and `wow-admin` makes its per-name lock in the default home, so both homes' runs for one repo name share it, and
