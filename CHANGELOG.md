@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- A per-home `tokens-root` file (the word `default-home`) moves a second org's identity home's `tokens/` to the default home's `tokens/`, which the broker, `wow-admin`, `wow-preflight`, `wow-readback` and the install read; in such a home `wow-admin` shares its lock with the default home and skips the other-owner scan and the leftover check, and the broker checks each entry's owner against the dev installation's account before a mint; a home without the file is unchanged (#1568).
+
 ## [0.36.0] — 2026-11-15
 
 **⚠️ Migration** — reinstall the host tools in every home before any repo bumps its plugin pin to this release: the review session installs the reviewed repo's pinned plugin, and an older launcher refuses a findings file carrying `paths` as `findings not filed (findings-shape)`, filing nothing (#1515).

@@ -7,11 +7,16 @@
 #                           org's config reads the same; "key" is a PEM filename in this directory
 #   admin.enc.pem          the admin App's private key, passphrase-encrypted (name by convention)
 #   review.pem             the reviewer App's private key, unencrypted (minted on request)
-#   tokens/<owner>/<repo>/ the one directory of secrets a repo's container may mount, read-only: admin-token
+#   tokens-root            optional (#1568): a regular file whose content is exactly the word default-home (one LF or CRLF may follow).
+#                          It moves this home's tokens/ to the default identity home's tokens/ (~/.config/glunk-identity/tokens), so a
+#                          second org's home delivers its tokens where the shared dev-container template mounts them. Any other state
+#                          (other content, empty, a symbolic link, a directory, HOME empty, or the file in the default home itself) is a refusal,
+#                          never a fall-back. Absent: the home's own tokens/.
+#   tokens/<owner>/<repo>/ (under the tokens root) the one directory of secrets a repo's container may mount, read-only: admin-token
 #                          (wow-admin) and dev-token (broker.ps1), each the token then its expires_at.
 #                          Admin and dev credentials only (#1276, #1340).
-#   tokens/<repo>/         the layout before #1340: nothing writes it now, and only wow-admin --revoke removes a file in it; a leftover the maintainer removes
-#                          (after wow-admin <owner/name> --revoke finds no readable admin token in it and no admin-token file is there).
+#   tokens/<repo>/         the layout before #1340, in a home without tokens-root: nothing writes it now, and only wow-admin --revoke removes a file in it; a leftover the maintainer removes
+#                          (after wow-admin <owner/name> --revoke finds no readable admin token in it and no admin-token file is there). A home with tokens-root never looks there.
 #   dev.pem, broker.json   broker.ps1 config: the dev App's unencrypted key (name by convention), and
 #                          {"repos": [...]}, the repos it keeps a dev token for. Also broker.lock,
 #                          broker.log and staging/<repo>/, none mounted anywhere.
@@ -41,18 +46,21 @@
 #                          written only to the injector sidecar's stdin.
 #   review-logs/           review run logs; may hold secrets and private contents the session read, swept by the
 #                          broker by age.
-# Invariant: no path under $WOW_HOME is container-writable. tokens/<owner>/<repo>/ is
+# Invariant: no path under $WOW_HOME is container-writable. The tokens root is the home's own tokens/ or the default home's
+# (tokens-root); the cross-entry rules (no shared name half, no owner equal to another entry's name) are checked within one home's
+# broker.json only, never across two homes sharing a root. tokens/<owner>/<repo>/ is
 # mounted only into a dev container (for the repos listed in broker.json, tokens/<owner>/ is never another repo's mount source; wow-admin's owner half is checked against the admin installation's account at mint), and
 # review-sessions/<id>/ only into a review container, each read-only.
 # claude-credential is never mounted into any container and reaches only the injector's stdin.
-# What these commands write: tokens/ and review-tokens/ directories, a per-repo-name .admin-lock.<name> directory directly under $WOW_HOME
-# and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed under tokens/<owner>/<repo>/; wow-admin --revoke also removes a leftover tokens/<repo>/admin-token),
+# What these commands write: tokens/ (under the tokens root) and review-tokens/ directories, a per-repo-name .admin-lock.<name> directory directly under $WOW_HOME
+# (in a home with tokens-root, made in the default home instead) and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed under the root's <owner>/<repo>/;
+# only a home without tokens-root has wow-admin --revoke also remove a leftover tokens/<repo>/admin-token),
 # reviewer-token (default review-tokens/<repo>/, or the path --out names), the session and filing
 # tokens (wow-review-mint --read / --file, written only to the path --out names), and the .mint.* file
 # mint.sh stages beside any token it writes. wow-review (the launcher) also writes its own review-sessions/,
 # review-host/, review-state/ (its lock, ledger and .live/ lease files) and review-logs/ entries. wow-review-poll writes review-poll.log (and .1),
 # review-state/.poll-lock and review-host/poll-<id>/. wow-driver.ps1 writes driver/<leaf>.json and its same-directory
-# temp file. wow-preflight writes nothing under $WOW_HOME: it only reads tokens/<owner>/<repo>/admin-token. wow-readback likewise writes nothing under it and only reads that admin-token and apps.json. Nothing else under $WOW_HOME is modified.
+# temp file. wow-preflight writes nothing under $WOW_HOME: it only reads <tokens root>/<owner>/<repo>/admin-token. wow-readback likewise writes nothing under it and only reads that admin-token and apps.json. Nothing else under $WOW_HOME is modified.
 #
 # The caller sets $prog before sourcing. Toolset: POSIX sh, jq, plus what mint.sh needs.
 
@@ -86,9 +94,41 @@ check_repo() {
   esac
 }
 
+# resolve_tokens_root: sets tokens_root (the directory holding <owner>/<repo>) and tokens_shared (1 when
+# the home's tokens-root file is present, else empty). Dies on any refusal state (#1568).
+tokens_root= tokens_shared=
+resolve_tokens_root() {
+  tokens_root=$wow_home/tokens tokens_shared=
+  f=$wow_home/tokens-root
+  [ -e "$f" ] || [ -L "$f" ] || return 0
+  msg="the file $f must be a regular file holding exactly default-home"
+  [ ! -L "$f" ] && [ -f "$f" ] || die "$msg"
+  [ -n "${HOME:-}" ] || die "$msg, and HOME is empty, so the default home cannot be found"
+  dh=$HOME/.config/glunk-identity
+  if [ "$wow_home" = "$dh" ] || [ "$(CDPATH= cd -P -- "$wow_home" 2>/dev/null && pwd)" = "$(CDPATH= cd -P -- "$dh" 2>/dev/null && pwd)" ]; then
+    die "$msg, and the default home itself takes no tokens-root file"
+  fi
+  # the trailing x keeps every final newline, which a bare $(cat) would strip; the byte count refuses a NUL
+  # byte, which command substitution drops (pwsh compares the bytes exactly)
+  n=$(wc -c <"$f" | tr -d ' ')
+  c=$(cat -- "$f"; echo x)
+  c=${c%x}
+  nl='
+'
+  cr=$(printf '\r')
+  case "$n:$c" in
+    "12:default-home" | "13:default-home$nl" | "14:default-home$cr$nl") ;;
+    *) die "$msg" ;;
+  esac
+  tokens_root=$dh/tokens tokens_shared=1
+}
+
 # token_dir <tokens|review-tokens> <repo>: create (private) and print that repo's token directory.
 token_dir() {
-  d="$wow_home/$1/$2"
+  case "$1" in
+    tokens) [ -n "$tokens_root" ] || resolve_tokens_root; d="$tokens_root/$2" ;;
+    *) d="$wow_home/$1/$2" ;;
+  esac
   (umask 077 && mkdir -p -- "$d") || die "cannot create $d"
   printf '%s\n' "$d"
 }

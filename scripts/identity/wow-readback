@@ -146,7 +146,8 @@ NOW=$(jq -nr 'now | floor') && [ -n "$NOW" ] || die "cannot read the clock"
 unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
 
 # --- the token: checked before any request ----------------------------------------------------
-tokfile=$wow_home/tokens/$owner/$name/admin-token
+resolve_tokens_root
+tokfile=$tokens_root/$owner/$name/admin-token
 stop_token() {
   die "no usable admin token for $repo ($1); if one is on file, run: wow-admin $repo --revoke; then mint one with: wow-admin $repo --perms administration=write,contents=read,actions=read"
 }
