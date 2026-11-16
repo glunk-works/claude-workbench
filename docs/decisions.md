@@ -3122,3 +3122,25 @@ not visible. Hermetically verified only, live run deferred and tracked:
 
 Sprint 20 closed on 2026-11-13; its last change to this repo is `2c386f7` (PR #1498), the pin
 bump to `v0.34.0`.
+
+Sprint 21 (milestone 21, *Identity M6: devcontainers cut over*, all its issues closed) cuts
+603-Identity/devcontainers over to the code-owner approval gate and gives it a dev-App container.
+The admin-token read-back and the ruleset drift check ran live (#1499, 2026-11-14), the interim
+repo rulesets for 603-Identity cutovers were recorded (PR #1565), and devcontainers' cutover ran in
+that repo (#411; devcontainers PRs #527, #528, #530, #532 and #535). A second org's identity home
+now delivers its tokens to the default home's `tokens/`, where the shared template mounts them,
+through a per-home `tokens-root` file (#1568, PR #1570). It shipped in `v0.37.0`, tagged at
+`635fec1` (PR #1572).
+
+Verified live on 2026-11-16, from the 603-Identity home with its `tokens-root` file: the broker's
+owner check and its dev token written under the default home; the install creating the token
+directory there; a read-only mint; the devcontainers container mounting the token
+(`draft-identity.sh check` printing `dev_app`); `wow-admin` minting and revoking an admin token
+under the default home, its lock leaving nothing behind; `wow-preflight` and `wow-readback` reading
+that token, with readback passing and its two audit-log searches empty; and the default home's
+install cross-check printing only its expected line for the second org's owner directory. Nothing
+is deferred. Tracked follow-up: the sh and pwsh checks for a `tokens-root` file in the default home
+itself disagree on letter case and links (#1571).
+
+Sprint 21 closed on 2026-11-16; its last change to this repo is PR #1573, the pin bump to
+`v0.37.0`.
