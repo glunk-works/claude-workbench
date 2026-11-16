@@ -163,7 +163,7 @@ PR changes.
 
 On a host with the marketplace repository's host tools installed, `wow-preflight <owner/name>
 <project.yml>` prints these preconditions as one table, judged against the project file it is
-given (pass the reviewed PR's copy), and makes only GET requests. A row reads `ok`, `missing`
+given (pass the reviewed PR's copy), and makes only GET requests. The host commands run from the identity home that serves the repo's org; for a repo of an org other than the default home's, run them from that org's home, per the *A second org's home* section of the marketplace repository's `docs/identity/DEV-CONTAINER.md`. A row reads `ok`, `missing`
 or `check in the UI`; the last is left for the operator: a precondition this command does not
 read (the App installations,
 org secrets, fork pull request workflows) or a read that failed or was not conclusive. The ruleset rows judge the approval rule's parameters (code-owner review, stale reviews dismissed on push, last-push approval, an approving review count of 1), except an organization ruleset's row, which reads `check in the UI` and does not judge them. Those rows judge which App a check is pinned to only for checks an entry's `check_integrations` names. It also
@@ -210,7 +210,7 @@ This is not one of the cutover's four parts: it runs after them, and it points a
 - **The deny list.** The repo makes the `gh pr merge` deny choice that *The plugin pin the review container requires* section's last paragraph describes.
 - **`lanes.dir`** (`project-schema.md` § `lanes`) under `/tmp`. The shared devcontainer template already mounts `/tmp` as a per-repo volume (as the marketplace repository's own `.devcontainer/devcontainer.json`, checked against the template by `verify / verify`, shows), so no mount is added by hand.
 - **`host_tools`** (`project-schema.md` § `host_tools`): declare the host tools the repo needs, each with a minimum version and a fix. `/way-of-working:resume`'s `Host tools:` and `Plugin:` lines then report them, the pin against the installed copy, the `statusLine` and the deny choice.
-- **The host launchers.** Install the host tools, then follow the *Adding a repo to this host* section of the marketplace repository's `docs/identity/DEV-CONTAINER.md`. `wow-driver.ps1` and `wow-lane.ps1` take any repo of the org set up that way through `-Clone` and `-Reference`.
+- **The host launchers.** Install the host tools, then follow the *Adding a repo to this host* section of the marketplace repository's `docs/identity/DEV-CONTAINER.md`. `wow-driver.ps1` and `wow-lane.ps1` take any repo of the org set up that way through `-Clone` and `-Reference`. A repo of another org also follows *Adding a repo to this host*, whose broker step points at the section for a second org's home.
 - **A short skills list for the repo's `CLAUDE.md`:** `resume` at session start, `handoff` before a switch, `spec-task` per issue, `lanes` from the driver, `critic-gate` after the green gate, `ship`, `pr-checks`, `plan-sprint`.
 
 ## When the dev App must exist

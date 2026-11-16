@@ -43,6 +43,12 @@
 #                any mint; acme/acme is accepted; a bare-name entry exits 2 before any mint (#1340); the sweeps leave a
 #                non-ASCII directory; the install creates only owner directories, warns once by name for a bare entry,
 #                skips an entry failing the rule, and its cross-check names a top-level directory that is not an owner half
+#   tokens root  a tokens-root file holding default-home (#1568) moves the dev-token to the default home's tokens/ (HOME is a
+#                fixture; skipped, loudly, under MSYS where pwsh's HOME is the user profile): the owner half must equal the dev
+#                installation's account (mint.sh --print-account, any letter case) or nothing is minted and the pass exits 1; default-home with
+#                no newline, one LF and CRLF are accepted, two LFs, other content, an empty file, a link, a directory, an empty
+#                HOME and the file in the default home itself exit 2 with a setup: line; a missing default home is created; absent file:
+#                no account read; the install creates <owner>/<repo> under the root and warns once, creating nothing, for a refused file
 #   config       a bad repo name (or a trailing dot) or a missing broker.json exits 2 before anything
 #                is minted
 #
@@ -66,6 +72,13 @@ scripts="$tmp/scripts" home="$tmp/home" stubdir="$tmp/stub"
 mkdir "$scripts" "$home" "$stubdir"
 cat >"$scripts/mint.sh" <<'STUB'
 #!/bin/sh
+for a in "$@"; do
+  if [ "$a" = --print-account ]; then
+    echo called >>"$STUB_DIR/print-calls"
+    [ -z "${STUB_ACCT_FAIL:-}" ] || { echo "mint.sh: could not read the account" >&2; exit 1; }
+    printf '%s\n' "${STUB_ACCOUNT:-acme}"; exit 0
+  fi
+done
 printf '%s\n' "$@" >"$STUB_DIR/mint-argv"
 echo called >>"$STUB_DIR/mint-calls"
 while [ $# -gt 0 ]; do [ "$1" = --out ] && out=$2; shift; done
@@ -662,6 +675,112 @@ check "config: bad repo name exits 2" test "$rc" -eq 2
 check "config: nothing minted" test "$(calls mint-calls)" -eq 0
 rm "$home/broker.json"; run_broker
 check "config: missing broker.json exits 2" test "$rc" -eq 2
+
+# --- tokens root (#1568) ---------------------------------------------------------------------
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) echo "SKIP - tokens root: pwsh's HOME is the Windows user profile here, not HOME; the tokens-root fixtures did not run" >&2 ;;
+  *)
+real_home=${HOME:-}; trn=0
+# newfh: a fresh fixture HOME with no default home in it
+newfh() { trn=$((trn + 1)); fh="$tmp/fh$trn"; mkdir "$fh"; dh="$fh/.config/glunk-identity"; HOME="$fh"; export HOME; }
+tr_reset() { reset; rm -rf "$home/tokens-root"; newfh; set_repos '"acme/alpha"'; }
+dtok() { cat "$dh/tokens/$1/dev-token" 2>/dev/null || true; }
+log_has() { grep -q -F -e "$1" "$home/broker.log"; }
+
+tr_reset; printf 'default-home\n' >"$home/tokens-root"
+run_broker
+check "tokens root: exits 0" test "$rc" -eq 0
+check "tokens root: one mint" test "$(calls mint-calls)" -eq 1
+check "tokens root: the dev-token lands under the default home, creating it" test "$(dtok acme/alpha)" = "$(expect_fresh)"
+check "tokens root: the second home has no tokens directory" test ! -e "$home/tokens"
+check "tokens root: no staged file left" test "$(staged)" -eq 0
+check "tokens root: one account read" test "$(calls print-calls)" -eq 1
+check "tokens root: nothing else under the default home but tokens" test "$(ls -A "$dh")" = tokens
+
+tr_reset; printf 'default-home\n' >"$home/tokens-root"; STUB_ACCOUNT=ACME; export STUB_ACCOUNT
+run_broker; unset STUB_ACCOUNT
+check "tokens root: the account in another letter case mints" test "$rc" -eq 0 -a "$(dtok acme/alpha)" = "$(expect_fresh)"
+
+tr_reset; printf 'default-home\n' >"$home/tokens-root"; STUB_ACCOUNT=other; export STUB_ACCOUNT
+run_broker; unset STUB_ACCOUNT
+check "tokens root: a different account exits 1" test "$rc" -eq 1
+check "tokens root: a different account: no mint call" test "$(calls mint-calls)" -eq 0
+check "tokens root: a different account: no dev-token" test -z "$(dtok acme/alpha)"
+check "tokens root: a different account: the log names the entry" log_has "dev acme/alpha"
+tr_reset; printf 'default-home\n' >"$home/tokens-root"; STUB_ACCT_FAIL=1; export STUB_ACCT_FAIL
+run_broker; unset STUB_ACCT_FAIL
+check "tokens root: a failed account read exits 1" test "$rc" -eq 1
+check "tokens root: a failed account read: no mint call" test "$(calls mint-calls)" -eq 0
+check "tokens root: a failed account read: no dev-token" test -z "$(dtok acme/alpha)"
+check "tokens root: a failed account read: the log names the entry" log_has "dev acme/alpha"
+
+for pair in 'no-newline:default-home' 'LF:default-home\n' 'CRLF:default-home\r\n'; do
+  tr_reset; printf "${pair#*:}" >"$home/tokens-root"
+  run_broker
+  check "tokens root accepted [${pair%%:*}]" test "$rc" -eq 0 -a "$(dtok acme/alpha)" = "$(expect_fresh)"
+done
+refused() { # refused <label>: exit 2, a setup: line naming the file, nothing minted
+  check "tokens root $1: exit 2" test "$rc" -eq 2
+  check "tokens root $1: a setup: line in broker.log" log_has "setup: "
+  check "tokens root $1: the line names the file and the word" log_has "tokens-root must be a regular file holding exactly default-home"
+  check "tokens root $1: mint.sh and the account read never called" test "$(calls mint-calls)" -eq 0 -a "$(calls print-calls)" -eq 0
+  check "tokens root $1: the default home is not created" test ! -e "$fh/.config"
+}
+for pair in 'nul-inside:default-\000home\n' 'nul-after:default-home\000' 'nul-before-LF:default-home\000\n' 'two-LF:default-home\n\n' 'two-CRLF:default-home\r\n\r\n' 'other-content:elsewhere\n' 'empty:' 'trailing-text:default-home x'; do
+  tr_reset; printf "${pair#*:}" >"$home/tokens-root"
+  run_broker
+  refused "${pair%%:*}"
+done
+tr_reset; printf 'default-home\n' >"$tmp/trtarget"; ln -s "$tmp/trtarget" "$home/tokens-root"
+run_broker; refused "link"
+tr_reset; mkdir "$home/tokens-root"
+run_broker; refused "directory"
+tr_reset; printf 'default-home\n' >"$home/tokens-root"; HOME=; export HOME
+run_broker; refused "with HOME empty"
+# the file in the default home itself
+tr_reset; mkdir -p "$dh"; cp "$home/apps.json" "$home/dev.pem" "$home/broker.json" "$dh/"; printf 'default-home\n' >"$dh/tokens-root"
+saved_home=$home; home=$dh
+run_broker; home=$saved_home
+check "tokens root in the default home: exit 2" test "$rc" -eq 2
+check "tokens root in the default home: a setup: line" grep -q "setup: " "$dh/broker.log"
+check "tokens root in the default home: nothing minted" test "$(calls mint-calls)" -eq 0 -a ! -e "$dh/tokens"
+
+# absent file: no account read
+tr_reset
+run_broker
+check "tokens root absent: mints under the home as before" test "$rc" -eq 0 -a "$(tokfile acme/alpha)" = "$(expect_fresh)"
+check "tokens root absent: no account read" test "$(calls print-calls)" -eq 0
+
+# the install
+tr_reset; echo '{"repos": ["acme/alpha", "other/beta"]}' >"$home/broker.json"; rm -f "$home/review-poll.json"
+printf 'default-home\n' >"$home/tokens-root"; mkdir -p "$dh/tokens/theirs"
+run_install
+check "tokens root install: exits 0" test "$rc" -eq 0
+check "tokens root install: <owner>/<repo> created under the root" test -d "$dh/tokens/acme/alpha" -a -d "$dh/tokens/other/beta"
+check "tokens root install: none under the second home" test ! -e "$home/tokens"
+check "tokens root install: no warning for another owner's directory in the root" test "$(xc_warns)" -eq 0
+tr_reset; echo '{"repos": ["acme/alpha"]}' >"$home/broker.json"; rm -f "$home/review-poll.json"
+printf 'default-home' >"$home/tokens-root"
+run_install
+check "tokens root install: no newline accepted" test -d "$dh/tokens/acme/alpha"
+for how in content link; do
+  tr_reset; echo '{"repos": ["acme/alpha"]}' >"$home/broker.json"; rm -f "$home/review-poll.json"
+  if [ "$how" = content ]; then printf 'elsewhere\n' >"$home/tokens-root"; else printf 'default-home\n' >"$tmp/trtarget"; ln -s "$tmp/trtarget" "$home/tokens-root"; fi
+  run_install
+  check "tokens root install [$how]: exits 0" test "$rc" -eq 0
+  check "tokens root install [$how]: one warning" test "$(xc_warns)" -eq 1
+  check "tokens root install [$how]: the warning names the file" xc_has "$(wp "$home")/tokens-root must be a regular file holding exactly default-home: no token directory created"
+  check "tokens root install [$how]: no token directory created" test ! -e "$home/tokens/acme" -a ! -e "$fh/.config"
+done
+# a refused file still leaves the broker.json and review-poll.json comparison running
+tr_reset; echo '{"repos": ["acme/alpha"]}' >"$home/broker.json"; echo '{"repos": ["acme/gamma"]}' >"$home/review-poll.json"
+printf 'elsewhere\n' >"$home/tokens-root"
+run_install
+check "tokens root install [refused]: the poll comparison still warns" xc_has "gamma is in review-poll.json but not broker.json: no dev token is minted for it on this host"
+rm -f "$home/tokens-root"
+HOME=$real_home; export HOME
+;;
+esac
 
 [ "$fail" -eq 0 ] || exit 1
 echo "all identity-broker fixtures passed"

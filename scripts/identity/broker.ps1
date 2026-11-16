@@ -9,14 +9,18 @@
   Runs on the host, where the App keys live; no key is ever copied into a container.
 
   Dev tokens. For every repo named in $WowHome\broker.json ({"repos": ["owner/name", ...]})
-  the broker keeps $WowHome\tokens\<owner>\<repo>\dev-token current: the token on one line, its
+  the broker keeps <tokens root>\<owner>\<repo>\dev-token current (the tokens root is $WowHome\tokens,
+  or the default home's tokens when $WowHome holds a tokens-root file, below): the token on one line, its
   expires_at on the next, the format token-check.sh and the container's gh shim read. That is the
   owner-qualified layout of the shared dev-container template (WB-D42, #1276, #1340); nothing is
   written to tokens\<repo> any more. A bare-name entry is a configuration error, refused with its
   reason (under -Once the broker exits 2; the looping broker logs it and mints for no repo). Each half of an entry is a
   repository name (ASCII letters, digits, dot, underscore, hyphen; not starting with a dot or
-  hyphen, not ending in a dot), and the owner half is a label: it is not checked against the dev
-  installation, which is the one org this home serves. Two entries with the same name half (any
+  hyphen, not ending in a dot), and the owner half is a label: in a home without a tokens-root file it is not checked against the dev
+  installation, which is the one org this home serves. In a home with one, the owner half must equal, ignoring case, the dev
+  installation's account login, read before each mint with mint.sh --print-account; a mismatch or a failed read is
+  logged with the entry's label, mints nothing and fails that entry as a failed mint does (retried after -RetrySeconds,
+  exit 1 under -Once). Two entries with the same name half (any
   case) are a configuration error too, since they would mint for one repo under two owners. An
   entry whose owner half equals another entry's name (any case) is a configuration error, since
   tokens\<owner> would then be that repo's directory of an earlier layout, which a leftover
@@ -28,6 +32,14 @@
   pass after wake or logon. The mint is scripts/identity/mint.sh with the "dev" entry of
   apps.json (client_id, installation_id, key = a bare PEM filename in $WowHome, unencrypted so
   it can run unattended, like review.pem) and the dev App's permissions only.
+
+  Tokens root (#1568). A file named tokens-root in $WowHome, a regular file whose content is exactly the word
+  default-home (optionally followed by one LF or one CRLF), moves the tokens root to the default home's tokens
+  (Join-Path $HOME '.config/glunk-identity' + tokens), the directory the shared dev-container template mounts, so a second
+  org's home delivers its tokens there. Any other state (other content, an empty file, a symbolic link, a directory, an empty
+  $HOME, or the file in the default home itself) is a setup failure: a setup: line in broker.log, exit 2, no mint. It is read
+  once at start, so a change takes effect when register-broker-task.ps1 is re-run. Staging stays under $WowHome. With the
+  file present, the publish move below is one atomic rename only when the second home is on the same volume as the default home.
 
   Atomic write. mint.sh writes to $WowHome\staging\<repo>\, the broker checks the result is
   token-shaped and still live, then publishes it with
@@ -80,7 +92,8 @@
   The identity directory (default $env:WOW_HOME, else ~/.config/glunk-identity). A value in MSYS
   form (/c/Users/...) is converted with the shell's cygpath. One home
   holds one org's Apps (apps.json has one "dev" entry); a second org needs a second home, a second
-  broker.json and a second task (-TaskName in register-broker-task.ps1).
+  broker.json and a second task (-TaskName in register-broker-task.ps1), and a tokens-root file to put its
+  tokens where the template mounts them.
 #>
 [CmdletBinding()]
 param(
@@ -158,11 +171,32 @@ function Invoke-Sh([string[]]$shArgs) {
   @{ Code = $code; Text = $text }
 }
 
-# Update-DevToken <entry>: entry is @{ Label; Name; Owner }. Keeps tokens/<Owner>/<Name>/dev-token current.
+# Get-TokensRoot: @{ Root; Shared } from the home's tokens-root file, or throws on a refusal state (#1568).
+# The accepted forms are exactly default-home, default-home LF and default-home CRLF, as wow-common.sh reads them.
+function Get-TokensRoot {
+  $f = Join-Path $WowHome 'tokens-root'
+  $item = Get-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+  if (-not $item) { return @{ Root = (Join-Path $WowHome 'tokens'); Shared = $false } }
+  $msg = "the file $f must be a regular file holding exactly default-home"
+  if (($item.LinkType -and $item.LinkType -ne 'HardLink') -or $item.PSIsContainer) { throw $msg }
+  if (-not $HOME) { throw "$msg, and HOME is empty, so the default home cannot be found" }
+  $dh = Join-Path $HOME '.config/glunk-identity'
+  $a = [IO.Path]::GetFullPath($WowHome).TrimEnd('\', '/')
+  $b = [IO.Path]::GetFullPath($dh).TrimEnd('\', '/')
+  if ($a -ieq $b) { throw "$msg, and the default home itself takes no tokens-root file" }
+  $text = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($f))
+  # ordinal: -ceq is culture-aware, and under ICU a NUL byte compares as ignorable
+  $okForm = $false
+  foreach ($w in @('default-home', "default-home`n", "default-home`r`n")) { if ([string]::Equals($text, $w, [StringComparison]::Ordinal)) { $okForm = $true } }
+  if (-not $okForm) { throw $msg }
+  @{ Root = (Join-Path $dh 'tokens'); Shared = $true }
+}
+
+# Update-DevToken <entry>: entry is @{ Label; Name; Owner }. Keeps <tokens root>/<Owner>/<Name>/dev-token current.
 function Update-DevToken($entry) {
   $label = $entry.Label
   $repo = $entry.Name
-  $dst = Join-Path $WowHome "tokens/$($entry.Owner)/$repo/dev-token"
+  $dst = Join-Path $script:TokensRoot "$($entry.Owner)/$repo/dev-token"
   $now = [DateTimeOffset]::UtcNow
   $cur = Read-Token $dst
   if ($cur -and ($cur.Expires - $now).TotalMinutes -gt $RefreshMinutes) { return $true }
@@ -178,6 +212,21 @@ function Update-DevToken($entry) {
   if (-not (Test-Path -LiteralPath $key -PathType Leaf)) {
     Write-Log "dev $label`: dev key file $keyName not found"
     return $false
+  }
+
+  if ($script:TokensShared) {
+    # the home shares its root with another org's home: the owner half must be this home's dev installation's account
+    $ra = Invoke-Sh @((ToSh (Join-Path $ScriptsDir 'mint.sh')),
+      '--client-id', $cid, '--installation-id', $iid, '--key', (ToSh $key), '--print-account')
+    $acct = "$($ra.Text)".Trim()
+    if ($ra.Code -ne 0 -or $acct -notmatch $bare) {
+      Write-Log "dev $label`: could not read the dev installation's account; no mint"
+      return $false
+    }
+    if ($acct -ine $entry.Owner) {
+      Write-Log "dev $label`: the owner is not the dev installation's account ($acct); no mint"
+      return $false
+    }
   }
 
   $stageDir = Join-Path $WowHome "staging/$repo"
@@ -203,7 +252,7 @@ function Update-DevToken($entry) {
       $null = New-Item -ItemType Directory -Force -Path (Split-Path $dst)
       [IO.File]::Move($stage, $dst, $true)
     } catch {
-      Write-Log "dev $label`: could not publish tokens/$($entry.Owner)/$repo/dev-token: $($_.Exception.Message)"
+      Write-Log "dev $label`: could not publish $($entry.Owner)/$repo/dev-token under the tokens root: $($_.Exception.Message)"
       return $false
     }
     Write-Log "dev $label`: token rotated, expires $($new.Expires.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
@@ -346,6 +395,14 @@ if (-not $script:ShPath -or -not (Test-Path -LiteralPath $script:ShPath -PathTyp
   Stop-Setup 'no POSIX sh found: pass -Sh (Git for Windows sh.exe)'
 }
 if (-not (Test-Path -LiteralPath (Join-Path $ScriptsDir 'mint.sh') -PathType Leaf)) { Stop-Setup "mint.sh not found in $ScriptsDir" }
+
+try {
+  $tr = Get-TokensRoot
+  $script:TokensRoot = $tr.Root
+  $script:TokensShared = $tr.Shared
+} catch {
+  Stop-Setup $_.Exception.Message
+}
 
 try {
   $lock = [IO.File]::Open((Join-Path $WowHome 'broker.lock'), 'OpenOrCreate', 'ReadWrite', 'None')

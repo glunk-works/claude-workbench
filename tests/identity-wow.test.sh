@@ -32,6 +32,12 @@
 #                    ignoring case, a failed read (HTTP 500) and a login of the wrong shape; ACME/repo1
 #                    mints into tokens/ACME; --revoke makes no read; acme/.hidden and acme/repo1. are usage
 #                    errors for mint and revoke (#1425, #1428)
+#   tokens root      a home with a tokens-root file holding default-home (#1568) writes, reads and revokes under the
+#                    default home's tokens/ (HOME points at a fixture), makes its per-name lock in the default home (seen
+#                    while the run goes), creates a missing default home private, skips the other-owner scan and the leftover
+#                    check, and in the two-home order of the spec leaves each owner's token to its own revoke; default-home,
+#                    default-home LF and CRLF are accepted, two LFs, other content, an empty file, a link, a directory, an
+#                    empty HOME and the file in the default home itself refuse mint and revoke (exit 1, curl uncalled)
 #   secrecy          neither token nor passphrase reaches stdout, stderr or argv
 #   usage / config   bad arguments exit 2 and missing config exits 1, before curl is called
 #
@@ -67,6 +73,9 @@ if grep -q '^url = "https://api.github.com/app/installations/[0-9]*"$' "$STUB_DI
   exit 0
 fi
 echo called >>"$STUB_DIR/calls"
+# a lock directory the test names is looked for while the run goes (the run removes it on exit)
+if [ -n "${STUB_LOCKDIR:-}" ] && [ -d "$STUB_LOCKDIR" ]; then echo seen >>"$STUB_DIR/lockseen"; fi
+if [ -n "${STUB_LOCKDIR2:-}" ] && [ -d "$STUB_LOCKDIR2" ]; then echo seen >>"$STUB_DIR/lockseen2"; fi
 st=$STUB_STATUS
 if [ -s "$STUB_DIR/statuses" ]; then
   st=$(sed -n 1p "$STUB_DIR/statuses")
@@ -718,6 +727,114 @@ STUB_BODY= STUB_STATUS=204 revoke_in "$h" typo/repo1
 assert_eq "revoke under a mistyped owner rc" 0 "$rc"
 assert_eq "revoke makes no account read" 0 "$(acct_reads)"
 assert_eq "revoke makes one DELETE" 1 "$(calls)"
+
+# --- tokens root (#1568)
+real_home=${HOME:-}
+trn=0
+# newfh: a fresh fixture HOME (no default home in it); sets fh, dh
+newfh() { trn=$((trn + 1)); fh="$tmp/fh$trn"; mkdir "$fh"; dh="$fh/.config/glunk-identity"; HOME="$fh"; export HOME; }
+# shared_home <name> <content, printf form>: a second home with a tokens-root file
+shared_home() { h=$(newhome "tr$trn-$1"); printf "$2" >"$h/tokens-root"; }
+default_home() { mkdir -p "$dh"; cp "$home/apps.json" "$home/admin.enc.pem" "$home/review.pem" "$dh/"; }
+
+# a missing default home is created private, with its tokens/, and the lock is made there, not in the second home
+newfh
+shared_home absent 'default-home\n'
+rm -f "$tmp/stub/lockseen" "$tmp/stub/lockseen2"
+STUB_LOCKDIR="$dh/.admin-lock.repo1" STUB_LOCKDIR2="$h/.admin-lock.repo1" mint_in "$h"
+assert_eq "tokens root absent home: rc" 0 "$rc"
+assert_eq "tokens root absent home: token under the default home" "$TOKEN" "$(sed -n 1p "$dh/tokens/acme/repo1/admin-token")"
+[ ! -e "$h/tokens" ] && ok || bad "tokens root absent home" "created tokens/ in the second home"
+assert_eq "tokens root absent home: lock seen in the default home during the run" 1 "$([ -s "$tmp/stub/lockseen" ] && echo 1 || echo 0)"
+assert_eq "tokens root absent home: lock not made in the second home" 0 "$([ -s "$tmp/stub/lockseen2" ] && echo 1 || echo 0)"
+[ ! -e "$dh/.admin-lock.repo1" ] && ok || bad "tokens root absent home" "left the lock"
+assert_eq "tokens root absent home: default home has no group or other bits" "------" "$(ls -ld "$dh" | cut -c5-10)"
+assert_eq "tokens root absent home: tokens/ has no group or other bits" "------" "$(ls -ld "$dh/tokens" | cut -c5-10)"
+
+# revoke removes the root's file
+STUB_BODY= STUB_STATUS=204 revoke_in "$h"
+assert_eq "tokens root revoke rc" 0 "$rc"
+[ ! -e "$dh/tokens/acme/repo1/admin-token" ] && ok || bad "tokens root revoke" "token kept"
+[ ! -e "$h/tokens" ] && ok || bad "tokens root revoke" "created tokens/ in the second home"
+
+# a lock held in the default home refuses mint and revoke
+newfh; default_home
+shared_home lockheld 'default-home\n'
+mkdir "$dh/.admin-lock.repo1"
+put_tok "$dh/tokens/acme/repo1/admin-token" "$TOKEN" 2000-01-01T00:00:00Z
+mint_in "$h"
+assert_eq "tokens root lock held: mint rc" 1 "$rc"
+assert_eq "tokens root lock held: mint curl uncalled" 0 "$(calls)"
+revoke_in "$h"
+assert_eq "tokens root lock held: revoke rc" 1 "$rc"
+assert_eq "tokens root lock held: revoke curl uncalled" 0 "$(calls)"
+
+# two homes sharing one root, in the spec's order
+newfh; default_home
+shared_home other 'default-home\n'
+put_tok "$dh/tokens/acme/x/admin-token"
+put_tok "$dh/tokens/other/x/admin-token"
+put_tok "$dh/tokens/x/admin-token"
+STUB_BODY= STUB_STATUS=204 revoke_in "$h" other/x
+assert_eq "two homes: second home revoke rc" 0 "$rc"
+assert_eq "two homes: revoke makes one DELETE" 1 "$(calls)"
+[ ! -e "$dh/tokens/other/x/admin-token" ] && ok || bad "two homes" "other/x kept"
+[ -e "$dh/tokens/acme/x/admin-token" ] && ok || bad "two homes" "revoke removed acme/x"
+[ -e "$dh/tokens/x/admin-token" ] && ok || bad "two homes" "revoke removed the leftover"
+STUB_ACCT_LOGIN=other mint_in "$h" other/x
+assert_eq "two homes: second home mint is not blocked by acme/x or the leftover: rc" 0 "$rc"
+assert_eq "two homes: new other/x written" "$TOKEN" "$(sed -n 1p "$dh/tokens/other/x/admin-token")"
+rm -f "$dh/tokens/other/x/admin-token"; put_tok "$dh/tokens/other/x/admin-token" "$TOKEN2"
+STUB_BODY= STUB_STATUS=204 revoke_in "$dh" acme/x
+assert_eq "two homes: default home revoke rc" 0 "$rc"
+[ ! -e "$dh/tokens/acme/x/admin-token" ] && ok || bad "two homes" "acme/x kept"
+assert_eq "two homes: the new other/x stays" "$TOKEN2" "$(sed -n 1p "$dh/tokens/other/x/admin-token")"
+
+# the accepted and refused file contents
+for form in 'default-home' 'default-home\n' 'default-home\r\n'; do
+  newfh; shared_home accept "$form"
+  mint_in "$h"
+  assert_eq "tokens root accepted [$form] rc" 0 "$rc"
+  assert_eq "tokens root accepted [$form] token" "$TOKEN" "$(sed -n 1p "$dh/tokens/acme/repo1/admin-token")"
+done
+for form in 'default-home\n\n' 'default-home\r\n\r\n' 'default-home\r' 'default-home x\n' 'Default-Home\n' '/abs/path\n' '' '\n' 'default-home\nmore\n'; do
+  newfh; shared_home refuse "$form"
+  mint_in "$h"
+  assert_eq "tokens root refused [$form] mint rc" 1 "$rc"
+  assert_eq "tokens root refused [$form] mint curl uncalled" 0 "$(calls)"
+  revoke_in "$h"
+  assert_eq "tokens root refused [$form] revoke rc" 1 "$rc"
+  assert_eq "tokens root refused [$form] revoke curl uncalled" 0 "$(calls)"
+  [ ! -e "$fh/.config" ] && ok || bad "tokens root refused [$form]" "created the default home"
+done
+for pair in 'nul-inside:default-\000home\n' 'nul-after:default-home\000' 'nul-before-LF:default-home\000\n'; do
+  newfh; shared_home nul "${pair#*:}"
+  mint_in "$h"
+  assert_eq "tokens root [${pair%%:*}]: mint rc" 1 "$rc"
+  assert_eq "tokens root [${pair%%:*}]: curl uncalled" 0 "$(calls)"
+done
+has_msg "tokens root refusal names the file and the word" "tokens-root must be a regular file holding exactly default-home"
+
+# a link, a directory, an empty HOME, and the file in the default home itself
+newfh; default_home
+h=$(newhome tr-link); printf 'default-home\n' >"$tmp/tr-target"; ln -s "$tmp/tr-target" "$h/tokens-root"
+for how in link; do
+  mint_in "$h"; assert_eq "tokens root $how mint rc" 1 "$rc"; assert_eq "tokens root $how mint curl uncalled" 0 "$(calls)"
+  revoke_in "$h"; assert_eq "tokens root $how revoke rc" 1 "$rc"; assert_eq "tokens root $how revoke curl uncalled" 0 "$(calls)"
+done
+h=$(newhome tr-dir); mkdir "$h/tokens-root"
+mint_in "$h"; assert_eq "tokens root directory mint rc" 1 "$rc"; assert_eq "tokens root directory mint curl uncalled" 0 "$(calls)"
+revoke_in "$h"; assert_eq "tokens root directory revoke rc" 1 "$rc"; assert_eq "tokens root directory revoke curl uncalled" 0 "$(calls)"
+shared_home emptyhome 'default-home\n'
+HOME= mint_in "$h"; assert_eq "tokens root empty HOME mint rc" 1 "$rc"; assert_eq "tokens root empty HOME mint curl uncalled" 0 "$(calls)"
+HOME= revoke_in "$h"; assert_eq "tokens root empty HOME revoke rc" 1 "$rc"; assert_eq "tokens root empty HOME revoke curl uncalled" 0 "$(calls)"
+HOME="$fh"; export HOME
+printf 'default-home\n' >"$dh/tokens-root"
+mint_in "$dh"; assert_eq "tokens root in the default home mint rc" 1 "$rc"; assert_eq "tokens root in the default home mint curl uncalled" 0 "$(calls)"
+has_msg "tokens root in the default home message" "the default home itself takes no tokens-root file"
+revoke_in "$dh"; assert_eq "tokens root in the default home revoke rc" 1 "$rc"; assert_eq "tokens root in the default home revoke curl uncalled" 0 "$(calls)"
+
+HOME=$real_home; export HOME
 
 if [ "$fail" -ne 0 ]; then exit 1; fi
 echo "identity-wow: $pass_count assertions passed"

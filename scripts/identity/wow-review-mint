@@ -16,8 +16,8 @@
 #   --file              the filing token: issues write. The launcher's shape. Always --strict.
 # --read and --file require --out and have no default file, so no path is shared between reviews.
 # Every caller of --read and --file must write them to its own per-review directory: never under
-# $wow_home/tokens/ (the tree a dev container mounts, $wow_home being the resolved home from
-# wow-common.sh) and never in review-tokens/<repo>/ beside the post token. This command does not
+# the tokens root (the tree a dev container mounts; wow-common.sh resolves it from the home,
+# $wow_home/tokens/ or the default home's) and never in review-tokens/<repo>/ beside the post token. This command does not
 # check --out (choice C7); the rule is the caller's.
 # --also <repo2> (with --read only) adds a second repository to the same request: one token covers
 # both, and --strict checks the two-repository set. An installation token has one permission map

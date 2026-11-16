@@ -31,7 +31,8 @@
        swaps it in for $WowHome\bin. Besides the host scripts that is bin\review, the review image's
        build context (#634): the Dockerfile plus exactly the files it copies, flat. The old bin is kept as bin.old until the swap succeeds and is
        put back if it fails; a leftover bin.old with no bin is restored on the next run.
-    5. Creates $WowHome\tokens\<owner>\<repo> for each "owner/name" entry in broker.json (a
+    5. Creates <tokens root>\<owner>\<repo> (the tokens root is $WowHome\tokens, or the default home's tokens when $WowHome holds
+       a tokens-root file holding exactly default-home, #1568; the default home and its tokens are made when absent) for each "owner/name" entry in broker.json (a
        container mount whose source is missing fails to start; the broker writes only that
        directory, #1340). A bare-name entry creates nothing and gets one fixed warning line that names it
        and says the broker refuses it. An entry failing the broker's per-half name rule is skipped (the broker alone refuses a shared name half or an owner equal to another entry's name). A bad
@@ -40,7 +41,9 @@
        the tokens\ directories. The broker.json and review-poll.json comparison is by bare repo name
        (the name half of an owner/name entry; case-insensitive, owner ignored) and warns, one fixed
        line per mismatch (an absent review-poll.json is not compared; an unreadable one gets one fixed line), about a poll entry with
-       no broker.json entry and a broker.json entry with no poll entry. A top-level tokens\ directory that is not
+       no broker.json entry and a broker.json entry with no poll entry. When $WowHome holds a tokens-root file the loop over top-level tokens
+       directories is skipped (the shared root holds the other home's owners). A tokens-root file in a refusal state (other content, empty, a symbolic link,
+       a directory, an empty HOME, or in the default home itself) gets one fixed warning line naming the file and no token directory is created; the rest of the step runs as usual. A top-level tokens\ directory that is not
        the owner half of any entry gets one fixed line too (a leftover bare directory, for example). It also warns once, with a count and no entry text, when review-poll.json
        has string entries it cannot read as owner/name. It only warns: the install's result never changes and no list is edited.
 
@@ -235,6 +238,29 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
     $cfg = Join-Path $WowHome 'broker.json'
     $brokerNames = @()
     $ownerDirs = @{}
+    # The tokens root, read as broker.ps1 reads it: $WowHome\tokens, or the default home's tokens for a tokens-root file holding default-home.
+    $trFile = Join-Path $WowHome 'tokens-root'
+    $trItem = Get-Item -LiteralPath $trFile -Force -ErrorAction SilentlyContinue
+    $tokensRoot = Join-Path $WowHome 'tokens'
+    $trBad = $false
+    if ($trItem) {
+      $trBad = $true
+      try {
+        if ((-not $trItem.LinkType -or $trItem.LinkType -eq 'HardLink') -and -not $trItem.PSIsContainer -and $HOME) {
+          $dh = Join-Path $HOME '.config/glunk-identity'
+          $ta = [IO.Path]::GetFullPath($WowHome).TrimEnd('\', '/')
+          $tb = [IO.Path]::GetFullPath($dh).TrimEnd('\', '/')
+          $tt = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($trFile))
+          $okForm = $false # ordinal: -ceq is culture-aware, and under ICU a NUL byte compares as ignorable
+          foreach ($w in @('default-home', "default-home`n", "default-home`r`n")) { if ([string]::Equals($tt, $w, [StringComparison]::Ordinal)) { $okForm = $true } }
+          if ($ta -ine $tb -and $okForm) {
+            $trBad = $false
+            $tokensRoot = Join-Path $dh 'tokens'
+          }
+        }
+      } catch { $trBad = $true }
+      if ($trBad) { Write-Warning "$trFile must be a regular file holding exactly default-home: no token directory created" }
+    }
     if (Test-Path -LiteralPath $cfg -PathType Leaf) {
       try {
         $found = @()
@@ -245,7 +271,7 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
           $halves = @($parts | Where-Object { $_ -cmatch '\A[A-Za-z0-9._-]+\z' -and $_ -cnotmatch '\A[-.]' -and $_ -cnotmatch '\.\z' })
           if ($halves.Count -ne $parts.Count) { continue }
           if ($parts.Count -ne 2) { Write-Warning "broker.json entry $r is a bare name; the broker refuses it, write it as owner/name"; continue }
-          $null = New-Item -ItemType Directory -Force -Path (Join-Path $WowHome "tokens/$($parts[0])/$($parts[1])")
+          if (-not $trBad) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $tokensRoot "$($parts[0])/$($parts[1])") }
           $ownerDirs[$parts[0].ToLowerInvariant()] = $true
           $found += $parts[-1]
         }
@@ -295,7 +321,7 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
           }
         }
         $tokDir = Join-Path $WowHome 'tokens'
-        if (Test-Path -LiteralPath $tokDir -PathType Container) {
+        if (-not $trItem -and (Test-Path -LiteralPath $tokDir -PathType Container)) {
           foreach ($d in @(Get-ChildItem -LiteralPath $tokDir -Directory -Force | Sort-Object Name)) {
             if ($d.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
             $dk = $d.Name.ToLowerInvariant()

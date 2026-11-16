@@ -8,7 +8,7 @@
 # merge (before PR 1 the default branch has no map): pass the reviewed PR's copy, never one from a
 # checkout a container can write. The rows are judged against that file.
 #
-# It acts as the admin App, through $WOW_HOME/tokens/<owner>/<name>/admin-token, the file wow-admin
+# It acts as the admin App, through <tokens root>/<owner>/<name>/admin-token, the file wow-admin
 # writes. That is the directory the repo's dev container mounts, so the token elevates the
 # container while it is live: run `wow-admin <owner/name> --revoke` after the run. Mint it with
 #   wow-admin <owner/name> --perms administration=write,contents=read,actions=read
@@ -64,7 +64,8 @@ yq() { _o=$(mktemp "$T/w.XXXXXX") || return 1; command yq "$@" >"$_o"; _r=$?; tr
 unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
 
 # --- the token: checked before any row request ----------------------------------------------
-tokfile=$wow_home/tokens/$owner/$name/admin-token
+resolve_tokens_root
+tokfile=$tokens_root/$owner/$name/admin-token
 stop_token() {
   die "no usable admin token for $repo ($1); if one is on file, run: wow-admin $repo --revoke; then mint one with: wow-admin $repo --perms administration=write,contents=read,actions=read"
 }

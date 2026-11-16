@@ -252,10 +252,11 @@ Do the steps in order. It documents the steps and performs none.
    `tokens/<owner>/<repo>`, the directory the template mounts at `/run/wow`. Then rerun
    `install-host-tools.ps1` through `register-broker-task.ps1`, from a claude-workbench clone no
    container opens, at origin's `main` (it stops the broker task around the swap). That creates
-   `tokens/<owner>/<repo>`. Its cross-check must print no warning, and
+   `tokens/<owner>/<repo>`. Its cross-check must print no warning (except, in the default home, the line naming
+   a second org's owner directory in its `tokens`, see *A second org's home*), and
    `broker.log` must show no `config:` line after the edit (a `broker.json` the broker refuses
    stops every repo's mint, not only the new one). One identity home serves one org: a repo of
-   another owner needs its own home, which this section does not cover.
+   another org needs its own home, set up as *A second org's home*, right after this section, says.
 5. **Install the dev App and the loop App on the repo (whoever owns the installation, in the
    browser).** Add the repo to each App's existing installation. A pending permission request on
    an installation is not accepted in this procedure.
@@ -291,6 +292,43 @@ Do the steps in order. It documents the steps and performs none.
    agent-socket check under *What it still carries from the template*; and the live-run check
    under *Opening it*, whose `docker inspect` steps run on the host and whose other steps run in
    that `docker exec` shell.
+
+## A second org's home
+
+The shared template mounts `tokens/<owner>/<repo>` under the default identity home
+(`~/.config/glunk-identity`) for every repo, in every org, while the broker and `wow-admin` write under their own
+home's `tokens/`. A second org's home therefore carries a `tokens-root` file (#1568) that moves its `tokens/` to the
+default home's `tokens/`; the two orgs' directories then sit side by side, owner-qualified, and the template needs no
+change. Steps, on the host:
+
+1. Make a second home directory on the same volume as the default home. The broker's publish moves a staged file
+   from the home into the root, which is one atomic rename only within one volume. Give it that org's own
+   `apps.json` and keys, and a `broker.json` naming only that org's `owner/name` entries. Each owner there must not equal,
+   ignoring case, the name half of any entry in the default home's `broker.json`, and the default home's
+   `broker.json` must name no entry whose owner is that org, ignoring case (its owner is an unchecked label, so such an entry
+   would write the default org's token into that org's mounted directory).
+2. Write the `tokens-root` file in the second home, a regular file holding exactly `default-home` (one LF or CRLF may
+   follow). Any other content, an empty file, a symbolic link, a directory, an empty `HOME`, or the file in the default
+   home itself is refused by every command that reads it (a `setup:` line in `broker.log` and exit 2 for the broker), except the
+   install, which warns and creates no token directory; it is never read as the home's own `tokens/`. Run the sh commands from a
+   copy installed at this release or later (the second home's install copies them), because an older copy ignores `tokens-root`.
+3. Run `register-broker-task.ps1` with `-WowHome` naming the second home and a `-TaskName` other than
+   `glunk-wow-broker` (reusing a registered name replaces that task), and the same for
+   `register-review-poll-task.ps1` with a name other than `glunk-wow-review-poll` when that home polls reviews. The
+   broker reads the file once at start, so re-run the register script after any change to it. The second home's install
+   creates the default home and its `tokens/` when absent, so a host working only in another org needs nothing else for the
+   template's mount source. Git Bash's `HOME` must be the user profile directory: the template's mount source
+   is built from `USERPROFILE`, pwsh's `$HOME` is that directory, and a user-set Git Bash `HOME` would make the sh
+   commands look elsewhere.
+4. Run `wow-admin`, `wow-preflight` and `wow-readback` for that org's repos with `WOW_HOME` set to the second home for
+   that command only; the user-level `WOW_HOME` stays the default home.
+
+In a home with the file the broker checks each entry's owner against the dev installation's account before every mint,
+and `wow-admin` makes its per-name lock in the default home, so both homes' runs for one repo name share it, and
+skips its other-owner scan and the pre-#1340 leftover (a revoke in either home acts on the owner its argument names). The
+default home's install cross-check prints its existing line for the second org's owner directory, which is expected there.
+The default home's own `wow-admin` is unchanged, so its mint scan still reads that directory for a same-named repo and its
+refusal names a revoke, which is then run from the second home.
 
 ## Lanes
 
