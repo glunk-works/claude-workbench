@@ -1,33 +1,26 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 21** (cursor id `sprint-21`), status **implementing**, on milestone 21, *Identity M6: devcontainers cut over*. #411 and #1568 are done. Build order: #1575 (done in #1592), #1571, #1581.
+**Now:** **Sprint 22** (cursor id `sprint-22`), status **planning**. No milestone picked yet.
 
-**Just done (2026-11-16 to 17, driver session, opus):**
-- #1575 merged in #1592 (`f1fb797`): register-review-poll-task refuses to replace another home's poller task. Its review findings are #1593, and the broker-task guard is #1594 (both on milestone 29).
-- #1571 refreshed onto `f1fb797` (spec comment 6947900681) and built in a lane. The lane hung for 40 minutes on an endless `sed` loop it had written (`wow-common.sh`); the maintainer stopped the test, the lane got the fix as a note, and its PR is #1596.
-- #1591 (glunk-works runs one code owner, `* @Seuss27`) filed on milestone 34 and placed first there. Its lane escalated two false statements in the spec (comment 6949289312): the PR counts came from a truncated list, and loop-orchestrator has no CODEOWNERS file. The maintainer answered `choice=apply` (6949671772), and the redraft `-Spec 1591` is running. The old lane was dropped with discard.
-- Filed: #1590 (wow-review removes stale image tags, milestone 29), #1595 (install-host-tools writes the wowd/wowl/wowend profile block, milestone 29, maintainer decision in its body). 603-Identity/devcontainers#556 (the base image moves to a pinned Python 3.15) was filed from that repo, and its spec has posted.
-- bounty-infra (#1429 step 1): admin App added to the repo; `wow-preflight` reads both rulesets back as #406 left them; `production` admin bypass turned off; the reviewer App was already working there. Milestone 34 and #1429 now name the admin-App installation check.
-- Milestone descriptions 21, 29 and 34 written through `milestone-desc.sh`; #412 to #418 carry the one-code-owner note for 603-Identity.
+**Just done (2026-11-17, driver session, opus):**
+- Sprint 21 closed: #1571 (PR #1596, `3241b21`) and #1581 (PR #1600, `f5a6dc7`) merged; both identity homes reinstalled at `3241b21`; the sprint-21 record corrected in PR #1601 (`3f3e123`); milestone 21 closed; archived to `.ai/archive/sprint-21-next-steps.md`. No release: nothing under `plugins/` changed after `v0.37.0`.
+- #1591's rule landed in PR #1602 (`8332c21`) after two lane escalations and redrafts; JaredGroves-603's write access to claude-workbench is removed. #1591 stays open for its later steps.
+- Filed on milestone 29, each in its Build order: #1598 (review findings of PR 1596), #1599 (the default home's shared-owner warning, a cleanup: the runbook already calls it expected), #1603 (live host checks of #1575's and #1571's refusals, which are tests-only so far), #1604 (a finished `-Spec` session's leftover process blocks the next `-Spec`).
+- Retro: four memories added or updated (driver-shipped docs PRs get docs-consistency; milestone-desc.sh's file rule in the index; classifier refusals; verify before claim); #1590 confirmed again.
 
-**Next:** task #1571 — when PR #1596 has its review, run `/way-of-working:pr-checks 1596` and give the merge assessment against spec comment 6947900681. After it merges: `lane.sh done 1571`, hand the maintainer the host-tools reinstall for both homes (`git pull --ff-only` in the install clone, HEAD equal to origin/main, `register-broker-task.ps1` per home with its own `-TaskName`, then each home's `bin\MANIFEST`), then `-Spec 1581` for its refresh. Model: opus (architect).
+**Milestone close:** closed — milestone 21, *Identity M6: devcontainers cut over* (0 open issues, `verify --plan` match, read back `closed`).
 
-**HITL Gate: NONE OPEN** — next gate: the maintainer approves PR 1596 after the driver merge assessment
+**Next:** plan sprint 22: pick its milestone and anchor it with `/way-of-working:handoff` (`/way-of-working:plan-sprint` can help triage the backlog). Model: opus (architect).
 
-**Also waiting on the driver:**
-- Review the #1591 redraft when it posts: it must differ from 6948602717 only in the two corrections and the critic line. Then a fresh lane (milestone 34, critics architect, security-critic, docs-consistency); it shares no file with #1571 or #1581. After it merges, the maintainer removes JaredGroves-603's write access, and no one pushes to a lane branch as Seuss27 again.
-- Review devcontainers#556's spec (the 3.15 build source, how `python3` resolves, apt's own Python).
-- #1595 needs the maintainer's reaction on the issue before its spec; it waits for #1571 (`install-host-tools.ps1`) and #1581 (`DEV-CONTAINER.md`).
+**HITL Gate: NONE OPEN** — next gate: plan the next unit
 
-**Maintainer actions:**
-- bounty-infra: #193 is approved and clean to merge; #202 needs only an approval; leave #201 open until the 3.15 pilot (held until bounty-infra runs as the dev App). Its next steps: #1591, then #1429's template PR, the `broker.json` entry (it can ride the #1571 reinstall), the dev and loop Apps, pin `v0.37.0`, `lanes.dir`.
-- #412 (infrastructure-core cutover) can start; keep "Prevent self-review" off on its Environments.
-- After the reinstall: `docker rmi` the `wow-review:60985f814e95` image (#1590 automates it later); old project volumes are checked for clones before removal (#1589).
-- Carried: react to #1564's spec comment 6901042032 (milestone 36) when you want its build; devcontainers follow-ups #529, #531, #533, #534, #536; milestones 32 and 35 have no open issues; the host files the review findings from #1521, #1522 and #1526; #223's refresh pass; #1518's first `### Trailers` squash check; resume-orchestrator PR #186 and its home-volume cleanup.
+**Also waiting on the driver or the maintainer:**
+- devcontainers#556: spec comment 6949745206 reviewed and recommended; it needs the maintainer's reaction, then a lane in that repo.
+- #1595 needs the maintainer's reaction on the issue before its spec.
+- #1591's next steps: the next workflow-file change runs the admin-App route end to end; each other glunk-works repo switches at its milestone 34 item. No one pushes to a lane branch as Seuss27.
+- Maintainer, on the host: `docker rmi wow-review:60985f814e95`; bounty-infra's `broker.json` entry (bedrock-serverless-rag, global-bootstrap and scope-core also have a review poller and no broker entry); #1603's live checks when convenient.
+- Carried from sprint 21 (details in `.ai/archive/sprint-21-next-steps.md`): bounty-infra PRs #193 and #202 and its next steps; #412's cutover; #1564's spec reaction; devcontainers follow-ups; #419's private record and the other out-of-repo follow-ups.
 
-**Follow-ups outside this repo (not sprint work):**
-- The remaining items of #419's private record. global-bootstrap #71 and #68 can be closed; #67 and #69 stay open. bounty-infra #196, #197 and #194. loop-orchestrator #216. Delete the leftover serverless-bedrock-rag folder in Infisical.
+**Critic pass:** no code diff in this repo this session. PR #1601 (docs) had a docs-consistency pass after it opened: 1 round, no defects, two tightenings (one applied). Lanes #1581 and #1591 ran their own critic gates.
 
-**Critic pass:** no code diff in this repo this session; each lane runs its own critic gate, and #1592 had its fresh-session review.
-
-**Pointers:** [docs/decisions.md](../docs/decisions.md) · [milestone 21](https://github.com/glunk-works/claude-workbench/milestone/21) · [.ai/parked/](parked/)
+**Pointers:** [docs/decisions.md](../docs/decisions.md) · sprint plan: to be picked · [.ai/parked/](parked/)
