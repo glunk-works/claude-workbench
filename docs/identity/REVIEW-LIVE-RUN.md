@@ -207,7 +207,7 @@ Several identity homes can run `wow-review` against one Docker daemon. Give each
 (`register-review-poll-task.ps1` installs it); never make a home by copying another home's
 `review-state`, which holds that home's key. Register the second home's poller with
 `register-review-poll-task.ps1 -WowHome <that home> -TaskName <a name other than the default
-glunk-wow-review-poll>`; registering under the same task name replaces the first home's task.
+glunk-wow-review-poll>`; registering under the same task name is refused unless `-ReplaceOtherHome` is passed.
 A hand run against that home sets `WOW_HOME` to it and runs that home's installed `wow-review`.
 
 Each home's launcher applies `WOW_REVIEW_MAX` (from its own environment) to its own containers (under that home's poller, the value the poller validated and passed to the launch, 2 when unset, not `wow-review`'s own default of 1), and its sweep removes only its own
