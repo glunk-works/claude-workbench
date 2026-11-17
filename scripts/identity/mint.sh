@@ -3,7 +3,7 @@
 #
 #   mint.sh --client-id ID --installation-id ID --key PEM_FILE \
 #           --repos name[,name...] --perms perm=level[,perm=level...] \
-#           --out FILE [--strict]
+#           --out FILE [--strict] [--print-grant]
 #   mint.sh --client-id ID --installation-id ID --key PEM_FILE --print-account
 #
 # --client-id is the App's Client ID (Iv...), which GitHub uses as the JWT `iss` in place of the
@@ -33,6 +33,17 @@
 # written to a file, printed or placed on a command line. Any failed mint, strict or not, leaves
 # an existing --out file as it was, so a caller treats a non-zero exit as "no token".
 #
+# --print-grant (#1608) is a bare flag, for a caller that wants to see what GitHub granted without
+# refusing it (--strict would leave a live token on GitHub with no file to revoke). After the token
+# is written it prints one more line on stdout, `granted: permissions <name>=<level>,... repositories
+# <name>,...`, from the response's `permissions` (names sorted, a `metadata: read` entry GitHub added
+# included) and `repositories` (names sorted). When the line cannot be built in that shape it prints
+# `granted: not shown (unexpected response)` instead: a field that is missing, empty or of another type,
+# a permission name or level outside lowercase letters and underscores, a repository name outside
+# letters, digits, `.`, `_` and `-`, or any jq failure (jq's stderr is dropped, as the strict check
+# drops it). The exit stays 0 either way, since the token is written. It never prints the token, and
+# it refuses --print-account (exit 2, before curl). Without the flag the output is unchanged.
+#
 # --print-account (#1425) is the read-only mode: it signs the same JWT, sends GET
 # https://api.github.com/app/installations/{id} (the host fixed, the JWT only in the curl config
 # on stdin) and, on HTTP 200, prints the installation's `.account.login` as one line on stdout and
@@ -50,14 +61,15 @@ set -f # --repos / --perms are split unquoted below; never let a `*` glob into f
 LC_ALL=C; export LC_ALL # so [!A-Za-z0-9] means ASCII only in every shell and locale
 
 die() { echo "mint.sh: $1" >&2; exit "${2:-1}"; }
-usage() { die "usage: mint.sh --client-id ID --installation-id ID --key PEM --repos a,b --perms p=l,... --out FILE [--strict] | mint.sh --client-id ID --installation-id ID --key PEM --print-account" 2; }
+usage() { die "usage: mint.sh --client-id ID --installation-id ID --key PEM --repos a,b --perms p=l,... --out FILE [--strict] [--print-grant] | mint.sh --client-id ID --installation-id ID --key PEM --print-account" 2; }
 
-# --strict and --print-account are bare flags, anywhere. Every other flag takes one value, which may not begin with
+# --strict, --print-grant and --print-account are bare flags, anywhere. Every other flag takes one value, which may not begin with
 # `-` (so `--out --strict` is a usage error, never a file named --strict); a repeat keeps the last.
-client_id= inst_id= key= repos= perms= out= strict=0 print_account=0
+client_id= inst_id= key= repos= perms= out= strict=0 print_account=0 print_grant=0
 while [ $# -gt 0 ]; do
   if [ "$1" = --strict ]; then strict=1; shift; continue; fi
   if [ "$1" = --print-account ]; then print_account=1; shift; continue; fi
+  if [ "$1" = --print-grant ]; then print_grant=1; shift; continue; fi
   [ $# -ge 2 ] || usage
   case "$2" in -*) usage ;; esac
   case "$1" in
@@ -78,7 +90,7 @@ case "$client_id" in ""|*[!A-Za-z0-9]*) die "--client-id must be the App's Clien
 is_num "$inst_id" || die "--installation-id must be a number" 2
 [ -n "$key" ] && [ -r "$key" ] || die "--key must name a readable PEM file" 2
 if [ "$print_account" -eq 1 ]; then
-  [ -z "$repos$perms$out" ] && [ "$strict" -eq 0 ] || die "--print-account takes no --repos, --perms, --out or --strict" 2
+  [ -z "$repos$perms$out" ] && [ "$strict" -eq 0 ] && [ "$print_grant" -eq 0 ] || die "--print-account takes no --repos, --perms, --out, --strict or --print-grant" 2
 else
 [ -n "$out" ] || die "--out is required" 2
 [ ! -d "$out" ] && [ ! -L "$out" ] || die "--out must not be a directory or a symlink" 2
@@ -222,3 +234,22 @@ printf '%s\n%s\n' "$token" "$expires" >"$staged" || die "cannot write the token"
 mv -f -- "$staged" "$out" || die "cannot write $out"
 staged=
 echo "minted token for installation $inst_id, expires $expires"
+if [ "$print_grant" -eq 1 ]; then
+  # What GitHub reported granting, in a closed shape; anything else prints the fixed line. stderr is
+  # dropped because a jq runtime error prints a truncated copy of the value it failed on.
+  grant=$(printf '%s' "$resp" | jq -r -s '
+    def word: type == "string" and test("\\A[a-z_]+\\z");
+    def repo: type == "string" and test("\\A[A-Za-z0-9._-]+\\z");
+    if length == 1
+       and (.[0] | (.permissions | type == "object") and (.permissions | length) > 0
+                   and (.permissions | to_entries | all(.[]; (.key | word) and (.value | word)))
+                   and (.repositories | type == "array") and (.repositories | length) > 0
+                   and (.repositories | all(.[]; type == "object" and (.name | repo))))
+    then .[0] | "granted: permissions " + (.permissions | to_entries | sort_by(.key) | map(.key + "=" + .value) | join(","))
+                + " repositories " + (.repositories | map(.name) | sort | join(","))
+    else empty end' 2>/dev/null) || grant=
+  case "$grant" in
+    "granted: permissions "*) printf '%s\n' "$grant" ;;
+    *) echo "granted: not shown (unexpected response)" ;;
+  esac
+fi

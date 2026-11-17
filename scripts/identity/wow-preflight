@@ -8,9 +8,9 @@
 # merge (before PR 1 the default branch has no map): pass the reviewed PR's copy, never one from a
 # checkout a container can write. The rows are judged against that file.
 #
-# It acts as the admin App, through <tokens root>/<owner>/<name>/admin-token, the file wow-admin
-# writes. That is the directory the repo's dev container mounts, so the token elevates the
-# container while it is live: run `wow-admin <owner/name> --revoke` after the run. Mint it with
+# It acts as the admin App, through the admin-token file wow-admin writes under the home's
+# admin/<owner>/<name>/, which no container mounts (#1608). Run `wow-admin <owner/name> --revoke`
+# after the run, so no live token is left. Mint it with
 #   wow-admin <owner/name> --perms administration=write,contents=read,actions=read
 # because a ruleset's bypass_actors may be withheld from a caller who cannot edit the ruleset.
 # The script, not the token, keeps the run to reads: every `gh api` call below has no method,
@@ -64,8 +64,7 @@ yq() { _o=$(mktemp "$T/w.XXXXXX") || return 1; command yq "$@" >"$_o"; _r=$?; tr
 unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
 
 # --- the token: checked before any row request ----------------------------------------------
-resolve_tokens_root
-tokfile=$tokens_root/$owner/$name/admin-token
+tokfile=$(admin_token_file "$owner" "$name")
 stop_token() {
   die "no usable admin token for $repo ($1); if one is on file, run: wow-admin $repo --revoke; then mint one with: wow-admin $repo --perms administration=write,contents=read,actions=read"
 }

@@ -168,7 +168,7 @@ or `check in the UI`; the last is left for the operator: a precondition this com
 read (the App installations,
 org secrets, fork pull request workflows) or a read that failed or was not conclusive. The ruleset rows judge the approval rule's parameters (code-owner review, stale reviews dismissed on push, last-push approval, an approving review count of 1), except an organization ruleset's row, which reads `check in the UI` and does not judge them. Those rows judge which App a check is pinned to only for checks an entry's `check_integrations` names. It also
 reports each environment's admins-bypass setting, which must be off, and says that a secret the
-repo's workflows use needs this repo in its visibility; both are set in the browser. It uses the admin token the repo's container mounts, so run `wow-admin
+repo's workflows use needs this repo in its visibility; both are set in the browser. It uses the admin token `wow-admin` writes outside every container mount, so run `wow-admin
 <owner/name> --revoke` after the run. A `missing` row is fixed in the order *The order* gives, and in
 its second case the checks ruleset row reads `missing` for the gate's check until the check is
 added after PR 1 merges.
@@ -179,8 +179,7 @@ A dev-App session's ruleset check cannot read bypass actors (only an identity th
 
 A PR adding, editing or deleting a workflow file is pushed by a code owner or by an App
 holding Workflows write, never the dev App (its registration holds no Workflows permission,
-checked above; while an admin-App token is live in a container, everything in it is
-elevated). It needs the approval of a code owner other than its author and last pusher, so on
+checked above). It needs the approval of a code owner other than its author and last pusher, so on
 a repo with one code owner the admin App pushes and opens it. No bypass actor is ever added to
 unblock one.
 

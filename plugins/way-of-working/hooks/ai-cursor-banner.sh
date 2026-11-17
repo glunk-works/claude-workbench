@@ -22,9 +22,11 @@
 # split, so a non-string value cannot kill the banner either.
 #
 # Two lines are appended after the cursor lines (WB-D24, #390): who is acting, and
-# whether an admin token is live. The admin token is the host-minted file the
-# container mounts read-only at /run/wow/admin-token (token on line 1, expires_at
-# on line 2; only line 2 is ever echoed). That default path is ALWAYS checked, whatever
+# whether an admin token is live. The checked file is /run/wow/admin-token (token on line 1, expires_at
+# on line 2; only line 2 is ever echoed), the path the container mounts read-only. Since #1608 the host
+# command writes no admin token there (it writes outside every container mount), so a file at that path is a
+# stray or a pre-#1608 leftover, and it still elevates the container while it is live: the check stays as a
+# tripwire. That default path is ALWAYS checked, whatever
 # the environment says: $WOW_ADMIN_TOKEN_FILE (which a repo's settings can set) names a
 # second candidate and exists for the fixtures, so it can add a warning, never remove
 # one. That holds against the repo-named candidate only: a repo that controls the session's

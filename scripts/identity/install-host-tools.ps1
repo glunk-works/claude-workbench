@@ -34,7 +34,7 @@
     5. Creates <tokens root>\<owner>\<repo> (the tokens root is $WowHome\tokens, or the default home's tokens when $WowHome holds
        a tokens-root file holding exactly default-home, #1568; the default home and its tokens are made when absent) for each "owner/name" entry in broker.json (a
        container mount whose source is missing fails to start; the broker writes only that
-       directory, #1340). A bare-name entry creates nothing and gets one fixed warning line that names it
+       directory, #1340). An admin-token file already in such a directory (a leftover from before #1608, which wow-admin no longer writes there) gets one warning naming its path and `wow-admin <owner/name> --revoke`; it is never deleted. A bare-name entry creates nothing and gets one fixed warning line that names it
        and says the broker refuses it. An entry failing the broker's per-half name rule is skipped (the broker alone refuses a shared name half or an owner equal to another entry's name). A bad
        broker.json is a warning here, not a failed install. It then
        cross-checks, when broker.json names at least one valid repo, broker.json, review-poll.json and
@@ -303,7 +303,13 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
           $halves = @($parts | Where-Object { $_ -cmatch '\A[A-Za-z0-9._-]+\z' -and $_ -cnotmatch '\A[-.]' -and $_ -cnotmatch '\.\z' })
           if ($halves.Count -ne $parts.Count) { continue }
           if ($parts.Count -ne 2) { Write-Warning "broker.json entry $r is a bare name; the broker refuses it, write it as owner/name"; continue }
-          if (-not $trBad) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $tokensRoot "$($parts[0])/$($parts[1])") }
+          if (-not $trBad) {
+            $entryDir = Join-Path $tokensRoot "$($parts[0])/$($parts[1])"
+            $null = New-Item -ItemType Directory -Force -Path $entryDir
+            # a pre-#1608 wow-admin wrote its token here, a directory a dev container mounts; it is only reported, never deleted
+            $legacyAdmin = Join-Path $entryDir 'admin-token'
+            if (Test-Path -LiteralPath $legacyAdmin) { Write-Warning "$legacyAdmin is a leftover admin token: wow-admin no longer writes there; run: wow-admin $($parts[0])/$($parts[1]) --revoke" }
+          }
           $ownerDirs[$parts[0].ToLowerInvariant()] = $true
           $found += $parts[-1]
         }

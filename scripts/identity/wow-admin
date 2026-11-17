@@ -1,5 +1,5 @@
 #!/bin/sh
-# Host command: a one-hour admin token for one repo's container, or its revocation (WB-D24, #374).
+# Host command: a one-hour admin token for one repo, written outside every container mount, or its revocation (WB-D24, #374).
 #
 #   wow-admin <owner/name> [--perms perm=level[,perm=level...]]
 #   wow-admin <owner/name> --revoke
@@ -9,19 +9,26 @@
 # Mint: asks for the admin key's passphrase on the terminal (echo off, read from /dev/tty, never
 # an argument or an environment variable), unlocks the admin key into a private .unlock.*
 # directory under $WOW_HOME for the length of its two mint.sh calls (the account read, then the mint), and writes the token and its
-# expires_at to <tokens root>/<owner>/<name>/admin-token -- the directory the repo's dev
-# container mounts read-only (#1340). That is the only file mint writes. The token is scoped to
-# <name> and to --perms (default: administration, contents and pull_requests, all write). It
+# expires_at to $WOW_HOME/admin/<owner>/<name>/admin-token (#1608). No container mounts that directory: it is
+# under the identity home itself, never under the tokens root, so it is the home's own admin/ whether or not the home holds a
+# tokens-root file. That is the only file mint writes, and it writes nothing under the tokens root. The token is scoped to
+# <name> and to --perms (default: contents and pull_requests, both write; administration is granted only when --perms names it).
+# It prints the permissions and repositories GitHub reports granting (mint.sh --print-grant, not --strict: a strict refusal would leave a
+# live token on GitHub with no file for --revoke). It
 # refuses a key file that is not passphrase-encrypted (the passphrase would guard nothing),
 # refuses to run beside another wow-admin for the same repo name (any owner), and refuses while a live (or
 # unreadable) token is on file: an overwritten token could no longer be revoked, so --revoke it
 # first (or delete a malformed file by hand). An expired token is simply replaced.
 #
-# Tokens root (wow-common.sh, #1568): every token path below is under the tokens root, $WOW_HOME/tokens
-# unless the home holds a tokens-root file, when it is the default home's tokens/. In such a home the root is shared with
+# Legacy path: before #1608 the token went to <tokens root>/<owner>/<name>/admin-token, the directory the repo's dev
+# container mounts read-only (#1340). Mint reads that file in every home and refuses while it is live or unreadable, with the
+# message that names --revoke; --revoke removes it.
+#
+# Tokens root (wow-common.sh, #1568): the tokens root is $WOW_HOME/tokens unless the home holds a tokens-root file, when it is the
+# default home's tokens/. Only the legacy paths are under it. In a home with tokens-root the root is shared with
 # the default home, so the per-name lock directory is made in the default home (created private when absent), mint skips the
-# other-owner scan and the leftover check (it keeps the installation-account check below, which pins the owner to this home's
-# org), and --revoke neither reads nor removes the leftover tokens/<name>/admin-token. A revoke in either home still acts on the
+# scan of the shared root for other owners' legacy copies and the pre-#1340 leftover check (it keeps the installation-account check below, which
+# pins the owner to this home's org), and --revoke neither reads nor removes the leftover tokens/<name>/admin-token. A revoke acts, in the home it runs from, on the
 # owner its argument names. A bad tokens-root file refuses mint and revoke alike (exit 1, nothing sent).
 #
 # Only mint reads $WOW_HOME/broker.json, and it is not required. When it exists, mint checks it by
@@ -30,24 +37,27 @@
 # another entry's name), then refuses an entry whose name half matches <name> only ignoring case,
 # an entry with the same name half under another owner, and an <owner> equal to the name half of
 # an entry other than the argument's own. Reading it needs jq. Mint then reads every
-# tokens/*/<name>/admin-token under another owner and the leftover tokens/<name>/admin-token, and
+# $WOW_HOME/admin/*/<name>/admin-token under another owner (in every home), and in a home without tokens-root also every
+# <tokens root>/*/<name>/admin-token under another owner and the leftover tokens/<name>/admin-token, and
 # refuses while one is live, so a mistyped owner cannot leave a second live admin token for the
 # repo. All of that happens under the per-name lock and before any token directory, passphrase or curl request.
 #
 # --revoke reads no broker.json and makes none of those refusals. Under the same per-name lock
-# it acts only on tokens/<owner>/<name>/admin-token (the argument's path) and on a leftover
-# tokens/<name>/admin-token from before #1340: DELETE /installation/token once for each distinct
-# token on file, the leftover copy first, then remove each copy on its own token's answer. HTTP
-# 401 means the token was already expired or revoked; the copy goes and the exit is 0. Any other
-# status keeps that token's copies and the exit is 1. The lock is the directory
+# it acts on up to three files: the leftover tokens/<name>/admin-token from before #1340 (a home without tokens-root only), the
+# legacy <tokens root>/<owner>/<name>/admin-token and admin/<owner>/<name>/admin-token. It sends DELETE /installation/token
+# once for each distinct token on file (the leftover first, then the legacy, then the own), then settles that token's files:
+# HTTP 401 means the token was already expired or revoked, and its files go; HTTP 204 is confirmed by one GET
+# /installation/repositories with the same token, and only a 401 on that read removes the files. Any other status on either call
+# keeps that token's files and the exit is 1, after every token has been tried; a curl failure exits 1 at once and keeps the files.
+# It prints one line per step (the DELETE and its status, the read and its status, each file removed), never the token.
+# The lock is the directory
 # $WOW_HOME/.admin-lock.<name, lowercased> (in the default home, in a home with tokens-root); one left by a killed run blocks mint and revoke alike: rmdir it by hand.
 #
 # A mint checks the typed owner against the account login of the installation the admin App mints
 # on, ignoring case, after the unlock and before any token directory or mint request (#1425): it
 # reads GET /app/installations/<id> through mint.sh --print-account and refuses a different
 # login. --revoke makes no such read, so a stray token under a mistyped owner can still be revoked.
-# An owner whose tokens/<owner>/<name> another org's container mounts would otherwise put the admin
-# token in that container; one identity home still serves one org (docs/identity/DEV-CONTAINER.md, WB-D42).
+# One identity home still serves one org (docs/identity/DEV-CONTAINER.md, WB-D42), so an owner of another org is refused.
 #
 # $WOW_TTY names the terminal to read (default /dev/tty); the fixtures point it at a file, and
 # only then is a terminal that cannot hide echo accepted. It can only supply a passphrase the
@@ -59,7 +69,7 @@ prog=wow-admin
 here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
 . "$here/wow-common.sh"
 
-default_perms=administration=write,contents=write,pull_requests=write
+default_perms=contents=write,pull_requests=write
 usage() { die "usage: wow-admin <owner/name> [--perms p=l,...] | wow-admin <owner/name> --revoke" 2; }
 
 arg= perms=$default_perms perms_given= revoke=
@@ -83,8 +93,10 @@ case "$repo" in .* | *.) die "the name half must not begin or end with a dot" 2 
 [ -z "$revoke" ] || [ -z "$perms_given" ] || usage
 
 resolve_tokens_root
-owndir=$tokens_root/$owner/$repo
-ownfile=$owndir/admin-token
+ownfile=$(admin_token_file "$owner" "$repo")
+# the layout before #1608: <tokens root>/<owner>/<name>/admin-token, a directory a dev container mounts; only read, to refuse a mint
+# beside a live one and to revoke it
+legacyfile=$tokens_root/$owner/$repo/admin-token
 # the layout before #1340: only read, to refuse beside a live one and to revoke it; a home with
 # tokens-root never looks there (the shared root's parent is not this home's)
 if [ -n "$tokens_shared" ]; then tokfile=; else tokfile=$wow_home/tokens/$repo/admin-token; fi
@@ -162,27 +174,28 @@ if [ -z "$revoke" ]; then
       bare) die "$wow_home/broker.json has a bare-name entry, which is no longer accepted; rewrite it as owner/name and run wow-admin again" ;;
       case"	"*) die "broker.json entry $ent matches $repo only ignoring case; refusing $arg (name it exactly as the entry does)" ;;
       other"	"*) die "broker.json names $ent for $repo; refusing $arg under another owner" ;;
-      ownername"	"*) die "the owner $owner is the name half of broker.json entry $ent, whose tokens/$owner directory would then hold this admin token; refusing $arg" ;;
+      ownername"	"*) die "the owner $owner is the name half of broker.json entry $ent, refusing $arg" ;;
       *) die "$wow_home/broker.json is not a valid broker config; fix it and run wow-admin again" ;;
     esac
   fi
+  # A live legacy token at this owner's own path blocks a mint in every home; --revoke clears it.
+  live_check "$legacyfile" "$arg"
   # Every other owner's copy for this repo, read with globbing on for this one expansion only
   # (this script runs with set -f). A pattern that matches nothing stays literal and is skipped.
-  # A home with tokens-root shares its root with another org's home, so it reads no other owner's
-  # directory and no leftover.
-  if [ -z "$tokens_shared" ]; then
-    set +f
-    set -- "$tokens_root"/*/"$repo"/admin-token
-    set -f
-    for f in "$@"; do
-      [ "$f" != "$ownfile" ] || continue
-      [ -e "$f" ] || [ -L "$f" ] || continue
-      d=${f%/*}; d=${d%/*}; o=${d##*/}
-      live_check "$f" "$o/$repo"
-    done
-    # a live leftover from before #1340 blocks a mint too; --revoke clears it
-    live_check "$tokfile" "$arg"
-  fi
+  # The home's own admin/ is read in every home. Only a home without tokens-root also reads the
+  # tokens root's legacy copies and the leftover: a home with tokens-root shares that root with another org's home.
+  set +f
+  set -- "$wow_home"/admin/*/"$repo"/admin-token
+  [ -n "$tokens_shared" ] || set -- "$@" "$tokens_root"/*/"$repo"/admin-token
+  set -f
+  for f in "$@"; do
+    [ "$f" != "$ownfile" ] && [ "$f" != "$legacyfile" ] || continue
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    d=${f%/*}; d=${d%/*}; o=${d##*/}
+    live_check "$f" "$o/$repo"
+  done
+  # a live leftover from before #1340 blocks a mint too; --revoke clears it
+  [ -z "$tokfile" ] || live_check "$tokfile" "$arg"
 fi
 
 # tok_of <file>: the token on its first line, only if token-shaped; else die.
@@ -194,13 +207,13 @@ tok_of() {
   printf '%s\n' "$t"
 }
 
-# delete_token <token>: DELETE /installation/token; sets $code. Returns 1 if curl itself failed.
-delete_token() {
+# call_token <DELETE|GET> <token> <url>: one request as the installation token; sets $code. Returns 1 if curl itself failed.
+call_token() {
   reply=$(
     {
-      printf 'url = "https://api.github.com/installation/token"\n'
-      printf 'request = "DELETE"\n'
-      printf 'header = "Authorization: Bearer %s"\n' "$1"
+      printf 'url = "%s"\n' "$3"
+      [ "$1" != DELETE ] || printf 'request = "DELETE"\n'
+      printf 'header = "Authorization: Bearer %s"\n' "$2"
       printf 'header = "Accept: application/vnd.github+json"\n'
       printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
     } | curl -q -sS --max-time 30 -K - -w '\n%{http_code}'
@@ -211,30 +224,42 @@ delete_token() {
 
 if [ -n "$revoke" ]; then
   command -v curl >/dev/null 2>&1 || die "curl not on PATH"
-  have_bare= have_own=
+  have_bare= have_legacy= have_own=
   [ -z "$tokfile" ] || [ ! -r "$tokfile" ] || have_bare=1
+  [ ! -r "$legacyfile" ] || have_legacy=1
   [ ! -r "$ownfile" ] || have_own=1
-  [ -n "$have_bare$have_own" ] || die "no readable admin token on file for $arg"
-  t1= t2=
+  [ -n "$have_bare$have_legacy$have_own" ] || die "no readable admin token on file for $arg"
+  t1= t2= t3=
   [ -z "$have_bare" ] || t1=$(tok_of "$tokfile")
-  [ -z "$have_own" ] || t2=$(tok_of "$ownfile")
-  # one DELETE per distinct token; each copy goes on its own token's 204 or 401
+  [ -z "$have_legacy" ] || t2=$(tok_of "$legacyfile")
+  [ -z "$have_own" ] || t3=$(tok_of "$ownfile")
   failed=
-  settle() {
+  # settle_token <token>: one DELETE for the token, a confirming read after a 204, then the files that hold it.
+  # A file goes only on a DELETE 401 or on a 204 followed by a read that gets 401.
+  settle_token() {
+    t=$1
+    set --
+    [ "$t1" != "$t" ] || set -- "$@" "$tokfile"
+    [ "$t2" != "$t" ] || set -- "$@" "$legacyfile"
+    [ "$t3" != "$t" ] || set -- "$@" "$ownfile"
+    call_token DELETE "$t" https://api.github.com/installation/token || die "curl failed"
+    echo "DELETE /installation/token for $arg: HTTP $code"
     case "$code" in
-      204) rm -f -- "$@"; echo "revoked the admin token for $arg" ;;
-      401) rm -f -- "$@"; echo "the admin token for $arg was already expired or revoked" ;;
-      *) failed="GitHub answered HTTP $code; the token file is kept" ;;
+      401) msg="the admin token for $arg was already expired or revoked" ;;
+      204)
+        call_token GET "$t" https://api.github.com/installation/repositories || die "curl failed on the confirming read"
+        echo "GET /installation/repositories with the same token: HTTP $code"
+        if [ "$code" = 401 ]; then msg="revoked the admin token for $arg"
+        else failed="the revoke of the admin token for $arg was not confirmed (the confirming read answered HTTP $code); the token file is kept"; return 0; fi ;;
+      *) failed="GitHub answered HTTP $code; the token file is kept"; return 0 ;;
     esac
+    for f in "$@"; do rm -f -- "$f"; echo "removed $f"; done
+    echo "$msg"
   }
-  if [ -n "$t1" ]; then
-    delete_token "$t1" || die "curl failed"
-    if [ "$t2" = "$t1" ]; then settle "$tokfile" "$ownfile"; else settle "$tokfile"; fi
-  fi
-  if [ -n "$t2" ] && [ "$t2" != "$t1" ]; then
-    delete_token "$t2" || die "curl failed"
-    settle "$ownfile"
-  fi
+  # one DELETE per distinct token, the leftover's first
+  if [ -n "$t1" ]; then settle_token "$t1"; fi
+  if [ -n "$t2" ] && [ "$t2" != "$t1" ]; then settle_token "$t2"; fi
+  if [ -n "$t3" ] && [ "$t3" != "$t1" ] && [ "$t3" != "$t2" ]; then settle_token "$t3"; fi
   [ -z "$failed" ] || die "$failed"
   exit 0
 fi
@@ -277,7 +302,7 @@ account=$(sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_i
 [ "$(printf '%s' "$account" | tr A-Z a-z)" = "$(printf '%s' "$owner" | tr A-Z a-z)" ] \
   || die "the admin App's installation belongs to $account, not $owner; refusing $arg"
 
-token_dir tokens "$owner/$repo" >/dev/null
+token_dir admin "$owner/$repo" >/dev/null
 sh "$here/mint.sh" --client-id "$client_id" --installation-id "$inst_id" --key "$tmpd/key.pem" \
-  --repos "$repo" --perms "$perms" --out "$ownfile"
-echo "admin token for $arg written to $ownfile (read-only mount target); revoke with: wow-admin $arg --revoke"
+  --repos "$repo" --perms "$perms" --out "$ownfile" --print-grant
+echo "admin token for $arg written to $ownfile (outside every container mount); revoke with: wow-admin $arg --revoke"

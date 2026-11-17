@@ -32,7 +32,7 @@ assert_eq() {
 STUBS="$tmp/stubs"; export STUBS
 TOKEN=ghs_0123456789abcdefghijklmnopqrstuvwxyzABCD
 WOW_HOME="$tmp/home"; export WOW_HOME
-mkdir -p "$STUBS" "$tmp/bin" "$tmp/ghbin" "$tmp/tmpdir" "$WOW_HOME/tokens/o/r"
+mkdir -p "$STUBS" "$tmp/bin" "$tmp/ghbin" "$tmp/tmpdir" "$WOW_HOME/admin/o/r"
 for f in scripts/identity/wow-preflight scripts/identity/wow-common.sh plugins/way-of-working/bin/token-check.sh \
          plugins/way-of-working/bin/gh-identity.sh plugins/way-of-working/bin/ruleset-drift.sh; do
   cp "$root_dir/$f" "$tmp/bin/$(basename "$f")"
@@ -86,7 +86,7 @@ fail_ep() { # fail_ep <endpoint> [<stderr text>]
 }
 drop() { rm -f "$STUBS/$(printf '%s' "$1" | tr '/?=' '___')"; }
 
-write_token() { printf '%s\n%s\n' "$1" "$2" >"$WOW_HOME/tokens/o/r/admin-token"; }
+write_token() { printf '%s\n%s\n' "$1" "$2" >"$WOW_HOME/admin/o/r/admin-token"; }
 
 rules_ok='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"test","integration_id":15368}]}},{"type":"deletion","ruleset_id":1},{"type":"pull_request","ruleset_id":2,"parameters":{"require_code_owner_review":true,"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true,"required_approving_review_count":1}}]'
 yml="$tmp/p.yml"
@@ -331,7 +331,7 @@ stops() { # stops <label>: exit 1, no row endpoint requested
   if [ -f "$STUBS/gh.log" ]; then n=$(grep -vc 'installation/repositories' "$STUBS/gh.log" || true); else n=0; fi
   assert_eq "$1: no row endpoint requested" 0 "$n"
 }
-setup_ok; rm -f "$WOW_HOME/tokens/o/r/admin-token"; run
+setup_ok; rm -f "$WOW_HOME/admin/o/r/admin-token"; run
 stops "a missing token file"
 case "$(cat "$tmp/err")" in *"wow-admin o/r --revoke"*"wow-admin o/r --perms administration=write,contents=read,actions=read"*) echo "ok - a stop names the revoke and the mint" ;; *) echo "FAIL - a stop names the revoke and the mint: $(cat "$tmp/err")" >&2; fail=1 ;; esac
 setup_ok; write_token "$TOKEN" 2000-01-01T00:00:00Z; run
@@ -407,54 +407,39 @@ snap() { (cd "$WOW_HOME" && find . -print | sort | while read -r p; do [ -d "$p"
 setup_ok; before=$(snap); run; after=$(snap)
 assert_eq "\$WOW_HOME is unchanged by a run" "$before" "$after"
 assert_eq "no temp file is left after a run" "" "$(ls -A "$tmp/tmpdir")"
-setup_ok; rm -f "$WOW_HOME/tokens/o/r/admin-token"; before=$(snap); run; after=$(snap)
+setup_ok; rm -f "$WOW_HOME/admin/o/r/admin-token"; before=$(snap); run; after=$(snap)
 assert_eq "\$WOW_HOME is unchanged by a stopped run" "$before" "$after"
 assert_eq "no temp file is left after a stopped run" "" "$(ls -A "$tmp/tmpdir")"
 setup_ok; fail_ep installation/repositories; run
 assert_eq "no temp file is left after a stop at the installation read" "" "$(ls -A "$tmp/tmpdir")"
 
-# --- tokens root (#1568) ---------------------------------------------------------------------
-# a tokens-root file holding default-home moves the token read to the default home's tokens/ (HOME is a fixture)
+# --- the token is the home's own admin/, whatever a tokens-root file says (#1568, #1608) ------
 setup_ok; run; cp "$tmp/out" "$tmp/out.base"; base_rc=$rc
 real_home=${HOME:-}; real_wow=$WOW_HOME
 fh="$tmp/fh"; dh="$fh/.config/glunk-identity"
-mkdir -p "$dh/tokens/o"
-mv "$WOW_HOME/tokens/o/r" "$dh/tokens/o/r"; rm -rf "$WOW_HOME/tokens"
-printf 'default-home\n' >"$WOW_HOME/tokens-root"
+mkdir -p "$dh"
 HOME="$fh"; export HOME
-rootsnap() { (cd "$dh" && find . -print | sort | while read -r p; do [ -d "$p" ] && echo "$p" || { echo "$p"; cksum <"$p"; }; done); }
-before=$(rootsnap); run; after=$(rootsnap)
-assert_eq "tokens root: the run proceeds as the happy case does" "$base_rc" "$rc"
-assert_eq "tokens root: the same table" "$(cat "$tmp/out.base")" "$(cat "$tmp/out")"
-assert_eq "tokens root: the root is unchanged by the run" "$before" "$after"
-assert_eq "tokens root: nothing is created under the second home's tokens" "no" "$([ -e "$WOW_HOME/tokens" ] && echo yes || echo no)"
-# other content, two LFs, a link, a directory and an empty HOME each stop before any gh call
-printf 'elsewhere\n' >"$WOW_HOME/tokens-root"; run
-assert_eq "tokens root other content: exit 1" 1 "$rc"
-assert_eq "tokens root other content: gh uncalled" "no" "$([ -e "$STUBS/gh.log" ] && echo yes || echo no)"
-case "$(cat "$tmp/err")" in *"tokens-root"*"default-home"*) echo "ok - tokens root other content: the message names the file and the word" ;; *) echo "FAIL - tokens root other content message: $(cat "$tmp/err")" >&2; fail=1 ;; esac
-printf 'default-home\n\n' >"$WOW_HOME/tokens-root"; run
-assert_eq "tokens root two LFs: exit 1" 1 "$rc"
-assert_eq "tokens root two LFs: gh uncalled" "no" "$([ -e "$STUBS/gh.log" ] && echo yes || echo no)"
-printf 'default-home' >"$WOW_HOME/tokens-root"; run
-assert_eq "tokens root no newline: accepted" "$base_rc" "$rc"
-printf 'default-home\r\n' >"$WOW_HOME/tokens-root"; run
-assert_eq "tokens root CRLF: accepted" "$base_rc" "$rc"
-rm -f "$WOW_HOME/tokens-root"; printf 'default-home\n' >"$tmp/trtarget"; ln -s "$tmp/trtarget" "$WOW_HOME/tokens-root"; run
-assert_eq "tokens root symbolic link: exit 1" 1 "$rc"
-assert_eq "tokens root symbolic link: gh uncalled" "no" "$([ -e "$STUBS/gh.log" ] && echo yes || echo no)"
-rm -f "$WOW_HOME/tokens-root"; mkdir "$WOW_HOME/tokens-root"; run
-assert_eq "tokens root directory: exit 1" 1 "$rc"
-assert_eq "tokens root directory: gh uncalled" "no" "$([ -e "$STUBS/gh.log" ] && echo yes || echo no)"
-rmdir "$WOW_HOME/tokens-root"; printf 'default-home\n' >"$WOW_HOME/tokens-root"
-HOME=; export HOME; run
-assert_eq "tokens root with HOME empty: exit 1" 1 "$rc"
-assert_eq "tokens root with HOME empty: gh uncalled" "no" "$([ -e "$STUBS/gh.log" ] && echo yes || echo no)"
-# the file in the default home itself is refused
-HOME="$fh"; export HOME
-printf 'default-home\n' >"$dh/tokens-root"; WOW_HOME=$dh; export WOW_HOME; run
-assert_eq "tokens root in the default home: exit 1" 1 "$rc"
-assert_eq "tokens root in the default home: gh uncalled" "no" "$([ -e "$STUBS/gh.log" ] && echo yes || echo no)"
+# a token only at the old tokens/<owner>/<repo>/admin-token is not read: the usable-token stop, no row request
+setup_ok; mkdir -p "$WOW_HOME/tokens/o/r"; mv "$WOW_HOME/admin/o/r/admin-token" "$WOW_HOME/tokens/o/r/admin-token"; run
+assert_eq "old path only: exit 1" 1 "$rc"
+assert_eq "old path only: gh uncalled" "no" "$([ -e "$STUBS/gh.log" ] && echo yes || echo no)"
+case "$(cat "$tmp/err")" in *"no usable admin token for o/r"*) echo "ok - old path only: the usable-token message" ;; *) echo "FAIL - old path only message: $(cat "$tmp/err")" >&2; fail=1 ;; esac
+rm -rf "$WOW_HOME/tokens"
+# a tokens-root file of any content changes nothing and refuses nothing; no tokens/ directory is created in either home
+for content in 'default-home\n' 'elsewhere\n' 'default-home\n\n' ''; do
+  setup_ok; printf "$content" >"$WOW_HOME/tokens-root"; run
+  assert_eq "tokens-root file: the run proceeds as the happy case does" "$base_rc" "$rc"
+  assert_eq "tokens-root file: the same table" "$(cat "$tmp/out.base")" "$(cat "$tmp/out")"
+  assert_eq "tokens-root file: no tokens/ in the home" "no" "$([ -e "$WOW_HOME/tokens" ] && echo yes || echo no)"
+  assert_eq "tokens-root file: no tokens/ in the default home" "no" "$([ -e "$dh/tokens" ] && echo yes || echo no)"
+done
+setup_ok; rm -f "$WOW_HOME/tokens-root"; printf 'default-home\n' >"$tmp/trtarget"; ln -s "$tmp/trtarget" "$WOW_HOME/tokens-root"; run
+assert_eq "tokens-root symbolic link: the run proceeds" "$base_rc" "$rc"
+setup_ok; rm -f "$WOW_HOME/tokens-root"; mkdir "$WOW_HOME/tokens-root"; run
+assert_eq "tokens-root directory: the run proceeds" "$base_rc" "$rc"
+rmdir "$WOW_HOME/tokens-root"
+setup_ok; printf 'default-home\n' >"$WOW_HOME/tokens-root"; HOME=; export HOME; run
+assert_eq "tokens-root file with HOME empty: the run proceeds" "$base_rc" "$rc"
 HOME=$real_home; export HOME; WOW_HOME=$real_wow; export WOW_HOME
 
 exit "$fail"

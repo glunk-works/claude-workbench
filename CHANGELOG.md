@@ -21,8 +21,11 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+**⚠️ Migration** — reinstall the host tools; a live admin token at the old `tokens/<owner>/<repo>/admin-token` blocks a mint until `wow-admin <owner/name> --revoke` removes it, and the install warns about one; a caller that needs Administration write must now name it in `--perms`.
+
 ### Changed
 
+- `wow-admin` now writes the admin token to `admin/<owner>/<repo>/admin-token` under the identity home, a directory no container mounts, instead of `tokens/<owner>/<repo>/`, which the dev container mounts; `wow-preflight` and `wow-readback` read it there through one `wow-common.sh` helper. `--revoke` confirms each revoke with a second read that must get HTTP 401 before it removes the file, and prints one line per step. The default `--perms` drops `administration=write`, and a mint prints the permissions and repositories GitHub granted (`mint.sh --print-grant`) (#1608).
 - `/way-of-working:plan-sprint` findings mode now labels each combined issue with its confirmed `area/` label, checked against the backlog repo's labels first and read back with the body, through the new `plan-findings.sh label` and `filed` subcommands (#1564).
 - With no `-WowHome`, `wow-driver.ps1` and `wow-lane.ps1` now use the identity home their installed copy sits in (the parent of its `bin`) and ignore `WOW_HOME`; a given `-WowHome` that names another home is still refused (#1577).
 - `register-review-poll-task.ps1` refuses to replace a task registered under the same name for another identity home, naming both homes, unless `-ReplaceOtherHome` is passed; re-registering the same home is unchanged (#1575).

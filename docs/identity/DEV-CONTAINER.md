@@ -23,10 +23,9 @@ that serves the host's git credential (see Hazards that remain).
   ensures for each repo in `broker.json`. The broker writes the dev token only to
   `tokens/<owner>/<repo>/dev-token` (`WB-D42`, `#1276`, `#1340`); a bare `tokens/<repo>` directory is a
   leftover the maintainer removes. The
-  `dev-token` script reads the `dev-token` file there, and the plugin's SessionStart banner reads `admin-token` there
-  (`/run/wow/admin-token`, the fixed path it looks at); `wow-admin <owner/name>` writes the admin token into the same
-  host directory (when `WOW_HOME` is the default directory, as *Opening it* already requires),
-  `tokens/<owner>/<repo>/admin-token`, and nowhere else (`#1340`). The change
+  `dev-token` script reads the `dev-token` file there, and the plugin's SessionStart banner still checks `/run/wow/admin-token`,
+  the fixed path it looks at, as a tripwire for a stray or pre-`#1608` leftover; `wow-admin <owner/name>` writes the admin token to
+  the home's `admin/<owner>/<repo>/admin-token`, which no container mounts (`#1608`, `WB-D53`), and nowhere else. The change
   takes effect when the driver launcher's start-of-day path recreates the container.
 - The reader, the wrapper and the credential helper are the base image flavour's
   (603-Identity/devcontainers, `FROM` in `.devcontainer/Dockerfile`), at the paths named here;
@@ -321,8 +320,8 @@ Per identity home, the host side is then:
 ## A second org's home
 
 The shared template mounts `tokens/<owner>/<repo>` under the default identity home
-(`~/.config/glunk-identity`) for every repo, in every org, while the broker and `wow-admin` write under their own
-home's `tokens/`. A second org's home therefore carries a `tokens-root` file (#1568) that moves its `tokens/` to the
+(`~/.config/glunk-identity`) for every repo, in every org, while only the broker writes under its own
+home's `tokens/`, and `wow-admin` writes the home's own `admin/`. A second org's home therefore carries a `tokens-root` file (#1568) that moves its `tokens/` to the
 default home's `tokens/`; the two orgs' directories then sit side by side, owner-qualified, and the template needs no
 change. Steps, on the host:
 
@@ -386,9 +385,10 @@ change. Steps, on the host:
 
 In a home with the file the broker checks each entry's owner against the dev installation's account before every mint,
 and `wow-admin` makes its per-name lock in the default home, so both homes' runs for one repo name share it, and
-skips its other-owner scan and the pre-#1340 leftover (a revoke in either home acts on the owner its argument names). The
+writes the admin token to each home's own `admin/`, never to the shared root. Its other-owner scan of `admin/` runs in every
+home; it skips the scan of the shared root's other owners' legacy copies and the pre-#1340 leftover (a revoke acts, in the home it runs from, on the owner its argument names). The
 default home's install cross-check prints its existing line for the second org's owner directory, which is expected there.
-The default home's own `wow-admin` is unchanged, so its mint scan still reads that directory for a same-named repo and its
+The default home's own `wow-admin` still scans that shared directory for a same-named repo's legacy copy, and its
 refusal names a revoke, which is then run from the second home.
 
 ## Lanes
