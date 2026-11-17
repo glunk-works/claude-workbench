@@ -326,7 +326,7 @@ change. Steps, on the host:
    `glunk-wow-review-poll-<suffix>` (for 603-Identity's home, `603id`).
 2. Write the `tokens-root` file in the second home, a regular file holding exactly `default-home` (one LF or CRLF may
    follow). Any other content, an empty file, a symbolic link, a directory, an empty `HOME`, or the file in the default
-   home itself is refused by every command that reads it (a `setup:` line in `broker.log` and exit 2 for the broker), except the
+   home itself (including the default home reached through a link, or its path written in another letter case) is refused by every command that reads it (a `setup:` line in `broker.log` and exit 2 for the broker), except the
    install, which warns and creates no token directory; it is never read as the home's own `tokens/`. Run the sh commands from a
    copy installed at this release or later (the second home's install copies them), because an older copy ignores `tokens-root`.
 3. Run `register-broker-task.ps1` with `-WowHome` naming the second home and `-TaskName glunk-wow-broker-<suffix>`

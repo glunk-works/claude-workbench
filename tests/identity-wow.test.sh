@@ -37,7 +37,7 @@
 #                    while the run goes), creates a missing default home private, skips the other-owner scan and the leftover
 #                    check, and in the two-home order of the spec leaves each owner's token to its own revoke; default-home,
 #                    default-home LF and CRLF are accepted, two LFs, other content, an empty file, a link, a directory, an
-#                    empty HOME and the file in the default home itself refuse mint and revoke (exit 1, curl uncalled)
+#                    empty HOME and the file in the default home itself (also through a link, a parent-component link or another letter case, with or without a trailing slash or /./) refuse mint and revoke (exit 1, curl uncalled)
 #   secrecy          neither token nor passphrase reaches stdout, stderr or argv
 #   usage / config   bad arguments exit 2 and missing config exits 1, before curl is called
 #
@@ -833,6 +833,27 @@ printf 'default-home\n' >"$dh/tokens-root"
 mint_in "$dh"; assert_eq "tokens root in the default home mint rc" 1 "$rc"; assert_eq "tokens root in the default home mint curl uncalled" 0 "$(calls)"
 has_msg "tokens root in the default home message" "the default home itself takes no tokens-root file"
 revoke_in "$dh"; assert_eq "tokens root in the default home revoke rc" 1 "$rc"; assert_eq "tokens root in the default home revoke curl uncalled" 0 "$(calls)"
+# the default home itself through a link (last component, then a parent component), or in another letter case (#1571)
+newfh; default_home
+ln -s "$dh" "$tmp/tr-lnk"; ln -s "$fh" "$tmp/tr-parent"; mkdir -p "$fh/.config/GLUNK-identity"
+cp "$home/apps.json" "$home/admin.enc.pem" "$home/review.pem" "$fh/.config/GLUNK-identity/"
+for how in link parent case; do
+  case "$how" in
+    link) hv="$tmp/tr-lnk" ;;
+    parent) hv="$tmp/tr-parent/.config/glunk-identity" ;;
+    case) hv="$fh/.config/GLUNK-identity" ;;
+  esac
+  printf 'default-home\n' >"$hv/tokens-root"
+  mint_in "$hv"; assert_eq "tokens root default home [$how] mint rc" 1 "$rc"; assert_eq "tokens root default home [$how] mint curl uncalled" 0 "$(calls)"
+  has_msg "tokens root default home [$how] message" "the default home itself takes no tokens-root file"
+  revoke_in "$hv"; assert_eq "tokens root default home [$how] revoke rc" 1 "$rc"; assert_eq "tokens root default home [$how] revoke curl uncalled" 0 "$(calls)"
+  rm -f "$hv/tokens-root"
+done
+# the same case variant written with a trailing slash or a /./ component, with the default home absent
+rm -rf "$fh/.config/glunk-identity"; printf 'default-home\n' >"$fh/.config/GLUNK-identity/tokens-root"
+for hv in "$fh/.config/GLUNK-identity/" "$fh/./.config/GLUNK-identity" "$fh/././.config/GLUNK-identity"; do
+  mint_in "$hv"; assert_eq "tokens root default home [$hv] mint rc" 1 "$rc"; assert_eq "tokens root default home [$hv] mint curl uncalled" 0 "$(calls)"
+done
 
 HOME=$real_home; export HOME
 
