@@ -3154,4 +3154,4 @@ only; neither was exercised live.
 
 No release followed: no file under `plugins/` or `.claude-plugin/` changed after `v0.37.0`, the
 host tools install from `main`, and the changelog's Unreleased lines ship with the next plugin
-release. Sprint 21 closed on 2026-11-17; its last change to this repo is PR #1600.
+release. Sprint 21 closed on 2026-11-17; its last change to this repo is `f5a6dc7` (PR #1600).
