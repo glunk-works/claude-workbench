@@ -239,6 +239,7 @@ STUB_BODY= run sh "$admin" acme/repo1 --revoke
 assert_eq "revoke 204 then 200 rc" 1 "$rc"
 [ -e "$tokfile" ] && ok || bad "revoke 204 then 200" "token file removed"
 assert_eq "revoke 204 then 200 names the read status" 1 "$(printf '%s' "$out" | grep -c 'confirming read answered HTTP 200' || true)"
+assert_eq "revoke 204 then 200 says to run the revoke again" 1 "$(printf '%s' "$out" | grep -c 'run wow-admin acme/repo1 --revoke again' || true)"
 assert_eq "revoke 204 then 200 prints no token" 0 "$(printf '%s' "$out" | grep -c "$TOKEN" || true)"
 # a DELETE 401 removes the file with no second request
 put_own

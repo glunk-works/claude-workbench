@@ -48,7 +48,7 @@
 # once for each distinct token on file (the leftover first, then the legacy, then the own), then settles that token's files:
 # HTTP 401 means the token was already expired or revoked, and its files go; HTTP 204 is confirmed by one GET
 # /installation/repositories with the same token, and only a 401 on that read removes the files. Any other status on either call
-# keeps that token's files and the exit is 1, after every token has been tried; a curl failure exits 1 at once and keeps the files.
+# keeps that token's files and the exit is 1, after every token has been tried (a read that answers other than 401 after a 204 says to run --revoke again: a second revoke gets 401 on the DELETE and removes the file); a curl failure exits 1 at once and keeps the files.
 # It prints one line per step (the DELETE and its status, the read and its status, each file removed), never the token.
 # The lock is the directory
 # $WOW_HOME/.admin-lock.<name, lowercased> (in the default home, in a home with tokens-root); one left by a killed run blocks mint and revoke alike: rmdir it by hand.
@@ -250,7 +250,7 @@ if [ -n "$revoke" ]; then
         call_token GET "$t" https://api.github.com/installation/repositories || die "curl failed on the confirming read"
         echo "GET /installation/repositories with the same token: HTTP $code"
         if [ "$code" = 401 ]; then msg="revoked the admin token for $arg"
-        else failed="the revoke of the admin token for $arg was not confirmed (the confirming read answered HTTP $code); the token file is kept"; return 0; fi ;;
+        else failed="the revoke of the admin token for $arg was not confirmed (the confirming read answered HTTP $code); the token file is kept; run wow-admin $arg --revoke again (a second revoke gets 401 on the DELETE and removes the file)"; return 0; fi ;;
       *) failed="GitHub answered HTTP $code; the token file is kept"; return 0 ;;
     esac
     for f in "$@"; do rm -f -- "$f"; echo "removed $f"; done

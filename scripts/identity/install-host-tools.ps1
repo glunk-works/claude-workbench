@@ -308,7 +308,7 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
             $null = New-Item -ItemType Directory -Force -Path $entryDir
             # a pre-#1608 wow-admin wrote its token here, a directory a dev container mounts; it is only reported, never deleted
             $legacyAdmin = Join-Path $entryDir 'admin-token'
-            if (Test-Path -LiteralPath $legacyAdmin) { Write-Warning "$legacyAdmin is a leftover admin token: wow-admin no longer writes there; run: wow-admin $($parts[0])/$($parts[1]) --revoke" }
+            if (Test-Path -LiteralPath $legacyAdmin) { Write-Warning "tokens/$($parts[0])/$($parts[1])/admin-token is a leftover admin token: wow-admin no longer writes there; run: wow-admin $($parts[0])/$($parts[1]) --revoke" }
           }
           $ownerDirs[$parts[0].ToLowerInvariant()] = $true
           $found += $parts[-1]
