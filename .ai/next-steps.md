@@ -7,10 +7,11 @@
 - #1591's rule landed in PR #1602 (`8332c21`) after two lane escalations and redrafts; JaredGroves-603's write access to claude-workbench is removed. #1591 stays open for its later steps.
 - Filed on milestone 29, each in its Build order: #1598 (review findings of PR 1596), #1599 (the default home's shared-owner warning, a cleanup: the runbook already calls it expected), #1603 (live host checks of #1575's and #1571's refusals, which are tests-only so far), #1604 (a finished `-Spec` session's leftover process blocks the next `-Spec`).
 - Retro: four memories added or updated (driver-shipped docs PRs get docs-consistency; milestone-desc.sh's file rule in the index; classifier refusals; verify before claim); #1590 confirmed again.
+- Plan-sprint triage (7 unmilestoned issues, recommendation accepted whole): #1566 placed on milestone 36 as build-order step 2 after #1564 (`milestone-desc.sh` write `live ok`, order `1564, 1566`); #223, #334, #409, #1167, #1548 and #1579 left unmilestoned (#1579 is for `/way-of-working:plan-sprint findings`). Triage comment on each; nothing staged. The maintainer chose milestone 36 for sprint 22. Milestones 32 and 35 have 0 open items; 32 ships batched with 36.
 
 **Milestone close:** closed — milestone 21, *Identity M6: devcontainers cut over* (0 open issues, `verify --plan` match, read back `closed`).
 
-**Next:** plan sprint 22: pick its milestone and anchor it with `/way-of-working:handoff` (`/way-of-working:plan-sprint` can help triage the backlog). Model: opus (architect).
+**Next:** plan sprint 22: anchor milestone 36 (*Review findings flow*, #1564 then #1566) with `/way-of-working:handoff`. #1564 needs the maintainer's spec reaction; #1566 needs a maintainer reaction on the issue before its spec. Model: opus (architect).
 
 **HITL Gate: NONE OPEN** — next gate: plan the next unit
 
