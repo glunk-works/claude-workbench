@@ -3139,8 +3139,19 @@ directory there; a read-only mint; the devcontainers container mounting the toke
 under the default home, its lock leaving nothing behind; `wow-preflight` and `wow-readback` reading
 that token, with readback passing and its two audit-log searches empty; and the default home's
 install cross-check printing only its expected line for the second org's owner directory. Nothing
-is deferred. Tracked follow-up: the sh and pwsh checks for a `tokens-root` file in the default home
-itself disagree on letter case and links (#1571).
+is deferred.
 
-Sprint 21 closed on 2026-11-16; its last change to this repo is PR #1573, the pin bump to
-`v0.37.0`.
+After that close, four more items were built on milestone 21: the onboarding runbook registers each
+home's review poller (PR #1576); `register-review-poll-task.ps1` refuses to replace a task another
+identity home registered under the same name (#1575, PR #1592); the sh commands, the broker and the
+install share one rule for a `tokens-root` file in the default home itself, following links and
+ignoring letter case (#1571, PR #1596); and the runbook checks the install clone and each home's
+`bin\MANIFEST` around a host-tools reinstall (#1581, PR #1600). devcontainers' `lanes.dir` was
+tracked here as #1580 and done in that repo. Both identity homes were reinstalled at `3241b21`
+on 2026-11-17, each `bin\MANIFEST` naming that commit, and the 603-Identity home's install still
+accepted its `tokens-root` file. The two new refusals (#1575's and #1571's) are covered by tests
+only; neither was exercised live.
+
+No release followed: no file under `plugins/` or `.claude-plugin/` changed after `v0.37.0`, the
+host tools install from `main`, and the changelog's Unreleased lines ship with the next plugin
+release. Sprint 21 closed on 2026-11-17; its last change to this repo is PR #1600.
