@@ -538,7 +538,7 @@ reg="$root_dir/scripts/identity/register-review-poll-task.ps1"
 check "register-review-poll-task.ps1 disables by task name" has "$reg" 'Disable-ScheduledTask -TaskName $TaskName'
 check "register-review-poll-task.ps1 enables by task name" has "$reg" 'Enable-ScheduledTask -TaskName $TaskName'
 if ! command -v pwsh >/dev/null 2>&1; then
-  echo "SKIP - pwsh not on PATH; register-review-poll-task.ps1 -Disable/-Enable cases not run" >&2
+  echo "SKIP - pwsh not on PATH; register-review-poll-task.ps1 -Disable/-Enable and guard cases not run" >&2
 else
   esc=$(printf '\033')
   rt() { # rt <out> <args...>: run the script, stdout and stderr together; sets rc
@@ -561,6 +561,65 @@ else
     check "[$pair] together: non-zero exit" test "$rc" -ne 0
     check "[$pair] together: mutual-exclusion message" grep -q "cannot be given together" "$tmp/rt.pair.plain"
   done
+fi
+
+# The other-home guard (#1575): -WhatIf runs with a stubbed Get-ScheduledTask. A run that passes the guard ends at
+# the conhost lookup, where [Environment]::SystemDirectory is empty off Windows; a refusal ends before it.
+check "register-review-poll-task.ps1 reads the existing task before it calls the installer" test \
+  "$(grep -n 'Get-ScheduledTask -TaskName \$TaskName' "$reg" | head -1 | cut -d: -f1)" -lt \
+  "$(grep -n "Join-Path \$PSScriptRoot 'install-host-tools.ps1'" "$reg" | head -1 | cut -d: -f1)"
+if ! command -v pwsh >/dev/null 2>&1; then
+  echo "SKIP - pwsh not on PATH; register-review-poll-task.ps1 guard cases not run" >&2
+elif [ -n "$(pwsh -NoProfile -NonInteractive -Command '[Environment]::SystemDirectory' </dev/null 2>/dev/null)" ]; then
+  echo "SKIP - [Environment]::SystemDirectory is set; register-review-poll-task.ps1 guard cases not run" >&2
+else
+  ghome="$tmp/guard-home"
+  mkdir "$ghome"
+  gcalls="$tmp/guard.calls"
+  gt() { # gt <out> <stub mode: none|home|nohome> <stub home> [script args]: run under a stub Get-ScheduledTask
+    o=$1; sm=$2; sh_=$3; shift 3
+    : >"$gcalls"
+    STUB_MODE=$sm STUB_HOME=$sh_ STUB_CALLS=$gcalls G_REG=$reg G_HOME=$ghome \
+      timeout 120 pwsh -NoProfile -NonInteractive -Command '
+        function Get-ScheduledTask {
+          param($TaskName, $TaskPath, $ErrorAction)
+          Add-Content -LiteralPath $env:STUB_CALLS -Value "$TaskName $TaskPath" -WhatIf:$false
+          if ($env:STUB_MODE -eq "none") { return }
+          $q = [char]39
+          $a = if ($env:STUB_MODE -eq "nohome") { "--headless pwsh -NoProfile -Command run" }
+               else { "--headless pwsh -NoProfile -Command `"`$env:WOW_HOME = $q$($env:STUB_HOME)$q; & ${q}sh$q ${q}p$q`"" }
+          [pscustomobject]@{ Actions = @([pscustomobject]@{ Arguments = $a }) }
+        }
+        & $env:G_REG -TaskName guard-test -WhatIf -WowHome $env:G_HOME -Sh /bin/sh @args' "$@" >"$o" 2>&1 </dev/null
+    sed "s/$esc\\[[0-9;]*[A-Za-z]//g" "$o" | tr '\n' ' ' | sed 's/ | / /g; s/  */ /g' >"$o.plain"
+  }
+  g_passes() { # g_passes <label> <out>
+    check "$1: stub called" test "$(lines "$gcalls")" -eq 1
+    check "$1: no refusal" nothas "$2.plain" "Pass -ReplaceOtherHome"
+    check "$1: runs on to the conhost lookup" grep -q "Cannot bind argument to parameter 'Path'" "$2.plain"
+  }
+  g_refuses() { # g_refuses <label> <out>
+    check "$1: stub called" test "$(lines "$gcalls")" -eq 1
+    check "$1: names -ReplaceOtherHome" has "$2.plain" "Pass -ReplaceOtherHome"
+    check "$1: names the requested home" has "$2.plain" "this run would register home $ghome"
+    check "$1: stops before the conhost lookup" nothas "$2.plain" "Cannot bind argument to parameter 'Path'"
+  }
+  gup=$(printf '%s' "$ghome" | tr 'a-z/' 'A-Z\\')
+
+  gt "$tmp/g.same" home "$ghome"
+  g_passes "guard, same home" "$tmp/g.same"
+  gt "$tmp/g.case" home "$gup"
+  g_passes "guard, same home in other case with backslashes" "$tmp/g.case"
+  gt "$tmp/g.diff" home "/other/home"
+  g_refuses "guard, different home" "$tmp/g.diff"
+  check "guard, different home: names the existing home" has "$tmp/g.diff.plain" "registered with home /other/home"
+  gt "$tmp/g.repl" home "/other/home" -ReplaceOtherHome
+  g_passes "guard, different home with -ReplaceOtherHome" "$tmp/g.repl"
+  gt "$tmp/g.nohome" nohome ""
+  g_refuses "guard, action with no WOW_HOME" "$tmp/g.nohome"
+  check "guard, action with no WOW_HOME: says so" has "$tmp/g.nohome.plain" "no WOW_HOME the script can read"
+  gt "$tmp/g.none" none ""
+  g_passes "guard, no existing task" "$tmp/g.none"
 fi
 
 [ "$fail" = 0 ] && echo "all review-poll fixtures passed"

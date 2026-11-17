@@ -365,8 +365,8 @@ change. Steps, on the host:
         -WhatIf
       ```
       `-TaskName` is the one argument that must not be left off: the default is the default home's
-      `glunk-wow-review-poll`, and the script registers with `-Force`, so without it the default home's poller is
-      silently replaced by one that points at this home. `-WhatIf` shows the task name and the home it would carry;
+      `glunk-wow-review-poll`, and the script refuses to replace a task registered for another home, naming both
+      homes, unless `-ReplaceOtherHome` is passed. `-WhatIf` shows the task name and the home it would carry;
       check both before the real run. Pass `-Sh` explicitly, as Git for Windows' `bin\sh.exe`, never
       `usr\bin\sh.exe`.
    5. **Verify it.** The home's `review-poll.log` shows `poll start`, then a line for each gated PR (`qualifies`

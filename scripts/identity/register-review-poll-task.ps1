@@ -26,6 +26,11 @@
   it records is resolved now (or -Sh), because a task does not search the same PATH an interactive
   shell does; docker, gh, jq, yq and timeout must be on the user's PATH. The task runs pwsh through
   conhost.exe --headless, so no window opens on a tick. -WhatIf shows what would be registered.
+
+  A task already registered under -TaskName for another home is refused, naming both homes, unless
+  -ReplaceOtherHome is given: the default name belongs to the default home, and -Force would otherwise
+  replace its poller silently. Re-registering the same home under the same name is unchanged.
+  -ReplaceOtherHome has no effect with -Unregister, -Disable or -Enable.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -36,7 +41,8 @@ param(
   [ValidateRange(2, 60)][int]$IntervalMinutes = 5,
   [switch]$Unregister,
   [switch]$Disable,
-  [switch]$Enable
+  [switch]$Enable,
+  [switch]$ReplaceOtherHome
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -88,6 +94,19 @@ $poll = Join-Path $WowHome 'bin\wow-review-poll' # the installed copy; install-h
 foreach ($p in $WowHome, $poll, $Sh) {
   if ($p -match '["`$'']') { throw "path '$p' has a character the task command line cannot carry" }
 }
+# Refuse to replace another home's task of the same name. This runs before the install below, which stops the
+# named task; a guard after it would already have stopped the other home's poller. Under -WhatIf it still throws.
+$existing = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
+if ($existing -and -not $ReplaceOtherHome) {
+  $oldArgs = [string](@($existing.Actions)[0].Arguments)
+  $oldHome = $null
+  if ($oldArgs -match '\$env:WOW_HOME = ''([^'']*)''') { $oldHome = $Matches[1] }
+  if (-not $oldHome -or -not [string]::Equals($oldHome.Replace('\', '/'), $WowHome.Replace('\', '/'), [StringComparison]::OrdinalIgnoreCase)) {
+    $was = if ($oldHome) { "home $oldHome" } else { 'an action with no WOW_HOME the script can read' }
+    throw "task $TaskName is already registered with $was; this run would register home $WowHome. Pass -ReplaceOtherHome to replace it, or use a different -TaskName"
+  }
+}
+
 # A Store install lives in a version-named folder that an update deletes; its execution alias survives.
 $pwsh = (Get-Process -Id $PID).Path
 if ($pwsh -like '*\WindowsApps\Microsoft.PowerShell_*') {
