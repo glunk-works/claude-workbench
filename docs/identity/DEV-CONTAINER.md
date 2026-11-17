@@ -13,7 +13,7 @@ that serves the host's git credential (see Hazards that remain).
 
 - The host broker (`scripts/identity/broker.ps1`) keeps `~/.config/glunk-identity/tokens/glunk-works/claude-workbench/dev-token`
   current: the token on line 1, its `expires_at` on line 2. The broker's scheduled task starts pwsh through
-  `conhost.exe --headless`, so it opens no window; re-running `register-broker-task.ps1` brings an older registration up to date. Endpoint security software and public detection rules for headless conhost may flag that launch as a living-off-the-land pattern, and an alert on this task is expected; the flagged command line should show `conhost.exe` from the system directory starting pwsh on the installed copy of `bin\broker.ps1` under `WOW_HOME`, though a match shows only that the launch has this task's shape, not that the task or the installed script is unmodified.
+  `conhost.exe --headless`, so it opens no window; re-running `register-broker-task.ps1` brings an older registration up to date (see step 4 of *Adding a repo to this host* for the checks around a reinstall). Endpoint security software and public detection rules for headless conhost may flag that launch as a living-off-the-land pattern, and an alert on this task is expected; the flagged command line should show `conhost.exe` from the system directory starting pwsh on the installed copy of `bin\broker.ps1` under `WOW_HOME`, though a match shows only that the launch has this task's shape, not that the task or the installed script is unmodified.
 - `devcontainer.json` bind-mounts that **directory**, read-only, once, at `/run/wow`. A
   single-file mount would keep showing the file the broker replaced by atomic rename. Nothing else
   under the host's `glunk-identity` directory is mounted. The mount source names the GitHub repo
@@ -256,7 +256,17 @@ Do the steps in order. It documents the steps and performs none.
    `tokens/<owner>/<repo>`. Its cross-check must print no warning (except, in the default home, the line naming
    a second org's owner directory in its `tokens`, see *A second org's home*), and
    `broker.log` must show no `config:` line after the edit (a `broker.json` the broker refuses
-   stops every repo's mint, not only the new one). One identity home serves one org: a repo of
+   stops every repo's mint, not only the new one).
+
+   Check the install clone around the reinstall. In that clone (one no container opens, never the driver's
+   `-Clone`), with `main` checked out, run `git pull --ff-only` first: a launcher's fetch there moves
+   `origin/main` but not the local `main`. Before the install, the clone's HEAD must equal origin's `main` (`git rev-parse HEAD`
+   and `git rev-parse origin/main` print the same commit). After the install, line 1 of each reinstalled home's
+   `bin\MANIFEST` reads `commit` followed by that same commit; a different commit means the install is run again
+   from the corrected clone. The install accepts any commit already merged to origin's `main`, so a stale clone
+   reinstalls, or rolls back to, an older commit without a warning.
+
+   One identity home serves one org: a repo of
    another org needs its own home, set up as *A second org's home*, right after this section, says.
 5. **Install the dev App and the loop App on the repo (whoever owns the installation, in the
    browser).** Add the repo to each App's existing installation. A pending permission request on
@@ -305,7 +315,7 @@ Per identity home, the host side is then:
 
 - [ ] its broker task is registered (`glunk-wow-broker`, or `glunk-wow-broker-<suffix>` for a second org's home);
 - [ ] `broker.json` and `review-poll.json` list each of its repos as `owner/name`;
-- [ ] its review poller task is registered under a name of its own, from a current clone, `-WhatIf` first;
+- [ ] its review poller task is registered under a name of its own, from a current clone (step 4 of *Adding a repo to this host*), `-WhatIf` first;
 - [ ] its `review-poll.log` shows `poll start`, and the first gated PR's review has posted.
 
 ## A second org's home
@@ -331,7 +341,7 @@ change. Steps, on the host:
    copy installed at this release or later (the second home's install copies them), because an older copy ignores `tokens-root`.
 3. Run `register-broker-task.ps1` with `-WowHome` naming the second home and `-TaskName glunk-wow-broker-<suffix>`
    (reusing a registered name replaces that task). The
-   broker reads the file once at start, so re-run the register script after any change to it. The second home's install
+   broker reads the file once at start, so re-run the register script after any change to it (see step 4 of *Adding a repo to this host* for the checks around a reinstall). The second home's install
    creates the default home and its `tokens/` when absent, so a host working only in another org needs nothing else for the
    template's mount source. Git Bash's `HOME` must be the user profile directory: the template's mount source
    is built from `USERPROFILE`, pwsh's `$HOME` is that directory, and a user-set Git Bash `HOME` would make the sh
@@ -349,11 +359,9 @@ change. Steps, on the host:
       proves its reviewer App credential and its state directory.
    2. **Write `review-poll.json`** in the home, shaped `{"repos": ["owner/name"]}`, every entry in GitHub's
       canonical case.
-   3. **Pick the source clone.** The register script installs `bin` from the HEAD of the clone it runs from, and
-      it accepts any commit already merged to origin's `main`, an older one included, so a stale clone silently
-      rolls back the home's installed scripts. Use a claude-workbench clone no container opens (the driver's
-      `-Reference` clone qualifies), fast-forwarded to origin's `main` first, and check its HEAD is the commit in
-      the home's `bin\MANIFEST`, or newer (for a new home, the default home's `bin\MANIFEST`).
+   3. **Pick the source clone.** The register script installs `bin` from the HEAD of the clone it runs from, so a
+      stale clone rolls back the home's installed scripts. Use a claude-workbench clone no container opens (the
+      driver's `-Reference` clone qualifies), and run the checks of step 4 of *Adding a repo to this host* around the install.
    4. **Dry run, then register,** from a PowerShell 7.2+ prompt, with the same command twice, `-WhatIf` the first time:
       ```powershell
       & '<clone>\scripts\identity\register-review-poll-task.ps1' `
