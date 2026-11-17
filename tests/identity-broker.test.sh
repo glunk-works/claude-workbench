@@ -47,7 +47,7 @@
 #                fixture; skipped, loudly, under MSYS where pwsh's HOME is the user profile): the owner half must equal the dev
 #                installation's account (mint.sh --print-account, any letter case) or nothing is minted and the pass exits 1; default-home with
 #                no newline, one LF and CRLF are accepted, two LFs, other content, an empty file, a link, a directory, an empty
-#                HOME and the file in the default home itself exit 2 with a setup: line; a missing default home is created; absent file:
+#                HOME and the file in the default home itself (also through a link, a parent-component link, a link whose target runs through a link or through link/.., or another letter case) exit 2 with a setup: line; a missing default home is created; absent file:
 #                no account read; the install creates <owner>/<repo> under the root and warns once, creating nothing, for a refused file
 #   config       a bad repo name (or a trailing dot) or a missing broker.json exits 2 before anything
 #                is minted
@@ -744,6 +744,28 @@ run_broker; home=$saved_home
 check "tokens root in the default home: exit 2" test "$rc" -eq 2
 check "tokens root in the default home: a setup: line" grep -q "setup: " "$dh/broker.log"
 check "tokens root in the default home: nothing minted" test "$(calls mint-calls)" -eq 0 -a ! -e "$dh/tokens"
+# the default home itself reached through a link (last component, then a parent component), or written in another letter case (#1571)
+for how in link parent chain dotdot case; do
+  tr_reset; saved_home=$home
+  case "$how" in
+    link) mkdir -p "$dh"; hv="$tmp/trlink$trn"; ln -s "$dh" "$hv" ;;
+    parent) mkdir -p "$dh"; ln -s "$fh" "$tmp/trparent$trn"; hv="$tmp/trparent$trn/.config/glunk-identity" ;;
+    chain) mkdir -p "$dh"; ln -s "$fh" "$tmp/trchainfh$trn"; hv="$tmp/trchain$trn"; ln -s "$tmp/trchainfh$trn/.config/glunk-identity" "$hv" ;;
+    dotdot) mkdir -p "$dh" "$fh/.config/sub"; ln -s "$fh/.config/sub" "$tmp/trdd$trn"; hv="$tmp/trddh$trn"; ln -s "$tmp/trdd$trn/../glunk-identity" "$hv" ;;
+    case) hv="$fh/.config/GLUNK-identity"; mkdir -p "$hv" ;;
+  esac
+  cp "$home/apps.json" "$home/dev.pem" "$hv/"; echo '{"repos": ["acme/alpha"]}' >"$hv/broker.json"; printf 'default-home\n' >"$hv/tokens-root"
+  home=$hv; run_broker; rc_b=$rc
+  check "tokens root default home [$how]: broker exit 2" test "$rc_b" -eq 2
+  check "tokens root default home [$how]: a setup: line" grep -q "setup: " "$hv/broker.log"
+  check "tokens root default home [$how]: nothing minted, no account read" test "$(calls mint-calls)" -eq 0 -a "$(calls print-calls)" -eq 0 -a ! -e "$dh/tokens"
+  run_install
+  check "tokens root default home [$how] install: exits 0" test "$rc" -eq 0
+  check "tokens root default home [$how] install: one warning" test "$(xc_warns)" -eq 1
+  check "tokens root default home [$how] install: the warning names the file" xc_has "$(wp "$hv")/tokens-root must be a regular file holding exactly default-home: no token directory created"
+  check "tokens root default home [$how] install: no token directory created" test ! -e "$hv/tokens/acme" -a ! -e "$dh/tokens"
+  home=$saved_home
+done
 
 # absent file: no account read
 tr_reset

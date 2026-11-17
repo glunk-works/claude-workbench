@@ -43,7 +43,7 @@
        line per mismatch (an absent review-poll.json is not compared; an unreadable one gets one fixed line), about a poll entry with
        no broker.json entry and a broker.json entry with no poll entry. When $WowHome holds a tokens-root file the loop over top-level tokens
        directories is skipped (the shared root holds the other home's owners). A tokens-root file in a refusal state (other content, empty, a symbolic link,
-       a directory, an empty HOME, or in the default home itself) gets one fixed warning line naming the file and no token directory is created; the rest of the step runs as usual. A top-level tokens\ directory that is not
+       a directory, an empty HOME, or in the default home itself, reached through a link or written in another letter case) gets one fixed warning line naming the file and no token directory is created; the rest of the step runs as usual. A top-level tokens\ directory that is not
        the owner half of any entry gets one fixed line too (a leftover bare directory, for example). It also warns once, with a count and no entry text, when review-poll.json
        has string entries it cannot read as owner/name. It only warns: the install's result never changes and no list is edited.
 
@@ -133,6 +133,39 @@ $srcDirs = @($table | ForEach-Object { $_[0].Substring(0, $_[0].LastIndexOf('/')
 $found = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 $gitExe = if ($found) { $found.Source }
 if (-not $gitExe) { throw 'git not found on PATH' }
+
+# The default-home rule, as broker.ps1 writes it (#1571).
+function Resolve-RealPath([string]$p) {
+  # every symbolic link or junction on the path is followed one hop at a time, as cd -P does: the components of a link's target are
+  # walked too, and a .. goes to the physical parent of the directory reached so far (#1571)
+  if (-not [IO.Path]::IsPathRooted($p)) { $p = Join-Path (Get-Location).ProviderPath $p }
+  $cur = [IO.Path]::GetPathRoot($p)
+  $rest = @($p.Substring($cur.Length) -split '[\\/]' | Where-Object { $_ })
+  $hops = 0
+  while ($rest.Count -gt 0) {
+    $seg = $rest[0]
+    $rest = @($rest | Select-Object -Skip 1)
+    if ($seg -eq '.') { continue }
+    if ($seg -eq '..') { $par = [IO.Path]::GetDirectoryName($cur); if ($par) { $cur = $par }; continue }
+    $cur = Join-Path $cur $seg
+    $it = Get-Item -LiteralPath $cur -Force -ErrorAction SilentlyContinue
+    if ($it -and $it.LinkType -and $it.LinkType -ne 'HardLink') {
+      if (++$hops -gt 40) { throw "too many links resolving $p" }
+      if ($it.LinkType -eq 'Junction') { $lt = $it.ResolveLinkTarget($false).FullName } else { $lt = [string]$it.LinkTarget }
+      if (-not $lt) { throw "cannot resolve $cur" }
+      if ([IO.Path]::IsPathRooted($lt)) { $cur = [IO.Path]::GetPathRoot($lt); $lt = $lt.Substring($cur.Length) }
+      else { $cur = [IO.Path]::GetDirectoryName($cur) }
+      $rest = @($lt -split '[\\/]' | Where-Object { $_ }) + $rest
+    }
+  }
+  $cur
+}
+# Test-IsDefaultHome <home> <default home>: equal paths, or equal after links are followed, ignoring letter case (#1571).
+function Test-IsDefaultHome([string]$h, [string]$d) {
+  if ([IO.Path]::GetFullPath($h).TrimEnd('\', '/') -ieq [IO.Path]::GetFullPath($d).TrimEnd('\', '/')) { return $true }
+  if (-not (Test-Path -LiteralPath $d)) { return $false }
+  (Resolve-RealPath $h) -ieq (Resolve-RealPath $d)
+}
 
 # Invoke-Git <args...>: stdout as text (trailing newline trimmed); stderr is kept apart, used only in the error.
 function Invoke-Git([string[]]$a) {
@@ -248,12 +281,11 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
       try {
         if ((-not $trItem.LinkType -or $trItem.LinkType -eq 'HardLink') -and -not $trItem.PSIsContainer -and $HOME) {
           $dh = Join-Path $HOME '.config/glunk-identity'
-          $ta = [IO.Path]::GetFullPath($WowHome).TrimEnd('\', '/')
-          $tb = [IO.Path]::GetFullPath($dh).TrimEnd('\', '/')
+          $isDh = Test-IsDefaultHome $WowHome $dh
           $tt = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($trFile))
           $okForm = $false # ordinal: -ceq is culture-aware, and under ICU a NUL byte compares as ignorable
           foreach ($w in @('default-home', "default-home`n", "default-home`r`n")) { if ([string]::Equals($tt, $w, [StringComparison]::Ordinal)) { $okForm = $true } }
-          if ($ta -ine $tb -and $okForm) {
+          if (-not $isDh -and $okForm) {
             $trBad = $false
             $tokensRoot = Join-Path $dh 'tokens'
           }

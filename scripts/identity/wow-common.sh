@@ -7,7 +7,7 @@
 #                           org's config reads the same; "key" is a PEM filename in this directory
 #   admin.enc.pem          the admin App's private key, passphrase-encrypted (name by convention)
 #   review.pem             the reviewer App's private key, unencrypted (minted on request)
-#   tokens-root            optional (#1568): a regular file whose content is exactly the word default-home (one LF or CRLF may follow).
+#   tokens-root            optional (#1568): a regular file whose content is exactly the word default-home (one LF or CRLF may follow); the default home itself, reached through a link or written in another letter case, takes none.
 #                          It moves this home's tokens/ to the default identity home's tokens/ (~/.config/glunk-identity/tokens), so a
 #                          second org's home delivers its tokens where the shared dev-container template mounts them. Any other state
 #                          (other content, empty, a symbolic link, a directory, HOME empty, or the file in the default home itself) is a refusal,
@@ -105,7 +105,11 @@ resolve_tokens_root() {
   [ ! -L "$f" ] && [ -f "$f" ] || die "$msg"
   [ -n "${HOME:-}" ] || die "$msg, and HOME is empty, so the default home cannot be found"
   dh=$HOME/.config/glunk-identity
-  if [ "$wow_home" = "$dh" ] || [ "$(CDPATH= cd -P -- "$wow_home" 2>/dev/null && pwd)" = "$(CDPATH= cd -P -- "$dh" 2>/dev/null && pwd)" ]; then
+  # the default home itself: equal paths, or equal after every link is followed (cd -P), either ignoring ASCII letter case
+  lc_a=$(printf '%s' "$wow_home" | tr 'A-Z' 'a-z' | sed 's#//*#/#g; :a; s#/\./#/#; ta; s#/\.$##; s#/$##') lc_b=$(printf '%s' "$dh" | tr 'A-Z' 'a-z' | sed 's#//*#/#g; :a; s#/\./#/#; ta; s#/\.$##; s#/$##')
+  rp_a=$(CDPATH= cd -P -- "$wow_home" 2>/dev/null && pwd | tr 'A-Z' 'a-z') || :
+  rp_b=$(CDPATH= cd -P -- "$dh" 2>/dev/null && pwd | tr 'A-Z' 'a-z') || :
+  if [ "$lc_a" = "$lc_b" ] || { [ -n "$rp_a" ] && [ "$rp_a" = "$rp_b" ]; }; then
     die "$msg, and the default home itself takes no tokens-root file"
   fi
   # the trailing x keeps every final newline, which a bare $(cat) would strip; the byte count refuses a NUL

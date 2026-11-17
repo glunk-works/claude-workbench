@@ -37,7 +37,7 @@
   default-home (optionally followed by one LF or one CRLF), moves the tokens root to the default home's tokens
   (Join-Path $HOME '.config/glunk-identity' + tokens), the directory the shared dev-container template mounts, so a second
   org's home delivers its tokens there. Any other state (other content, an empty file, a symbolic link, a directory, an empty
-  $HOME, or the file in the default home itself) is a setup failure: a setup: line in broker.log, exit 2, no mint. It is read
+  $HOME, or the file in the default home itself, reached through a link or written in another letter case) is a setup failure: a setup: line in broker.log, exit 2, no mint. It is read
   once at start, so a change takes effect when register-broker-task.ps1 is re-run. Staging stays under $WowHome. With the
   file present, the publish move below is one atomic rename only when the second home is on the same volume as the default home.
 
@@ -171,6 +171,38 @@ function Invoke-Sh([string[]]$shArgs) {
   @{ Code = $code; Text = $text }
 }
 
+function Resolve-RealPath([string]$p) {
+  # every symbolic link or junction on the path is followed one hop at a time, as cd -P does: the components of a link's target are
+  # walked too, and a .. goes to the physical parent of the directory reached so far (#1571)
+  if (-not [IO.Path]::IsPathRooted($p)) { $p = Join-Path (Get-Location).ProviderPath $p }
+  $cur = [IO.Path]::GetPathRoot($p)
+  $rest = @($p.Substring($cur.Length) -split '[\\/]' | Where-Object { $_ })
+  $hops = 0
+  while ($rest.Count -gt 0) {
+    $seg = $rest[0]
+    $rest = @($rest | Select-Object -Skip 1)
+    if ($seg -eq '.') { continue }
+    if ($seg -eq '..') { $par = [IO.Path]::GetDirectoryName($cur); if ($par) { $cur = $par }; continue }
+    $cur = Join-Path $cur $seg
+    $it = Get-Item -LiteralPath $cur -Force -ErrorAction SilentlyContinue
+    if ($it -and $it.LinkType -and $it.LinkType -ne 'HardLink') {
+      if (++$hops -gt 40) { throw "too many links resolving $p" }
+      if ($it.LinkType -eq 'Junction') { $lt = $it.ResolveLinkTarget($false).FullName } else { $lt = [string]$it.LinkTarget }
+      if (-not $lt) { throw "cannot resolve $cur" }
+      if ([IO.Path]::IsPathRooted($lt)) { $cur = [IO.Path]::GetPathRoot($lt); $lt = $lt.Substring($cur.Length) }
+      else { $cur = [IO.Path]::GetDirectoryName($cur) }
+      $rest = @($lt -split '[\\/]' | Where-Object { $_ }) + $rest
+    }
+  }
+  $cur
+}
+# Test-IsDefaultHome <home> <default home>: equal paths, or equal after links are followed, ignoring letter case (#1571).
+function Test-IsDefaultHome([string]$h, [string]$d) {
+  if ([IO.Path]::GetFullPath($h).TrimEnd('\', '/') -ieq [IO.Path]::GetFullPath($d).TrimEnd('\', '/')) { return $true }
+  if (-not (Test-Path -LiteralPath $d)) { return $false }
+  (Resolve-RealPath $h) -ieq (Resolve-RealPath $d)
+}
+
 # Get-TokensRoot: @{ Root; Shared } from the home's tokens-root file, or throws on a refusal state (#1568).
 # The accepted forms are exactly default-home, default-home LF and default-home CRLF, as wow-common.sh reads them.
 function Get-TokensRoot {
@@ -181,9 +213,7 @@ function Get-TokensRoot {
   if (($item.LinkType -and $item.LinkType -ne 'HardLink') -or $item.PSIsContainer) { throw $msg }
   if (-not $HOME) { throw "$msg, and HOME is empty, so the default home cannot be found" }
   $dh = Join-Path $HOME '.config/glunk-identity'
-  $a = [IO.Path]::GetFullPath($WowHome).TrimEnd('\', '/')
-  $b = [IO.Path]::GetFullPath($dh).TrimEnd('\', '/')
-  if ($a -ieq $b) { throw "$msg, and the default home itself takes no tokens-root file" }
+  if (Test-IsDefaultHome $WowHome $dh) { throw "$msg, and the default home itself takes no tokens-root file" }
   $text = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($f))
   # ordinal: -ceq is culture-aware, and under ICU a NUL byte compares as ignorable
   $okForm = $false

@@ -25,6 +25,7 @@ the GitHub release notes.
 
 - With no `-WowHome`, `wow-driver.ps1` and `wow-lane.ps1` now use the identity home their installed copy sits in (the parent of its `bin`) and ignore `WOW_HOME`; a given `-WowHome` that names another home is still refused (#1577).
 - `register-review-poll-task.ps1` refuses to replace a task registered under the same name for another identity home, naming both homes, unless `-ReplaceOtherHome` is passed; re-registering the same home is unchanged (#1575).
+- The sh commands, the broker and the install now agree on which home is the default home itself (links followed, letter case ignored) (#1571).
 
 ## [0.37.0] — 2026-11-16
 
