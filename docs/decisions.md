@@ -1600,6 +1600,47 @@ take effect. Full reasoning and the task breakdown that implements them:
          through the dev App. Break glass is the org owner suspending the org ruleset in the
          browser, then re-enabling it; no bypass actor, and never an agent action. A
          repo-scoped admin token cannot edit the org ruleset (session 5, item 18).
+         **glunk-works amendment (2026-11-17, #1591, maintainer decision):** its repos run with
+         one code owner, `* @Seuss27`, and JaredGroves-603 holds no write access to them, as
+         resume-orchestrator already runs under `RO-D21`.
+         - **Ordinary PRs.** The dev App opens them, Seuss27 approves, and the dev App's armed
+           auto-merge merges, as item 3 says.
+         - **A workflow-file change the maintainer wants** (a PR adding, editing or deleting a
+           file under `.github/workflows/`, other than a Dependabot update). A host session
+           builds it. That session reads the task's untrusted text on a host that still holds
+           the maintainer's admin `gh` logins, a residual until `#400`. A separate host session
+           that has read no issue or PR text then holds a short-lived admin-App token, minted by
+           `wow-admin OWNER/NAME --perms contents=write,pull_requests=write,workflows=write`,
+           and publishes the prepared change as the admin App; the token is revoked afterwards
+           with `wow-admin OWNER/NAME --revoke`. That session runs nothing from the change, but
+           it still reads the change, which is an injection path too, and Seuss27's approval
+           bounds what merges, not what a workflow on the pushed branch runs before it. From
+           before the mint until the revoke no dev or review container runs: every identity
+           home's review-poll task is disabled, and any review already running has ended before
+           the mint. Seuss27 approves. This is the route the workflow-file paragraph of the
+           plugin's `reference/cutover.md` already gives a one-owner repo.
+         - **Break glass.** The org owner edits the approval ruleset in the browser and
+           restores it afterwards. No bypass actor is ever added.
+         - **Why.** The two-owner rule existed so either account could approve the other's PRs
+           and the maintainer's own pushes, but nearly every PR is now opened by the dev App:
+           of the PRs merged into claude-workbench from 2026-10-17 to 2026-11-16, 372 were
+           opened by the dev App, 6 by Dependabot, 31 by Seuss27 and 1 by the admin App. The
+           second account lets a 603-side credential reach glunk-works. With
+           `require_last_push_approval`, a PR one of the maintainer's accounts opened and the
+           other pushed to deadlocks. And 603-Identity and resume-orchestrator already run one
+           owner.
+         - **Rollout.** claude-workbench first: its `CODEOWNERS` changes in the PR that records
+           this, then the maintainer removes the account's write access, and the next
+           workflow-file change runs the admin-App route end to end. Each other glunk-works
+           repo (global-bootstrap, bounty-infra, bedrock-serverless-rag, scope-core and
+           loop-orchestrator) switches at its milestone 34 template item, in that milestone's
+           build order, loop-orchestrator only after its ruleset cutover `#409`.
+           resume-orchestrator is already done. Until a repo switches, a repo that already
+           carries the two-owner rule keeps it, and loop-orchestrator has no code owners file
+           before `#409`.
+         - **Not changed.** 603-Identity repos, which already run one owner, and the approval
+           ruleset's parameters: code-owner review, last-push approval, stale-review dismissal
+           and an approving count of 1.
        - Stale approvals are dismissed, and the last push must be approved by someone other
          than its pusher.
        - Required checks are pinned to their source app (`integration_id`). The pins were
@@ -1639,6 +1680,8 @@ take effect. Full reasoning and the task breakdown that implements them:
        passphrase. It reaches one container, and revoking it kills it server-side. While
        it is live, it elevates **everything** in that container. Cloud admin has no such
        mode: it stays on the host.
+       *On the glunk-works workflow-file route of the `#1591` amendment (item 2), the admin
+       token is used from a host session and reaches no container.*
     6. **Trust is by declared identity, not `author_association`.** Read through an App
        token, association changes with the viewer: the maintainer's own issues read as
        `CONTRIBUTOR`. So trusted and untrusted identities are declared as `{login, id}`
@@ -1685,6 +1728,9 @@ take effect. Full reasoning and the task breakdown that implements them:
       agent's shell, which is the exposure itself.
     - **An admin bypass on the approval ruleset for the maintainer's own PRs.** The second
       code owner does the same job with no standing bypass.
+      *A glunk-works repo that has switched under the `#1591` amendment has no second owner: a
+      change the maintainer wants goes through the dev App or the admin-App route instead, and
+      there is still no bypass.*
     - **Reusing the loop Apps for interactive sessions.** That shares revocation and audit,
       and muddies the loop's "cannot do X" preflight.
     - **A machine user.** It needs a seat, a long-lived token and a mailbox.
@@ -1785,6 +1831,9 @@ take effect. Full reasoning and the task breakdown that implements them:
     - Approve replaces Merge, and Dependabot PRs need an approval, with a `GITHUB_TOKEN`
       workflow arming their auto-merge.
     - Workflow-file changes need admin mode or a human push.
+      *In a glunk-works repo that has switched (`#1591` amendment), a workflow-file change the
+      maintainer wants goes through the admin-App route (or the break glass), since a human push
+      leaves a last push no code owner can approve.*
     - No extra GitHub Team seat: 603-Identity runs with a single code owner
       (amendment above).
     - New schema keys (`identities`, a `rulesets` list) and a dual-mode plugin release
