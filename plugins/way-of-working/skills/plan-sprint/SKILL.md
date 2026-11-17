@@ -1117,6 +1117,21 @@ It runs the **Preconditions** and the **Resume-safety preamble** as above, then:
      **Titles** rule of **Apply & stage**; their
      placement goes through the **Sequence confirm** and **Apply & stage** steps exactly as a
      confirmed **Recommend** placement does.
+     The confirmed area `<X>` for combined issue `<k>` is substituted into a command only after it
+     is checked to be one or more of `a-z`, `0-9` and `-`, as every `<N>` is checked digits-only
+     before it is substituted. Before filing, `plan-findings.sh label {backlog.repo} "area/<X>"`
+     runs. An area that fails that check, or a `label` run that prints `bad-name` or `unknown` or
+     exits non-zero (a failed read, reported as such), stops that one issue: it is not filed, its
+     label is never created, and the write is left undone, so no destination write for its
+     findings read back ok, *Closing* keeps their source issues open, and the Report names the
+     issue and why. On `ok` the create call gains `--label "area/<X>"` beside its existing
+     `--title` and `--body-file` arguments. After filing, the new issue's number is taken from the
+     URL `gh issue create` prints and checked digits-only; a create that exits non-zero or prints
+     no such URL is an unconfirmed write. The issue is then fetched by direct redirection
+     (`gh api repos/{backlog.repo}/issues/<N> >"<scratch>/read-combined-<k>.json"`, a `read-`
+     file) and checked with `plan-findings.sh filed "<scratch>/read-combined-<k>.json" "area/<X>"
+     "<scratch>/combined-<k>.txt"`. A failed fetch, or anything but `ok` from `filed`, is an
+     unconfirmed write, which the existing *Closing* rule already handles.
    - **Closing.** Per source issue, a mapping comment naming each `#N.k` and its destination (an
      issue number, or the decline reason), checked with `plan-findings.sh covers` (which must print
      `ok`), posted with `gh issue comment <N> --repo {backlog.repo} --body-file "<scratch>/map-<N>.txt"`.
@@ -1161,7 +1176,8 @@ It runs the **Preconditions** and the **Resume-safety preamble** as above, then:
   a composed text that `plan-findings.sh screen` has not printed `ok` on, never edits a fold target
   that is milestoned, not `dev_app`-authored, a source issue, anchored or has any spec comment
   (checked again just before each edit), always says that a fold makes a maintainer's reaction
-  stale, and never closes a source issue before `plan-findings.sh covers` printed `ok`, its mapping
+  stale, never creates a label and files a combined issue only after `plan-findings.sh label`
+  printed `ok` for it, and never closes a source issue before `plan-findings.sh covers` printed `ok`, its mapping
   comment posted and every destination write for its findings read back ok. It never closes an
   `unparsed` issue and never drafts a spec.
 - Never lets the staged script contain anything outside its one `set -eu` header line and its

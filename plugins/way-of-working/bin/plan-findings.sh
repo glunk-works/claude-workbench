@@ -11,6 +11,8 @@
 #   plan-findings.sh exists <ref>                      (paths one per line on stdin)
 #   plan-findings.sh screen <file>
 #   plan-findings.sh covers <N> <rows-file> <comment-file>
+#   plan-findings.sh label <repo> <value>
+#   plan-findings.sh filed <issue.json> <value> <body-file>
 #
 #   list      <project.yml> is the DEFAULT branch's committed copy, already written to a file. The
 #             sibling declared-ids.sh runs on it (as `sh`, found only beside this script) and its line
@@ -56,13 +58,25 @@
 #             <N> (an `unparsed N` issue included); else `ok` when <comment-file> names every `N.k` the
 #             rows list for <N> (each as `#N.k` followed by a non-digit or the end of a line), else
 #             `missing k1,k2,...`.
+#   label     <value> is well formed when the whole value is `area/` followed by one or more of
+#             `a-z`, `0-9` and `-`, and nothing else (a newline anywhere fails it); a value that is
+#             not prints `bad-name`. Fetches the names of <repo>'s labels (paginated, to a file in
+#             the script's own temp directory by direct redirection); a failed `gh` call exits 1 with
+#             a stderr line and nothing on stdout, never reads as no labels. Prints `ok` when one
+#             fetched name equals <value> exactly as a whole line, else `unknown`.
+#   filed     No `gh` call. <issue.json> is the caller's own fetch of ONE issue, <body-file> the
+#             body that was sent. Either file that is not a readable file, or an issue file yq cannot
+#             read as JSON, exits 1 with a stderr line. <value> is checked as for `label`
+#             (`bad-name`). Prints `no-label` when no entry of the issue's labels has a name equal to
+#             <value>, else `body-differs` when the issue's body and <body-file> differ once trailing
+#             newlines are dropped from each, else `ok`.
 #
 # Exit codes: a wrong argument count, an unknown subcommand or a non-digit <N> prints a usage line on
 # stderr, nothing on stdout, and exits 2. Every other failure exits 1 with a stderr line. The
-# verdict words of screen and covers go on stdout with exit 0.
+# verdict words of screen, covers, label and filed go on stdout with exit 0.
 #
 # Permitted toolset: POSIX sh, awk, grep, sed, sort, tr, mktemp, git (exists only), yq (mikefarah v4;
-# list and unpack), `gh` using only its own embedded --jq (list only), and the siblings
+# list, unpack and filed), `gh` using only its own embedded --jq (list and label only), and the siblings
 # declared-ids.sh and leak-screen.sh, run as `sh` and found only as $(dirname "$0")/<name>.
 set -eu
 LC_ALL=C
@@ -76,13 +90,16 @@ usage() {
   echo "                         plan-findings.sh exists <ref>   (paths on stdin)" >&2
   echo "                         plan-findings.sh screen <file>" >&2
   echo "                         plan-findings.sh covers <N> <rows-file> <comment-file>" >&2
+  echo "                         plan-findings.sh label <repo> <value>" >&2
+  echo "                         plan-findings.sh filed <issue.json> <value> <body-file>" >&2
 }
 
 mode="${1:-}"
 case "$mode" in
   list) [ "$#" -eq 3 ] || { usage; exit 2; } ;;
   unpack | exists | screen) [ "$#" -eq 2 ] || { usage; exit 2; } ;;
-  covers) [ "$#" -eq 4 ] || { usage; exit 2; } ;;
+  label) [ "$#" -eq 3 ] || { usage; exit 2; } ;;
+  covers | filed) [ "$#" -eq 4 ] || { usage; exit 2; } ;;
   *) usage; exit 2 ;;
 esac
 
@@ -92,6 +109,17 @@ trap 'rm -rf "$tmp"' EXIT
 is_digits() { # true iff $1 is one or more ASCII digits
   case "$1" in
     '' | *[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+good_area() { # true iff $1 is `area/` then one or more of a-z, 0-9 and `-`, nothing else
+  case "$1" in
+    area/*) _r="${1#area/}" ;;
+    *) return 1 ;;
+  esac
+  case "$_r" in
+    '' | *[!a-z0-9-]*) return 1 ;;
     *) return 0 ;;
   esac
 }
@@ -314,6 +342,34 @@ if [ "$mode" = screen ]; then
     *) stop unreadable ;;
   esac
   stop ok
+fi
+
+# =============================================================================
+if [ "$mode" = label ]; then
+  repo="$2"; val="$3"
+  good_area "$val" || { echo bad-name; exit 0; }
+  if ! gh api --paginate "repos/$repo/labels?per_page=100" --jq '.[].name' >"$tmp/labels" 2>"$tmp/err"; then
+    echo "plan-findings.sh: label: gh api failed fetching the labels of $repo:" >&2
+    cat "$tmp/err" >&2
+    exit 1
+  fi
+  if grep -q -x -F -e "$val" -- "$tmp/labels" >/dev/null 2>&1; then echo ok; else echo unknown; fi
+  exit 0
+fi
+
+# =============================================================================
+if [ "$mode" = filed ]; then
+  f="$2"; val="$3"; bf="$4"
+  [ -f "$f" ] && [ -r "$f" ] || { echo "plan-findings.sh: filed: issue file is not a readable file" >&2; exit 1; }
+  [ -f "$bf" ] && [ -r "$bf" ] || { echo "plan-findings.sh: filed: body file is not a readable file" >&2; exit 1; }
+  command -v yq >/dev/null 2>&1 || { echo "plan-findings.sh: filed: yq not on PATH" >&2; exit 1; }
+  yq -p=json -r '(.labels // [])[] | .name' "$f" >"$tmp/names" 2>/dev/null || { echo "plan-findings.sh: filed: the issue file is not readable JSON" >&2; exit 1; }
+  yq -p=json -r '.body // ""' "$f" >"$tmp/body" 2>/dev/null || { echo "plan-findings.sh: filed: the issue file has no readable body" >&2; exit 1; }
+  good_area "$val" || { echo bad-name; exit 0; }
+  if ! grep -q -x -F -e "$val" -- "$tmp/names" >/dev/null 2>&1; then echo no-label; exit 0; fi
+  a="$(cat "$tmp/body")"; b="$(cat "$bf")"
+  if [ "$a" = "$b" ]; then echo ok; else echo body-differs; fi
+  exit 0
 fi
 
 # =============================================================================

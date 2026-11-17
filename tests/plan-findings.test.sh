@@ -5,7 +5,8 @@
 # prints FAKE_ROWS, so this suite tests what the script's own shell code does (the reviewer-id
 # filter in awk, the sort, the failed-gh-is-not-zero-rows rule), not gh's pagination or filter.
 # The rows the stub prints have the six fields the script's --jq projects: number, created_at,
-# milestone, area labels, author id, pull-request flag.
+# milestone, area labels, author id, pull-request flag. It answers the labels call
+# (`repos/<repo>/labels`) by printing FAKE_LABELS, one name per line, and honours FAKE_FAIL for it too.
 #
 # Permitted toolset: POSIX sh, yq (mikefarah v4) and git. Without yq the suite skips itself, loudly.
 set -eu
@@ -43,11 +44,12 @@ cat >"$fakebin/gh" <<'FAKE_GH'
 set -eu
 [ "$1" = api ] || { echo "fake gh: unsupported command $1" >&2; exit 1; }
 case "$*" in
-  *"issues?state=open&per_page=100"*) ;;
+  *"issues?state=open&per_page=100"*) want=rows ;;
+  *"/labels?per_page=100"*) want=labels ;;
   *) echo "fake gh: unrecognised args $*" >&2; exit 1 ;;
 esac
 [ "${FAKE_FAIL:-0}" = 1 ] && { echo "fake gh: simulated failure" >&2; exit 1; }
-printf '%s' "${FAKE_ROWS-}"
+if [ "$want" = labels ]; then printf '%s' "${FAKE_LABELS-}"; else printf '%s' "${FAKE_ROWS-}"; fi
 FAKE_GH
 chmod +x "$fakebin/gh"
 
@@ -250,9 +252,47 @@ printf '#12.1' >"$tmp/c4"
 printf 'finding\t12.1\topen\tA\n' >"$tmp/rows4"
 assert_eq "covers: a reference at the end of the file counts" ok "$("$script" covers 12 "$tmp/rows4" "$tmp/c4")"
 
+echo "# label"
+
+labels="area/ci
+area/way-of-working
+type/bug"
+lab() { PATH="$fakebin:$PATH" FAKE_LABELS="$labels" "$script" label o/r "$1"; }
+assert_eq "label: a listed value is ok" ok "$(lab 'area/ci')"
+assert_eq "label: a listed value with hyphens is ok" ok "$(lab 'area/way-of-working')"
+assert_eq "label: a well-formed value the list lacks is unknown" unknown "$(lab 'area/loop')"
+assert_eq "label: a prefix of a listed name is unknown" unknown "$(lab 'area/way')"
+assert_eq "label: an uppercase letter is bad-name" bad-name "$(lab 'area/CI')"
+assert_eq "label: no area/ prefix is bad-name" bad-name "$(lab 'type/bug')"
+assert_eq "label: a bare area/ is bad-name" bad-name "$(lab 'area/')"
+assert_eq "label: a listed first line followed by a newline and more text is bad-name" bad-name "$(lab "area/ci
+extra")"
+PATH="$fakebin:$PATH" FAKE_FAIL=1 "$script" label o/r 'area/ci' >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "label: a failed gh exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+
+echo "# filed"
+
+mkfiled() { # mkfiled <file> <label-json-array> <body-with-\n-escapes>
+  printf '{"number":5,"labels":%s,"body":"%s"}' "$2" "$3" >"$1"
+}
+printf 'The body.\nSecond line.\n' >"$tmp/body.txt"
+mkfiled "$tmp/f1.json" '[{"name":"type/bug"},{"name":"area/ci"}]' 'The body.\nSecond line.'
+assert_eq "filed: a matching label and body is ok" ok "$("$script" filed "$tmp/f1.json" 'area/ci' "$tmp/body.txt")"
+mkfiled "$tmp/f1b.json" '[{"name":"area/ci"}]' 'The body.\nSecond line.\n\n\n'
+assert_eq "filed: bodies differing only by trailing newlines are ok" ok "$("$script" filed "$tmp/f1b.json" 'area/ci' "$tmp/body.txt")"
+mkfiled "$tmp/f2.json" '[{"name":"type/bug"}]' 'Another body.'
+assert_eq "filed: an absent label is no-label, whatever the body" no-label "$("$script" filed "$tmp/f2.json" 'area/ci' "$tmp/body.txt")"
+mkfiled "$tmp/f3.json" '[{"name":"area/ci"}]' 'Another body.'
+assert_eq "filed: a different body is body-differs" body-differs "$("$script" filed "$tmp/f3.json" 'area/ci' "$tmp/body.txt")"
+assert_eq "filed: a malformed value is bad-name" bad-name "$("$script" filed "$tmp/f1.json" 'Area/CI' "$tmp/body.txt")"
+assert_eq "filed: a missing issue file exits 1" 1 "$(status_of "$script" filed "$tmp/none.json" 'area/ci' "$tmp/body.txt")"
+printf 'not json {\n' >"$tmp/f4.json"
+assert_eq "filed: a non-empty issue file that is not JSON exits 1" 1 "$(status_of "$script" filed "$tmp/f4.json" 'area/ci' "$tmp/body.txt")"
+assert_eq "filed: a missing body file exits 1" 1 "$(status_of "$script" filed "$tmp/f1.json" 'area/ci' "$tmp/none.txt")"
+
 echo "# argument validation"
 
-for args in "" "bogus" "list o/r" "list o/r y z" "unpack" "unpack a b" "exists" "exists a b" "screen" "covers 1 a" "covers x a b" "covers 01 a b"; do
+for args in "" "bogus" "list o/r" "list o/r y z" "unpack" "unpack a b" "exists" "exists a b" "screen" "covers 1 a" "covers x a b" "covers 01 a b" "label" "label o/r" "label o/r a b" "filed" "filed a" "filed a b" "filed a b c d"; do
   # shellcheck disable=SC2086
   "$script" $args >"$tmp/out" 2>/dev/null </dev/null && rc=0 || rc=$?
   assert_eq "usage: '$args' exits 2 with nothing on stdout" "2:" "$rc:$(cat "$tmp/out")"
