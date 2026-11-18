@@ -1619,6 +1619,15 @@ take effect. Full reasoning and the task breakdown that implements them:
            home's review-poll task is disabled, and any review already running has ended before
            the mint. Seuss27 approves. This is the route the workflow-file paragraph of the
            plugin's `reference/cutover.md` already gives a one-owner repo.
+           *Amended 2026-11-18 (maintainer decision, after `WB-D53`): dev and review
+           containers keep running from the mint to the revoke, and the review-poll tasks stay
+           enabled. The token now sits under the identity home's `admin/`, which no container
+           mounts. The lift holds only while no container mounts that directory or one of its
+           ancestors, which nothing checks mechanically (`WB-D53`'s residual). The separate
+           host session that has read no issue or PR text is unchanged. First used for `#1566`
+           (PR #1615), in a second shape: a lane's PR, opened by the dev App without the
+           workflow file, which the admin App then pushes onto its branch, leaving the admin
+           App as the last pusher, so Seuss27 can approve.*
          - **Break glass.** The org owner edits the approval ruleset in the browser and
            restores it afterwards. No bypass actor is ever added.
          - **Why.** The two-owner rule existed so either account could approve the other's PRs
@@ -2878,7 +2887,7 @@ take effect. Full reasoning and the task breakdown that implements them:
   - **The decision.** `wow-admin` writes the admin token to `$WOW_HOME/admin/<owner>/<repo>/admin-token`, under the identity home itself and never under the tokens root, so no container mounts it and admin mode is host-only. `wow-admin`, `wow-preflight` and `wow-readback` find it through `admin_token_file` in `wow-common.sh`. A live or unreadable token at the old `tokens/<owner>/<repo>/admin-token` blocks a mint, `--revoke` still revokes and removes it, and `install-host-tools.ps1` warns about one. `--revoke` removes a file only after a DELETE 401, or a DELETE 204 followed by a read of `/installation/repositories` that gets 401, and prints one line per step. The default `--perms` is `contents=write,pull_requests=write`; Administration is granted only when `--perms` names it. A mint prints the permissions and repositories GitHub granted (`mint.sh --print-grant`).
   - **Why.** The token was written into the directory the repo's dev container mounts read-only at `/run/wow`, so every process in that container could read it while it was live, and the documented host routes had to stop every container from before the mint until the revoke. A revoke that trusted a 204 alone could not show the token was dead, and the default asked for Administration write when most callers need less.
   - **Not taken.** Refusing the mount in the launchers: no launcher reads the mount list (`devcontainer up` does). `mint.sh --strict`: a strict refusal leaves a live token on GitHub with no file for `--revoke`.
-  - **Residual.** Nothing mechanical refuses a container whose mount source is the `admin/` directory or one of its ancestors (the identity home, the user profile, a drive root); a stray or legacy file at `/run/wow/admin-token` is only reported by the banner. The `#1591` amendment's rule that no dev or review container runs from before the mint until the revoke is unchanged.
+  - **Residual.** Nothing mechanical refuses a container whose mount source is the `admin/` directory or one of its ancestors (the identity home, the user profile, a drive root); a stray or legacy file at `/run/wow/admin-token` is only reported by the banner. This decision kept the `#1591` amendment's rule that no dev or review container runs from before the mint until the revoke; the maintainer lifted it on 2026-11-18, recorded under that amendment.
 
 ## Status
 
