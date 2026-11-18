@@ -28,7 +28,9 @@ A commit scope is the suffix of exactly one `area/*` label, Dependabot's `ci(dep
 - `release` — `.claude-plugin/`, `plugins/way-of-working/.claude-plugin/`, `.claude/`
 - `ai` — `.ai/`
 
-Any other path follows the area of the change it belongs to (a test takes the area of what it tests, a changelog line the area of the change it records). A change spanning areas takes the area of its main purpose, or omits the scope. The `pr-title` job (`.github/workflows/pr-title.yml`, `scripts/pr-title-check.sh`) checks a PR title's scope against this list, reading the first backtick span of each top-level bullet here, so it keeps no second copy of the list: an area is added or renamed only in this list, and adding or renaming one also means creating or renaming its `area/*` label on GitHub.
+Any other path follows the area of the change it belongs to (a test takes the area of what it tests, a changelog line the area of the change it records). A change spanning areas takes the area of its main purpose, or omits the scope. The `pr-title` job (`.github/workflows/pr-title.yml`, `scripts/pr-title-check.sh`) checks a PR title's scope against this list, reading the first backtick span of each top-level bullet here, so it keeps no second copy of the list: an area is added or renamed only in this list. The label of a newly added area is created by `.github/workflows/label-sync.yml` on merge; a rename stays a hand rename of the label on GitHub (so issues keep it), made before the PR that renames the area merges.
+
+Labels are configuration: the areas above (as `area/<area>`) and `.github/labels.txt` (every other label) are the two sources, and `scripts/label-sync.sh declared` prints their union. A session that needs a label no source declares never creates it: it suggests it as a PR that edits the areas list or `.github/labels.txt`, giving the reason, and the maintainer's approval of that PR is the decision; the merge creates the label. The workflow reports a label on GitHub that no source declares and never deletes one.
 
 ## The one rule that matters most here
 

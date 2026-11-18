@@ -1,0 +1,90 @@
+name: label-sync
+
+# Labels are configuration (#1566): the areas of CLAUDE.md's `## Areas` section and the
+# names in .github/labels.txt. On a merge to main that touches a source, this creates any
+# declared label the repo lacks and reports, never deletes, one that no source declares.
+#
+# Two jobs on two runners, so the token that can write never meets a repo file. `plan` holds
+# read access only, checks the repo out and runs scripts/label-sync.sh, whose only effect is
+# the plan text it prints. `create` holds `issues: write`, checks nothing out, runs no repo
+# file, and acts only on plan lines whose NAME matches the label grammar, line by line.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - CLAUDE.md
+      - .github/labels.txt
+      - scripts/label-sync.sh
+      - .github/workflows/label-sync.yml
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: label-sync
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Work out the labels to create
+        id: plan
+        shell: bash
+        env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/labels?per_page=100" --jq '.[].name' >"$RUNNER_TEMP/labels.txt"
+          bash scripts/label-sync.sh plan "$RUNNER_TEMP/labels.txt" >"$RUNNER_TEMP/plan.txt"
+          { grep -E '^(undeclared|case-mismatch)' "$RUNNER_TEMP/plan.txt" || true; } | tee -a "$GITHUB_STEP_SUMMARY"
+          delim="PLAN_$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+          {
+            echo "plan<<$delim"
+            cat "$RUNNER_TEMP/plan.txt"
+            echo "$delim"
+          } >>"$GITHUB_OUTPUT"
+
+  create:
+    if: github.ref == 'refs/heads/main'
+    needs: plan
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create the missing labels
+        id: create
+        shell: bash
+        env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ needs.plan.outputs.plan }}
+        run: |
+          set -euo pipefail
+          # `[[ =~ ]]` against the whole value, not a line-oriented grep (see the version
+          # check in release.yml).
+          pattern='^create ([a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?)$'
+          while IFS= read -r line || [ -n "$line" ]; do
+            [ -n "$line" ] && [ "$line" != undeclared-unprintable ] || continue
+            case "$line" in
+              "undeclared "* | "case-mismatch "*) continue ;;
+            esac
+            if [[ "$line" =~ $pattern ]]; then
+              gh label create --repo "$REPO" -- "${BASH_REMATCH[1]}"
+            else
+              echo "label-sync: unexpected plan line" >&2
+              exit 1
+            fi
+          done <<<"$PLAN"

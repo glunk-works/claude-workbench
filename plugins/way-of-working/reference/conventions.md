@@ -405,6 +405,11 @@ rename. Then **re-run the `jq` listing**: every casing must now show the sha.
   ecosystem-standard case above and does not widen it. An adopter's automation keyed to this label
   (an `issues: labeled` workflow, for example) now also fires on the dev App's write.
 
+- **A session never creates a label.** When it needs one the repo lacks, it says so and
+  suggests it to the maintainer. In a repo that declares its label sources in committed
+  files and creates labels from them on merge, the suggestion is a PR that edits a source,
+  with the reason, and the maintainer's approval of that PR is the decision.
+
 ## Prose economy — the deep record has a lifecycle
 
 `/way-of-working:handoff` bounds the cursor; nothing bounds the deep record (`{roadmap}`,

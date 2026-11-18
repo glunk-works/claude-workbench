@@ -1124,7 +1124,9 @@ It runs the **Preconditions** and the **Resume-safety preamble** as above, then:
      exits non-zero (a failed read, reported as such), stops that one issue: it is not filed, its
      label is never created, and the write is left undone, so no destination write for its
      findings read back ok, *Closing* keeps their source issues open, and the Report names the
-     issue and why. On `ok` the create call gains `--label "area/<X>"` beside its existing
+     issue and why; for an `unknown` label it also says the session does not create the label and
+     that a new area label is suggested to the maintainer, per `reference/conventions.md` § Issue +
+     label taxonomy. On `ok` the create call gains `--label "area/<X>"` beside its existing
      `--title` and `--body-file` arguments. After filing, the new issue's number is taken from the
      URL `gh issue create` prints and checked digits-only; a create that exits non-zero or prints
      no such URL is an unconfirmed write. The issue is then fetched by direct redirection
