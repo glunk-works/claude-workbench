@@ -49,6 +49,15 @@
 #                no newline, one LF and CRLF are accepted, two LFs, other content, an empty file, a link, a directory, an empty
 #                HOME and the file in the default home itself (also through a link, a parent-component link, a link whose target runs through a link or through link/.., or another letter case) exit 2 with a setup: line; a missing default home is created; absent file:
 #                no account read; the install creates <owner>/<repo> under the root and warns once, creating nothing, for a refused file
+#   profile      the install writes the wowd, wowl and wowend shortcuts into a marked block of the PowerShell profile (#1595; HOME is a fixture,
+#                skipped, loudly, under MSYS like the tokens-root cases): a new directory and file, an append with and without a final
+#                line break, a second run that leaves the bytes identical, an update after a map change that keeps every byte outside the
+#                markers (a UTF-8 byte order mark before the start marker with CRLF; one invalid UTF-8 byte before the block with LF),
+#                malformed marker forms and a UTF-16 profile left untouched with one profile: line and exit 0, the default profile path,
+#                a directory, a link, a dangling link and a path under a regular file left alone, the owner-to-home map (default home,
+#                sibling with a valid tokens-root, without, with a refused one, through a link, a broker.json that is not JSON, an owner in
+#                two homes, one owner in two letter cases), an install from a sibling home, no .config folder, a quoted folder name, the
+#                echo of wowd, wowl and wowend, the throws, and -WhatIf writing no profile
 #   config       a bad repo name (or a trailing dot) or a missing broker.json exits 2 before anything
 #                is minted
 #
@@ -278,9 +287,17 @@ git -C "$src" -c user.name=t -c user.email=t@t commit -q -m seed
 git -C "$src" remote add origin "$(wp "$origin")"
 git -C "$src" push -q origin main
 head=$(git -C "$src" rev-parse HEAD)
+# profile_path: the profile every install writes, a scratch file under $tmp so no case writes a real or fixture-HOME profile;
+# the one case for the default path sets it to - and passes none.
+profile_path="$tmp/scratch-profile.ps1"
 run_install() { rc=0
-  pwsh -NoProfile -NonInteractive -File "$(wp "$root_dir/scripts/identity/install-host-tools.ps1")" \
-    -WowHome "$(wp "$home")" -SourceRepo "$(wp "$src")" "$@" >"$tmp/out" 2>&1 || rc=$?
+  if [ "$profile_path" = - ]; then
+    pwsh -NoProfile -NonInteractive -File "$(wp "$root_dir/scripts/identity/install-host-tools.ps1")" \
+      -WowHome "$(wp "$home")" -SourceRepo "$(wp "$src")" "$@" >"$tmp/out" 2>&1 || rc=$?
+  else
+    pwsh -NoProfile -NonInteractive -File "$(wp "$root_dir/scripts/identity/install-host-tools.ps1")" \
+      -WowHome "$(wp "$home")" -SourceRepo "$(wp "$src")" -ProfilePath "$(wp "$profile_path")" "$@" >"$tmp/out" 2>&1 || rc=$?
+  fi
 }
 has_cr() { [ "$(tr -cd '\015' <"$1" | wc -c | tr -d ' ')" -gt 0 ]; }
 not_cr() { for p in "$@"; do ! has_cr "$p" || return 1; done; }
@@ -442,7 +459,7 @@ case "$(uname -s)" in
   MINGW*|MSYS*)
     reset; rm -rf "$home/bin"; rc=0
     MSYS2_ARG_CONV_EXCL='*' pwsh -NoProfile -NonInteractive -File "$(wp "$root_dir/scripts/identity/install-host-tools.ps1")" \
-      -WowHome "$(cygpath -u "$home")" -SourceRepo "$(wp "$src")" >"$tmp/out" 2>&1 || rc=$?
+      -WowHome "$(cygpath -u "$home")" -SourceRepo "$(wp "$src")" -ProfilePath "$(wp "$tmp/msys-profile.ps1")" >"$tmp/out" 2>&1 || rc=$?
     check "msys: install refuses an MSYS-form WowHome" test "$rc" -ne 0
     check "msys: ...naming the fix" grep -q 'is in MSYS form; pass -WowHome in Windows form' "$tmp/out"
     check "msys: ...and creates no bin" test ! -e "$home/bin" ;;
@@ -471,7 +488,7 @@ check "no tool: broker has no null .Source error" no_source_err
 check "no tool: broker never calls mint.sh" test "$(calls mint-calls)" -eq 0
 reset; rm -rf "$home/bin"; rc=0
 PATH="$emptydir" "$pwsh_abs" -NoProfile -NonInteractive -File "$(wp "$root_dir/scripts/identity/install-host-tools.ps1")" \
-  -WowHome "$(wp "$home")" -SourceRepo "$(wp "$src")" >"$tmp/out" 2>&1 || rc=$?
+  -WowHome "$(wp "$home")" -SourceRepo "$(wp "$src")" -ProfilePath "$(wp "$tmp/notool-profile.ps1")" >"$tmp/out" 2>&1 || rc=$?
 check "no tool: install exits non-zero" test "$rc" -ne 0
 check "no tool: install reports the missing git" grep -q 'git not found on PATH' "$tmp/out"
 check "no tool: install has no null .Source error" no_source_err
@@ -811,6 +828,229 @@ run_install
 check "tokens root install [refused]: the poll comparison still warns" xc_has "gamma is in review-poll.json but not broker.json: no dev token is minted for it on this host"
 rm -f "$home/tokens-root"
 HOME=$real_home; export HOME
+;;
+esac
+
+# --- profile block (#1595) -------------------------------------------------------------------
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) echo "SKIP - profile: pwsh's HOME is the Windows user profile here, not HOME; the profile fixtures did not run" >&2 ;;
+  *)
+prof_home=${HOME:-}
+START='# >>> way-of-working launchers >>>'; END='# <<< way-of-working launchers <<<'
+pnew() { reset; newfh; set_repos '"acme/alpha"'; mkdir -p "$dh"; profile_path="$tmp/prof$trn/dir/profile.ps1"; }
+# mkh <dir> <repos list>: a home holding only a broker.json
+mkh() { mkdir -p "$1"; printf '{"repos": [%s]}\n' "$2" >"$1/broker.json"; }
+sibling() { mkh "$fh/.config/$1" "$2"; printf 'default-home\n' >"$fh/.config/$1/tokens-root"; }
+pl() { grep -c '^profile:' "$tmp/out" || true; }
+pout() { grep -q -F -e "$1" "$tmp/out"; }
+pf_has() { grep -q -F -e "$1" "$profile_path"; }
+pf_lacks() { ! grep -q -F -e "$1" "$profile_path"; }
+nmark() { grep -c -F -x -e "$1" "$profile_path" || true; }
+pcmp() { cmp -s "$profile_path" "$tmp/before"; }
+dotrun() { # dotrun <command text>: dot-source the written profile, then run the text
+  pwsh -NoProfile -NonInteractive -Command ". '$(wp "$profile_path")'; $1" 2>&1
+}
+# the written block holds the three functions and the map
+pbhold() { pf_has 'function wowd {' && pf_has 'function wowl {' && pf_has 'function wowend {' && pf_has '$WowHomes = @{'; }
+
+# first write into a directory that does not exist yet
+pnew; mkh "$dh" '"my-org/a", "acme/alpha"'; sibling two '"beta/x"'
+run_install
+check "profile new: exits 0" test "$rc" -eq 0
+check "profile new: added line" pout "profile block added in $(wp "$profile_path")"
+check "profile new: no profile: line" test "$(pl)" -eq 0
+check "profile new: one start and one end marker" test "$(nmark "$START")" -eq 1 -a "$(nmark "$END")" -eq 1
+check "profile new: the three functions and the map" pbhold
+check "profile new: a hyphenated owner is mapped to the default home" pf_has "'my-org' = '$(wp "$dh")'"
+check "profile new: the map is ordered by owner" test "$(grep -o "^  '[^']*'" "$profile_path" | tr -d ' ' | tr '\n' ' ')" = "'acme' 'beta' 'my-org' "
+# a second run changes nothing, from the other home too
+cp "$profile_path" "$tmp/before"
+run_install
+check "profile again: exits 0" test "$rc" -eq 0
+check "profile again: unchanged line" pout "profile block unchanged in $(wp "$profile_path")"
+check "profile again: byte-identical" pcmp
+saved_home=$home; home=$fh/.config/two
+run_install; home=$saved_home
+check "profile from a sibling home: unchanged" pout "profile block unchanged in $(wp "$profile_path")"
+check "profile from a sibling home: byte-identical, owner set unchanged" pcmp
+
+# append to an existing profile, with and without a final line break
+for end in with without; do
+  pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
+  if [ "$end" = with ]; then printf 'line1\nline2\n' >"$profile_path"; else printf 'line1\nline2' >"$profile_path"; fi
+  run_install
+  check "profile append [$end a final line break]: added" pout "profile block added in $(wp "$profile_path")"
+  check "profile append [$end a final line break]: the earlier lines are kept" test "$(sed -n 1,2p "$profile_path")" = "line1
+line2"
+  check "profile append [$end a final line break]: the block starts on line 3" test "$(sed -n 3p "$profile_path")" = "$START"
+  check "profile append [$end a final line break]: one marker pair" test "$(nmark "$START")" -eq 1 -a "$(nmark "$END")" -eq 1
+  if [ "$end" = with ]; then
+    check "profile append [with a final line break]: the earlier bytes are unchanged" test "$(head -c 12 "$profile_path" | od -An -c | tr -d ' ')" = 'l i n e 1 \n l i n e 2 \n' -o "$(head -c 12 "$profile_path" | od -An -tx1 | tr -d ' \n')" = 6c696e65310a6c696e65320a
+  else
+    check "profile append [without a final line break]: the earlier bytes are unchanged" test "$(head -c 11 "$profile_path" | od -An -tx1 | tr -d ' \n')" = 6c696e65310a6c696e6532
+  fi
+done
+
+# update after a map change: bytes outside the markers kept (BOM + CRLF; an invalid UTF-8 byte + LF)
+for how in bom-crlf invalid-lf; do
+  pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
+  if [ "$how" = bom-crlf ]; then
+    printf '\357\273\277%s\r\n%s\r\ntail one\r\n\r\ntail two' "$START" "$END" >"$profile_path"
+    printf '%s\r\ntail one\r\n\r\ntail two' "$END" >"$tmp/after"; printf '\357\273\277' >"$tmp/pre"
+  else
+    printf 'before \377 x\n%s\nold\n%s\nafter\n' "$START" "$END" >"$profile_path"
+    printf '%s\nafter\n' "$END" >"$tmp/after"; printf 'before \377 x\n' >"$tmp/pre"
+  fi
+  run_install
+  check "profile update [$how] setup: first write updates" pout "profile block updated in $(wp "$profile_path")"
+  sibling two '"beta/x"'
+  run_install
+  check "profile update [$how]: updated line" pout "profile block updated in $(wp "$profile_path")"
+  check "profile update [$how]: the new owner is in the block" pf_has "'beta' = "
+  n=$(wc -c <"$tmp/pre"); head -c "$n" "$profile_path" >"$tmp/gotpre"
+  check "profile update [$how]: the bytes before the start marker are unchanged" cmp -s "$tmp/gotpre" "$tmp/pre"
+  n=$(wc -c <"$tmp/after"); tail -c "$n" "$profile_path" >"$tmp/gotafter"
+  check "profile update [$how]: the bytes from the end marker on are unchanged" cmp -s "$tmp/gotafter" "$tmp/after"
+  check "profile update [$how]: one marker pair" test "$(nmark "$START")" -eq 1 -o "$how" = bom-crlf
+  if [ "$how" = bom-crlf ]; then
+    check "profile update [bom-crlf]: the block uses CRLF throughout" test "$(tr -cd '\r' <"$profile_path" | wc -c | tr -d ' ')" -eq "$(tr -cd '\n' <"$profile_path" | wc -c | tr -d ' ')"
+  else
+    check "profile update [invalid-lf]: the block uses LF" test "$(tr -cd '\r' <"$profile_path" | wc -c | tr -d ' ')" -eq 0
+  fi
+  cp "$profile_path" "$tmp/before"; run_install
+  check "profile update [$how]: a third run leaves it byte-identical" pcmp
+done
+
+# malformed marker forms and a UTF-16 profile are left untouched
+for form in start-only end-only end-first two-starts utf16le utf16be; do
+  pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
+  case "$form" in
+    start-only) printf 'a\n%s\nb\n' "$START" ;;
+    end-only) printf 'a\n%s\nb\n' "$END" ;;
+    end-first) printf '%s\nb\n%s\n' "$END" "$START" ;;
+    two-starts) printf '%s\nb\n%s\n%s\n' "$START" "$START" "$END" ;;
+    utf16le) printf '\377\376#\000 \000x\000\n\000' ;;
+    utf16be) printf '\376\377\000#\000 \000x\000\n' ;;
+  esac >"$profile_path"
+  cp "$profile_path" "$tmp/before"
+  run_install
+  check "profile malformed [$form]: exits 0" test "$rc" -eq 0
+  check "profile malformed [$form]: byte-identical" pcmp
+  check "profile malformed [$form]: one profile: line" test "$(pl)" -eq 1
+  check "profile malformed [$form]: no added or updated line" test "$(grep -c '^profile block' "$tmp/out" || true)" -eq 0
+  case "$form" in
+    two-starts) check "profile malformed [two-starts]: the line counts the markers" pout "has 2 start and 1 end marker lines in a form the install cannot update; fix the block by hand" ;;
+    utf16*) check "profile malformed [$form]: the line names the byte order mark" pout 'starts with a UTF-16 byte order mark' ;;
+  esac
+done
+
+# the default profile path, under a fixture HOME with XDG_CONFIG_HOME unset
+pnew; mkh "$dh" '"acme/alpha"'; profile_path=-
+saved_xdg=${XDG_CONFIG_HOME-}; unset XDG_CONFIG_HOME
+run_install
+[ -z "$saved_xdg" ] || XDG_CONFIG_HOME=$saved_xdg
+profile_path="$fh/.config/powershell/profile.ps1"
+check "profile default path: exits 0" test "$rc" -eq 0
+check "profile default path: added" pout "profile block added in $(wp "$profile_path")"
+check "profile default path: the block is in .config/powershell/profile.ps1 under HOME" pbhold
+
+# a directory, a link, a dangling link and a path under a regular file are left alone
+for how in directory link dangling under-file; do
+  pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
+  case "$how" in
+    directory) mkdir "$profile_path" ;;
+    link) printf 'target\n' >"$tmp/ptarget$trn"; ln -s "$tmp/ptarget$trn" "$profile_path" ;;
+    dangling) ln -s "$tmp/pnowhere$trn" "$profile_path" ;;
+    under-file) printf 'x' >"$tmp/pfile$trn"; profile_path="$tmp/pfile$trn/profile.ps1" ;;
+  esac
+  run_install
+  check "profile $how: exits 0" test "$rc" -eq 0
+  check "profile $how: one profile: line" test "$(pl)" -eq 1
+  check "profile $how: no added or updated line" test "$(grep -c '^profile block' "$tmp/out" || true)" -eq 0
+  case "$how" in
+    link) check "profile link: still a link, target untouched" test -L "$profile_path" -a "$(cat "$tmp/ptarget$trn")" = target ;;
+    dangling) check "profile dangling: still a link, nothing written through it" test -L "$profile_path" -a ! -e "$tmp/pnowhere$trn" ;;
+    directory) check "profile directory: still a directory" test -d "$profile_path" ;;
+    under-file) check "profile under-file: the line says not written" pout 'profile: not written (' ;;
+  esac
+done
+
+# the owner-to-home map
+pnew; mkh "$dh" '"my-org/a", "Case/a", "case/b", "dup/x"'
+sibling two '"beta/x"'
+mkh "$fh/.config/three" '"gamma/x"'
+mkh "$fh/.config/four" '"delta/x"'; printf 'elsewhere\n' >"$fh/.config/four/tokens-root"
+mkdir -p "$tmp/realfive$trn"; mkh "$tmp/realfive$trn" '"epsilon/x"'; printf 'default-home\n' >"$tmp/realfive$trn/tokens-root"; ln -s "$tmp/realfive$trn" "$fh/.config/five"
+sibling six '"zeta/x"'; printf 'not json {' >"$fh/.config/six/broker.json"
+sibling seven '"dup/y"'
+run_install
+check "profile map: exits 0" test "$rc" -eq 0
+check "profile map: the default home's owners, a hyphenated one included" pf_has "'my-org' = '$(wp "$dh")'"
+check "profile map: a sibling with a valid tokens-root" pf_has "'beta' = '$(wp "$fh/.config/two")'"
+check "profile map: one owner in two letter cases maps once, in its first spelling" test "$(grep -c -i "^  'case' = " "$profile_path")" -eq 1 -a "$(grep -c "^  'Case' = " "$profile_path")" -eq 1
+check "profile map: a sibling without tokens-root contributes nothing" pf_lacks "'gamma'"
+check "profile map: a sibling with a refused tokens-root contributes nothing" pf_lacks "'delta'"
+check "profile map: a sibling reached through a link contributes nothing" pf_lacks "'epsilon'"
+check "profile map: a sibling whose broker.json is not JSON contributes nothing" pf_lacks "'zeta'"
+check "profile map: ...with its one profile: line" pout "profile: $(wp "$fh/.config/six")/broker.json unreadable, its owners are not mapped"
+check "profile map: an owner two homes name is absent" pf_lacks "'dup'"
+check "profile map: ...with its one profile: line naming both homes" pout "owner dup is named by $(wp "$dh") and $(wp "$fh/.config/seven")"
+check "profile map: exactly the two profile: lines" test "$(pl)" -eq 2
+
+# an install from a sibling home, the default home holding only tokens/
+pnew; rmdir "$dh"; mkdir -p "$dh/tokens"; sibling two '"beta/x", "acme/alpha"'
+saved_home=$home; home=$fh/.config/two
+run_install; home=$saved_home
+check "profile from a sibling: exits 0" test "$rc" -eq 0
+check "profile from a sibling: added, no profile: line" test "$(pl)" -eq 0 && pout "profile block added in $(wp "$profile_path")"
+check "profile from a sibling: the block maps the sibling's owners" pf_has "'beta' = '$(wp "$fh/.config/two")'" && pf_has "'acme' = '$(wp "$fh/.config/two")'"
+
+# a fixture HOME with no .config folder, -WowHome outside it with no tokens-root
+pnew; rm -rf "$fh/.config"
+run_install
+check "profile no .config: exits 0" test "$rc" -eq 0
+check "profile no .config: added, no profile: line" test "$(pl)" -eq 0 && pout "profile block added in $(wp "$profile_path")"
+check "profile no .config: the map is empty, nothing was created under HOME" test ! -e "$fh/.config" && pbhold
+
+# an empty HOME
+pnew; HOME=; export HOME
+run_install
+HOME=$fh; export HOME
+check "profile empty HOME: exits 0, one not-written line, no file" test "$rc" -eq 0 -a "$(pl)" -eq 1 -a ! -e "$profile_path" && pout 'profile: not written (HOME is empty'
+
+# a folder name holding an ASCII quote and a U+2019 quote
+pnew; qd="$fh/.config/q'uote’s"; mkh "$qd" '"qq/x"'; printf 'default-home\n' >"$qd/tokens-root"; mkh "$dh" '"acme/alpha"'
+run_install
+check "profile quoted folder: added" pout "profile block added in $(wp "$profile_path")"
+check "profile quoted folder: dot-sourcing parses and runs only the definitions" test "$(dotrun '$WowHomes.Count')" = 2
+check "profile quoted folder: the home value is the folder's real name" test "$(dotrun '[IO.Path]::GetFileName($WowHomes["qq"])')" = "q'uote’s"
+
+# the shortcuts, echoed
+pnew; mkh "$dh" '"acme/alpha"'; run_install
+WOW_PROFILE_ECHO=1; export WOW_PROFILE_ECHO
+b="$(wp "$dh")/bin"
+check "profile echo: wowd with a further argument" test "$(dotrun 'wowd acme/alpha -Base dev')" = "pwsh -NoProfile -File $b/wow-driver.ps1 -Repo acme/alpha -Base dev"
+check "profile echo: wowl with a comma list after -Spec" test "$(dotrun 'wowl acme/alpha -Spec 7,8')" = "pwsh -NoProfile -File $b/wow-lane.ps1 -Repo acme/alpha -Spec 7,8"
+check "profile echo: wowl with -Issue and -Hash" test "$(dotrun 'wowl acme/alpha -Issue 5 -Hash abc')" = "pwsh -NoProfile -File $b/wow-lane.ps1 -Repo acme/alpha -Issue 5 -Hash abc"
+check "profile echo: wowend is wowl with -EndDay" test "$(dotrun 'wowend acme/alpha')" = "pwsh -NoProfile -File $b/wow-lane.ps1 -Repo acme/alpha -EndDay"
+check "profile echo: wowend passes further arguments after -EndDay" test "$(dotrun 'wowend acme/alpha -Base dev')" = "pwsh -NoProfile -File $b/wow-lane.ps1 -Repo acme/alpha -EndDay -Base dev"
+check "profile echo: an owner in another letter case is found" test "$(dotrun 'wowd ACME/alpha')" = "pwsh -NoProfile -File $b/wow-driver.ps1 -Repo ACME/alpha"
+dotrun 'wowd nobody/x' >"$tmp/o1" || true
+check "profile throw: an unknown owner is named" grep -q 'wowd: no identity home for owner nobody' "$tmp/o1"
+for bad in 'wowd' 'wowd acme' 'wowl acme/' 'wowl /alpha' 'wowend a/b/c'; do
+  dotrun "$bad" >"$tmp/o1" || true
+  check "profile throw [$bad]: a usage message" grep -q 'usage: ' "$tmp/o1"
+done
+unset WOW_PROFILE_ECHO
+
+# -WhatIf writes no profile
+pnew; mkh "$dh" '"acme/alpha"'
+run_install -WhatIf
+check "profile -WhatIf: exits 0" test "$rc" -eq 0
+check "profile -WhatIf: no profile and no directory" test ! -e "$profile_path" -a ! -e "$(dirname "$profile_path")"
+
+profile_path="$tmp/scratch-profile.ps1"
+HOME=$prof_home; export HOME
 ;;
 esac
 
