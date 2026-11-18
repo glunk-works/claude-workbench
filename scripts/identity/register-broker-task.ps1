@@ -26,6 +26,11 @@
   and jq must be on the user's PATH. The task runs pwsh through conhost.exe --headless, so no window opens
   on a tick. -Unregister removes the task and ends the broker process it started (stopping conhost does not).
   -WhatIf shows what would be registered.
+
+  A task already registered under -TaskName for another home is refused, naming both homes, unless
+  -ReplaceOtherHome is given: the default name belongs to the default home, and -Force would otherwise
+  replace its broker silently. Re-registering the same home under the same name is unchanged.
+  -ReplaceOtherHome has no effect with -Unregister.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -33,7 +38,8 @@ param(
   [string]$Sh,
   [string]$SourceRepo,
   [string]$TaskName = 'glunk-wow-broker',
-  [switch]$Unregister
+  [switch]$Unregister,
+  [switch]$ReplaceOtherHome
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -72,6 +78,22 @@ $broker = Join-Path $WowHome 'bin\broker.ps1' # the installed copy; install-host
 foreach ($p in $WowHome, $broker, $Sh) {
   if ($p -match '["`$]') { throw "path '$p' has a character the task command line cannot carry" }
 }
+# Refuse to replace another home's task of the same name. This runs before the install below, which stops the
+# named task; a guard after it would already have stopped the other home's broker. Under -WhatIf it still throws.
+# The home is the action's -WowHome "..." argument; read defensively, since StrictMode makes a missing property an error.
+$existing = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
+if ($existing -and -not $ReplaceOtherHome) {
+  $oldHome = $null
+  $oldActions = @($existing.Actions)
+  if ($oldActions.Count -gt 0 -and $oldActions[0].PSObject.Properties['Arguments']) {
+    if ([string]$oldActions[0].Arguments -match '(?i)-WowHome\s+"([^"]*)"') { $oldHome = $Matches[1] }
+  }
+  if (-not $oldHome -or -not [string]::Equals($oldHome.Replace('\', '/'), $WowHome.Replace('\', '/'), [StringComparison]::OrdinalIgnoreCase)) {
+    $was = if ($oldHome) { "home $oldHome" } else { 'an action with no -WowHome the script can read' }
+    throw "task $TaskName is already registered with $was; this run would register home $WowHome. Pass -ReplaceOtherHome to replace it, or use a different -TaskName"
+  }
+}
+
 # A Store install lives in a version-named folder that an update deletes; its execution alias survives.
 $pwsh = (Get-Process -Id $PID).Path
 if ($pwsh -like '*\WindowsApps\Microsoft.PowerShell_*') {

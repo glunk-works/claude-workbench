@@ -339,7 +339,8 @@ change. Steps, on the host:
    install, which warns and creates no token directory; it is never read as the home's own `tokens/`. Run the sh commands from a
    copy installed at this release or later (the second home's install copies them), because an older copy ignores `tokens-root`.
 3. Run `register-broker-task.ps1` with `-WowHome` naming the second home and `-TaskName glunk-wow-broker-<suffix>`
-   (reusing a registered name replaces that task). The
+   (the default `-TaskName` is the default home's `glunk-wow-broker`, and the script refuses to replace a task registered
+   for another home, naming both homes, unless `-ReplaceOtherHome` is passed; `-WhatIf` reports the refusal too). The
    broker reads the file once at start, so re-run the register script after any change to it (see step 4 of *Adding a repo to this host* for the checks around a reinstall). The second home's install
    creates the default home and its `tokens/` when absent, so a host working only in another org needs nothing else for the
    template's mount source. Git Bash's `HOME` must be the user profile directory: the template's mount source

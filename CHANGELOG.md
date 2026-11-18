@@ -31,6 +31,7 @@ the GitHub release notes.
 
 - The schema example, the resume schema interview, `reference/workflow.md` and the critic-gate SKILL now recommend `agents.diff_rule: []` (rule-based critic selection) and name `null` as the opt-out that keeps critic-gate's pick-list (#1614).
 - `wow-review-poll` skips a PR whose base is not the default branch and `wow-review` refuses one with exit 1, nothing posted; it applies once the host tools are reinstalled (#124).
+- `register-broker-task.ps1` refuses to replace a task registered under the same name for another identity home, naming both homes, unless `-ReplaceOtherHome` is passed; re-registering the same home is unchanged (#1594).
 
 ### Fixed
 

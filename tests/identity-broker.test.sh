@@ -32,6 +32,10 @@
 #                Stop-FileArgProcess under strict mode with stubbed cmdlets (no match, one, two, a survivor throws); static checks that the
 #                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess, and
 #                the install disables and re-enables the task (#1016), passing neither cmdlet -Confirm or -WhatIf
+#   guard        register-broker-task.ps1 reads the task registered under -TaskName before it calls the installer, and refuses (also
+#                under -WhatIf) one whose -WowHome names another home or none it can read, unless -ReplaceOtherHome is given (#1594; stubbed
+#                Get-ScheduledTask, skipped, loudly, where [Environment]::SystemDirectory is set): no task, the same home, the same home in
+#                another letter case with backslashes, a different home, a different home with the switch, no -WowHome, no actions, no Arguments property
 #   no tool on PATH  with PATH holding only an empty directory and no -Sh, register-broker-task, broker
 #                and install-host-tools each reach their own "no POSIX sh found" / "git not found" message,
 #                never a null .Source error; broker never calls mint.sh and install creates no bin
@@ -600,6 +604,80 @@ check "no-confirm check: an abbreviated -WhatIf fails" noconfirm_fails "$(wp "$t
 check "no-confirm check: an unreadable path fails" sh -c '! "$@" 2>/dev/null' sh pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/noconfirm.ps1")" "$(wp "$tmp/nc-missing.ps1")"
 check "no-confirm check: no file fails" sh -c '! "$@" 2>/dev/null' sh pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/noconfirm.ps1")"
 check "identity scripts: no -Confirm or -WhatIf on Disable-/Enable-ScheduledTask" noconfirm_identity
+
+# --- other-home guard (#1594) -----------------------------------------------------------------
+# A run that passes the guard ends at the conhost lookup, where [Environment]::SystemDirectory is empty off Windows
+# (the error text "Cannot bind argument to parameter 'Path'"); a refusal ends before it.
+check "register: reads the existing task before it calls the installer" test \
+  "$(grep -n -F "Get-ScheduledTask -TaskName \$TaskName -TaskPath '\\'" "$reg_ps" | head -1 | cut -d: -f1)" -lt \
+  "$(grep -n -F "Join-Path \$PSScriptRoot 'install-host-tools.ps1'" "$reg_ps" | head -1 | cut -d: -f1)"
+if [ -n "$(pwsh -NoProfile -NonInteractive -Command '[Environment]::SystemDirectory' </dev/null 2>/dev/null)" ]; then
+  echo "SKIP - [Environment]::SystemDirectory is set; register-broker-task.ps1 guard cases not run" >&2
+else
+  esc=$(printf '\033')
+  has() { grep -q -F -- "$2" "$1"; }
+  nothas() { ! grep -q -F -- "$2" "$1"; }
+  lines() { if [ -f "$1" ]; then wc -l <"$1" | tr -d ' '; else echo 0; fi; }
+  ghome="$tmp/guard-home"
+  mkdir "$ghome"
+  gcalls="$tmp/guard.calls"
+  gt() { # gt <out> <stub mode: none|home|nohome|noactions|noargs> <stub home> [script args]
+    o=$1; sm=$2; sh_=$3; shift 3
+    : >"$gcalls"
+    grc=0
+    STUB_MODE=$sm STUB_HOME=$sh_ STUB_CALLS=$gcalls G_REG=$reg_ps G_HOME=$ghome \
+      pwsh -NoProfile -NonInteractive -Command '
+        function Get-ScheduledTask {
+          param($TaskName, $TaskPath, $ErrorAction)
+          Add-Content -LiteralPath $env:STUB_CALLS -Value "$TaskName $TaskPath" -WhatIf:$false
+          switch ($env:STUB_MODE) {
+            "none" { return }
+            "noactions" { return [pscustomobject]@{ Actions = @() } }
+            "noargs" { return [pscustomobject]@{ Actions = @([pscustomobject]@{ Execute = "x" }) } }
+            "nohome" { $a = "--headless pwsh -NoProfile -File x.ps1 -Sh y" }
+            default { $a = "--headless pwsh -NoProfile -NonInteractive -WindowStyle Hidden -File `"b.ps1`" -WowHome `"$($env:STUB_HOME)`" -Sh `"s`"" }
+          }
+          [pscustomobject]@{ Actions = @([pscustomobject]@{ Arguments = $a }) }
+        }
+        & $env:G_REG -TaskName guard-test -WhatIf -WowHome $env:G_HOME -Sh /bin/sh @args' "$@" >"$o" 2>&1 </dev/null || grc=$?
+    sed "s/$esc\\[[0-9;]*[A-Za-z]//g" "$o" | tr '\n' ' ' | sed 's/ | / /g; s/  */ /g' >"$o.plain"
+  }
+  g_passes() { # g_passes <label> <out>
+    check "$1: stub called once" test "$(lines "$gcalls")" -eq 1
+    check "$1: no refusal" nothas "$2.plain" "Pass -ReplaceOtherHome"
+    check "$1: runs on to the conhost lookup" has "$2.plain" "Cannot bind argument to parameter 'Path'"
+  }
+  g_refuses() { # g_refuses <label> <out>
+    check "$1: stub called once" test "$(lines "$gcalls")" -eq 1
+    check "$1: names -ReplaceOtherHome" has "$2.plain" "Pass -ReplaceOtherHome"
+    check "$1: names the requested home" has "$2.plain" "this run would register home $ghome"
+    check "$1: stops before the conhost lookup" nothas "$2.plain" "Cannot bind argument to parameter 'Path'"
+    check "$1: no StrictMode property error" nothas "$2.plain" "cannot be found on this object"
+    check "$1: non-zero exit" test "$grc" -ne 0
+  }
+  gup=$(printf '%s' "$ghome" | tr 'a-z/' 'A-Z\\')
+
+  gt "$tmp/g.none" none ""
+  g_passes "guard, no existing task" "$tmp/g.none"
+  gt "$tmp/g.same" home "$ghome"
+  g_passes "guard, same home" "$tmp/g.same"
+  gt "$tmp/g.case" home "$gup"
+  g_passes "guard, same home in other case with backslashes" "$tmp/g.case"
+  gt "$tmp/g.diff" home "/other/home"
+  g_refuses "guard, different home" "$tmp/g.diff"
+  check "guard, different home: names the existing home" has "$tmp/g.diff.plain" "registered with home /other/home"
+  gt "$tmp/g.repl" home "/other/home" -ReplaceOtherHome
+  g_passes "guard, different home with -ReplaceOtherHome" "$tmp/g.repl"
+  gt "$tmp/g.nohome" nohome ""
+  g_refuses "guard, action with no -WowHome" "$tmp/g.nohome"
+  check "guard, action with no -WowHome: says so" has "$tmp/g.nohome.plain" "no -WowHome the script can read"
+  gt "$tmp/g.noact" noactions ""
+  g_refuses "guard, no actions" "$tmp/g.noact"
+  check "guard, no actions: says so" has "$tmp/g.noact.plain" "no -WowHome the script can read"
+  gt "$tmp/g.noargs" noargs ""
+  g_refuses "guard, action with no Arguments property" "$tmp/g.noargs"
+  check "guard, action with no Arguments property: says so" has "$tmp/g.noargs.plain" "no -WowHome the script can read"
+fi
 
 # --- owner/name entries (#1276, #1340) ---------------------------------------------------------
 staged() { find "$home/staging" -type f 2>/dev/null | wc -l | tr -d ' '; }
