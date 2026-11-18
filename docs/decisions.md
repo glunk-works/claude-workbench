@@ -3221,3 +3221,36 @@ only; neither was exercised live.
 No release followed: no file under `plugins/` or `.claude-plugin/` changed after `v0.37.0`, the
 host tools install from `main`, and the changelog's Unreleased lines ship with the next plugin
 release. Sprint 21 closed on 2026-11-17; its last change to this repo is `f5a6dc7` (PR #1600).
+
+Sprint 22 (milestone 36, *Review findings flow*, all its issues closed) stops review findings
+piling up as unreadable grouped issues. The review launcher names each finding in the filed title,
+with a path per finding and a repeat check (#1515, PR #1554; #1516, PR #1556).
+`/way-of-working:plan-sprint findings` labels each combined issue with the area the human
+confirmed, checked against the backlog's labels and read back (#1564, PR #1609). Labels become
+configuration: CLAUDE.md's areas plus `.github/labels.txt`, created on a merge to `main` by
+`label-sync.yml`, whose only write job checks nothing out and runs no repo file; a session never
+creates a label and suggests one by PR instead (#1566, PR #1615). That workflow file was the first
+published as the admin App onto a lane's PR the dev App opened. It shipped in `v0.38.0`, tagged at
+`f37258d` (PR #1618).
+
+Off the milestone, the same sprint moved the admin token outside every container mount, confirmed
+its revoke with a 401 read and dropped Administration write from the default (#1608, PR #1611,
+`WB-D53`), and lifted the `#1591` rule that stopped every container for an admin-token window
+(PR #1616).
+
+Verified live on 2026-11-18:
+- **Findings titles:** on the issues the review launcher filed for PRs 1609, 1611 and 1615 (#1610,
+  #1612, #1613, #1617).
+- **Host-tools reinstall:** both identity homes reinstalled at `e80c087`, each `bin\MANIFEST`
+  naming that commit and each broker restarting on it with no `config:` line.
+- **The admin token's new path:** `wow-admin` minted to the home's `admin/` with a `granted:` line
+  of only the requested permissions, its token published #1566's workflow file as the admin App,
+  and `--revoke` confirmed the revoke and removed the file.
+- **Label sync:** the first `label-sync` run on `main` (run 44214198872) was green and created and
+  reported nothing.
+
+Hermetically verified only, live run deferred and tracked:
+- The findings-mode area label (#1564): its first live use is the next findings pass (#1620).
+
+Sprint 22 closed on 2026-11-18; its last change to this repo is the PR carrying this entry, which
+bumps the pin to `v0.38.0`.
