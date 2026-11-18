@@ -98,7 +98,10 @@ foreach ($p in $WowHome, $poll, $Sh) {
 # named task; a guard after it would already have stopped the other home's poller. Under -WhatIf it still throws.
 $existing = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
 if ($existing -and -not $ReplaceOtherHome) {
-  $oldArgs = [string](@($existing.Actions)[0].Arguments)
+  # StrictMode: no index past an empty list, and .Value only off a property object that exists (a COM-handler action has none).
+  $firstAction = @($existing.Actions) | Select-Object -First 1
+  $argsProp = if ($firstAction) { $firstAction.PSObject.Properties['Arguments'] } else { $null }
+  $oldArgs = if ($argsProp) { [string]$argsProp.Value } else { '' }
   $oldHome = $null
   if ($oldArgs -match '\$env:WOW_HOME = ''([^'']*)''') { $oldHome = $Matches[1] }
   if (-not $oldHome -or -not [string]::Equals($oldHome.Replace('\', '/'), $WowHome.Replace('\', '/'), [StringComparison]::OrdinalIgnoreCase)) {
