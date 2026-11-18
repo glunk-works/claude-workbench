@@ -1240,8 +1240,20 @@ exempt_case "a compare whose status is behind" '[{"filename":"docs/readme.md"}]'
 new_case; set_outcome "exempt 7 $SHA"
 printf '{"state":"open","head":{"sha":"%s"},"base":{"ref":"dev"}}\n' "$SHA" >"$STUB/gh/repos_o_r_pulls_7"
 run o/r 7
-expect_failure_post "exempt (the PR base is not the default branch)" bad-outcome
-assert_eq "exempt (non-default base): no compare was made" 0 "$(grep -c '/compare/' "$STUB/gh.calls")"
+assert_eq "base is not the default branch: exit 1" 1 "$rc"
+no_docker "base is not the default branch"
+no_post "base is not the default branch"
+check "base is not the default branch: no ledger entry" test ! -e "$(entry_dir)"
+check "base is not the default branch: stderr names the refusal" has "$tmp/err" "not the default branch"
+assert_eq "base is not the default branch: no compare was made" 0 "$(grep -c '/compare/' "$STUB/gh.calls")"
+new_case; set_outcome "exempt 7 $SHA"
+printf '{"state":"open","head":{"sha":"%s"},"base":{"ref":"dev"}}\n' "$SHA" >"$STUB/gh/repos_o_r_pulls_7"
+mkdir -p "$(entry_dir)"
+run o/r 7 --rerun
+assert_eq "base is not the default branch (--rerun): exit 1" 1 "$rc"
+no_docker "base is not the default branch (--rerun)"
+no_post "base is not the default branch (--rerun)"
+check "base is not the default branch (--rerun): the entry is still there" test -d "$(entry_dir)"
 new_case; set_outcome "exempt 7 $SHA"
 printf '{"check_runs":[{"name":"gate","status":"completed","conclusion":"skipped"}]}\n' >"$STUB/gh/repos_o_r_commits_${SHA}_check-runs"
 run o/r 7

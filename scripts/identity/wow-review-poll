@@ -4,7 +4,7 @@
 #   wow-review-poll          (no arguments; any argument exits 2)
 #
 # Run every few minutes by a per-user scheduled task (register-review-poll-task.ps1). For each
-# repo in $WOW_HOME/review-poll.json it finds the open, non-draft PRs whose head has no ledger
+# repo in $WOW_HOME/review-poll.json it finds the open, non-draft PRs into the default branch whose head has no ledger
 # entry, whose review gate is not green, and whose other required checks have all passed, and
 # runs `wow-review <owner/repo> <N>` for each of those heads, up to WOW_REVIEW_MAX at once. Each
 # review stays its own fresh session, with its own containers, networks and tokens. The poller decides
@@ -301,6 +301,12 @@ gather_repo() { # gather_repo <owner/name>
   GATE=$(yq -er '.review.ci_gate.check' <"$RUN/def.yml" 2>/dev/null) || { logp "$repo: not App-mode gated"; return 0; }
   case $GATE in ''|*"$nl"*) logp "$repo: not App-mode gated"; return 0 ;; esac
 
+  # The default branch, once per gather: a PR into any other branch is not reviewed here.
+  defbr=$(gh_api "repos/$repo" --jq .default_branch 2>/dev/null) && [ -n "$defbr" ] \
+    || { logp "$repo: cannot read the default branch"; return 0; }
+  defbr=$(printf '%s' "$defbr" | tr -d '\r')
+  ref_ok "$defbr" || { logp "$repo: the default branch name is not acceptable"; return 0; }
+
   # Open PRs, projected: number, draft, head sha, base ref. No title, body or author text.
   gh_api --paginate "repos/$repo/pulls?state=open" --jq '.[] | [.number, .draft, .head.sha, .base.ref] | @tsv' >"$RUN/prs" 2>/dev/null \
     || { logp "$repo: cannot list the open PRs"; return 0; }
@@ -314,6 +320,7 @@ gather_repo() { # gather_repo <owner/name>
     [ "$draft" = false ] || { continue; }
     s12=$(printf '%s' "$sha" | cut -c1-12)
     who="$repo#$num $s12"
+    if [ "$base" != "$defbr" ]; then logp "$who: skip, the base is not the default branch"; continue; fi
     if [ -d "$STATE/$owner/$name/$num/$sha" ]; then logp "$who: skip, ledger entry exists"; continue; fi
     if grep -qxF "$num $sha" "$RUN/done" 2>/dev/null; then continue; fi
     benc=$(enc_ref "$base")
