@@ -144,6 +144,7 @@ review:
     check: gate
 YML
   printf '[]\n' >"$g/${p}_pulls_state_open"
+  printf '{"default_branch":"main"}\n' >"$g/$p"
   printf '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci"},{"context":"gate"}]}}]\n' >"$g/${p}_rules_branches_main"
 }
 
@@ -159,11 +160,11 @@ new_case() {
   mkrepo o r
 }
 
-# addpr <owner> <name> <N> <sha> <draft> <ci-conclusion|inprogress> <gate-conclusion|none>
+# addpr <owner> <name> <N> <sha> <draft> <ci-conclusion|inprogress> <gate-conclusion|none> [base]
 addpr() {
   g="$STUB/gh"; p="repos_$1_$2"
-  jq --argjson n "$3" --arg sha "$4" --argjson d "$5" \
-    '. + [{number: $n, draft: $d, head: {sha: $sha}, base: {ref: "main"}, title: "T", body: "B", user: {login: "someone"}}]' \
+  jq --argjson n "$3" --arg sha "$4" --argjson d "$5" --arg base "${8:-main}" \
+    '. + [{number: $n, draft: $d, head: {sha: $sha}, base: {ref: $base}, title: "T", body: "B", user: {login: "someone"}}]' \
     "$g/${p}_pulls_state_open" >"$g/x" && mv "$g/x" "$g/${p}_pulls_state_open"
   runs='[]'
   case $6 in
@@ -263,6 +264,17 @@ assert_eq "an unreadable gate: no review" 0 "$(reviews)"
 assert_eq "an unreadable gate: exit 0" 0 "$rc"
 new_case; addpr o r 7 "$SHA1" false success none; : >"$STUB/gh/repos_o_r_rules_branches_main.fail"; runp
 assert_eq "an unreadable required-check list: no review" 0 "$(reviews)"
+
+new_case; addpr o r 7 "$SHA1" false success none dev; runp
+assert_eq "a PR into another branch: no review" 0 "$(reviews)"
+check "a PR into another branch: the skip line is logged" has "$home/$log" "o/r#7 111111111111: skip, the base is not the default branch"
+new_case; addpr o r 7 "$SHA1" false success none dev; addpr o r 8 "$SHA2" false success none; runp
+assert_eq "one PR into main, one into another branch: exactly one review, for the one into main" "o/r 8" "$(cat "$STUB/review.calls")"
+new_case; addpr o r 7 "$SHA1" false success none; : >"$STUB/gh/repos_o_r.fail"; runp
+assert_eq "an unreadable default branch: no review" 0 "$(reviews)"
+check "an unreadable default branch: logged" has "$home/$log" "o/r: cannot read the default branch"
+new_case; addpr o r 7 "$SHA1" false success none; mkrepo o2 r2; addpr o2 r2 5 "$SHA3" false success none; printf '{"repos": ["o/r", "o2/r2"]}\n' >"$home/review-poll.json"; : >"$STUB/gh/repos_o_r.fail"; runp
+assert_eq "an unreadable default branch in one repo: the other repo still launches" "o2/r2 5" "$(cat "$STUB/review.calls")"
 
 new_case; addpr o r 7 "$SHA1" false success none; runp
 assert_eq "a qualifying head: exit 0" 0 "$rc"

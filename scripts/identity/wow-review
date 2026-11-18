@@ -39,7 +39,8 @@
 #  103  a review was posted but the author is not the declared reviewer App (unconfirmed)
 #  104  a review posted, or may have, and the response is unconfirmed
 #    2  usage
-#    1  any other failure, with nothing posted; the reason is in the host log
+#    1  any other failure, with nothing posted; the reason is in the host log (a PR whose base is
+#       not the default branch is one: it is refused before any session, with nothing posted)
 #
 # The session's outcome line, and the failure codes. The launcher posts a failure review whose
 # body is the fixed template with one code:
@@ -397,6 +398,7 @@ sha12=$(printf '%s' "$pin" | cut -c1-12)
 newlog="$LOGDIR/$name-$num-$sha12-$ID.log"
 mv "$LOG" "$newlog" && LOG=$newlog
 logl "pin $pin base $baseref default $defbr"
+[ "$baseref" = "$defbr" ] || fail "PR #$num targets $baseref, not the default branch $defbr: wow-review reviews only pull requests into the default branch"
 defenc=$(enc_ref "$defbr")
 baseenc=$(enc_ref "$baseref")
 
