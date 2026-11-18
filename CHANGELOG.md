@@ -27,6 +27,10 @@ the GitHub release notes.
 
 - The schema example, the resume schema interview, `reference/workflow.md` and the critic-gate SKILL now recommend `agents.diff_rule: []` (rule-based critic selection) and name `null` as the opt-out that keeps critic-gate's pick-list (#1614).
 
+### Fixed
+
+- `/way-of-working:unpark-sprint` resolves `parked_from_commit` by object id (`cursor-drift.sh oid`), so a hex-named branch or tag no longer stands in for the parked commit (#1180).
+
 ## [0.38.0] — 2026-11-18
 
 **⚠️ Migration** — reinstall the host tools; a live or unreadable admin token at the old `tokens/<owner>/<repo>/admin-token` stays mounted in that repo's container at `/run/wow/admin-token`, and blocks a mint, until `wow-admin <owner/name> --revoke` removes it, and the install warns about one; a caller that needs Administration write must now name it in `--perms` (#1608).

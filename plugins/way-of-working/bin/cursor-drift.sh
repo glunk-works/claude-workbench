@@ -22,8 +22,8 @@
 #                   the abbreviation of exactly one object, a commit (treat as drift; wait)
 #
 # `oid` mode (exactly two arguments, the first `oid`) prints the full id of the one commit the
-# value abbreviates, or `-` otherwise (an empty value included), and always exits 0. Its caller
-# is /way-of-working:resume's review-step state block. A one-argument call is always the
+# value abbreviates, or `-` otherwise (an empty value included), and always exits 0. Its callers
+# are /way-of-working:resume's review-step state block and unpark-sprint's Restore step. A one-argument call is always the
 # classifier, so `cursor-drift.sh oid` alone prints `unreadable`.
 #
 # last_commit is never resolved through ref lookup, in either mode: a revision expression (HEAD, @, a
