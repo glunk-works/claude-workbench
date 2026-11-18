@@ -503,12 +503,19 @@ only `/workspace`, and its `.git` file names a host path.
   /tmp/lanes/spec-XXXXXX` in a `docker exec` shell, or `git worktree remove` once it is clean, and
   only then `rm /tmp/lanes/record-spec-XXXXXX` (the launcher prints both lines). Beside the worktree
   the launcher writes a record, `/tmp/lanes/record-spec-XXXXXX`: the issue list, a space and the
-  launch time in Unix seconds. It is removed with the worktree and kept with a kept one. A `-Spec`
+  launch time in Unix seconds. It is removed with the worktree and kept with a kept one. The `-Spec`
+  cleanup first ends any `claude` still in the leaf (SIGTERM, then SIGKILL after 5 seconds) and keeps the worktree and
+  record when one will not stop; its hand removal then waits until `-SpecSweep` no longer lists a process for that leaf.
+  A `-Spec`
   run refuses, before the container clone's fetch and before any worktree or record is made, when a spec session already running in the
   container (a `claude` process whose working directory is a `spec-` leaf under `/tmp/lanes`, also
   one whose directory was removed) covers any issue in the new list. The refusal names that
   session's worktree, process id and issues. A running session with no readable record counts
-  as `unknown` and refuses every `-Spec` run until the maintainer stops it. This is an accident
+  as `unknown` and refuses every `-Spec` run until the maintainer stops it. The refusal also carries a stop command
+  (`docker exec -u app <container id> kill <process id>`) for a leftover, to be run only when no open window still runs
+  that session and `-SpecSweep` still lists that process. The remaining limit: when the launcher ends before its cleanup
+  runs (as when its window is closed), the in-container `claude` keeps running with its record, counts for its own issues
+  only, and the refusal names its stop command. This is an accident
   guard: two runs started close together can both pass it. `lane.sh done` neither sees nor
   removes a spec worktree.
 - **List spec sessions** (#891):

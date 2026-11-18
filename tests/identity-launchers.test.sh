@@ -44,7 +44,9 @@
 #                   spec prep and cleanup scripts run for real (the stub docker runs a non-interactive
 #                   `exec -u app ... /bin/sh -c <script> sh <args>` with the real /bin/sh against a scratch
 #                   lanes directory and a scratch container clone), both happy paths, base-moved and kept
-#                   worktrees, the busy check (a fake running session: an executable named claude whose
+#                   worktrees, the cleanup's process walk (a fake claude left in the run's leaf is ended, a TERM-ignoring one
+#                   too, one that will not stop keeps the worktree and record, one in another leaf is left running),
+#                   the busy check (a fake running session: an executable named claude whose
 #                   working directory is a spec leaf), the spec record, the -SpecSweep mode (it kills and removes nothing, but fetches in the Reference)
 #                   (the busy-check and sweep fixtures are skipped loudly under MSYS), the shared lanes-directory guard
 #                   (an owner override in the stub docker makes `test -O` false on the lanes path, a dangling
@@ -160,6 +162,8 @@ case "$1" in
         # it.owner: a shell function named test goes in front of the script, false for -O on the scratch
         # lanes path, so the lanes directory reads as not owned by the user without a second user.
         [ ! -e "$d/it.owner" ] || script='test() { case $1:$2 in -O:"$STUB_LANES") return 1;; esac; command test "$@"; }; '"$script"
+        # it.nokill: a kill function that does nothing goes in front, so a process the cleanup signals never ends.
+        [ ! -e "$d/it.nokill" ] || script='kill() { :; }; '"$script"
         n=$#
         while [ "$n" -gt 0 ]; do
           a=$1; shift
@@ -1035,6 +1039,26 @@ if [ -n "$msys" ]; then
   skip "the fake running session needs /proc; the busy check and sweep fixtures did not run under MSYS"
 else
   mk_fake
+  # ended <pid>: the process entry is gone or its state is Z (a fake can sit as a zombie, which kill -0 still reports)
+  proc_ended() { st=$(sed -n 's/^State:[[:space:]]*\(.\).*/\1/p' "/proc/$1/status" 2>/dev/null); [ -z "$st" ] || [ "$st" = Z ]; }
+  proc_running() { ! proc_ended "$1"; }
+  spec_left() { ls "$lanes" | grep -q '^spec-'; }
+  not_spec_left() { ! spec_left; }
+  no_record_left() { ! ls "$lanes" | grep -q '^record-'; }
+  record_kept() { ls "$lanes"/record-spec-* >/dev/null 2>&1; }
+  # hook_fake <binary>: the stub's interactive-session hook starts the fake in the run's leaf and returns once it reads claude
+  hook_fake() {
+    printf '%s\n' 'for w in "$STUB_LANES"/spec-*; do' "( cd \"\$w\" && exec '$1' ) >/dev/null 2>&1 &" 'echo $! >"$STUB_DIR/hook-fake.pid"' \
+      'n=0; until [ "$(cat "/proc/$(cat "$STUB_DIR/hook-fake.pid")/comm" 2>/dev/null)" = claude ]; do n=$((n+1)); [ "$n" -lt 100 ] || break; sleep 0.1; done' 'done' >"$stubdir/it.hook"
+  }
+  # hook_fake_end: SIGKILL the hook's process (while it is still running) and wait until it has ended
+  hook_fake_end() {
+    hp=$(cat "$stubdir/hook-fake.pid" 2>/dev/null) || return 0
+    proc_ended "$hp" || kill -9 "$hp" 2>/dev/null || :
+    hn=0; until proc_ended "$hp"; do hn=$((hn + 1)); [ "$hn" -lt 50 ] || break; sleep 0.1; done
+  }
+  mkdir -p "$tmp/fakebin2"
+  printf '%s\n' '#!/bin/sh' "trap '' TERM" 'while :; do sleep 1; done' >"$tmp/fakebin2/claude"; chmod +x "$tmp/fakebin2/claude"
   busy_refuses() { # busy_refuses <label> <issues word>: before = the lanes listing before the run
     check "wow-lane busy ($1): exit 1" test "$rc" -eq 1
     check "wow-lane busy ($1): no -it exec" no_it
@@ -1042,6 +1066,9 @@ else
     check "wow-lane busy ($1): names the process id" err_has "process $fake_pid"
     check "wow-lane busy ($1): names the issues" err_has "issues $2"
     check "wow-lane busy ($1): says the maintainer stops it" err_has 'maintainer stops that session'
+    check "wow-lane busy ($1): names -SpecSweep" err_has 'SpecSweep'
+    check "wow-lane busy ($1): names the stop command with the container id" err_has "docker exec -u app $ID1 kill "
+    check "wow-lane busy ($1): ...and the busy process id" err_has "kill $fake_pid"
     check "wow-lane busy ($1): no fetch of the base" sh -c "! grep -q -e 'fetch -q origin +refs/heads/' '$stubdir/git.log'"
     check "wow-lane busy ($1): no directory, worktree or record made" test "$(leaves)" = "$before"
     check "wow-lane busy ($1): no registered worktree made" test "$(wt_count)" -eq 1
@@ -1077,6 +1104,7 @@ else
     check "wow-lane busy (no overlap): starts, exiting with the session's code" test "$rc" -eq 7
     check "wow-lane busy (no overlap): ...the other session's directory and record are untouched" test "$(leaves)" = "$before"
     check "wow-lane busy (no overlap): ...the interactive session ran" sh -c "grep -q ' -it ' '$stubdir/calls.log'"
+    check "wow-lane busy (no overlap): ...the other session is still running after the cleanup" proc_running "$fake_pid"
     fake_stop
   else bad "the fake running session never read as claude"; fake_stop; fi
   # a running session whose directory was removed still counts
@@ -1091,6 +1119,39 @@ else
     before=$(leaves); rerun -Spec 7; busy_refuses 'the leaf directory and the record removed' unknown
     fake_stop
   else bad "the fake running session never read as claude"; fake_stop; fi
+
+  # the cleanup's process walk: a claude left in the run's own leaf is ended before the worktree is removed
+  spec_setup; hook_fake "$tmp/fakebin/claude"; run_lane -Spec 7
+  check "wow-lane cleanup (a leftover claude): exits with the session's code" test "$rc" -eq 7
+  check "wow-lane cleanup (a leftover claude): the worktree is gone" not_spec_left
+  check "wow-lane cleanup (a leftover claude): the record is gone" no_record_left
+  check "wow-lane cleanup (a leftover claude): the fake has ended" proc_ended "$(cat "$stubdir/hook-fake.pid")"
+  hook_fake_end
+  rm -f "$stubdir/it.hook"
+  rerun -Spec 8
+  check "wow-lane cleanup (after a leftover): a -Spec for another issue starts" test "$rc" -eq 7
+  rerun -Spec 7
+  check "wow-lane cleanup (after a leftover): a -Spec for the same issue starts" test "$rc" -eq 7
+  spec_setup; hook_fake "$tmp/fakebin2/claude"; run_lane -Spec 7
+  check "wow-lane cleanup (a claude that ignores SIGTERM): exits with the session's code" test "$rc" -eq 7
+  check "wow-lane cleanup (a claude that ignores SIGTERM): the worktree and record are gone" sh -c "ls '$lanes' | grep -q -e '^spec-' -e '^record-' && exit 1; exit 0"
+  check "wow-lane cleanup (a claude that ignores SIGTERM): the fake has ended" proc_ended "$(cat "$stubdir/hook-fake.pid")"
+  hook_fake_end
+  # a claude that will not stop: the worktree and record stay, exit 1, no untracked-files reason
+  spec_setup; hook_fake "$tmp/fakebin2/claude"; : >"$stubdir/it.nokill"; run_lane -Spec 7
+  rm -f "$stubdir/it.nokill"
+  sweep_before_remove() {
+    ra=$(grep -n -m1 -e SpecSweep "$tmp/err" | cut -d: -f1); rb=$(grep -n -m1 -e 'remove by hand once checked' "$tmp/err" | cut -d: -f1)
+    [ -n "$ra" ] && [ -n "$rb" ] && [ "$ra" -lt "$rb" ]
+  }
+  check "wow-lane cleanup (a claude that will not stop): exits 1" test "$rc" -eq 1
+  check "wow-lane cleanup (a claude that will not stop): the worktree is still there" spec_left
+  check "wow-lane cleanup (a claude that will not stop): the record is still there" record_kept
+  check "wow-lane cleanup (a claude that will not stop): stderr names -SpecSweep before the removal line" sweep_before_remove
+  check "wow-lane cleanup (a claude that will not stop): stderr lacks the untracked-files reason" sh -c "! grep -q 'may hold untracked files' '$tmp/err'"
+  hook_fake_end
+  rm -f "$stubdir/it.hook"; for w in "$lanes"/spec-*; do $real_git -C "$crepo" worktree remove --force "$w"; done
+  rm -f "$lanes"/record-spec-*
 
   # -SpecSweep: kills and removes nothing, one non-interactive exec, no session
   spec_setup; mkdir "$lanes/spec-aaa111" "$lanes/spec-bbb222" "$lanes/spec-ddd444" "$lanes/spec-xyz" "$lanes/spec-ABC123" "$lanes/spec-eee55"

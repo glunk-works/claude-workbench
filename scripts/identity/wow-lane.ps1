@@ -24,7 +24,8 @@
                           under the lanes directory (spec- and six characters of a-z0-9), starts a session there
                           on models.architect at --effort high, whose first message leads with the role and the issue numbers in order, then names the origin repository, and asks it to run
                           /way-of-working:spec-task for each issue in order and build nothing. When that
-                          session exits the worktree is removed, after checking it is still the one made.
+                          session exits the cleanup first ends any claude process still in the leaf (SIGTERM, then SIGKILL), then removes the worktree, after checking it is still the one made;
+                          a claude that will not stop keeps the worktree and the record.
                           Beside the worktree the prep writes a record (record- and the leaf in the
                           lanes directory: the issue list, one space, the launch time in Unix seconds), removed with it. The
                           run refuses, before the container clone's fetch and before any worktree or record is made, when a spec session already
@@ -82,9 +83,8 @@
 
   Honest limit. The spec record and the busy check are accident guards like the rest: a same-user
   process can write a record or run under the name claude. Two -Spec runs can both pass the check before
-  either one's session has started. A session started before the record existed, or one whose worktree
-  the post-session cleanup removed under it, has no record and reads as unknown, which refuses every
-  -Spec run until it is stopped. The MANIFEST check catches running from a checkout by mistake, and is not a boundary.
+  either one's session has started. A session started before the record existed, or one whose record
+  was removed by hand, has no record and reads as unknown, which refuses every -Spec run until it is stopped. The MANIFEST check catches running from a checkout by mistake, and is not a boundary.
   With no -WowHome the home is the parent of the script's final, link-resolved folder, so a link in the script path, or any installed copy in a folder named bin with a MANIFEST that matches, picks the home.
   Every in-container check runs as app, the same user as every lane, so a same-user process can defeat
   them. GIT_NO_REPLACE_OBJECTS=1 keeps a refs/replace/<commit> in the shared /workspace/.git from
@@ -92,9 +92,10 @@
   add runs that .git's hooks (a post-checkout hook), and ~/.local/bin leads the container's PATH, so a
   copy there can shadow git, sha256sum or mktemp for the scripts and for the lane's first call. The
   session's own git reads (git show, log, diff, and spec-fresh.sh's diff) still honor a planted replace
-  ref. If the host docker exec client dies, the in-container claude can keep running, so the finally
-  cleanup may run under a live session; the removal is not forced, so git refuses it on modified or
-  untracked files, but a session that has changed nothing yet loses its working directory. These checks catch accidents. A session started between the -EndDay check and the stop is not caught.
+  ref. Docker need not end an exec'd process when the host docker exec client dies, so the in-container claude can keep running;
+  the finally cleanup then ends it before it removes anything. When the launcher itself ends before that cleanup runs
+  (as when its window is closed), the in-container claude keeps running with its record, counts for its own issues
+  only, and the busy refusal names the command that stops it. These checks catch accidents. A session started between the -EndDay check and the stop is not caught.
 
 .PARAMETER Repo
   As wow-driver.ps1: owner/name, whose driver record supplies -Clone and -Reference, which it excludes (exit 2).
@@ -178,8 +179,8 @@ $script:LaunchUsage = 'usage: wow-lane.ps1 (-Clone <path> -Reference <path> | -R
 . (Join-Path $PSScriptRoot 'wow-launch-common.ps1')
 
 # The in-container scripts. Each is one line in one single-quoted string, with no single quote, & | ^ % !
-# or double quote inside; control flow is if and case (the cleanup, the prep and the sweep also have
-# while loops, and the prep and sweep shell functions, and $(( )) arithmetic). Positionals only, and
+# or double quote inside; control flow is if and case (the cleanup, the prep, the sweep and the end-of-day script also have
+# while loops, and all but the lane probe shell functions; the cleanup, the prep and the sweep also have $(( )) arithmetic). Positionals only, and
 # set -f first. stderr goes to /dev/null for the whole script, stdout of every command too, and only the
 # final echo writes (a printf format would need a percent sign); the prep's one other write is its record
 # file, and the sweep writes nothing but its echoes. Text read in the container (process names, working
@@ -205,9 +206,9 @@ function Get-SpecPrepScript {
   $script:LanesGuard + 'R=$2; B=$3; C=$4; F=$5; Q=$6; S=$7; w=ok; bl=; bp=; bi=; hit=0; dg() { if test $# = 2; then :; else dok=0; return 0; fi; dv=$1; dok=1; while test ${#dv} -gt 0; do case $dv in [$2]*) dv=${dv#?};; *) dok=0; dv=;; esac; done; }; pf() { g=; q=$1; dg $q 0-9; if test $dok = 0; then return 0; fi; if test -O /proc/$q; then :; else return 0; fi; c=$(cat /proc/$q/comm); case $c in claude) :;; *) return 0;; esac; y=$(readlink /proc/$q/cwd); case $y in $L/spec-*) :;; *) return 0;; esac; set -- ${y#$L/}; if test $# -gt 2; then return 0; fi; if test $# = 2; then case $2 in \(deleted\)) :;; *) return 0;; esac; fi; case $1 in spec-[a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9]) g=$1;; esac; }; rd() { ri=unknown; rs=unknown; f=$L/record-$1; if test -L $f; then return 0; fi; if test -f $f; then :; else return 0; fi; n=0; a=; b=; while read -r k u; do n=$((n+1)); a=$k; b=$u; done <$f; if test $n = 1; then :; else return 0; fi; ok=1; if test ${#b} -lt 1; then ok=0; fi; if test ${#b} -gt 10; then ok=0; fi; dg $b 0-9; if test $dok = 0; then ok=0; fi; case $b in 0*) ok=0;; esac; if test ${#a} -lt 1; then ok=0; fi; if test ${#a} -gt 99; then ok=0; fi; dg $a 0-9,; if test $dok = 0; then ok=0; fi; case $a in ,*) ok=0;; *,) ok=0;; *,,*) ok=0;; 0*) ok=0;; *,0*) ok=0;; esac; if test $ok = 1; then IFS=,; set -- $a; unset IFS; if test $# -gt 10; then ok=0; fi; while test $# -gt 0; do if test ${#1} -gt 9; then ok=0; fi; shift; done; fi; if test $ok = 1; then ri=$a; rs=$b; fi; };  ht() { hit=0; if test $ri = unknown; then hit=1; return 0; fi; IFS=,; set -- $ri; unset IFS; while test $# -gt 0; do case ,$Q, in *,$1,*) hit=1;; esac; shift; done; }; case $lw in ok) :;; missing) if mkdir -m 700 $L >/dev/null; then :; else w=unsafe-dir; fi;; *) w=unsafe-dir;; esac; if test $w = ok; then set -- $(ls /proc); while test $# -gt 0; do if test $w = ok; then pf $1; if test ${#g} -gt 0; then rd $g; ht; if test $hit = 1; then w=busy; bl=$g; bp=$1; bi=$ri; fi; fi; fi; shift; done; fi; if test $w = ok; then if git -C $R fetch -q origin +refs/heads/$B:refs/remotes/origin/$B >/dev/null; then :; else w=unreadable; fi; fi; if test $w = ok; then x=$(git -C $R rev-parse --verify -q refs/remotes/origin/$B); case $x in $C) :;; ?*) w=base-moved;; *) w=unreadable;; esac; fi; if test $w = ok; then if test -e $L/record-$F; then w=exists; fi; if test -L $L/record-$F; then w=exists; fi; fi; if test $w = ok; then if mkdir -m 700 $L/$F >/dev/null; then :; else w=exists; fi; fi; if test $w = ok; then if git -C $R worktree add --detach $L/$F $C >/dev/null; then :; else w=failed; if git -C $R worktree remove --force $L/$F >/dev/null; then :; else rmdir $L/$F >/dev/null; fi; fi; fi; if test $w = ok; then if echo $Q $S >$L/record-$F; then :; else w=failed; rm -f $L/record-$F >/dev/null; if git -C $R worktree remove --force $L/$F >/dev/null; then :; else rmdir $L/$F >/dev/null; fi; fi; fi; if test $w = busy; then echo busy $bl $bp $bi; else echo $w; fi'
 }
 
-# Positionals: lanes dir, repo dir, leaf, commit. Words: removed kept.
+# Positionals: lanes dir, repo dir, leaf, commit. Words: removed kept running. Before its worktree checks it ends every claude process the user owns whose working directory is exactly the leaf (SIGTERM, up to 5 seconds, then SIGKILL, up to 5 seconds); running means one would not stop, and nothing is removed then.
 function Get-SpecCleanupScript {
-  $script:LanesGuard + 'R=$2; F=$3; C=$4; v=ok; w=kept; n=0; h=0; d=0; i=0; t=; if test $lw = ok; then :; else v=no; fi; if test $v = ok; then if test -L $L/$F; then v=no; fi; fi; if test $v = ok; then if test -d $L/$F; then :; else v=no; fi; fi; if test $v = ok; then if test -L $L/$F/.git; then v=no; fi; fi; if test $v = ok; then if test -f $L/$F/.git; then :; else v=no; fi; fi; if test $v = ok; then t=$(mktemp); case $t in /*) :;; *) v=no;; esac; fi; if test $v = ok; then if git -C $R worktree list --porcelain >$t; then :; else v=no; fi; fi; if test $v = ok; then while read -r k u; do case $k in worktree) i=0; case $u in $L/$F) n=$((n+1)); i=1;; esac;; HEAD) if test $i = 1; then case $u in $C) h=1;; esac; fi;; detached) if test $i = 1; then d=1; fi;; esac; done <$t; fi; if test $v = ok; then if test $n$h$d = 111; then if git -C $R worktree remove $L/$F >/dev/null; then w=removed; rm -f $L/record-$F >/dev/null; fi; fi; fi; case $t in /*) rm -f $t >/dev/null;; esac; echo $w'
+  $script:LanesGuard + 'R=$2; F=$3; C=$4; v=ok; w=kept; n=0; h=0; d=0; i=0; t=; rn=0; km=; dg() { if test $# = 2; then :; else dok=0; return 0; fi; dv=$1; dok=1; while test ${#dv} -gt 0; do case $dv in [$2]*) dv=${dv#?};; *) dok=0; dv=;; esac; done; }; kf() { km=; set -- $(ls /proc); while test $# -gt 0; do q=$1; dg $q 0-9; if test $dok = 1; then if test -O /proc/$q; then c=$(cat /proc/$q/comm); case $c in claude) y=$(readlink /proc/$q/cwd); case $y in $L/$F) km=$km$q,;; esac;; esac; fi; fi; shift; done; }; ks() { IFS=,; set -- $km; unset IFS; while test $# -gt 0; do kill -s $sg $1 >/dev/null; shift; done; }; wt() { j=0; kf; while test ${#km} -gt 0; do if test $j -ge 5; then return 0; fi; sleep 1; j=$((j+1)); kf; done; }; if test $lw = ok; then :; else v=no; fi; if test $lw = ok; then kf; if test ${#km} -gt 0; then sg=TERM; ks; wt; if test ${#km} -gt 0; then sg=KILL; ks; wt; fi; fi; if test ${#km} -gt 0; then rn=1; fi; fi; if test $rn = 1; then v=no; w=running; fi; if test $v = ok; then if test -L $L/$F; then v=no; fi; fi; if test $v = ok; then if test -d $L/$F; then :; else v=no; fi; fi; if test $v = ok; then if test -L $L/$F/.git; then v=no; fi; fi; if test $v = ok; then if test -f $L/$F/.git; then :; else v=no; fi; fi; if test $v = ok; then t=$(mktemp); case $t in /*) :;; *) v=no;; esac; fi; if test $v = ok; then if git -C $R worktree list --porcelain >$t; then :; else v=no; fi; fi; if test $v = ok; then while read -r k u; do case $k in worktree) i=0; case $u in $L/$F) n=$((n+1)); i=1;; esac;; HEAD) if test $i = 1; then case $u in $C) h=1;; esac; fi;; detached) if test $i = 1; then d=1; fi;; esac; done <$t; fi; if test $v = ok; then if test $n$h$d = 111; then if git -C $R worktree remove $L/$F >/dev/null; then w=removed; rm -f $L/record-$F >/dev/null; fi; fi; fi; case $t in /*) rm -f $t >/dev/null;; esac; echo $w'
 }
 
 # Positionals: lanes dir. Prints one line per running spec session and per leaf with no running session: leaf, process id or -, issues or unknown, seconds or unknown, yes or no (directory present); or the one word none; or the one word unsafe-dir when the lanes directory is a link, not a directory or not owned by the user (nothing else is printed then). A missing lanes directory is not refused.
@@ -451,7 +452,7 @@ try {
     switch -CaseSensitive ($word) {
       { $_ -cmatch '\Abusy ' } {
         $b = $word.Split(' ')
-        Stop-Launch "a spec session is already running in $($script:LanesDir)/$($b[1]) (process $($b[2]), issues $(if ($b[3] -ceq 'unknown') { 'unknown: no readable record' } else { $b[3] })): the maintainer stops that session before -Spec runs again"
+        Stop-Launch "a spec session is already running in $($script:LanesDir)/$($b[1]) (process $($b[2]), issues $(if ($b[3] -ceq 'unknown') { 'unknown: no readable record' } else { $b[3] })): the maintainer stops that session before -Spec runs again; for a leftover of a finished session only (no open window still runs it and -SpecSweep still lists process $($b[2]) in that leaf): docker exec -u app $id kill $($b[2])"
       }
       'ok' { }
       'unsafe-dir' { Stop-Launch "$($script:LanesDir) in the container is a link, not a directory, not owned by the container user, or cannot be made" }
@@ -475,7 +476,11 @@ try {
       try { $clean = Invoke-ContainerWord $docker $id (Get-SpecCleanupScript) @($script:LanesDir, $script:RepoDir, $specLeaf, $commit) } catch { $clean = $null }
       if ($clean -cne 'removed') {
         $kept = $true
-        [Console]::Error.WriteLine("wow-lane: kept the spec worktree $dir in container $id (not removed: it may hold untracked files, such as .claude/settings.local.json, or it is no longer the detached worktree made at $commit)")
+        if ($clean -ceq 'running') {
+          [Console]::Error.WriteLine("wow-lane: a claude process in $dir did not stop after SIGTERM and SIGKILL, so the spec worktree and its record are kept in container $id; the removal lines below are for after -SpecSweep no longer lists a process for that leaf")
+        } else {
+          [Console]::Error.WriteLine("wow-lane: kept the spec worktree $dir in container $id (not removed: it may hold untracked files, such as .claude/settings.local.json, or it is no longer the detached worktree made at $commit)")
+        }
         [Console]::Error.WriteLine("wow-lane: inspect: docker exec -it -u app $id git -C $dir status")
         [Console]::Error.WriteLine("wow-lane: remove by hand once checked: docker exec -u app $id git -C $($script:RepoDir) worktree remove --force $dir")
         [Console]::Error.WriteLine("wow-lane: then remove its record: docker exec -u app $id rm $($script:LanesDir)/record-$specLeaf")
