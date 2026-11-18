@@ -157,9 +157,14 @@ printf 'type/bug\r\ndependencies\r\narea/alpha\r\narea/beta\r\narea/gamma-2\r\n'
 run_in "$fx" plan "$tmp/l-cr"
 expect_out "plan: a trailing CR is removed before matching" ""
 
-printf 'type/bug\ndependencies\narea/alpha\narea/beta\narea/gamma-2\n::set-output x=\xc3\xa9\n' >"$tmp/l-unp"
+printf 'type/bug\ndependencies\narea/alpha\narea/beta\narea/gamma-2\n::set-output x=\303\251\n' >"$tmp/l-unp"
 run_in "$fx" plan "$tmp/l-unp"
 expect_out "plan: an unprintable name prints undeclared-unprintable, not the name" "undeclared-unprintable"
+
+printf 'type/bug\ndependencies\narea/alpha\narea/beta\narea/gamma-2\ncaf\303\251\n' >"$tmp/l-nonascii"
+[ "$(wc -c <"$tmp/l-nonascii")" -eq 62 ] || bad "plan: non-ASCII fixture is not 62 bytes (printf wrote escape text, not bytes)"
+run_in "$fx" plan "$tmp/l-nonascii"
+expect_out "plan: a name unprintable only by non-ASCII bytes prints undeclared-unprintable" "undeclared-unprintable"
 
 printf 'type/bug' >"$tmp/l-nonl"
 run_in "$fx" plan "$tmp/l-nonl"

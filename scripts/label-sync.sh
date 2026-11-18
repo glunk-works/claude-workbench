@@ -89,8 +89,6 @@ declared_labels() {
   while IFS= read -r line; do declared+=("$line"); done <<<"$out"
 }
 
-lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
-
 declared=()
 if [ "$cmd" = declared ]; then
   declared_labels
@@ -111,12 +109,12 @@ printable='^[A-Za-z0-9._/ -]+$'
 out=""
 declared_lower=()
 for d in "${declared[@]}"; do
-  dl="$(lower "$d")"
+  dl="${d,,}"
   declared_lower+=("$dl")
   exact=0 folded=0
   for e in ${existing[@]+"${existing[@]}"}; do
     [ "$e" = "$d" ] && exact=1
-    [ "$(lower "$e")" = "$dl" ] && folded=1
+    [ "${e,,}" = "$dl" ] && folded=1
   done
   if [ "$exact" = 1 ]; then
     :
@@ -127,7 +125,7 @@ for d in "${declared[@]}"; do
   fi
 done
 for e in ${existing[@]+"${existing[@]}"}; do
-  el="$(lower "$e")"
+  el="${e,,}"
   known=0
   for dl in "${declared_lower[@]}"; do
     [ "$dl" = "$el" ] && known=1
