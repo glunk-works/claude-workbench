@@ -634,5 +634,17 @@ else
   g_passes "guard, no existing task" "$tmp/g.none"
 fi
 
+# -- never run from the cwd ---------------------------------------------------------------------
+# A slash-less $0 could source a wow-common.sh a branch under review planted in the cwd.
+mkdir "$tmp/plant-wow-review-poll"
+cp "$root_dir/scripts/identity/wow-review-poll" "$tmp/plant-wow-review-poll/wow-review-poll"
+printf '#!/bin/sh\ntouch "%s/marker"\necho reached\n' "$tmp/plant-wow-review-poll" >"$tmp/plant-wow-review-poll/wow-common.sh"
+sl_rc=0
+sl_out="$(cd "$tmp/plant-wow-review-poll" && sh wow-review-poll 2>"$tmp/plant-wow-review-poll.err")" || sl_rc=$?
+assert_eq "wow-review-poll slash-less refuses (stdout)" "" "$sl_out"
+assert_eq "wow-review-poll slash-less refuses (rc)" 2 "$sl_rc"
+assert_eq "wow-review-poll slash-less never reached the planted wow-common.sh" no "$([ -e "$tmp/plant-wow-review-poll/marker" ] && echo yes || echo no)"
+assert_eq "wow-review-poll slash-less stderr names the tool" "wow-review-poll: must be run by path or through PATH" "$(head -c 52 "$tmp/plant-wow-review-poll.err")"
+
 [ "$fail" = 0 ] && echo "all review-poll fixtures passed"
 exit "$fail"

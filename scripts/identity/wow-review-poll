@@ -67,10 +67,16 @@
 # it waits, and each launch's tokens are that launch's own to revoke. A killed poller leaves its
 # review-host/poll-<id>/ behind and the tokens in it live until their own hour ends, the residual
 # wow-review states. No PR title, body, comment, diff or author text is read.
+#
+# A slash-less $0 is refused with exit 2: `here` would be the current directory, and a wow-common.sh
+# planted there would be sourced. Run it by path, or by command name through PATH.
 set -eu
 set -f
 prog=wow-review-poll
-here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+case "$0" in
+  */*) here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd) ;;
+  *) echo "$prog: must be run by path or through PATH (a slash-less \$0 cannot locate wow-common.sh)" >&2; exit 2 ;;
+esac
 . "$here/wow-common.sh"
 
 [ "$#" -eq 0 ] || die "no arguments are accepted (usage: wow-review-poll)" 2

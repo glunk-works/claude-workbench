@@ -63,10 +63,16 @@
 # only then is a terminal that cannot hide echo accepted. It can only supply a passphrase the
 # caller already holds. Layout and toolset: wow-common.sh. Exit 0 on success, 1 on failure, 2 on
 # bad usage.
+#
+# A slash-less $0 is refused with exit 2: `here` would be the current directory, and a wow-common.sh
+# planted there would be sourced. Run it by path, or by command name through PATH.
 set -eu
 set -f
 prog=wow-admin
-here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+case "$0" in
+  */*) here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd) ;;
+  *) echo "$prog: must be run by path or through PATH (a slash-less \$0 cannot locate wow-common.sh)" >&2; exit 2 ;;
+esac
 . "$here/wow-common.sh"
 
 default_perms=contents=write,pull_requests=write

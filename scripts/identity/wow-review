@@ -161,10 +161,16 @@
 #    spaces, markup or zero-width characters, but markup it does not list (an HTML comment, an entity, a
 #    homoglyph) can still render a forged footer. Nothing parses the footer by machine; it can mislead a reader.
 #  - The post phases of concurrent runs are not serialized; each run's post token is its own file.
+#
+# A slash-less $0 is refused with exit 2: `here` would be the current directory, and a wow-common.sh
+# planted there would be sourced. Run it by path, or by command name through PATH.
 set -eu
 set -f
 prog=wow-review
-here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+case "$0" in
+  */*) here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd) ;;
+  *) echo "$prog: must be run by path or through PATH (a slash-less \$0 cannot locate wow-common.sh)" >&2; exit 2 ;;
+esac
 . "$here/wow-common.sh"
 
 usage() { die "$1 (usage: wow-review <owner/repo> <N> [--rerun])" 2; }

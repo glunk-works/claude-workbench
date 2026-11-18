@@ -442,4 +442,16 @@ setup_ok; printf 'default-home\n' >"$WOW_HOME/tokens-root"; HOME=; export HOME; 
 assert_eq "tokens-root file with HOME empty: the run proceeds" "$base_rc" "$rc"
 HOME=$real_home; export HOME; WOW_HOME=$real_wow; export WOW_HOME
 
+# -- never run from the cwd ---------------------------------------------------------------------
+# A slash-less $0 could source a wow-common.sh a branch under review planted in the cwd.
+mkdir "$tmp/plant-wow-preflight"
+cp "$root_dir/scripts/identity/wow-preflight" "$tmp/plant-wow-preflight/wow-preflight"
+printf '#!/bin/sh\ntouch "%s/marker"\necho reached\n' "$tmp/plant-wow-preflight" >"$tmp/plant-wow-preflight/wow-common.sh"
+sl_rc=0
+sl_out="$(cd "$tmp/plant-wow-preflight" && sh wow-preflight 2>"$tmp/plant-wow-preflight.err")" || sl_rc=$?
+assert_eq "wow-preflight slash-less refuses (stdout)" "" "$sl_out"
+assert_eq "wow-preflight slash-less refuses (rc)" 2 "$sl_rc"
+assert_eq "wow-preflight slash-less never reached the planted wow-common.sh" no "$([ -e "$tmp/plant-wow-preflight/marker" ] && echo yes || echo no)"
+assert_eq "wow-preflight slash-less stderr names the tool" "wow-preflight: must be run by path or through PATH" "$(head -c 50 "$tmp/plant-wow-preflight.err")"
+
 exit "$fail"

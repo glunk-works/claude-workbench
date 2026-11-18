@@ -1820,9 +1820,23 @@ assert_eq "TERM during the wait: nothing posted" 0 "$(n_posts)"
 :
 }
 
+sec_slashless() {
+# A slash-less $0 could source a wow-common.sh a branch under review planted in the cwd.
+mkdir "$tmp/plant-wow-review"
+cp "$root_dir/scripts/identity/wow-review" "$tmp/plant-wow-review/wow-review"
+printf '#!/bin/sh\ntouch "%s/marker"\necho reached\n' "$tmp/plant-wow-review" >"$tmp/plant-wow-review/wow-common.sh"
+sl_rc=0
+sl_out="$(cd "$tmp/plant-wow-review" && sh wow-review 2>"$tmp/plant-wow-review.err")" || sl_rc=$?
+assert_eq "wow-review slash-less refuses (stdout)" "" "$sl_out"
+assert_eq "wow-review slash-less refuses (rc)" 2 "$sl_rc"
+assert_eq "wow-review slash-less never reached the planted wow-common.sh" no "$([ -e "$tmp/plant-wow-review/marker" ] && echo yes || echo no)"
+assert_eq "wow-review slash-less stderr names the tool" "wow-review: must be run by path or through PATH" "$(head -c 47 "$tmp/plant-wow-review.err")"
+:
+}
+
 # Run every section at once, each in a subshell with its own scratch directory ($tmp: its case tree, its out
 # and err files, its log scratch files) over the shared stubs; replay each one's output in order.
-sections="args golden schema ident mints lock reviewed verdict outcomes post findings gate log preflight cleanup"
+sections="args golden schema ident mints lock reviewed verdict outcomes post findings gate log preflight cleanup slashless"
 pids=
 # An interrupt stops the section subshells and leaves the scratch tree (the stubs in it) in place: a launcher
 # already in flight ends on its own, within its own timeout, and must not lose its stubs to the real gh and
