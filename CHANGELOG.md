@@ -21,6 +21,12 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+**⚠️ Migration** — no repo changes behaviour on this bump; a consuming repo that wants rule-based critic selection sets `agents.diff_rule: []` (or a list of extra paths) in its `.ai/project.yml`, which takes effect once it merges on the default branch (#1614).
+
+### Changed
+
+- The schema example, the resume schema interview, `reference/workflow.md` and the critic-gate SKILL now recommend `agents.diff_rule: []` (rule-based critic selection) and name `null` as the opt-out that keeps critic-gate's pick-list (#1614).
+
 ## [0.38.0] — 2026-11-18
 
 **⚠️ Migration** — reinstall the host tools; a live or unreadable admin token at the old `tokens/<owner>/<repo>/admin-token` stays mounted in that repo's container at `/run/wow/admin-token`, and blocks a mint, until `wow-admin <owner/name> --revoke` removes it, and the install warns about one; a caller that needs Administration write must now name it in `--perms` (#1608).

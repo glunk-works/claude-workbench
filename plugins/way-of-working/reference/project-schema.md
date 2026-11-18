@@ -139,8 +139,9 @@ review:
 # ── agents ───────────────────────────────────────────────────────────────────
 agents:
   enabled: [architect, coder, security-critic, docs-consistency]
-  diff_rule: null                # null means critic-gate's diff mode proposes and the human picks; absent
-                                 # prompts. A list turns on rule-based selection. See below.
+  diff_rule: []                  # An empty list turns on rule-based selection over code_paths and the docs
+                                 # (recommended); a list names extra rule paths beyond code_paths; null is the
+                                 # opt-out that keeps critic-gate's pick-list; absent prompts. See below.
 models:
   architect: opus
   coder: sonnet
@@ -643,16 +644,21 @@ from this list only — it never offers an agent the repo has not enabled, and n
 is not in the plugin at all. Its spec mode selects from this list only as well.
 
 `agents.diff_rule` decides how `/way-of-working:critic-gate`'s diff mode chooses its critics (`WB-D41`).
-`null` keeps the pick-list: the gate proposes and the human picks. A list (an empty one included)
-turns on rule-based selection: `bin/critic-select.sh` computes the set from the diff's paths and this
-file as the default branch commits it, and the gate spawns that set with no pick-list. A changed path
-ending in `.md` or matching a `load_bearing_docs` entry selects `docs-consistency`; a path under a
-`code_paths` entry or under an `agents.diff_rule` entry (a literal prefix: an entry with a glob character, a leading `/` or `./`, or a `..` segment reads
+A list (an empty one included) turns on rule-based selection and is the recommended setting for a
+new repo (`WB-D54`): `[]`, or a list of extra paths beyond `code_paths`. `bin/critic-select.sh`
+computes the set from the diff's paths and this file as the default branch commits it, and the gate
+spawns that set with no pick-list. A changed path ending in `.md` or matching a `load_bearing_docs`
+entry selects `docs-consistency`; a path under a `code_paths` entry or under an `agents.diff_rule`
+entry (a literal prefix: an entry with a glob character, a leading `/` or `./`, or a `..` segment reads
 as unreadable and the gate falls back to the pick-list) selects `architect` and
-`security-critic`, so the list names the extra paths beyond `code_paths` that do. Only critics in
+`security-critic`, so the list names the extra paths beyond `code_paths` that do. A diff whose every
+path is outside `code_paths` and the list, does not end in `.md` and matches no `load_bearing_docs`
+entry (`.ai/project.yml` in the example above, for one) selects no critic, and with no critic names
+given the gate stops, so a repo lists such paths as extra entries. Only critics in
 `agents.enabled` run, never `coder`, and a critic name a session holds can only add to the set, never
-drop one; a repo that wants fewer sets the key to `null`. The key must always be present;
-`/way-of-working:resume` asks for it when it is missing.
+drop one. `null` is the opt-out for a repo that wants the human to pick each diff's critics: the gate
+proposes and the human picks. A repo that wants fewer critics sets the key to `null`. The key must
+always be present; `/way-of-working:resume` asks for it when it is missing.
 
 A repo may define **additional** agents locally in `.claude/agents/`. Those are repo-local
 by definition and out of the plugin's scope; adding one to `agents.enabled` does not make it

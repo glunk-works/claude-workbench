@@ -143,14 +143,14 @@ critics itself, as siblings, so each result comes straight back to the session r
 through a parent subagent (a subagent can spawn its own subagents only if it holds the `Agent`
 tool; none of this plugin's agents does, so nothing here nests).
 
-**The gate proposes; the human picks — it does not auto-fan-out, unless the repo sets `agents.diff_rule`.** Each critic is real spend
+**Rule mode is the recommended setting; the pick-list is the `null` opt-out (`WB-D41`, `WB-D54`).** Where `agents.diff_rule` is a list (the
+recommended setting for a new repo), `bin/critic-select.sh` computes the critic set from the diff's paths and
+the default branch's config, a list of names from the session can only add to it, and the human is not
+asked. Where it is `null`, the gate does not auto-fan-out: each critic is real spend
 (mostly Opus subagents) and `architect`/`security-critic` overlap, so `/way-of-working:critic-gate` works out
 which critics a diff *warrants* from the table below, presents that list with a reason each,
 and spawns **only** what the human confirms (or the critics named explicitly in the call). A
-light change may want one critic; a trust-boundary change may want the full set. That is the
-diff mode where `agents.diff_rule` is `null`. Where it is a list, `bin/critic-select.sh` computes the
-set from the diff's paths and the default branch's config (`WB-D41`), a list of names from the session
-can only add to it, and the human is not asked. Its spec mode, which `/way-of-working:spec-task` runs on every draft but an unchanged carried-forward refresh, selects the
+light change may want one critic; a trust-boundary change may want the full set. Its spec mode, which `/way-of-working:spec-task` runs on every draft but an unchanged carried-forward refresh, selects the
 critics by rule from the files the spec lists and runs unattended under its own cap of 2 fix-and-re-run rounds.
 
 > **`/way-of-working:critic-gate` is defense-in-depth that runs EARLIER — it is NOT the
@@ -287,8 +287,9 @@ edits to the description and cannot be mistaken for the human's approval.
 ## The skills
 
 - **`/way-of-working:critic-gate`** — run in the implementation session **after the green gate, before
-  `/way-of-working:handoff`**. Proposes which read-only critics the diff warrants (the table above) and
-  spawns only what you confirm — no auto-fan-out, unless the repo sets `agents.diff_rule` — then aggregates findings for the coder to
+  `/way-of-working:handoff`**. Where the repo sets `agents.diff_rule` to a list (the recommended setting) it selects the read-only
+  critics by rule and asks nothing; under `null` (the opt-out) it proposes which critics the diff warrants
+  (the table above) and spawns only what you confirm, with no auto-fan-out. Then it aggregates findings for the coder to
   fix, then re-runs the critics on the fixed tree and iterates under its stopping rule —
   never "until the critics are clean," which on a dense diff may never terminate.
   Defense-in-depth that runs *earlier* — **not** the `review.ci_gate` review, which still
