@@ -1,0 +1,10 @@
+# Every label that is not an area. Areas are not listed here: they come from the
+# `## Areas` section of CLAUDE.md. A new label is suggested by a PR that edits this file
+# or that section; the merge creates it (.github/workflows/label-sync.yml).
+type/bug
+type/feature
+type/chore
+type/docs
+status/blocked
+status/needs-human
+dependencies
