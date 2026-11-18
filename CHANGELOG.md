@@ -21,7 +21,9 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-**⚠️ Migration** — reinstall the host tools; a live admin token at the old `tokens/<owner>/<repo>/admin-token` blocks a mint until `wow-admin <owner/name> --revoke` removes it, and the install warns about one; a caller that needs Administration write must now name it in `--perms` (#1608).
+## [0.38.0] — 2026-11-18
+
+**⚠️ Migration** — reinstall the host tools; a live or unreadable admin token at the old `tokens/<owner>/<repo>/admin-token` stays mounted in that repo's container at `/run/wow/admin-token`, and blocks a mint, until `wow-admin <owner/name> --revoke` removes it, and the install warns about one; a caller that needs Administration write must now name it in `--perms` (#1608).
 
 ### Changed
 
