@@ -2,9 +2,10 @@
 name: critic-gate
 description: >-
   Run the QA-critic pass on a coding diff — after the local green gate, before /way-of-working:handoff.
-  PROPOSES which read-only critic subagents apply by what the diff touches, and waits for
-  the human to confirm or trim before spawning any — its diff mode proposes and waits unless the
-  repo sets `{agents.diff_rule}`, in which case a script selects the critics by rule. Aggregates
+  Where the repo sets `{agents.diff_rule}` to a list (the recommended setting) a script selects the
+  read-only critic subagents by rule from what the diff touches and nothing is asked; under `null`
+  (the opt-out) it PROPOSES which critics apply and waits for the human to confirm or trim before
+  spawning any. Aggregates
   findings for the coder to fix, then re-runs the critics on the fixed tree and iterates to
   convergence under a bounded stopping rule. Defense-in-depth that runs EARLIER — it is
   explicitly NOT the repo's review CI gate and never satisfies it. Its spec mode, run by
@@ -88,14 +89,14 @@ script then reads `{pr_base}`, `{code_paths}`, `{agents.enabled}` and `{load_bea
    `a-z`, `0-9`, `-`, `,` and space, so no line can equal the delimiter. If a held name breaks
    that rule, do not run the block: take the propose path, as for `unreadable`. A name that fails
    the block's own check ends it before `critic-select.sh` runs, with no `SELECT=` line. Then:
-   - `propose` — `{agents.diff_rule}` is `null`. Carry on below as written, the explicit-names
-     shortcut included.
    - `critics <name>[,<name>...]` — that set is the approved set: no pick-list. Say the set came
      from the rule and go to the *On confirmation, spawn only the approved critics* step on it,
      unchanged. Under a set key the table below, the newly-added-doc row's `security-critic`
      judgment and repo-local critic proposals do not apply: a repo-local critic runs only when
      named. Names are unioned with the rule's set, never a replacement; to run fewer critics the
      repo sets the key to `null` on the default branch.
+   - `propose` — `{agents.diff_rule}` is `null`, the opt-out. Carry on below as written, the explicit-names
+     shortcut included.
    - `none` — say the rule maps this diff to no critic, and stop.
    - `unreadable`, any other output, or no `SELECT=` line — say the rule could not be read or the block failed (if `{agents.diff_rule}`
      is not yet on the default branch, `/way-of-working:resume` asks for it), then fall back to
@@ -570,8 +571,8 @@ stay on `{models.second_opinion}` — it found the findings, it grades the fixes
 separation is unchanged.
 
 ## Why propose instead of auto-spawning
-(This is the diff mode's reasoning where `{agents.diff_rule}` is `null`; *Spec mode* reverses it
-for a drafted spec only, and a set `{agents.diff_rule}` reverses it for the diff mode (`WB-D41`),
+(This is the reasoning for the `null` opt-out of `{agents.diff_rule}`; a list is the recommended
+setting and reverses it for the diff mode (`WB-D41`, `WB-D54`), as *Spec mode* does for a drafted spec,
 the spend bounded by each mode's own cap and the approval of the pass moved to the merged config.)
 
 Every critic is real cost and noise, and `architect`/`security-critic` overlap. Auto-fanning

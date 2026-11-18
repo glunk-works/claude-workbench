@@ -28,7 +28,7 @@ runs `git status --short` itself (the step it used to cite comes later).
    - Collect the answer through the host's structured pick-list (`AskUserQuestion`) whenever
      the host has one and the kind fits it — `WB-D16`'s rule, extended from
      `/way-of-working:critic-gate` to this step. **Option sources are fixed per kind, and
-     nothing else may suggest one:**
+     nothing else may suggest one, bar the `agents.diff_rule` recommendation (`WB-D54`):**
      - `enum:<a>|<b>|...` — the pick-list options are exactly that set, `<a>` listed first but
        **nothing pre-selected**. A default answer would be a default, which is the entire
        thing this mechanism exists to stop offering.
@@ -50,6 +50,11 @@ runs `git status --short` itself (the step it used to cite comes later).
      - A non-null answer to `review.ci_gate` (itself `nullable`) immediately asks its four
        sub-keys the same way, each its own question, in order (`check`, `header`,
        `attestation`, `triggers_on`).
+     - `agents.diff_rule` prints `missing agents.diff_rule nullable`: the pick-list is `[]` listed
+       first and labelled recommended (rule-based selection over `code_paths` and the docs), then
+       `null` (critic-gate's diff mode proposes and the human picks, the opt-out), then a free-text
+       list of extra rule paths. Nothing is pre-selected, and declining still leaves the key missing.
+       The `[]` answer is inserted as a flow sequence.
      - `orchestration` prints `missing … nullable` like `review.ci_gate`: the pick-list is
        `null — the sprint-orchestrator loop never dispatches into this repo` plus *a map — the
        loop may*, and a map answer immediately asks its five sub-keys, each its own question, in
