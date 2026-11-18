@@ -588,7 +588,7 @@ else
   ghome="$tmp/guard-home"
   mkdir "$ghome"
   gcalls="$tmp/guard.calls"
-  gt() { # gt <out> <stub mode: none|home|nohome> <stub home> [script args]: run under a stub Get-ScheduledTask
+  gt() { # gt <out> <stub mode: none|home|nohome|noactions|com> <stub home> [script args]: run under a stub Get-ScheduledTask
     o=$1; sm=$2; sh_=$3; shift 3
     : >"$gcalls"
     STUB_MODE=$sm STUB_HOME=$sh_ STUB_CALLS=$gcalls G_REG=$reg G_HOME=$ghome \
@@ -597,6 +597,8 @@ else
           param($TaskName, $TaskPath, $ErrorAction)
           Add-Content -LiteralPath $env:STUB_CALLS -Value "$TaskName $TaskPath" -WhatIf:$false
           if ($env:STUB_MODE -eq "none") { return }
+          if ($env:STUB_MODE -eq "noactions") { return [pscustomobject]@{ Actions = @() } }
+          if ($env:STUB_MODE -eq "com") { return [pscustomobject]@{ Actions = @([pscustomobject]@{ ClassId = "{00000000-0000-0000-0000-000000000000}" }) } }
           $q = [char]39
           $a = if ($env:STUB_MODE -eq "nohome") { "--headless pwsh -NoProfile -Command run" }
                else { "--headless pwsh -NoProfile -Command `"`$env:WOW_HOME = $q$($env:STUB_HOME)$q; & ${q}sh$q ${q}p$q`"" }
@@ -606,12 +608,12 @@ else
     sed "s/$esc\\[[0-9;]*[A-Za-z]//g" "$o" | tr '\n' ' ' | sed 's/ | / /g; s/  */ /g' >"$o.plain"
   }
   g_passes() { # g_passes <label> <out>
-    check "$1: stub called" test "$(lines "$gcalls")" -eq 1
+    assert_eq "$1: stub called" "$(printf 'guard-test \\')" "$(cat "$gcalls")"
     check "$1: no refusal" nothas "$2.plain" "Pass -ReplaceOtherHome"
     check "$1: runs on to the conhost lookup" grep -q "Cannot bind argument to parameter 'Path'" "$2.plain"
   }
   g_refuses() { # g_refuses <label> <out>
-    check "$1: stub called" test "$(lines "$gcalls")" -eq 1
+    assert_eq "$1: stub called" "$(printf 'guard-test \\')" "$(cat "$gcalls")"
     check "$1: names -ReplaceOtherHome" has "$2.plain" "Pass -ReplaceOtherHome"
     check "$1: names the requested home" has "$2.plain" "this run would register home $ghome"
     check "$1: stops before the conhost lookup" nothas "$2.plain" "Cannot bind argument to parameter 'Path'"
@@ -630,6 +632,13 @@ else
   gt "$tmp/g.nohome" nohome ""
   g_refuses "guard, action with no WOW_HOME" "$tmp/g.nohome"
   check "guard, action with no WOW_HOME: says so" has "$tmp/g.nohome.plain" "no WOW_HOME the script can read"
+  for m in noactions com; do
+    gt "$tmp/g.$m" $m ""
+    g_refuses "guard, $m" "$tmp/g.$m"
+    check "guard, $m: says so" has "$tmp/g.$m.plain" "no WOW_HOME the script can read"
+    check "guard, $m: no index error" nothas "$tmp/g.$m.plain" "Index was outside the bounds"
+    check "guard, $m: no property error" nothas "$tmp/g.$m.plain" "cannot be found on this object"
+  done
   gt "$tmp/g.none" none ""
   g_passes "guard, no existing task" "$tmp/g.none"
 fi

@@ -35,6 +35,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- The other-home guard in `register-review-poll-task.ps1` now refuses with its no-WOW_HOME message, instead of a StrictMode error, when the task already registered under `-TaskName` has no actions or a first action with no `Arguments` property (a COM handler) (#1593).
 - A spec session whose host client ended no longer leaves a `claude` that blocks every later `-Spec`: the launcher's cleanup ends it, and the busy refusal names the stop command (#1604).
 - `/way-of-working:unpark-sprint` resolves `parked_from_commit` by object id (`cursor-drift.sh oid`), so a hex-named branch or tag no longer stands in for the parked commit (#1180).
 - The six host tools `wow-admin`, `wow-preflight`, `wow-readback`, `wow-review`, `wow-review-mint` and `wow-review-poll` refuse a slash-less `$0` with exit 2, as `token-check.sh` and `review-token.sh` do, so a `wow-common.sh` planted in the current directory is never sourced (#1172); this takes effect once the host tools are reinstalled.
