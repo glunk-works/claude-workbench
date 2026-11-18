@@ -1,17 +1,17 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 23** (cursor id `sprint-23`), status **implementing**, milestone 38 (*Rule-based critic selection by default*) has no open issue: closing the sprint.
+**Now:** **Sprint 24** (cursor id `sprint-24`), status **implementing**, milestone 29 (*Follow-ups: host and script hardening*), first task #1180.
 
 **Just done (2026-11-18, driver session, opus):**
-- #1614: its lane survived the crash with PR #1627 already open, reviewed (architect-review pass at `2b86752`) and critic-gated by the lane (architect, security-critic, docs-consistency; 1 round, converged). Driver merge assessment against spec comment 6984335809: no blocking issue. The maintainer merged it as `2ba7a0e`, which closes #1614 and records `WB-D54`.
-- Lane 1614 cleaned up (`lane.sh done 1614`: worktree, branch and prompt removed).
+- Sprint 23 archived with no release, as the maintainer chose: the pin stays at `v0.38.0`, and #1614's Unreleased changelog lines ship with the next plugin release. Status entry `27058bf` (PR #1629); milestone 38 closed; snapshot `.ai/archive/sprint-23-next-steps.md`.
+- Milestone 29's description brought current through `milestone-desc.sh` (read back `ok`): #1608, done in PR #1611, left the build order; #1362, milestoned 2026-11-07 but unlisted, appended last with no `depends_on` marker yet (it reads as after every earlier item until one is confirmed); a `**Lanes:**` line added.
+- The maintainer picked #1180 (unpark-sprint resolves `parked_from_commit` with `cursor-drift.sh oid`) as sprint 24's first task. `lane.sh groups 29` printed `group none`: no milestone 29 task has a spec yet, so it has no paths to group by.
 
-**Next:** Close sprint 23: open the way-of-working v0.39.0 release PR for the Unreleased changelog lines (#1614, PR #1627), then, after it merges and is tagged, the PR that bumps the pin to v0.39.0 and records sprint 23 in `docs/decisions.md`; run `/way-of-working:archive-sprint` only once that entry is on main. Model: opus (architect).
+**Next:** task #1180 — hand the maintainer the -Spec launcher command for #1180 (spec drafted just in time, after the maintainer has reacted to the issue), review the posted spec, then after the maintainer reacts to it prep the lane with `/way-of-working:lanes start`. Model: opus (architect).
 
-**HITL Gate: OPEN** — the maintainer decides whether to release way-of-working v0.39.0 to close sprint 23 (milestone 38 has no open issue).
+**HITL Gate: OPEN** — first anchor for milestone 29: the maintainer confirms sprint 24 works from milestone 29 with #1180 first.
 
 **Also waiting on the driver or the maintainer:**
-- Milestones 32 and 35 have no open issue and say "none left", but are still open on GitHub.
 - #1623, #1624 and #1625 need the maintainer's reaction on the issue before their specs.
 - 603-Identity/devcontainers: two driver prompts handed over on 2026-11-18. One updates `docs/host-steps.md` Procedure B and the threat model for #1608's token path. The other sets `agents.diff_rule: []`. devcontainers#556's spec still needs the maintainer's reaction.
 - #1595 needs the maintainer's reaction on the issue before its spec.
@@ -20,6 +20,6 @@
 - Maintainer, on the host: `docker rmi wow-review:60985f814e95`. bounty-infra, bedrock-serverless-rag, global-bootstrap and scope-core have a review poller but no `broker.json` entry (milestone 34). #1603's live checks when convenient.
 - Carried from sprint 21 (details in `.ai/archive/sprint-21-next-steps.md`): bounty-infra PRs #193 and #202; #412's cutover; devcontainers follow-ups; #419's private record and the other out-of-repo follow-ups.
 
-**Critic pass:** none this session: the driver wrote no diff (the lane's own pass is recorded on PR #1627).
+**Critic pass:** none this session on code: the driver wrote no code diff. PR #1629 (docs) had a docs-consistency pass: 1 round, no contradictions, two optional wording tightenings applied.
 
-**Pointers:** [docs/decisions.md](../docs/decisions.md) · sprint plan: [milestone 38](https://github.com/glunk-works/claude-workbench/milestone/38) · [.ai/parked/](parked/)
+**Pointers:** [docs/decisions.md](../docs/decisions.md) · sprint plan: [milestone 29](https://github.com/glunk-works/claude-workbench/milestone/29) · [.ai/parked/](parked/)
