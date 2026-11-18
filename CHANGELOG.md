@@ -23,6 +23,10 @@ the GitHub release notes.
 
 **⚠️ Migration** — no repo changes behaviour on this bump; a consuming repo that wants rule-based critic selection sets `agents.diff_rule: []` (or a list of extra paths) in its `.ai/project.yml`, which takes effect once it merges on the default branch (#1614).
 
+### Added
+
+- `install-host-tools.ps1` now writes the `wowd`, `wowl` and `wowend` launcher shortcuts into the host PowerShell profile, in a marked block it alone updates, with an owner-to-home map derived from the identity homes beside the default home; `docs/identity/DEV-CONTAINER.md` documents them (#1595).
+
 ### Changed
 
 - The schema example, the resume schema interview, `reference/workflow.md` and the critic-gate SKILL now recommend `agents.diff_rule: []` (rule-based critic selection) and name `null` as the opt-out that keeps critic-gate's pick-list (#1614).

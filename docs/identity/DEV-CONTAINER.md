@@ -628,6 +628,37 @@ worked as written: it launched with no changes, read its spec through the finder
 the gate natively, ran `critic-gate`, and shipped as the dev App with auto-merge armed. Nothing
 in the procedure changed. The trial filed follow-ups #727, #728 and #729.
 
+### Shell shortcuts
+
+Three shortcuts in the host PowerShell profile are the short form of the `-Repo` commands this doc lists: the
+`wow-driver.ps1 -Repo` form in *Opening it*, and the `wow-lane.ps1 -Repo` forms in the *Lanes* bullets *Start the lane*,
+*Start a spec session*, *List spec sessions* and *End of day*.
+
+- `wowd <owner/name> [more arguments]` runs `pwsh -NoProfile -File <home>\bin\wow-driver.ps1 -Repo <owner/name>` followed by the further arguments.
+- `wowl <owner/name> [switches]` runs the same with `wow-lane.ps1`, passing every further argument on (`-Spec`, `-Issue`/`-Hash`, `-SpecSweep`
+  and the rest). A list after `-Spec`, as in `-Spec 7,8`, goes on as one comma-joined argument. It is the short form of the
+  `wow-lane.ps1 -Repo` commands `/way-of-working:lanes` prints, on a host where the install wrote the block; the `pwsh -File` form is the
+  fallback, run from the `bin` of the home that repository's first start of day ran from (step 4 of *A second org's home*: a launcher keeps
+  its driver records in the home it runs from). A shortcut reaches a repository's driver record only when that first start of day ran from the home
+  whose `broker.json` names the repository's owner.
+- `wowend <owner/name> [more arguments]` is `wowl <owner/name> -EndDay` followed by the further arguments.
+
+`install-host-tools.ps1` writes and updates them, in the block of `$PROFILE.CurrentUserAllHosts` between the lines
+`# >>> way-of-working launchers >>>` and `# <<< way-of-working launchers <<<`, touching only the text between the markers. A second run
+leaves the profile unchanged, and each run prints one line saying the block was added, updated or unchanged (`-ProfilePath` names another
+profile file). A hand-installed block whose end line is not the install's end marker is reported and left alone until fixed by hand.
+A new shell picks the block up; an open one dot-sources `$PROFILE.CurrentUserAllHosts` or is reopened.
+
+`$WowHomes` in the block maps each owner to its identity home. The install derives it from the default home and the homes beside it (same
+parent folder, not a link) that hold a `broker.json` and a valid `tokens-root` file, naming the owners of each home's `broker.json`
+entries, so a new org gets its entry by naming its owner in that home's `broker.json` and re-running the install. An owner is looked up
+ignoring letter case, and an unknown owner throws. The limit: only a second home in the same parent folder as the default home is mapped
+(*A second org's home* asks only for the same volume), and every install rewrites the block without any other home. An owner two homes
+name is left out, with a line saying so.
+
+With `WOW_PROFILE_ECHO=1` a shortcut prints the command (`pwsh -NoProfile -File <script> -Repo <owner/name> ...`) instead of running it.
+A repository's first start of day still runs `wow-driver.ps1` directly with `-Clone` and `-Reference`.
+
 ## Hazards that remain
 
 - **`/workspace` is read-write**, so a session can edit `.devcontainer/` (an `initializeCommand`,
