@@ -29,10 +29,16 @@
 # --out may name any path the caller can write; a broker forwarding sandbox input must not pass it.
 # The token is never printed. Run by path, not via a symlink. Layout and toolset: wow-common.sh.
 # Exit 0 / 1 / 2 as mint.sh; every usage error exits 2 before any mint. There is no revoke here: a reviewer token lives out its hour.
+#
+# A slash-less $0 is refused with exit 2: `here` would be the current directory, and a wow-common.sh
+# planted there would be sourced. Run it by path, or by command name through PATH.
 set -eu
 set -f
 prog=wow-review-mint
-here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+case "$0" in
+  */*) here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd) ;;
+  *) echo "$prog: must be run by path or through PATH (a slash-less \$0 cannot locate wow-common.sh)" >&2; exit 2 ;;
+esac
 . "$here/wow-common.sh"
 
 usage_err() { die "$1 (usage: wow-review-mint <repo> [--out FILE] | <repo> --read [--also <repo2>] --out FILE | <repo> --file --out FILE)" 2; }

@@ -604,4 +604,16 @@ assert_eq "install-host-tools.ps1 installs wow-readback" 1 \
 assert_eq "install-host-tools.ps1 installs ruleset-drift.sh beside it" 1 \
   "$(grep -c "^  ,@('plugins/way-of-working/bin/ruleset-drift.sh', 'ruleset-drift.sh')\$" "$root_dir/scripts/identity/install-host-tools.ps1" || true)"
 
+# -- never run from the cwd ---------------------------------------------------------------------
+# A slash-less $0 could source a wow-common.sh a branch under review planted in the cwd.
+mkdir "$tmp/plant-wow-readback"
+cp "$root_dir/scripts/identity/wow-readback" "$tmp/plant-wow-readback/wow-readback"
+printf '#!/bin/sh\ntouch "%s/marker"\necho reached\n' "$tmp/plant-wow-readback" >"$tmp/plant-wow-readback/wow-common.sh"
+sl_rc=0
+sl_out="$(cd "$tmp/plant-wow-readback" && sh wow-readback 2>"$tmp/plant-wow-readback.err")" || sl_rc=$?
+assert_eq "wow-readback slash-less refuses (stdout)" "" "$sl_out"
+assert_eq "wow-readback slash-less refuses (rc)" 2 "$sl_rc"
+assert_eq "wow-readback slash-less never reached the planted wow-common.sh" no "$([ -e "$tmp/plant-wow-readback/marker" ] && echo yes || echo no)"
+assert_eq "wow-readback slash-less stderr names the tool" "wow-readback: must be run by path or through PATH" "$(head -c 49 "$tmp/plant-wow-readback.err")"
+
 exit "$fail"

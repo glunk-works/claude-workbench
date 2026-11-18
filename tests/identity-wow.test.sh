@@ -1010,6 +1010,29 @@ for hv in "$fh/.config/GLUNK-identity/" "$fh/./.config/GLUNK-identity" "$fh/././
   mint_in "$hv"; assert_eq "tokens root default home [$hv] mint rc" 1 "$rc"; assert_eq "tokens root default home [$hv] mint curl uncalled" 0 "$(calls)"
 done
 
+
+# -- never run from the cwd ---------------------------------------------------------------------
+# A slash-less $0 could source a wow-common.sh a branch under review planted in the cwd.
+mkdir "$tmp/plant-wow-admin"
+cp "$root_dir/scripts/identity/wow-admin" "$tmp/plant-wow-admin/wow-admin"
+printf '#!/bin/sh\ntouch "%s/marker"\necho reached\n' "$tmp/plant-wow-admin" >"$tmp/plant-wow-admin/wow-common.sh"
+sl_rc=0
+sl_out="$(cd "$tmp/plant-wow-admin" && sh wow-admin 2>"$tmp/plant-wow-admin.err")" || sl_rc=$?
+assert_eq "wow-admin slash-less refuses (stdout)" "" "$sl_out"
+assert_eq "wow-admin slash-less refuses (rc)" 2 "$sl_rc"
+assert_eq "wow-admin slash-less never reached the planted wow-common.sh" no "$([ -e "$tmp/plant-wow-admin/marker" ] && echo yes || echo no)"
+assert_eq "wow-admin slash-less stderr names the tool" "wow-admin: must be run by path or through PATH" "$(head -c 46 "$tmp/plant-wow-admin.err")"
+# A slash-less $0 could source a wow-common.sh a branch under review planted in the cwd.
+mkdir "$tmp/plant-wow-review-mint"
+cp "$root_dir/scripts/identity/wow-review-mint" "$tmp/plant-wow-review-mint/wow-review-mint"
+printf '#!/bin/sh\ntouch "%s/marker"\necho reached\n' "$tmp/plant-wow-review-mint" >"$tmp/plant-wow-review-mint/wow-common.sh"
+sl_rc=0
+sl_out="$(cd "$tmp/plant-wow-review-mint" && sh wow-review-mint 2>"$tmp/plant-wow-review-mint.err")" || sl_rc=$?
+assert_eq "wow-review-mint slash-less refuses (stdout)" "" "$sl_out"
+assert_eq "wow-review-mint slash-less refuses (rc)" 2 "$sl_rc"
+assert_eq "wow-review-mint slash-less never reached the planted wow-common.sh" no "$([ -e "$tmp/plant-wow-review-mint/marker" ] && echo yes || echo no)"
+assert_eq "wow-review-mint slash-less stderr names the tool" "wow-review-mint: must be run by path or through PATH" "$(head -c 52 "$tmp/plant-wow-review-mint.err")"
+
 HOME=$real_home; export HOME
 
 if [ "$fail" -ne 0 ]; then exit 1; fi
