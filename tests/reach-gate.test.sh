@@ -103,10 +103,11 @@ assert_eq "unreached stderr is one line naming the repo" "1|yes" \
   "$(printf '%s\n' "$err" | wc -l | tr -d ' ')|$(case $err in *acme/widgets*) echo yes ;; *) echo no ;; esac)"
 RG_TMPDIR="$tmp/shared2"; mkdir -p "$RG_TMPDIR"
 run s3b; c1=$calls
+assert_eq "the first unreached prompt makes a gh call" "yes" \
+  "$([ "$c1" -gt 0 ] && echo yes || echo no)"
 run s3b
 assert_eq "unreached is not remembered: the next prompt probes and refuses again" "2|yes" \
   "$rc|$([ "$calls" -gt 0 ] && echo yes || echo no)"
-: "$c1"
 
 # --- a user token passes and is remembered ---
 reset; RG_TMPDIR="$tmp/shared3"; mkdir -p "$RG_TMPDIR"
