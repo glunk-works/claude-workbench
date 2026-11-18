@@ -86,7 +86,7 @@ run s1 "$tmp/bare"
 assert_eq "no .ai/project.yml is silent with no gh call" "0||0" "$rc|$out|$calls"
 
 # --- reached, remembered ---
-reset; export TMPDIR_SHARED="$tmp/shared"; mkdir -p "$TMPDIR_SHARED"; RG_TMPDIR="$TMPDIR_SHARED"
+reset; RG_TMPDIR="$tmp/shared"; mkdir -p "$RG_TMPDIR"
 run s2
 assert_eq "reached passes" "0|" "$rc|$out"
 first_calls=$calls
