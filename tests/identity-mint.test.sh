@@ -27,6 +27,11 @@
 #                    whose login is missing, not a string, empty, begins with a dash or holds a slash, exit 1
 #                    with nothing on stdout; mixing it with --repos, --perms, --out or --strict, or leaving
 #                    out --client-id, --installation-id or --key, exits 2 before curl (#1425)
+#   --print-grant    after the token is written, one `granted: permissions <name>=<level>,... repositories <name>,...` line from
+#                    the response (names sorted, metadata included); a missing, empty or mistyped field, a name or level outside
+#                    its closed set print `granted: not shown (unexpected response)`; exit 0 and
+#                    nothing on stderr either way, and never the token; without the flag the output is unchanged; with
+#                    --print-account it exits 2 before curl (#1608)
 #   usage            missing/odd arguments exit 2 before curl is ever called
 #
 # Permitted toolset: POSIX sh, its standard utilities, openssl and jq (the script's own
@@ -431,6 +436,60 @@ rm -f "$tmp/token"
 run 201 "$(sbody '{"contents":"write","pull_requests":"write","issues":"write"}' "$R_OK")" $(good_args)
 assert_eq "no --strict: an extra permission still exits 0" 0 "$rc"
 assert_eq "no --strict: token written" "$TOKEN" "$(sed -n 1p "$tmp/token")"
+rm -f "$tmp/token"
+
+# --- --print-grant (#1608) -------------------------------------------------------------------
+# grant_body <permissions-json> <repositories-json>: a 201 body echoing a grant
+grant_body() { printf '{"token":"%s","expires_at":"%s","permissions":%s,"repositories":%s}' "$TOKEN" "$EXPIRES" "$1" "$2"; }
+NOT_SHOWN='granted: not shown (unexpected response)'
+# a response carrying both fields prints the line with sorted names, a metadata entry GitHub added included
+rm -f "$tmp/token"
+# shellcheck disable=SC2046
+run 201 "$(grant_body '{"pull_requests":"write","metadata":"read","contents":"write"}' '[{"name":"devcontainers"},{"name":"claude-workbench"}]')" $(good_args) --print-grant
+assert_eq "print-grant exits 0" 0 "$rc"
+assert_eq "print-grant prints the minted line then the granted line" \
+  "minted token for installation 678, expires $EXPIRES
+granted: permissions contents=write,metadata=read,pull_requests=write repositories claude-workbench,devcontainers" "$so"
+assert_eq "print-grant writes the token" "$TOKEN" "$(sed -n 1p "$tmp/token")"
+assert_eq "print-grant prints nothing on stderr" "" "$se"
+assert_absent "print-grant never prints the token" "$so$se" "$TOKEN"
+# the flag works in any position
+# shellcheck disable=SC2046
+run 201 "$(grant_body '{"contents":"write"}' '[{"name":"a"}]')" --print-grant $(good_args)
+assert_contains "print-grant first on the line" "$so" "granted: permissions contents=write repositories a"
+# a missing repositories field, a control character in a level, a string for permissions, and the other malformed shapes
+for badbody in \
+  "$(printf '{"token":"%s","expires_at":"%s","permissions":{"contents":"write"}}' "$TOKEN" "$EXPIRES")" \
+  "$(grant_body '{"contents":"wr\u0001ite"}' '[{"name":"a"}]')" \
+  "$(grant_body '"contents=write"' '[{"name":"a"}]')" \
+  "$(grant_body '{"Contents":"write"}' '[{"name":"a"}]')" \
+  "$(grant_body '{"contents":"write"}' '[{"name":"a b"}]')" \
+  "$(grant_body '{"contents":"write"}' '[{"name":"a\nb"}]')" \
+  "$(grant_body '{"contents":"write"}' '["a"]')" \
+  "$(grant_body '{"contents":"write"}' '"a"')" \
+  "$(grant_body '{"contents":7}' '[{"name":"a"}]')" \
+  "$(grant_body '{}' '[{"name":"a"}]')" \
+  "$(grant_body '{"contents":"write"}' '[]')"; do
+  rm -f "$tmp/token"
+  # shellcheck disable=SC2046
+  run 201 "$badbody" $(good_args) --print-grant
+  assert_eq "print-grant [$badbody] exits 0" 0 "$rc"
+  assert_eq "print-grant [$badbody] prints the not-shown line" "minted token for installation 678, expires $EXPIRES
+$NOT_SHOWN" "$so"
+  assert_eq "print-grant [$badbody] writes the token" "$TOKEN" "$(sed -n 1p "$tmp/token")"
+  assert_eq "print-grant [$badbody] prints nothing on stderr" "" "$se"
+done
+# without the flag the output is unchanged
+rm -f "$tmp/token"
+# shellcheck disable=SC2046
+run 201 "$(grant_body '{"contents":"write"}' '[{"name":"a"}]')" $(good_args)
+assert_eq "without --print-grant the output is the one minted line" "minted token for installation 678, expires $EXPIRES" "$so"
+# --print-grant is a bare flag that refuses --print-account, before curl
+rm -f "$tmp/calls"
+run 200 '{"account":{"login":"acme"}}' --client-id Iv23liTestClient0001 --installation-id 678 --key "$tmp/key.pem" --print-account --print-grant
+assert_eq "print-grant with print-account exits 2" 2 "$rc"
+[ ! -e "$tmp/calls" ] && ok || bad "print-grant with print-account never calls curl" "curl was called"
+assert_eq "print-grant with print-account prints nothing on stdout" "" "$so"
 rm -f "$tmp/token"
 
 # --- usage errors exit 2 and never call curl -------------------------------------------------

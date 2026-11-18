@@ -12,9 +12,11 @@
 #                          second org's home delivers its tokens where the shared dev-container template mounts them. Any other state
 #                          (other content, empty, a symbolic link, a directory, HOME empty, or the file in the default home itself) is a refusal,
 #                          never a fall-back. Absent: the home's own tokens/.
-#   tokens/<owner>/<repo>/ (under the tokens root) the one directory of secrets a repo's container may mount, read-only: admin-token
-#                          (wow-admin) and dev-token (broker.ps1), each the token then its expires_at.
-#                          Admin and dev credentials only (#1276, #1340).
+#   tokens/<owner>/<repo>/ (under the tokens root) the one directory of secrets a repo's container may mount, read-only: dev-token
+#                          (broker.ps1), the token then its expires_at. An admin-token here is a leftover from before #1608,
+#                          which only wow-admin --revoke removes (#1276, #1340).
+#   admin/<owner>/<repo>/  only admin-token (wow-admin, #1608), the token then its expires_at. Never mounted into any container; private
+#                          modes (on NTFS, the home's ACL). Always the home's own, whether or not the home holds a tokens-root file.
 #   tokens/<repo>/         the layout before #1340, in a home without tokens-root: nothing writes it now, and only wow-admin --revoke removes a file in it; a leftover the maintainer removes
 #                          (after wow-admin <owner/name> --revoke finds no readable admin token in it and no admin-token file is there). A home with tokens-root never looks there.
 #   dev.pem, broker.json   broker.ps1 config: the dev App's unencrypted key (name by convention), and
@@ -48,19 +50,19 @@
 #                          broker by age.
 # Invariant: no path under $WOW_HOME is container-writable. The tokens root is the home's own tokens/ or the default home's
 # (tokens-root); the cross-entry rules (no shared name half, no owner equal to another entry's name) are checked within one home's
-# broker.json only, never across two homes sharing a root. tokens/<owner>/<repo>/ is
+# broker.json only, never across two homes sharing a root. admin/ is mounted into no container. tokens/<owner>/<repo>/ is
 # mounted only into a dev container (for the repos listed in broker.json, tokens/<owner>/ is never another repo's mount source; wow-admin's owner half is checked against the admin installation's account at mint), and
 # review-sessions/<id>/ only into a review container, each read-only.
 # claude-credential is never mounted into any container and reaches only the injector's stdin.
-# What these commands write: tokens/ (under the tokens root) and review-tokens/ directories, a per-repo-name .admin-lock.<name> directory directly under $WOW_HOME
-# (in a home with tokens-root, made in the default home instead) and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed under the root's <owner>/<repo>/;
-# only a home without tokens-root has wow-admin --revoke also remove a leftover tokens/<repo>/admin-token),
+# What these commands write: admin/<owner>/<repo>/ (the home's own) and review-tokens/ directories, a per-repo-name .admin-lock.<name> directory directly under $WOW_HOME
+# (in a home with tokens-root, made in the default home instead) and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed under the home's admin/<owner>/<repo>/; wow-admin --revoke also removes a legacy one under the tokens root's
+# <owner>/<repo>/, and only a home without tokens-root a leftover tokens/<repo>/admin-token),
 # reviewer-token (default review-tokens/<repo>/, or the path --out names), the session and filing
 # tokens (wow-review-mint --read / --file, written only to the path --out names), and the .mint.* file
 # mint.sh stages beside any token it writes. wow-review (the launcher) also writes its own review-sessions/,
 # review-host/, review-state/ (its lock, ledger and .live/ lease files) and review-logs/ entries. wow-review-poll writes review-poll.log (and .1),
 # review-state/.poll-lock and review-host/poll-<id>/. wow-driver.ps1 writes driver/<leaf>.json and its same-directory
-# temp file. wow-preflight writes nothing under $WOW_HOME: it only reads <tokens root>/<owner>/<repo>/admin-token. wow-readback likewise writes nothing under it and only reads that admin-token and apps.json. Nothing else under $WOW_HOME is modified.
+# temp file. wow-preflight writes nothing under $WOW_HOME: it only reads admin/<owner>/<repo>/admin-token. wow-readback likewise writes nothing under it and only reads that admin-token and apps.json. Nothing else under $WOW_HOME is modified.
 #
 # The caller sets $prog before sourcing. Toolset: POSIX sh, jq, plus what mint.sh needs.
 
@@ -127,10 +129,15 @@ resolve_tokens_root() {
   tokens_root=$dh/tokens tokens_shared=1
 }
 
-# token_dir <tokens|review-tokens> <repo>: create (private) and print that repo's token directory.
+# admin_token_file <owner> <repo>: the path wow-admin writes the admin token to (#1608), under the home itself and
+# never under the tokens root, so no container's mount of tokens/<owner>/<repo>/ holds it.
+admin_token_file() { printf '%s\n' "$wow_home/admin/$1/$2/admin-token"; }
+
+# token_dir <tokens|admin|review-tokens> <owner/repo or repo>: create (private) and print that repo's token directory.
 token_dir() {
   case "$1" in
     tokens) [ -n "$tokens_root" ] || resolve_tokens_root; d="$tokens_root/$2" ;;
+    admin) d="$wow_home/admin/$2" ;;
     *) d="$wow_home/$1/$2" ;;
   esac
   (umask 077 && mkdir -p -- "$d") || die "cannot create $d"

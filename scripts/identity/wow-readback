@@ -22,8 +22,8 @@
 #   4. wow-admin <owner/name> --revoke
 #   5. only then the two by-hand searches the output prints, so a default-branch change made during
 #      the fresh token's life falls inside them.
-# The fresh token elevates the repo's container while it is live (it is the file the container mounts),
-# as wow-preflight's does, and a change made after a row's read is not seen by that row.
+# No container mounts the fresh token (it is under the home's admin/, #1608), as with wow-preflight's,
+# and a change made after a row's read is not seen by that row.
 # The script, not the token, keeps the run to reads: every `gh api` call below is a GET with no method,
 # field or input flag. It reads the admin token file wow-admin writes and apps.json, and writes nothing
 # under $WOW_HOME.
@@ -146,8 +146,7 @@ NOW=$(jq -nr 'now | floor') && [ -n "$NOW" ] || die "cannot read the clock"
 unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
 
 # --- the token: checked before any request ----------------------------------------------------
-resolve_tokens_root
-tokfile=$tokens_root/$owner/$name/admin-token
+tokfile=$(admin_token_file "$owner" "$name")
 stop_token() {
   die "no usable admin token for $repo ($1); if one is on file, run: wow-admin $repo --revoke; then mint one with: wow-admin $repo --perms administration=write,contents=read,actions=read"
 }

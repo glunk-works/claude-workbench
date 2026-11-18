@@ -21,7 +21,7 @@
 #   install      install-host-tools.ps1 exports committed files only into bin with a MANIFEST (commit, hashes),
 #                the review image's build context into bin/review/ from the table in the script,
 #                refuses an uncommitted change (in any source directory) or a HEAD not on origin/main, and
-#                creates tokens/<owner>/<repo> only; warns, without failing, when broker.json and review-poll.json name different repos, or a top-level tokens/ directory is no entry's owner, and
+#                creates tokens/<owner>/<repo> only, and warns once, without deleting, about an admin-token file already in one (#1608); warns, without failing, when broker.json and review-poll.json name different repos, or a top-level tokens/ directory is no entry's owner, and
 #                gives poll entries it cannot read as owner/name one warning holding only their count;
 #                register-broker-task.ps1 -WhatIf points the task at bin, runs pwsh through conhost --headless and installs nothing (skipped, loudly,
 #                where New-ScheduledTaskAction is not available)
@@ -369,6 +369,16 @@ reset; set_repos '"acme/alpha", "a/b/c", "acme/", "acKme/zeta"'; rm -f "$home/
 run_install
 check "install: entries failing the per-half rule create nothing" test ! -e "$home/tokens/b" -a ! -e "$home/tokens/a" -a ! -e "$home/tokens/zeta" -a ! -e "$home/tokens/c" -a -d "$home/tokens/acme/alpha"
 check "install: ...and the install still exits 0" test "$rc" -eq 0
+# a pre-#1608 admin-token in a broker entry's tokens directory is warned about once, with the revoke command, and left in place
+reset; set_repos '"acme/alpha", "acme/beta"'; echo '{"repos": ["acme/alpha", "acme/beta"]}' >"$home/review-poll.json"
+mkdir -p "$home/tokens/acme/alpha"; printf 'ghs_leftover\n2099-01-01T00:00:00Z\n' >"$home/tokens/acme/alpha/admin-token"
+run_install
+check "install: a legacy admin-token gets one warning naming its path and the revoke" test "$(grep -c -F 'tokens/acme/alpha/admin-token is a leftover admin token: wow-admin no longer writes there; run: wow-admin acme/alpha --revoke' "$tmp/out")" -eq 1
+check "install: ...and no other warning, the exit stays 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
+check "install: ...and the file is left in place" test -f "$home/tokens/acme/alpha/admin-token"
+reset; set_repos '"acme/alpha", "acme/beta"'; echo '{"repos": ["acme/alpha", "acme/beta"]}' >"$home/review-poll.json"
+run_install
+check "install: with no admin-token there is no such warning" test "$(grep -c 'leftover admin token' "$tmp/out")" -eq 0
 reset; set_repos '"acme/alpha"'; echo '{"repos": ["acme/alpha"]}' >"$home/review-poll.json"; mkdir -p "$home/tokens/other"
 run_install
 check "cross-check: a tokens directory that is not an owner half is named" xc_has "tokens/other is not the owner directory of any broker.json entry"
