@@ -60,11 +60,18 @@ d="$(tree control)"
 assert_silent "real tree passes" "$d"
 sel="--only 13"
 
-# The guard line removed fires.
+# The guard arm removed fires.
 d="$(tree noguard)"
 f="$(ls "$d"/plugins/*/skills/unpark-sprint/SKILL.md)"
-grep -vF '[!0-9a-f]' "$f" >"$f.new" && mv "$f.new" "$f"
+sed "s/''|\*\[!0-9a-f\]\*) PFC= ;; //" "$f" >"$f.new" && mv "$f.new" "$f"
 assert_fires "unpark-sprint without the hex guard fires" "$d"
+
+# The hex arm back on the ref-lookup form fires, with the guard and the jq read in place (#1180).
+d="$(tree reflookup)"
+f="$(ls "$d"/plugins/*/skills/unpark-sprint/SKILL.md)"
+sed 's|\*) PFC=$(cursor-drift.sh oid "$PFC" 2>/dev/null) \|\| PFC=; \[ "$PFC" != - \] \|\| PFC= ;;|*) PFC=$(git rev-parse --verify -q "$PFC^{commit}" 2>/dev/null) \|\| PFC= ;;|' "$f" >"$f.new" && mv "$f.new" "$f"
+grep -qF 'git rev-parse --verify -q "$PFC^{commit}"' "$f" || { echo "FAIL - reflookup fixture did not apply" >&2; fail=1; }
+assert_fires "the hex arm on the ref-lookup form fires" "$d"
 
 # A hex pattern for some other variable does not satisfy it.
 d="$(tree othervar)"

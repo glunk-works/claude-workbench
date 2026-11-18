@@ -32,12 +32,12 @@ re-verifies it before `/way-of-working:resume` may run it unattended.
    `parked_at` and `parked_from_commit` with `jq -r` and validate them. Both are snapshot
    data a branch can edit: a `parked_from_commit` starting `-` is an option to `git log`, and
    shell text typed into a command line runs. So the values are read from the file, never
-   typed in, and only a lowercase-hex id that resolves to a commit (or a plain `YYYY-MM-DD`
-   date) survives:
+   typed in, and only a lowercase-hex id that resolves to a commit, by object id only and never through ref
+   lookup (or a plain `YYYY-MM-DD` date) survives:
    ```bash
    S=".ai/parked/<id>-state.json" &&
    PFC=$(jq -r '.parked_from_commit // ""' "$S") && PA=$(jq -r '.parked_at // ""' "$S") &&
-   case "$PFC" in ''|*[!0-9a-f]*) PFC= ;; *) PFC=$(git rev-parse --verify -q "$PFC^{commit}" 2>/dev/null) || PFC= ;; esac &&
+   case "$PFC" in ''|*[!0-9a-f]*) PFC= ;; *) PFC=$(cursor-drift.sh oid "$PFC" 2>/dev/null) || PFC=; [ "$PFC" != - ] || PFC= ;; esac &&
    case "$PA" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) PA= ;; esac &&
    ANC=no && { [ -z "$PFC" ] || ! git merge-base --is-ancestor "$PFC" HEAD || ANC=yes; } &&
    printf 'PFC=%s PA=%s ANC=%s\n' "${PFC:--}" "${PA:--}" "$ANC"

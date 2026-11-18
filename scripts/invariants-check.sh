@@ -660,7 +660,9 @@ if want 13; then
 # variable, and the value being READ from the snapshot with `jq -r` (typing it into a shell
 # assignment is the same injection by another door; step 1 deletes the snapshot, so the read
 # must come first). The skill may reword around both, but dropping either means updating this
-# check deliberately. A tree with no unpark-sprint skill at all fails: a check that cannot
+# check deliberately. The hex arm also resolves the value with `cursor-drift.sh oid` (object id
+# only); the `git rev-parse --verify "$PFC^{commit}"` form looks a hex-named branch or tag up
+# as a ref first (#1180). A tree with no unpark-sprint skill at all fails: a check that cannot
 # look must not pass (#243's stance).
 unparkpfc_hits=""
 unparkpfc_seen=0
@@ -668,13 +670,14 @@ for f in plugins/*/skills/unpark-sprint/SKILL.md; do
   [ -f "$f" ] || continue
   unparkpfc_seen=1
   { grep -F '[!0-9a-f]' "$f" | grep -Fq 'PFC'; } &&
-    grep -Fq "jq -r '.parked_from_commit" "$f" || unparkpfc_hits+="$f"$'\n'
+    grep -Fq "jq -r '.parked_from_commit" "$f" &&
+    grep -Fq 'PFC=$(cursor-drift.sh oid "$PFC" 2>/dev/null) || PFC=; [ "$PFC" != - ] || PFC=' "$f" || unparkpfc_hits+="$f"$'\n'
 done
 [ "$unparkpfc_seen" -eq 1 ] || unparkpfc_hits+="(no plugins/*/skills/unpark-sprint/SKILL.md found)"$'\n'
 if [ -n "$unparkpfc_hits" ]; then
   report "unpark-sprint no longer validates parked_from_commit as hex before git uses it (#539)" \
     "$unparkpfc_hits" \
-    "Keep the jq -r read of parked_from_commit and the case \"\$PFC\" in ''|*[!0-9a-f]*) guard ahead of git log / git merge-base."
+    "Keep the jq -r read of parked_from_commit, the case \"\$PFC\" in ''|*[!0-9a-f]*) guard ahead of git log / git merge-base, and the cursor-drift.sh oid resolution of the hex arm (object id only, never ref lookup, #1180)."
 fi
 fi
 
