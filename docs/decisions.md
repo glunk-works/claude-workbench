@@ -3262,3 +3262,19 @@ Hermetically verified only, live run deferred and tracked:
 
 Sprint 22 closed on 2026-11-18; its last change to this repo is the PR carrying this entry, which
 bumps the pin to `v0.38.0`.
+
+Sprint 23 (milestone 38, *Rule-based critic selection by default*, all its issues closed) makes
+rule-based critic selection the recommended setting for a repo that adopts the plugin:
+`agents.diff_rule: []`, with `null`, critic-gate's pick-list, as the opt-out (#1614, PR #1627,
+`WB-D54`). The schema example, the resume schema interview, `reference/workflow.md` and the
+critic-gate SKILL now lead with rule mode. No repo changes behaviour: existing repos keep what they
+declare.
+
+Nothing here was exercised live: the change is to prose and an example value, and the installed
+pin (`v0.38.0`) predates it. Its first use is the next pin bump past `v0.38.0`, and for the schema
+interview the next repo that adopts the plugin.
+
+No release followed: the maintainer chose not to cut one for a change to prose and an example
+value, the pin stays at `v0.38.0`, and the changelog's Unreleased lines ship with the next plugin
+release. Sprint 23 closed on 2026-11-18; its last change to this repo is the PR carrying this
+entry.
