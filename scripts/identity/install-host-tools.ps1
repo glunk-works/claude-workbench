@@ -44,7 +44,9 @@
        no broker.json entry and a broker.json entry with no poll entry. When $WowHome holds a tokens-root file the loop over top-level tokens
        directories is skipped (the shared root holds the other home's owners). A tokens-root file in a refusal state (other content, empty, a symbolic link,
        a directory, an empty HOME, or in the default home itself, reached through a link or written in another letter case) gets one fixed warning line naming the file and no token directory is created; the rest of the step runs as usual. A top-level tokens\ directory that is not
-       the owner half of any entry gets one fixed line too (a leftover bare directory, for example). It also warns once, with a count and no entry text, when review-poll.json
+       the owner half of any entry gets one fixed line too (a leftover bare directory, for example). In the default home the loop also accepts the owner halves named in the
+       broker.json of each home beside it that holds a valid tokens-root file, so such a home's owner directory is not named, unless that owner equals, ignoring case,
+       the name half of an entry in the default home's own broker.json (#1599). It also warns once, with a count and no entry text, when review-poll.json
        has string entries it cannot read as owner/name. It only warns: the install's result never changes and no list is edited.
     6. Writes the wowd, wowl and wowend launcher shortcuts into the PowerShell profile (-ProfilePath, default
        $PROFILE.CurrentUserAllHosts), as one block between the lines "# >>> way-of-working launchers >>>" and
@@ -208,12 +210,11 @@ function wowend {
 }
 '@
 
-# Get-ProfileOwnerMap <default home>: the owner-to-home map the block holds. Reads only, creates nothing. Returns the ordered
-# entries (Owner, Home) and the profile: lines to print.
-function Get-ProfileOwnerMap([string]$dh) {
-  $notes = [Collections.Generic.List[string]]::new()
-  $homes = [Collections.Generic.List[string]]::new()
-  $homes.Add($dh)
+# Get-SiblingHomes <default home>: the homes beside the default home that deliver into it, in the order the profile map reads them: each
+# directory in its parent folder, not a link, not the default home, holding a tokens-root file that is a regular file or hard link whose
+# bytes are exactly default-home (optionally followed by one LF or one CRLF). Reads only. Shared by the profile map and the step-5 check.
+function Get-SiblingHomes([string]$dh) {
+  $out = [Collections.Generic.List[string]]::new()
   $parent = [IO.Path]::GetDirectoryName($dh)
   if ($parent -and (Test-Path -LiteralPath $parent -PathType Container)) {
     $sibs = @(Get-ChildItem -LiteralPath $parent -Directory -Force | Where-Object { -not $_.LinkType } | Sort-Object { $_.Name.ToLowerInvariant() }, Name)
@@ -226,27 +227,43 @@ function Get-ProfileOwnerMap([string]$dh) {
       foreach ($w in @('default-home', "default-home`n", "default-home`r`n")) { if ([string]::Equals($tt, $w, [StringComparison]::Ordinal)) { $okForm = $true } }
       if (-not $okForm) { continue }
       if (Test-IsDefaultHome $d.FullName $dh) { continue }
-      $homes.Add($d.FullName)
+      $out.Add($d.FullName)
     }
   }
+  , @($out)
+}
+# Read-HomeOwners <broker.json path>: lower-case owner -> first spelling, for each entry of exactly two halves that pass the name rule.
+# Throws when the file is not JSON or has no single case-sensitive repos list. Shared by the profile map and the step-5 check.
+function Read-HomeOwners([string]$cfg) {
+  $mine = [ordered]@{}
+  $j = Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json -ErrorAction Stop
+  $prop = @(if ($j -is [pscustomobject]) { $j.PSObject.Properties | Where-Object { $_.Name -ceq 'repos' } })
+  if ($prop.Count -ne 1 -or $prop[0].Value -isnot [object[]]) { throw 'no repos list' }
+  foreach ($r in $prop[0].Value) {
+    if ($r -isnot [string]) { continue }
+    $parts = $r.Split('/')
+    if ($parts.Count -ne 2) { continue }
+    $okParts = @($parts | Where-Object { $_ -cmatch '\A[A-Za-z0-9._-]+\z' -and $_ -cnotmatch '\A[-.]' -and $_ -cnotmatch '\.\z' })
+    if ($okParts.Count -ne 2) { continue }
+    $k = $parts[0].ToLowerInvariant()
+    if (-not $mine.Contains($k)) { $mine[$k] = $parts[0] }
+  }
+  $mine
+}
+
+# Get-ProfileOwnerMap <default home>: the owner-to-home map the block holds. Reads only, creates nothing. Returns the ordered
+# entries (Owner, Home) and the profile: lines to print.
+function Get-ProfileOwnerMap([string]$dh) {
+  $notes = [Collections.Generic.List[string]]::new()
+  $homes = [Collections.Generic.List[string]]::new()
+  $homes.Add($dh)
+  foreach ($sh in (Get-SiblingHomes $dh)) { $homes.Add($sh) }
   $named = [ordered]@{} # lower-case owner -> @{ Owner = first spelling; Homes = @(...) }
   foreach ($h in $homes) {
     $cfg = Join-Path $h 'broker.json'
     if (-not (Test-Path -LiteralPath $cfg -PathType Leaf)) { continue }
-    $mine = [ordered]@{}
     try {
-      $j = Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json -ErrorAction Stop
-      $prop = @(if ($j -is [pscustomobject]) { $j.PSObject.Properties | Where-Object { $_.Name -ceq 'repos' } })
-      if ($prop.Count -ne 1 -or $prop[0].Value -isnot [object[]]) { throw 'no repos list' }
-      foreach ($r in $prop[0].Value) {
-        if ($r -isnot [string]) { continue }
-        $parts = $r.Split('/')
-        if ($parts.Count -ne 2) { continue }
-        $okParts = @($parts | Where-Object { $_ -cmatch '\A[A-Za-z0-9._-]+\z' -and $_ -cnotmatch '\A[-.]' -and $_ -cnotmatch '\.\z' })
-        if ($okParts.Count -ne 2) { continue }
-        $k = $parts[0].ToLowerInvariant()
-        if (-not $mine.Contains($k)) { $mine[$k] = $parts[0] }
-      }
+      $mine = Read-HomeOwners $cfg
     } catch {
       $notes.Add("profile: $cfg unreadable, its owners are not mapped")
       continue
@@ -555,12 +572,28 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
             if (-not $pollSet.Contains($k)) { Write-Warning "$($brokerSet[$k]) is in broker.json but not review-poll.json: no automatic reviews for it" }
           }
         }
+        # In the default home, the owner halves the homes beside it name are not leftovers (#1599). Silent: any failure adds nothing.
+        $sibOwners = @{}
+        try {
+          if (-not $trItem -and $HOME) {
+            $dhSib = Join-Path $HOME '.config/glunk-identity'
+            if (Test-IsDefaultHome $WowHome $dhSib) {
+              foreach ($sh in (Get-SiblingHomes $dhSib)) {
+                try {
+                  $sc = Join-Path $sh 'broker.json'
+                  if (-not (Test-Path -LiteralPath $sc -PathType Leaf)) { continue }
+                  foreach ($ok in (Read-HomeOwners $sc).Keys) { if (-not $brokerSet.Contains($ok)) { $sibOwners[$ok] = $true } }
+                } catch { }
+              }
+            }
+          }
+        } catch { $sibOwners = @{} }
         $tokDir = Join-Path $WowHome 'tokens'
         if (-not $trItem -and (Test-Path -LiteralPath $tokDir -PathType Container)) {
           foreach ($d in @(Get-ChildItem -LiteralPath $tokDir -Directory -Force | Sort-Object Name)) {
             if ($d.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
             $dk = $d.Name.ToLowerInvariant()
-            if ((& $okName $d.Name) -and -not $ownerDirs.ContainsKey($dk)) { Write-Warning "tokens/$($d.Name) is not the owner directory of any broker.json entry" }
+            if ((& $okName $d.Name) -and -not $ownerDirs.ContainsKey($dk) -and -not $sibOwners.ContainsKey($dk)) { Write-Warning "tokens/$($d.Name) is not the owner directory of any broker.json entry" }
           }
         }
       } catch { Write-Warning 'the cross-check of broker.json, review-poll.json and tokens/ could not run' }

@@ -253,7 +253,8 @@ Do the steps in order. It documents the steps and performs none.
    `install-host-tools.ps1` through `register-broker-task.ps1`, from a claude-workbench clone no
    container opens, at origin's `main` (it stops the broker task around the swap). That creates
    `tokens/<owner>/<repo>`. Its cross-check must print no warning (except, in the default home, the line naming
-   a second org's owner directory in its `tokens`, see *A second org's home*), and
+   the owner directory of a second org's home that holds a valid `tokens-root` file and a readable `broker.json` naming that owner but is not beside the default home
+   (beside: in the same parent folder, not a link), see *A second org's home*), and
    `broker.log` must show no `config:` line after the edit (a `broker.json` the broker refuses
    stops every repo's mint, not only the new one).
 
@@ -390,7 +391,7 @@ In a home with the file the broker checks each entry's owner against the dev ins
 and `wow-admin` makes its per-name lock in the default home, so both homes' runs for one repo name share it, and
 writes the admin token to each home's own `admin/`, never to the shared root. Its other-owner scan of `admin/` runs in every
 home; it skips the scan of the shared root's other owners' legacy copies and the pre-#1340 leftover (a revoke acts, in the home it runs from, on the owner its argument names). The
-default home's install cross-check prints its existing line for the second org's owner directory, which is expected there.
+default home's install cross-check does not print its line for the owner directory of a home beside the default home (in the same parent folder, not a link) that holds a valid `tokens-root` file and a readable `broker.json` naming that owner, unless that owner equals, ignoring case, the name half of an entry in the default home's `broker.json`, which step 1 forbids.
 The default home's own `wow-admin` still scans that shared directory for a same-named repo's legacy copy, and its
 refusal names a revoke, which is then run from the second home.
 
