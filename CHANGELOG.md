@@ -36,6 +36,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- `wow-admin --revoke` now gives the remedy when it cannot remove a file, prefixes every line of a several-failure closing message with `wow-admin: `, and names each file a status failure keeps on a line of its own (`wow-admin: kept <path>`) (#1667).
 - `wow-admin --revoke` now names every token it could not settle and reports a file it cannot remove as kept, exiting 1 after every token is tried (a curl failure still exits at once) (#1623).
 - A correction to the v0.38.0 Migration line: `wow-admin --revoke` removes a live or unreadable admin token at the old path only when it can read the file and its first line holds a token; a file it cannot read, or one whose first line holds no token, stays mounted and blocks a mint until deleted by hand (#1623).
 - The leftover admin-token warning of `install-host-tools.ps1` now prints the file's full path (#1623).

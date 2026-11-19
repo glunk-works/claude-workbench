@@ -48,7 +48,7 @@
 # once for each distinct token on file (the leftover first, then the legacy, then the own), then settles that token's files:
 # HTTP 401 means the token was already expired or revoked, and its files go; HTTP 204 is confirmed by one GET
 # /installation/repositories with the same token, and only a 401 on that read removes the files. Any other status on either call
-# keeps that token's files and the exit is 1, after every token has been tried (a read that answers other than 401 after a 204 says to run --revoke again: a second revoke gets 401 on the DELETE and removes the file). A file it cannot remove is kept and reported the same way: the run goes on to the next file and token and exits 1 at the end. The closing message names every such failure and the file or files each keeps, one per line; a curl failure exits 1 at once with its own message and keeps the files.
+# keeps that token's files and the exit is 1, after every token has been tried (a read that answers other than 401 after a 204 says to run --revoke again: a second revoke gets 401 on the DELETE and removes the file). A file it cannot remove is kept and reported the same way: the run goes on to the next file and token and exits 1 at the end. The closing message names every such failure, one per line, each line carrying the `wow-admin: ` prefix; a status failure names each file it keeps on a line of its own (`kept <path>`), and a file that cannot be removed is reported with the remedy (fix the permissions of its directory, or delete the file by hand); a curl failure exits 1 at once with its own message and keeps the files.
 # It prints one line per step (the DELETE and its status, the read and its status, each file removed), never the token.
 # The lock is the directory
 # $WOW_HOME/.admin-lock.<name, lowercased> (in the default home, in a home with tokens-root); one left by a killed run blocks mint and revoke alike: rmdir it by hand.
@@ -243,6 +243,8 @@ if [ -n "$revoke" ]; then
   # fail <message>: collect one failure, one per line, for the closing message
   fail() { if [ -z "$failed" ]; then failed=$1; else failed="$failed
 $1"; fi; }
+  # kept <file>...: one "kept <path>" line per file a status failure keeps, so a path with a space stays whole
+  kept() { for kf in "$@"; do fail "kept $kf"; done; }
   # settle_token <token>: one DELETE for the token, a confirming read after a 204, then the files that hold it.
   # A file goes only on a DELETE 401 or on a 204 followed by a read that gets 401.
   settle_token() {
@@ -259,11 +261,11 @@ $1"; fi; }
         call_token GET "$t" https://api.github.com/installation/repositories || die "curl failed on the confirming read"
         echo "GET /installation/repositories with the same token: HTTP $code"
         if [ "$code" = 401 ]; then msg="revoked the admin token for $arg"
-        else fail "the revoke of the admin token for $arg was not confirmed (the confirming read answered HTTP $code); the token file is kept ($*); run wow-admin $arg --revoke again (a second revoke gets 401 on the DELETE and removes the file)"; return 0; fi ;;
-      *) fail "GitHub answered HTTP $code; the token file is kept ($*)"; return 0 ;;
+        else fail "the revoke of the admin token for $arg was not confirmed (the confirming read answered HTTP $code); the token file is kept; run wow-admin $arg --revoke again (a second revoke gets 401 on the DELETE and removes the file)"; kept "$@"; return 0; fi ;;
+      *) fail "GitHub answered HTTP $code; the token file is kept"; kept "$@"; return 0 ;;
     esac
     for f in "$@"; do
-      if rm -f -- "$f" && [ ! -e "$f" ]; then echo "removed $f"; else fail "could not remove $f; the token file is kept"; fi
+      if rm -f -- "$f" && [ ! -e "$f" ]; then echo "removed $f"; else fail "could not remove $f; the token file is kept; fix the permissions of its directory, or delete the file by hand"; fi
     done
     echo "$msg"
   }
@@ -271,7 +273,11 @@ $1"; fi; }
   if [ -n "$t1" ]; then settle_token "$t1"; fi
   if [ -n "$t2" ] && [ "$t2" != "$t1" ]; then settle_token "$t2"; fi
   if [ -n "$t3" ] && [ "$t3" != "$t1" ] && [ "$t3" != "$t2" ]; then settle_token "$t3"; fi
-  [ -z "$failed" ] || die "$failed"
+  if [ -n "$failed" ]; then
+    # every collected line carries the prefix, so a search on it sees every failure
+    printf '%s\n' "$failed" | while IFS= read -r line; do printf 'wow-admin: %s\n' "$line" >&2; done
+    exit 1
+  fi
   exit 0
 fi
 

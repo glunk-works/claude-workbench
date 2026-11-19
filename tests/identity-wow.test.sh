@@ -11,15 +11,16 @@
 #                    default (contents and pull_requests write; administration only when named) or given permissions; the output
 #                    names the granted permissions and repositories, or says they are not shown, and a mint is not strict
 #   legacy path      a live or unreadable tokens/<owner>/<name>/admin-token refuses a mint (curl uncalled, the message names
-#                    --revoke), an expired one does not, and --revoke revokes and removes it (alone, or beside an own file with the
-#                    same or a different token)
+#                    --revoke), an expired one does not, and --revoke revokes and removes it only when it can read the file and its
+#                    first line holds a token (alone, or beside an own file with the same or a different token)
 #   passphrase       wrong or empty: exit 1, curl never called, no token file
 #   live token       refused while one is on file (curl uncalled); an expired one is replaced
 #   revoke           DELETE /installation/token with the token as bearer; a 401 removes the file, a 204 removes it only after a
 #                    GET /installation/repositories with the same token answers 401 (any other status on either call, or a
 #                    curl failure, keeps it and exits 1); each step prints its own line, never the token; no file is an error
 #                    (two failures are both named with their kept paths, a 204-then-200 failure keeps its advice to run again
-#                    beside a later 500, and a file rm cannot remove is kept, named and exits 1 while the next token is still tried)
+#                    beside a later 500, and a file rm cannot remove is kept, named with the remedy and exits 1 while the next token is
+#                    still tried; every closing line carries the wow-admin: prefix and each kept file is on a line of its own)
 #   reviewer         reviewer installation, fixed permissions, written under review-tokens/ and never tokens/, --out or the default path
 #   reviewer shapes  post (default) unchanged and non-strict; --read sends the six reads (--also adds a
 #                    second repo to the same request, either flag order); --file sends issues write;
@@ -688,8 +689,9 @@ rm -f "$tmp/stub/statuses"
 assert_eq "revoke two 500s: rc" 1 "$rc"
 assert_eq "revoke two 500s: two DELETEs" 2 "$(calls)"
 [ -e "$h/tokens/acme/repo1/admin-token" ] && [ -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke two 500s" "a file was removed"
-assert_eq "revoke two 500s names the legacy kept path" 1 "$(printf '%s\n' "$out" | grep -c "$h/tokens/acme/repo1/admin-token" || true)"
-assert_eq "revoke two 500s names the own kept path" 1 "$(printf '%s\n' "$out" | grep -c "$h/admin/acme/repo1/admin-token" || true)"
+assert_eq "revoke two 500s names the legacy kept path on its own line" 1 "$(printf '%s\n' "$out" | grep -Fxc "wow-admin: kept $h/tokens/acme/repo1/admin-token" || true)"
+assert_eq "revoke two 500s names the own kept path on its own line" 1 "$(printf '%s\n' "$out" | grep -Fxc "wow-admin: kept $h/admin/acme/repo1/admin-token" || true)"
+assert_eq "revoke two 500s: both cause lines carry the prefix" 2 "$(printf '%s\n' "$out" | grep -c '^wow-admin: GitHub answered HTTP 500' || true)"
 assert_eq "revoke two 500s never prints a token" 0 "$(printf '%s\n' "$out" | grep -c "$TOKEN\|$TOKEN2" || true)"
 # a 204 then an unconfirming 200, then a 500 on the next token: the advice to run --revoke again survives
 h=$(newhome fail-unconfirmed-then-500)
@@ -700,8 +702,28 @@ rm -f "$tmp/stub/statuses"
 assert_eq "revoke 204-200-500: rc" 1 "$rc"
 assert_eq "revoke 204-200-500: three calls" 3 "$(calls)"
 assert_eq "revoke 204-200-500 keeps the advice to run again" 1 "$(printf '%s\n' "$out" | grep -c "run wow-admin acme/repo1 --revoke again" || true)"
+assert_eq "revoke 204-200-500 puts the advice on a prefixed line" 1 "$(printf '%s\n' "$out" | grep -c '^wow-admin: .*run wow-admin acme/repo1 --revoke again' || true)"
+assert_eq "revoke 204-200-500 names the legacy kept path on its own line" 1 "$(printf '%s\n' "$out" | grep -Fxc "wow-admin: kept $h/tokens/acme/repo1/admin-token" || true)"
+assert_eq "revoke 204-200-500 names the own kept path on its own line" 1 "$(printf '%s\n' "$out" | grep -Fxc "wow-admin: kept $h/admin/acme/repo1/admin-token" || true)"
 assert_eq "revoke 204-200-500 names the own token's failure" 1 "$(printf '%s\n' "$out" | grep -c "GitHub answered HTTP 500" || true)"
 [ -e "$h/tokens/acme/repo1/admin-token" ] && [ -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke 204-200-500" "a file was removed"
+# a home path with a space: the kept files stay whole on lines of their own
+h=$(newhome "with space")
+put_tok "$h/tokens/acme/repo1/admin-token"
+put_tok "$h/admin/acme/repo1/admin-token"
+STUB_BODY= STUB_STATUS=500 revoke_in "$h"
+assert_eq "revoke path with a space: rc" 1 "$rc"
+assert_eq "revoke path with a space: one DELETE" 1 "$(calls)"
+[ -e "$h/tokens/acme/repo1/admin-token" ] && [ -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke path with a space" "a file was removed"
+assert_eq "revoke path with a space: the legacy path is one whole line" 1 "$(printf '%s\n' "$out" | grep -Fxc "wow-admin: kept $h/tokens/acme/repo1/admin-token" || true)"
+assert_eq "revoke path with a space: the own path is one whole line" 1 "$(printf '%s\n' "$out" | grep -Fxc "wow-admin: kept $h/admin/acme/repo1/admin-token" || true)"
+# a legacy file whose first line holds no token: no call, the file is kept
+h=$(newhome legacy-notoken)
+mkdir -p "$h/tokens/acme/repo1"; printf 'junk\n' >"$h/tokens/acme/repo1/admin-token"
+revoke_in "$h"
+assert_eq "revoke legacy file with no token: rc" 1 "$rc"
+assert_eq "revoke legacy file with no token: curl uncalled" 0 "$(calls)"
+[ -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke legacy file with no token" "the file was removed"
 # a file rm cannot remove is kept and reported, and the next token is still tried
 h=$(newhome fail-rm)
 put_tok "$h/tokens/acme/repo1/admin-token" "$TOKEN"
@@ -721,6 +743,7 @@ else
   [ ! -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke failed removal" "the own file was kept"
   assert_eq "revoke failed removal: no removed line for the kept file" 0 "$(printf '%s\n' "$out" | grep -c "removed $h/tokens/acme/repo1/admin-token" || true)"
   assert_eq "revoke failed removal: the kept file is named" 1 "$(printf '%s\n' "$out" | grep -c "could not remove $h/tokens/acme/repo1/admin-token" || true)"
+  assert_eq "revoke failed removal: the line gives the remedy" 1 "$(printf '%s\n' "$out" | grep -c "could not remove $h/tokens/acme/repo1/admin-token; the token file is kept; fix the permissions of its directory, or delete the file by hand" || true)"
   assert_eq "revoke failed removal: the own file has its removed line" 1 "$(printf '%s\n' "$out" | grep -c "removed $h/admin/acme/repo1/admin-token" || true)"
 fi
 # the same token in both: one DELETE, one read, both files go and each is named
