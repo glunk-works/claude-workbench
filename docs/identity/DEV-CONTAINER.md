@@ -80,7 +80,7 @@ that serves the host's git credential (see Hazards that remain).
   token mount reads the repo's `tokens/` subdirectory under that default directory, and nothing
   else, whatever `WOW_HOME` says. If the bin directory goes on Git Bash's `PATH`, add it in the
   form `cygpath -u` prints, because `PATH` splits at the drive colon.
-  If `WOW_HOME` is already in MSYS form (`/c/...`), both launchers convert a given `-WowHome` value with
+  If a given `-WowHome` value is in MSYS form (`/c/...`), both launchers convert it with
   `cygpath -w` through the first `sh` on PowerShell's `PATH`, as the register scripts and `broker.ps1`
   do; with no `sh` there they convert only the drive form and refuse any other `/`-leading form. A
   failed conversion is refused and says to give the Windows form. A forward-slash UNC `WowHome`

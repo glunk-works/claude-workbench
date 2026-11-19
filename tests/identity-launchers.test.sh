@@ -10,8 +10,9 @@
 # format are laid out per case. The stub docker answers its Nth `ps` call of each kind (volume, label)
 # from ps.<kind>.<N>, else ps.<kind>, else empty.
 #
-#   not installed   (with no -WowHome the home is the copy's own: a second home, a folder not named bin)  no MANIFEST (a checkout), a wrong hash for either file, a missing row, a bin outside
+#   not installed   no MANIFEST (a checkout), a wrong hash for either file, a missing row, a bin outside
 #                   -WowHome: exit 1 before any stub call; a -WowHome reached through a link passes
+#                   (with no -WowHome the home is the copy's own: a second home, a folder not named bin)
 #   bad arguments   missing/related/linked/odd-leaf -Clone and -Reference, a .git file, a bad -Remote or
 #                   -Base, a -Clone holding -WowHome, a -WowHome that is or sits inside -Reference, & or % in a parent: exit 2, no stub or git call
 #   start of day    zero, exited or created container: three gh api calls (the compare, the root tree, the
@@ -30,7 +31,7 @@
 #                   restarting/paused, a failed docker ps, a missing tool
 #   yq minimum      the host yq version check: the pure comparison on stubbed version lines, both launchers refuse a
 #                   stub yq below v4.54.1 or an unreadable one (the lane through an exit-0 stub printing another yq's form) before any docker or git call, and the number is in neither launcher file
-#   -Repo (#1381)   (with no -WowHome, the record is read from the copy's own home)  the five-field record (a start of day writes the Reference path; a four-field record still reads and is
+#   -Repo (#1381)   the five-field record (a start of day writes the Reference path; a four-field record still reads and is
 #                   replaced), wow-driver and wow-lane -Repo from the record (start of day, attach, -Issue/-Hash, -Spec,
 #                   -SpecSweep) making the calls the long form makes, and each -Repo refusal before any external call; -EndDay:
 #                   idle (a docker stop of the recorded id), a dirty relay probe, a running claude in a lane leaf
@@ -38,6 +39,7 @@
 #                   lanes directory, an unsafe one, a failing docker stop, exit 2 combined with another mode (the busy
 #                   fixtures are skipped loudly under MSYS); Get-Help on each launcher in the checkout returns the
 #                   .SYNOPSIS text, not the syntax line (#1386)
+#                   (with no -WowHome, the record is read from the copy's own home)
 #   model, canary, edit after up, the declared values the docker exec literals match
 #   wow-lane        not installed, bad arguments, container and record refusals (the sweep's lanes-directory
 #                   refusal too), the lane probe and the
@@ -763,6 +765,7 @@ check "wow-lane not installed: a bin outside -WowHome exits 1" test "$rc" -eq 1
 check "wow-lane not installed: ...before any stub or git call" none_called
 reset; WOW_HOME=$(wp "$home") run_with "$home2/bin/wow-lane.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -Issue 5 -Hash "$LHASH"
 check "wow-lane: no -WowHome, a second home's copy is not refused as not installed" sh -c "! grep -q 'installed copy' '$tmp/err'"
+check "wow-lane: ...it reaches the container check and exits 1 there" sh -c "test $rc -eq 1 && grep -q 'needs exactly one running container' '$tmp/err'"
 reset; run_with "$tmp/nonbin/sbin/wow-lane.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -Issue 5 -Hash "$LHASH"
 check "wow-lane: no -WowHome, a copy in a folder not named bin exits 1" test "$rc" -eq 1
 check "wow-lane: ...naming the installed copy, before any stub or git call" sh -c "grep -q 'installed copy' '$tmp/err' && ! test -s '$stubdir/calls.log' && ! test -s '$stubdir/git.log'"

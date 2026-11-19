@@ -398,7 +398,7 @@ check "install: ...and the install still exits 0" test "$rc" -eq 0
 reset; set_repos '"acme/alpha", "acme/beta"'; echo '{"repos": ["acme/alpha", "acme/beta"]}' >"$home/review-poll.json"
 mkdir -p "$home/tokens/acme/alpha"; printf 'ghs_leftover\n2099-01-01T00:00:00Z\n' >"$home/tokens/acme/alpha/admin-token"
 run_install
-check "install: a legacy admin-token gets one warning naming its path and the revoke" test "$(grep -c -F 'tokens/acme/alpha/admin-token is a leftover admin token: wow-admin no longer writes there; run: wow-admin acme/alpha --revoke' "$tmp/out")" -eq 1
+check "install: a legacy admin-token gets one warning naming its path and the revoke" test "$(tr '\\' '/' <"$tmp/out" | grep -c -F "$(wp "$home")/tokens/acme/alpha/admin-token is a leftover admin token: wow-admin no longer writes there; run: wow-admin acme/alpha --revoke")" -eq 1
 check "install: ...and no other warning, the exit stays 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
 check "install: ...and the file is left in place" test -f "$home/tokens/acme/alpha/admin-token"
 reset; set_repos '"acme/alpha", "acme/beta"'; echo '{"repos": ["acme/alpha", "acme/beta"]}' >"$home/review-poll.json"

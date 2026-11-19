@@ -18,6 +18,8 @@
 #   revoke           DELETE /installation/token with the token as bearer; a 401 removes the file, a 204 removes it only after a
 #                    GET /installation/repositories with the same token answers 401 (any other status on either call, or a
 #                    curl failure, keeps it and exits 1); each step prints its own line, never the token; no file is an error
+#                    (two failures are both named with their kept paths, a 204-then-200 failure keeps its advice to run again
+#                    beside a later 500, and a file rm cannot remove is kept, named and exits 1 while the next token is still tried)
 #   reviewer         reviewer installation, fixed permissions, written under review-tokens/ and never tokens/, --out or the default path
 #   reviewer shapes  post (default) unchanged and non-strict; --read sends the six reads (--also adds a
 #                    second repo to the same request, either flag order); --file sends issues write;
@@ -677,6 +679,50 @@ assert_eq "revoke legacy then own: three calls" 3 "$(calls)"
 [ -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke legacy then own" "own file removed after its DELETE 500"
 assert_eq "revoke legacy then own: the legacy token was the first DELETE" 1 "$(grep -c "Bearer $TOKEN\"" "$tmp/stub/cfg.1")"
 assert_eq "revoke legacy then own: the own token was the last call" 1 "$(grep -c "Bearer $TOKEN2\"" "$tmp/stub/cfg.3")"
+# every failure is named, not only the last: two distinct tokens whose DELETEs both answer 500
+h=$(newhome fail-both)
+put_tok "$h/tokens/acme/repo1/admin-token" "$TOKEN"
+put_tok "$h/admin/acme/repo1/admin-token" "$TOKEN2"
+q 500 500; STUB_BODY= revoke_in "$h"
+rm -f "$tmp/stub/statuses"
+assert_eq "revoke two 500s: rc" 1 "$rc"
+assert_eq "revoke two 500s: two DELETEs" 2 "$(calls)"
+[ -e "$h/tokens/acme/repo1/admin-token" ] && [ -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke two 500s" "a file was removed"
+assert_eq "revoke two 500s names the legacy kept path" 1 "$(printf '%s\n' "$out" | grep -c "$h/tokens/acme/repo1/admin-token" || true)"
+assert_eq "revoke two 500s names the own kept path" 1 "$(printf '%s\n' "$out" | grep -c "$h/admin/acme/repo1/admin-token" || true)"
+assert_eq "revoke two 500s never prints a token" 0 "$(printf '%s\n' "$out" | grep -c "$TOKEN\|$TOKEN2" || true)"
+# a 204 then an unconfirming 200, then a 500 on the next token: the advice to run --revoke again survives
+h=$(newhome fail-unconfirmed-then-500)
+put_tok "$h/tokens/acme/repo1/admin-token" "$TOKEN"
+put_tok "$h/admin/acme/repo1/admin-token" "$TOKEN2"
+q 204 200 500; STUB_BODY= revoke_in "$h"
+rm -f "$tmp/stub/statuses"
+assert_eq "revoke 204-200-500: rc" 1 "$rc"
+assert_eq "revoke 204-200-500: three calls" 3 "$(calls)"
+assert_eq "revoke 204-200-500 keeps the advice to run again" 1 "$(printf '%s\n' "$out" | grep -c "run wow-admin acme/repo1 --revoke again" || true)"
+assert_eq "revoke 204-200-500 names the own token's failure" 1 "$(printf '%s\n' "$out" | grep -c "GitHub answered HTTP 500" || true)"
+[ -e "$h/tokens/acme/repo1/admin-token" ] && [ -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke 204-200-500" "a file was removed"
+# a file rm cannot remove is kept and reported, and the next token is still tried
+h=$(newhome fail-rm)
+put_tok "$h/tokens/acme/repo1/admin-token" "$TOKEN"
+put_tok "$h/admin/acme/repo1/admin-token" "$TOKEN2"
+chmod 555 "$h/tokens/acme/repo1"
+if ( : >"$h/tokens/acme/repo1/probe" ) 2>/dev/null; then
+  rm -f "$h/tokens/acme/repo1/probe"
+  chmod 755 "$h/tokens/acme/repo1"
+  echo "skip - revoke failed removal: a non-writable directory does not stop a removal here (uid $(id -u))"
+else
+  q 401 401; STUB_BODY= revoke_in "$h"
+  rm -f "$tmp/stub/statuses"
+  chmod 755 "$h/tokens/acme/repo1"
+  assert_eq "revoke failed removal: rc" 1 "$rc"
+  assert_eq "revoke failed removal: both tokens tried" 2 "$(calls)"
+  [ -e "$h/tokens/acme/repo1/admin-token" ] && ok || bad "revoke failed removal" "the legacy file is gone"
+  [ ! -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke failed removal" "the own file was kept"
+  assert_eq "revoke failed removal: no removed line for the kept file" 0 "$(printf '%s\n' "$out" | grep -c "removed $h/tokens/acme/repo1/admin-token" || true)"
+  assert_eq "revoke failed removal: the kept file is named" 1 "$(printf '%s\n' "$out" | grep -c "could not remove $h/tokens/acme/repo1/admin-token" || true)"
+  assert_eq "revoke failed removal: the own file has its removed line" 1 "$(printf '%s\n' "$out" | grep -c "removed $h/admin/acme/repo1/admin-token" || true)"
+fi
 # the same token in both: one DELETE, one read, both files go and each is named
 h=$(newhome legacy-same)
 put_tok "$h/tokens/acme/repo1/admin-token"
