@@ -29,9 +29,13 @@
 #                and none in the poll task's -Command form; Test-FileArgMatch matches the broker pwsh and conhost command
 #                lines (any letter case), quoted or bare as the Store app-alias pwsh reports it, and not another home, a bin.old
 #                path, a longer path or an empty line; an empty -File "" is no span;
-#                Stop-FileArgProcess under strict mode with stubbed cmdlets (no match, one, two, a survivor throws, a bare and a quoted match); static checks that the
+#                Stop-FileArgProcess under strict mode with stubbed cmdlets (no match, one, two, a survivor throws, a bare and a quoted match); the install's
+#                -StopTask handling run for real against stubbed Task Scheduler and process cmdlets (#1028), asserting the call log line for line: an
+#                enabled task is disabled, stopped, its process ended and re-enabled in that order; a task disabled before is never re-enabled; a throw
+#                past the disable (Get-FileHash stubbed to throw) still re-enables an enabled task and creates no bin; a throw from the disable itself
+#                stops before the stop and the re-enable; static checks that the
 #                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess, and
-#                the install disables and re-enables the task (#1016), and no identity script passes Disable-, Enable-, Start- or Stop-ScheduledTask -Confirm or -WhatIf
+#                no identity script passes Disable-, Enable-, Start- or Stop-ScheduledTask -Confirm or -WhatIf
 #   guard        register-broker-task.ps1 reads the task registered under -TaskName before it calls the installer, and refuses (also
 #                under -WhatIf) one whose -WowHome names another home or none it can read, unless -ReplaceOtherHome is given (#1594; stubbed
 #                Get-ScheduledTask, skipped, loudly, where [Environment]::SystemDirectory is set): no task, the same home, the same home in
@@ -572,7 +576,59 @@ check "register: the repeating trigger is one minute" grep -q 'RepetitionInterva
 check "register: no RestartCount" test "$(grep -c 'RestartCount' "$reg_ps")" -eq 0
 check "register: dot-sources task-process.ps1 and calls Stop-FileArgProcess" sh -c 'grep -q "task-process.ps1" "$1" && grep -q "Stop-FileArgProcess" "$1"' sh "$reg_ps"
 check "install: dot-sources task-process.ps1 and calls Stop-FileArgProcess" sh -c 'grep -q "task-process.ps1" "$1" && grep -q "Stop-FileArgProcess" "$1"' sh "$inst_ps"
-check "install: disables and re-enables the task" sh -c 'grep -q "Disable-ScheduledTask" "$1" && grep -q "Enable-ScheduledTask" "$1"' sh "$inst_ps"
+# The install's task handling, run for real against stubbed Task Scheduler and process cmdlets (#1028): caller-scope functions shadow
+# the cmdlets inside the script, and supply them where pwsh lacks them. SWAP_ENABLED, SWAP_HASHFAIL and SWAP_DISABLEFAIL set per case
+# what the stubs report and throw; every stub that matters appends its cmdlet name to $SWAP_LOG, and no real task or process is touched.
+swap_log="$tmp/swap.log"
+cat >"$tmp/swap-stubs.ps1" <<'PS1'
+$global:procs = [System.Collections.ArrayList]@(11)
+function Get-ScheduledTask { param($TaskName, $ErrorAction)
+  Add-Content -LiteralPath $env:SWAP_LOG -Value 'Get-ScheduledTask' -WhatIf:$false
+  [pscustomobject]@{ Settings = [pscustomobject]@{ Enabled = ($env:SWAP_ENABLED -eq '1') }
+    Actions = @([pscustomobject]@{ Arguments = '--headless p -File "C:\h\bin\broker.ps1" -x' }) } }
+function Disable-ScheduledTask { param($TaskName, $ErrorAction)
+  Add-Content -LiteralPath $env:SWAP_LOG -Value 'Disable-ScheduledTask' -WhatIf:$false
+  if ($env:SWAP_DISABLEFAIL -eq '1') { throw 'DISABLEBOOM' } }
+function Stop-ScheduledTask { param($TaskName, $ErrorAction)
+  Add-Content -LiteralPath $env:SWAP_LOG -Value 'Stop-ScheduledTask' -WhatIf:$false }
+function Enable-ScheduledTask { param($TaskName, $ErrorAction)
+  Add-Content -LiteralPath $env:SWAP_LOG -Value 'Enable-ScheduledTask' -WhatIf:$false }
+function Get-CimInstance { param($ClassName)
+  $global:procs | ForEach-Object { [pscustomobject]@{ ProcessId = $_; CommandLine = 'p -File C:\h\bin\broker.ps1 -x' } }
+  [pscustomobject]@{ ProcessId = 1; CommandLine = 'unrelated' } }
+function Stop-Process { param($Id, [switch]$Force, $ErrorAction)
+  Add-Content -LiteralPath $env:SWAP_LOG -Value 'Stop-Process' -WhatIf:$false
+  $global:procs.Remove($Id) }
+if ($env:SWAP_HASHFAIL -eq '1') { function Get-FileHash { param($LiteralPath, $Algorithm) throw 'HASHBOOM' } }
+PS1
+swap_run() { # swap_run <task enabled 1|0> <Get-FileHash throws 1|0> <Disable-ScheduledTask throws 1|0>; leaves the exit code in $rc, the output in $tmp/out, the call log in $swap_log
+  reset; rm -rf "$home/bin" "$home/bin.new" "$home/bin.old"; rm -f "$swap_log"; : >"$swap_log"; rc=0
+  SWAP_LOG="$(wp "$swap_log")" SWAP_ENABLED=$1 SWAP_HASHFAIL=$2 SWAP_DISABLEFAIL=$3 \
+    pwsh -NoProfile -NonInteractive -Command ". '$(wp "$tmp/swap-stubs.ps1")'; & '$(wp "$inst_ps")' -WowHome '$(wp "$home")' -SourceRepo '$(wp "$src")' -ProfilePath '$(wp "$profile_path")' -StopTask 'wow-swap-test-$$'" >"$tmp/out" 2>&1 || rc=$?
+}
+swap_log_is() { # swap_log_is <cmdlet>... : the call log holds exactly these lines, in this order (Add-Content ends a line with CRLF on Windows, so CR is stripped)
+  printf '%s\n' "$@" >"$tmp/swap.want"; [ "$#" -gt 0 ] || : >"$tmp/swap.want"
+  tr -d '\r' <"$swap_log" | cmp -s "$tmp/swap.want" - || { echo "swap call log was: $(tr -d '\r' <"$swap_log" | tr '\n' ' ')" >&2; return 1; }
+}
+swap_run 1 0 0
+check "install task: an enabled task is disabled, stopped, its process ended and re-enabled, in that order" swap_log_is Get-ScheduledTask Disable-ScheduledTask Stop-ScheduledTask Stop-Process Enable-ScheduledTask
+check "install task: an enabled task, success exits 0" test "$rc" -eq 0
+check "install task: an enabled task, success writes bin/MANIFEST" test -f "$home/bin/MANIFEST"
+swap_run 0 0 0
+check "install task: a task disabled before is never re-enabled" swap_log_is Get-ScheduledTask Disable-ScheduledTask Stop-ScheduledTask Stop-Process
+check "install task: a task disabled before, success exits 0" test "$rc" -eq 0
+swap_run 1 1 0
+check "install task: an enabled task is re-enabled after a throw past the disable" swap_log_is Get-ScheduledTask Disable-ScheduledTask Stop-ScheduledTask Stop-Process Enable-ScheduledTask
+check "install task: an enabled task, a throw past the disable exits non-zero" test "$rc" -ne 0
+check "install task: an enabled task, a throw past the disable reports the error" grep -q 'HASHBOOM' "$tmp/out"
+check "install task: an enabled task, a throw past the disable creates no bin" test ! -e "$home/bin"
+swap_run 0 1 0
+check "install task: a task disabled before is not re-enabled after a throw" swap_log_is Get-ScheduledTask Disable-ScheduledTask Stop-ScheduledTask Stop-Process
+check "install task: a task disabled before, a throw past the disable exits non-zero" test "$rc" -ne 0
+swap_run 1 0 1
+check "install task: a throw from the disable itself stops before the stop and the re-enable" swap_log_is Get-ScheduledTask Disable-ScheduledTask
+check "install task: a throw from the disable itself exits non-zero" test "$rc" -ne 0
+check "install task: a throw from the disable itself creates no bin" test ! -e "$home/bin"
 # Disable-, Enable-, Start- and Stop-ScheduledTask take no -Confirm or -WhatIf (they do not support ShouldProcess); passing one fails the
 # install on the host. Read through the parser, so a continuation, an abbreviation, a splat or a module-qualified call counts and a comment does not.
 cat >"$tmp/noconfirm.ps1" <<'PS1'
