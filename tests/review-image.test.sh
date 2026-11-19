@@ -215,11 +215,15 @@ case "${1:-} ${2:-}" in
     sh "$REC/on-install.sh" ;;
   'plugin marketplace')
     [ ! -e "$REC/fail.mkt" ] || exit 1
-    # what the add leaves in $HOME: one entry per name in mkt.names (default claude-workbench), none if the file is empty
+    # what the add leaves in $HOME: one entry per name in mkt.names (default claude-workbench), none if the file is empty.
+    # The entry is the one a real claude 2.1.316 (the review image's pin, sha256-checked) wrote to
+    # known_marketplaces.json, from a fresh empty HOME under env -i with only HOME, PATH and four of cenv's variables (DISABLE_AUTOUPDATER, DISABLE_TELEMETRY, DISABLE_ERROR_REPORTING, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC):
+    #   claude plugin marketplace add glunk-works/claude-workbench@v0.38.0 --scope user
+    # Captured as is, compact, except the tag v0.38.0 is v1.2.3 (this test's pin).
     mkdir -p "$HOME/.claude/plugins"
     names=$(cat "$REC/mkt.names" 2>/dev/null || echo claude-workbench)
     for n in $names; do
-      printf '"%s": {"source": {"source": "github", "repo": "glunk-works/claude-workbench", "ref": "v1.2.3"}}\n' "$n"
+      printf '"%s": {"source":{"source":"github","repo":"glunk-works/claude-workbench","ref":"v1.2.3"},"installLocation":"/tmp/tmp.P5Kt4ZYUyz/.claude/plugins/marketplaces/claude-workbench","lastUpdated":"2026-11-19T18:14:00.278Z"}\n' "$n"
     done | paste -sd, - | sed 's/^/{/; s/$/}/' >"$HOME/.claude/plugins/known_marketplaces.json" ;;
 esac
 exit 0
