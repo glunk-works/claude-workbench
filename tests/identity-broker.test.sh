@@ -29,7 +29,7 @@
 #                and none in the poll task's -Command form; Test-FileArgMatch matches the broker pwsh and conhost command
 #                lines (any letter case), quoted or bare as the Store app-alias pwsh reports it, and not another home, a bin.old
 #                path, a longer path or an empty line; an empty -File "" is no span;
-#                Stop-FileArgProcess under strict mode with stubbed cmdlets (no match, one, two, a survivor throws); static checks that the
+#                Stop-FileArgProcess under strict mode with stubbed cmdlets (no match, one, two, a survivor throws, a bare and a quoted match); static checks that the
 #                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess, and
 #                the install disables and re-enables the task (#1016), and no identity script passes Disable-, Enable-, Start- or Stop-ScheduledTask -Confirm or -WhatIf
 #   guard        register-broker-task.ps1 reads the task registered under -TaskName before it calls the installer, and refuses (also
@@ -538,18 +538,20 @@ tpcase "-File glued to a preceding character does not match" "False" "Test-FileA
 tpcase "a path with its dot replaced does not match" "False" "Test-FileArgMatch ('$alias_line').Replace('broker.ps1', 'brokerXps1') '$span'"
 sp_span='-File "C:\Users\a b\.config\glunk-identity\bin\broker.ps1"'
 tpcase "a quoted path with a space matches" "True" "Test-FileArgMatch 'C:\\p\\pwsh.exe -NoProfile $sp_span -WowHome x' '$sp_span'"
-# Stop-FileArgProcess under strict mode with the process cmdlets stubbed (a fake process table in $env:TP_PROCS, ids).
-sfa_run() { # sfa_run <label> <expected> <matching ids, space separated> <ids that survive a kill, space separated>
-  l=$1 want=$2
+# Stop-FileArgProcess under strict mode with the process cmdlets stubbed (a fake process table of the matching ids in $env:TP_MATCH,
+# ids in $env:TP_IMMORTAL surviving a kill, ids in $env:TP_QUOTED reporting the quoted command-line form).
+sfa_run() { # sfa_run <label> <expected> <matching ids, space separated> <ids that survive a kill, space separated> [<matching ids with a quoted command line>]
+  l=$1 want=$2 quoted=${5:-}
   cat >"$tmp/sfa.ps1" <<'PS1'
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . $env:TP_FILE
 $script:procs = [System.Collections.ArrayList]@($env:TP_MATCH -split ' ' | Where-Object { $_ } | ForEach-Object { [int]$_ })
 $script:immortal = @($env:TP_IMMORTAL -split ' ' | Where-Object { $_ } | ForEach-Object { [int]$_ })
+$script:quoted = @($env:TP_QUOTED -split ' ' | Where-Object { $_ } | ForEach-Object { [int]$_ })
 $script:killed = [System.Collections.ArrayList]@()
 function Get-CimInstance { param($ClassName)
-  $script:procs | ForEach-Object { [pscustomobject]@{ ProcessId = $_; CommandLine = 'p -File C:\h\bin\broker.ps1 -x' } }
+  $script:procs | ForEach-Object { [pscustomobject]@{ ProcessId = $_; CommandLine = $(if ($script:quoted -contains $_) { '"p" -File "C:\h\bin\broker.ps1" -x' } else { 'p -File C:\h\bin\broker.ps1 -x' }) } }
   [pscustomobject]@{ ProcessId = $PID; CommandLine = '-File "C:\h\bin\broker.ps1"' }
   [pscustomobject]@{ ProcessId = 1; CommandLine = 'unrelated' } }
 function Stop-Process { param($Id, [switch]$Force)
@@ -557,13 +559,14 @@ function Stop-Process { param($Id, [switch]$Force)
   if ($script:immortal -notcontains $Id) { $script:procs.Remove($Id) } }
 try { Stop-FileArgProcess '-File "C:\h\bin\broker.ps1"' 1; "ok killed=$($script:killed -join ',')" } catch { "threw: $($_.Exception.Message)" }
 PS1
-  got=$(TP_FILE="$(wp "$tp")" TP_MATCH="$3" TP_IMMORTAL="$4" pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/sfa.ps1")" 2>&1) || got="failed: $got"
+  got=$(TP_FILE="$(wp "$tp")" TP_MATCH="$3" TP_IMMORTAL="$4" TP_QUOTED="$quoted" pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/sfa.ps1")" 2>&1) || got="failed: $got"
   if [ "$got" = "$want" ]; then ok "task process: $l"; else bad "task process: $l (got: $got)"; fi
 }
 sfa_run "Stop-FileArgProcess with no match returns quietly" "ok killed=" "" ""
 sfa_run "Stop-FileArgProcess ends one match, never itself" "ok killed=11" "11" ""
 sfa_run "Stop-FileArgProcess ends two matches" "ok killed=11,12" "11 12" ""
 sfa_run "Stop-FileArgProcess throws naming a survivor" "threw: still running after 1 s: process id 12" "11 12" "12"
+sfa_run "Stop-FileArgProcess ends a bare and a quoted match" "ok killed=11,12" "11 12" "" "12"
 tpcase "an empty -File \"\" has no span" "NULL" "if (\$null -eq (Get-FileArgSpan '-File \"\" x')) { 'NULL' } else { 'span' }"
 check "register: the repeating trigger is one minute" grep -q 'RepetitionInterval (New-TimeSpan -Minutes 1)' "$reg_ps"
 check "register: no RestartCount" test "$(grep -c 'RestartCount' "$reg_ps")" -eq 0
