@@ -23,6 +23,14 @@ function Test-FileArgMatch([string]$CommandLine, [string]$Span) {
   [regex]::IsMatch($CommandLine, $re, $opt)
 }
 
+# Write-NoSpanWarning <task name> <action arguments>: one warning when the arguments name broker.ps1 (any letter case) and
+# Get-FileArgSpan finds no span in them, since the stop then ends conhost and leaves the broker pwsh running; otherwise nothing.
+function Write-NoSpanWarning([string]$TaskName, [string]$Arguments) {
+  if ($Arguments -and $Arguments -match 'broker\.ps1' -and $null -eq (Get-FileArgSpan $Arguments)) {
+    Write-Warning "task $TaskName has no quoted -File path in its action, so the broker pwsh it started may still be running; end it by hand"
+  }
+}
+
 # Stop-FileArgProcess <span>: end every process (this one excepted) whose command line matches the span by Test-FileArgMatch, then wait up to
 # $TimeoutSeconds (30) for them to go; throws naming the ids of any that remain.
 function Stop-FileArgProcess([string]$Span, [int]$TimeoutSeconds = 30) {

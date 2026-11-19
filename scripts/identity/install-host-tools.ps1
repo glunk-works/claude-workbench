@@ -21,7 +21,7 @@
        exist at that commit.
     3. Only then (and only past -WhatIf / -Confirm) disables the scheduled task named by -StopTask,
        if it exists, stops it and ends the processes running its -File path (stopping the task ends
-       conhost, not the pwsh it started), waiting for them, so a refusal above never leaves the broker
+       conhost, not the pwsh it started), waiting for them (a broker action with no quoted -File path gets a warning and no process is ended), so a refusal above never leaves the broker
        down. The task is enabled again after the swap, on failure too, if it was enabled before; a run
        killed between the disable and that re-enable leaves it disabled until the register script runs.
     4. Exports the files from that commit (git cat-file blob: the stored bytes, so no working-tree
@@ -97,7 +97,8 @@
 
 .PARAMETER StopTask
   A scheduled task to disable and stop just before the swap, with the processes running its -File path
-  ended and waited for, then enabled again after it (register-broker-task.ps1 passes its own).
+  ended and waited for, then enabled again after it (register-broker-task.ps1 passes its own). A broker action with no
+  quoted -File path gets a warning and no process is ended.
 
 .PARAMETER ProfilePath
   The PowerShell profile file step 6 writes the launcher shortcuts into. Default: $PROFILE.CurrentUserAllHosts.
@@ -435,13 +436,17 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
   # Disabled across the swap so the broker task's one-minute trigger cannot start the old broker between the stop and the swap.
   $taskWasEnabled = $false
   $stopSpan = $null
+  $stopArgs = $null
+  $stopTaskFound = $false
   if ($StopTask) {
     $stopFound = @(Get-ScheduledTask -TaskName $StopTask -ErrorAction SilentlyContinue)
     if ($stopFound.Count -gt 1) { throw "expected one task named $StopTask, found $($stopFound.Count)" }
     if ($stopFound.Count -eq 1) {
       $taskWasEnabled = [bool]$stopFound[0].Settings.Enabled
       . (Join-Path $PSScriptRoot 'task-process.ps1')
-      $stopSpan = Get-FileArgSpan (@($stopFound[0].Actions)[0].Arguments)
+      $stopTaskFound = $true
+      $stopArgs = (@($stopFound[0].Actions)[0].Arguments)
+      $stopSpan = Get-FileArgSpan $stopArgs
       $null = Disable-ScheduledTask -TaskName $StopTask
     }
   }
@@ -449,6 +454,7 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
     if ($StopTask) {
       Stop-ScheduledTask -TaskName $StopTask -ErrorAction SilentlyContinue
       if ($stopSpan) { Stop-FileArgProcess $stopSpan }
+      elseif ($stopTaskFound) { Write-NoSpanWarning $StopTask $stopArgs }
     }
 
     # A crash mid-swap leaves bin.old and no bin: that is the last good copy, so put it back first.
