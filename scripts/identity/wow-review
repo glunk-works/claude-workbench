@@ -73,6 +73,20 @@
 # written; a `revocation FAILED` line means that token lives out its hour. The broker sweeps
 # review-logs/ by age.
 #
+# Stale image tags (#1590). After the current tag exists, built or found, every run removes the other
+# `wow-review:<12 lowercase hex>` tags with a plain `docker rmi` (never forced, no prune of any kind),
+# except a tag whose commit a known home's installed MANIFEST names or that a container (running or
+# stopped) names. A refused or failed removal, or a failed `image ls` or `ps`, is logged and the run
+# goes on: the block never changes the exit code, the ledger outcome, stdout or stderr. Limits. First,
+# the known homes are this home, the default home (glunk-identity under $HOME/.config) and the directories
+# directly inside $HOME/.config that are not symbolic links; any other home (a linked one there
+# included) is unknown, so a run of a home that cannot see it removes its idle current tag, and that
+# home rebuilds on its next review after each such run. Second, a tag is removed when no container names
+# it, so a launcher that has passed its image check and not yet created its first container (one of an
+# unknown home, or of a home whose MANIFEST was replaced after its launcher read it) can lose its tag
+# and fail that run. Third, the list and the removals run while this home holds its launcher lock, so a
+# long removal delays this home's next launch.
+#
 # Residuals:
 #  - A misleading pass can post. The checks are mechanical, not a judgement of the review's
 #    content; the maintainer's code-owner approval still stops a bad merge.
@@ -589,6 +603,53 @@ mcommit=$(sed -n 's/^commit \([0-9a-f]\{40\}\)\r\{0,1\}$/\1/p' "$here/MANIFEST" 
 TAG="wow-review:$(printf '%s' "$mcommit" | cut -c1-12)"
 if ! dk image inspect "$TAG" >/dev/null 2>&1; then
   timeout 1800 docker build -q -t "$TAG" "$(hp "$here/review")" >/dev/null || fail "docker build failed"
+fi
+
+# ---- 6a. stale image tags --------------------------------------------------------------------
+# Fail open: nothing here calls fail or die, writes to stdout or stderr, or changes the exit code.
+stale_commit() { sed -n 's/^commit \([0-9a-f]\{12\}\)[0-9a-f]\{28\}\r\{0,1\}$/\1/p' "$1" 2>/dev/null | head -n 1; }
+keep=" $(printf '%s' "$mcommit" | cut -c1-12) "
+if [ -n "${HOME:-}" ]; then
+  kc=$(stale_commit "${HOME:-}/.config/glunk-identity/bin/MANIFEST" || :)
+  [ -z "$kc" ] || keep="$keep$kc "
+  kdirs=$(find "${HOME:-}/.config/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null || :)
+  while IFS= read -r kd; do
+    [ -n "$kd" ] || continue
+    kc=$(stale_commit "$kd/bin/MANIFEST" || :)
+    [ -z "$kc" ] || keep="$keep$kc "
+  done <<EOF
+$kdirs
+EOF
+fi
+if kused=$(dk ps -a --format '{{.Image}}' 2>/dev/null </dev/null); then
+  kused=$(printf '\n%s\n' "$kused" | tr -d '\r')
+  kused="$kused
+"
+  if klist=$(dk image ls --filter reference=wow-review --format '{{.Repository}}:{{.Tag}}' 2>/dev/null </dev/null); then
+    klist=$(printf '%s\n' "$klist" | tr -d '\r')
+    while IFS= read -r kt; do
+      case "$kt" in
+        wow-review:[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) ;;
+        *) continue ;;
+      esac
+      [ "$kt" != "$TAG" ] || continue
+      case "$keep" in *" ${kt#wow-review:} "*) continue ;; esac
+      case "$kused" in *"
+$kt
+"*) continue ;; esac
+      if dk rmi "$kt" >/dev/null 2>&1 </dev/null; then
+        logl "stale image tag $kt removed"
+      else
+        logl "stale image tag $kt kept: docker rmi refused or failed"
+      fi
+    done <<EOF
+$klist
+EOF
+  else
+    logl "stale image tags: docker image ls failed, none removed"
+  fi
+else
+  logl "stale image tags: docker ps failed, none removed"
 fi
 
 # ---- 7. networks and sidecars ----------------------------------------------------------------

@@ -7,7 +7,11 @@
 # GH_CONFIG_DIR and every --input file) under $STUB, and answers from per-case fixture files. The
 # stub docker answers `run ... outbox-read <kind>` by running the real outbox-read, sed-substituted
 # to a fixture outbox (as tests/review-image.test.sh does), and answers `inspect` from the argv the
-# container was created with, so the launcher's preflight reads what it asked for. stdin is closed
+# container was created with, so the launcher's preflight reads what it asked for. It answers `image ls`
+# with the case's docker/images fixture (nothing when absent; one stderr line and exit 1 when docker/ls.fail exists),
+# a `ps` whose --format is {{.Image}} with the docker/images-used fixture (nothing when absent; one stderr line and
+# exit 1 when docker/psimage.fail exists), and `rmi` by recording docker-rmi in the events, then exiting 1 with one
+# stderr line when its last argument is a line of docker/rmi.refuse, else printing an Untagged: line and exiting 0. stdin is closed
 # throughout, to prove nothing prompts.
 #
 # Permitted toolset: POSIX sh and its standard utilities, jq, yq and timeout (skipped, loudly, if absent; a
@@ -202,7 +206,18 @@ ctjson() { # ctjson <name>
   printf '%s\n' "$out"
 }
 case $cmd in
-  image) exit $([ -e "$S/docker/noimage" ] && echo 1 || echo 0) ;;
+  image)
+    if [ "${1:-}" = ls ]; then
+      if [ -e "$S/docker/ls.fail" ]; then echo "stub docker: image ls failed" >&2; exit 1; fi
+      cat "$S/docker/images" 2>/dev/null
+      exit 0
+    fi
+    exit $([ -e "$S/docker/noimage" ] && echo 1 || echo 0) ;;
+  rmi)
+    echo "docker-rmi $*" >>"$S/events"
+    if grep -qxF -- "$(last "$@")" "$S/docker/rmi.refuse" 2>/dev/null; then echo "stub docker: rmi refused" >&2; exit 1; fi
+    echo "Untagged: $(last "$@")"
+    exit 0 ;;
   build) echo docker-build >>"$S/events"; exit 0 ;;
   network)
     sub=$1; shift
@@ -294,6 +309,11 @@ case $cmd in
       case $1 in --filter) flt=${2#label=}; shift ;; --format) fmt=$2; shift ;; -q) q=1 ;; esac
       shift
     done
+    if [ "$fmt" = '{{.Image}}' ]; then
+      if [ -e "$S/docker/psimage.fail" ]; then echo "stub docker: ps failed" >&2; exit 1; fi
+      cat "$S/docker/images-used" 2>/dev/null
+      exit 0
+    fi
     # A preexisting record is "<id> <role label> [<deadline>] [home=<key>] [run=<id>]": the home= and run= fields cannot be read as a deadline.
     {
       [ -f "$S/preexisting" ] && cat "$S/preexisting"
@@ -363,6 +383,7 @@ CRED='sk-ant-oat01-FIXTURE-credential-not-a-secret-0123456789'
 new_case() {
   rm -rf "$tmp/case"
   home="$tmp/case/home"; STUB="$tmp/case/stub"; export STUB
+  hh="$tmp/case/hh"; mkdir -p "$hh"
   mkdir -p "$home/bin/review" "$STUB/gh" "$STUB/inputs" "$STUB/outbox" "$STUB/docker"
   cp "$root_dir/scripts/identity/wow-review" "$root_dir/scripts/identity/wow-common.sh" "$home/bin/"
   for f in token-check.sh gh-identity.sh review-gate-state.sh; do cp "$root_dir/plugins/way-of-working/bin/$f" "$home/bin/"; done
@@ -446,10 +467,13 @@ reset_logs() {
 run() {
   rc=0; reset_logs
   reset_logs
-  env PATH="$stubs:$orig_path" REAL_SLEEP="$real_sleep" STUB_DIR="$STUB" WOW_HOME="${RUN_HOME-$home}" \
-    WOW_REVIEW_TIMEOUT="${T_TIMEOUT:-20}" WOW_REVIEW_REFRESH="${T_REFRESH:-1}" WOW_REVIEW_MAX="${T_MAX:-1}" \
-    GH_HOST=evil.example GITHUB_TOKEN=ghp_env GH_ENTERPRISE_TOKEN=x GITHUB_ENTERPRISE_TOKEN=x \
-    sh "$home/bin/wow-review" "$@" <&- >"$tmp/out" 2>"$tmp/err" || rc=$?
+  (
+    if [ "${T_HOME_UNSET:-}" = 1 ]; then unset HOME; else HOME="${T_HOME-$hh}"; export HOME; fi
+    exec env PATH="$stubs:$orig_path" REAL_SLEEP="$real_sleep" STUB_DIR="$STUB" WOW_HOME="${RUN_HOME-$home}" \
+      WOW_REVIEW_TIMEOUT="${T_TIMEOUT:-20}" WOW_REVIEW_REFRESH="${T_REFRESH:-1}" WOW_REVIEW_MAX="${T_MAX:-1}" \
+      GH_HOST=evil.example GITHUB_TOKEN=ghp_env GH_ENTERPRISE_TOKEN=x GITHUB_ENTERPRISE_TOKEN=x \
+      sh "$home/bin/wow-review" "$@" <&- >"$tmp/out" 2>"$tmp/err"
+  ) || rc=$?
   invariants
 }
 
@@ -1789,6 +1813,102 @@ assert_eq "an unreadable MANIFEST: no container started" 0 "$(ev_count 'docker-r
 :
 }
 
+sec_stale() {
+# =========================================================================================
+# --- stale image tags: removed after the current tag exists, never forced, fail open (#1590) ----
+# =========================================================================================
+c1=1111111111111111111111111111111111111111; c2=2222222222222222222222222222222222222222; c3=3333333333333333333333333333333333333333
+mf() { mkdir -p "$1/bin"; printf 'commit %s\ninstalled 2026-10-15T00:00:00Z\n' "$2" >"$1/bin/MANIFEST"; }
+single_images() { # the single-home images fixture
+  printf '%s\n' wow-review:0123456789ab wow-review:aaaaaaaaaaaa >"$STUB/docker/images"
+  printf 'wow-review:bbbbbbbbbbbb\r\n' >>"$STUB/docker/images"
+  printf '%s\n' wow-review:latest '<none>:<none>' wow-review:AAAAAAAAAAAA wow-review:aaaaaaaaaaa wow-review:aaaaaaaaaaaaa \
+    wow-review:cccccccccccc-x wow-review-test:634 >>"$STUB/docker/images"
+}
+rmis() { grep '^docker-rmi' "$STUB/events"; }
+n_rmi() { grep -c '^docker-rmi' "$STUB/events" 2>/dev/null || true; }
+all_log() { cat "$home"/review-logs/*.log 2>/dev/null; }
+snap() { # snap <prefix>: the run's exit code, outcome, stdout and stderr
+  eval "${1}_rc=\$rc"; eval "${1}_oc=\$(cat \"\$(entry_dir)/outcome\" 2>/dev/null)"
+  eval "${1}_out=\$(cat \"\$tmp/out\")"; eval "${1}_err=\$(cat \"\$tmp/err\")"
+}
+same() { # same <label> <prefix>: equal to the snapshot
+  eval "e_rc=\$${2}_rc e_oc=\$${2}_oc e_out=\$${2}_out e_err=\$${2}_err"
+  assert_eq "$1: exit code as the plain case" "$e_rc" "$rc"
+  assert_eq "$1: outcome as the plain case" "$e_oc" "$(cat "$(entry_dir)/outcome" 2>/dev/null)"
+  assert_eq "$1: stdout as the plain case" "$e_out" "$(cat "$tmp/out")"
+  assert_eq "$1: stderr as the plain case" "$e_err" "$(cat "$tmp/err")"
+}
+new_case; run o/r 7; snap plain
+assert_eq "plain: exit 0" 0 "$rc"
+new_case; : >"$STUB/docker/noimage"; run o/r 7; snap pbuilt
+assert_eq "plain built: exit 0" 0 "$rc"
+check "plain: no docker-rmi" test "$(n_rmi)" = 0
+
+new_case; single_images; run o/r 7
+same "single home" plain
+assert_eq "single home: two docker-rmi events" 2 "$(n_rmi)"
+assert_eq "single home: the two older tags" "docker-rmi wow-review:aaaaaaaaaaaa
+docker-rmi wow-review:bbbbbbbbbbbb" "$(rmis)"
+check "single home: no flag on any rmi" test -z "$(rmis | grep -e ' -')"
+check "single home: no prune in any docker call" test -z "$(dcalls | grep prune)"
+check "single home: a removed line per tag" test "$(all_log | grep -c 'stale image tag wow-review:[ab]* removed')" = 2
+
+new_case; single_images
+mf "$tmp/case/ext1" $c1; mf "$tmp/case/ext3" $c3
+mkdir -p "$hh/.config/h2" "$hh/.config/nomf" "$hh/.config/nocommit/bin"
+ln -s "$tmp/case/ext1" "$hh/.config/glunk-identity"; mf "$hh/.config/h2" $c2; ln -s "$tmp/case/ext3" "$hh/.config/lnk"
+printf 'junk\n' >"$hh/.config/nocommit/bin/MANIFEST"
+printf '%s\n' wow-review:0123456789ab wow-review:111111111111 wow-review:222222222222 wow-review:333333333333 wow-review:aaaaaaaaaaaa >"$STUB/docker/images"
+run o/r 7
+same "known homes" plain
+assert_eq "known homes: only the unknown tags are removed" "docker-rmi wow-review:333333333333
+docker-rmi wow-review:aaaaaaaaaaaa" "$(rmis)"
+
+new_case; mf "$tmp/case/cfg/glunk-identity" $c1; mf "$tmp/case/cfg/other" $c2; ln -s "$tmp/case/cfg" "$hh/.config"
+printf '%s\n' wow-review:0123456789ab wow-review:111111111111 wow-review:222222222222 wow-review:aaaaaaaaaaaa >"$STUB/docker/images"
+run o/r 7
+same "linked .config" plain
+assert_eq "linked .config: both tags kept, the other removed" "docker-rmi wow-review:aaaaaaaaaaaa" "$(rmis)"
+
+new_case; single_images; printf 'other:tag\nwow-review:aaaaaaaaaaaa\r\n' >"$STUB/docker/images-used"; run o/r 7
+same "container keep" plain
+assert_eq "container keep: only the other older tag is removed" "docker-rmi wow-review:bbbbbbbbbbbb" "$(rmis)"
+
+new_case; single_images; printf 'wow-review:aaaaaaaaaaaa\n' >"$STUB/docker/rmi.refuse"; run o/r 7
+same "refusal" plain
+assert_eq "refusal: both removals tried" 2 "$(n_rmi)"
+check "refusal: the log holds the kept line for the first" test "$(all_log | grep -c 'wow-review:aaaaaaaaaaaa kept')" = 1
+check "refusal: the second is removed" test "$(all_log | grep -c 'wow-review:bbbbbbbbbbbb removed')" = 1
+
+new_case; single_images; : >"$STUB/docker/ls.fail"; run o/r 7
+same "list failure" plain
+assert_eq "list failure: no docker-rmi" 0 "$(n_rmi)"
+check "list failure: a log line" test "$(all_log | grep -c 'image ls failed')" = 1
+
+new_case; single_images; : >"$STUB/docker/psimage.fail"; run o/r 7
+same "container listing failure" plain
+assert_eq "container listing failure: no docker-rmi" 0 "$(n_rmi)"
+check "container listing failure: a log line" test "$(all_log | grep -c 'ps failed')" = 1
+
+new_case; single_images; : >"$STUB/docker/noimage"; run o/r 7
+same "built" pbuilt
+check "built: at least one docker-rmi" test "$(n_rmi)" -ge 1
+b=$(ev_line docker-build); n1=$(ev_line docker-net-create); r1=$(ev_line docker-rmi); r2=$(ev_last docker-rmi)
+check "built: every docker-rmi follows the build and precedes the first network create" test "$r1" -gt "$b" -a "$r2" -lt "$n1"
+
+new_case; single_images; T_HOME_UNSET=1; run o/r 7; unset T_HOME_UNSET
+same "HOME unset" plain
+assert_eq "HOME unset: both older tags removed" 2 "$(n_rmi)"
+new_case; single_images; T_HOME=""; run o/r 7; unset T_HOME
+same "HOME empty" plain
+assert_eq "HOME empty: both older tags removed" 2 "$(n_rmi)"
+new_case; single_images; run o/r 7
+same "HOME without .config" plain
+assert_eq "HOME without .config: both older tags removed" 2 "$(n_rmi)"
+:
+}
+
 sec_cleanup() {
 # =========================================================================================
 # --- cleanup: every directory, the lock and every container, whatever the ending -----------
@@ -1802,7 +1922,7 @@ new_case; : >"$STUB/wait.hang"; T_TIMEOUT=1; run o/r 7; T_TIMEOUT=20; cleaned "a
 check "after a timeout: the stuck session was killed" has "$STUB/events" "docker-kill"
 
 new_case; : >"$STUB/wait.hang"; reset_logs
-env PATH="$stubs:$orig_path" REAL_SLEEP="$real_sleep" STUB_DIR="$STUB" WOW_HOME="$home" WOW_REVIEW_TIMEOUT=120 WOW_REVIEW_REFRESH=1 \
+env PATH="$stubs:$orig_path" REAL_SLEEP="$real_sleep" STUB_DIR="$STUB" WOW_HOME="$home" HOME="$hh" WOW_REVIEW_TIMEOUT=120 WOW_REVIEW_REFRESH=1 \
   sh "$home/bin/wow-review" o/r 7 <&- >"$tmp/out" 2>"$tmp/err" &
 bgpid=$!
 i=0
@@ -1836,7 +1956,7 @@ assert_eq "wow-review slash-less stderr names the tool" "wow-review: must be run
 
 # Run every section at once, each in a subshell with its own scratch directory ($tmp: its case tree, its out
 # and err files, its log scratch files) over the shared stubs; replay each one's output in order.
-sections="args golden schema ident mints lock reviewed verdict outcomes post findings gate log preflight cleanup slashless"
+sections="args golden stale schema ident mints lock reviewed verdict outcomes post findings gate log preflight cleanup slashless"
 pids=
 # An interrupt stops the section subshells and leaves the scratch tree (the stubs in it) in place: a launcher
 # already in flight ends on its own, within its own timeout, and must not lose its stubs to the real gh and
