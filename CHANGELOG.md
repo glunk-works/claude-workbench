@@ -36,6 +36,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- The default home's install no longer warns about an owner directory a second identity home beside it delivers into its `tokens/`, and still warns about a genuine leftover; it applies once the host tools are reinstalled (#1599).
 - The other-home guard in `register-review-poll-task.ps1` now refuses with its no-WOW_HOME message, instead of a StrictMode error, when the task already registered under `-TaskName` has no actions or a first action with no `Arguments` property (a COM handler) (#1593).
 - A spec session whose host client ended no longer leaves a `claude` that blocks every later `-Spec`: the launcher's cleanup ends it, and the busy refusal names the stop command (#1604).
 - `/way-of-working:unpark-sprint` resolves `parked_from_commit` by object id (`cursor-drift.sh oid`), so a hex-named branch or tag no longer stands in for the parked commit (#1180).

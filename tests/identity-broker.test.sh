@@ -62,6 +62,10 @@
 #                sibling with a valid tokens-root, without, with a refused one, through a link, a broker.json that is not JSON, an owner in
 #                two homes, one owner in two letter cases), an install from a sibling home, no .config folder, a quoted folder name, the
 #                echo of wowd, wowl and wowend, the throws, and -WhatIf writing no profile
+#   sibling owners  the default home's cross-check accepts the owner directories named by the broker.json of each home beside it with a valid tokens-root
+#                (#1599; HOME is a fixture, skipped under MSYS like the profile cases): an owner in another letter case, no tokens-root or other
+#                content, a sibling whose broker.json is not JSON or is absent beside a readable one, an owner equal to a name half of the default
+#                home's broker.json, an install from another home, entries that are not two halves passing the name rule, and an empty HOME
 #   config       a bad repo name (or a trailing dot) or a missing broker.json exits 2 before anything
 #                is minted
 #
@@ -1130,6 +1134,58 @@ pnew; mkh "$dh" '"acme/alpha"'
 run_install -WhatIf
 check "profile -WhatIf: exits 0" test "$rc" -eq 0
 check "profile -WhatIf: no profile and no directory" test ! -e "$profile_path" -a ! -e "$(dirname "$profile_path")"
+
+# the default home's step-5 loop accepts the owner directories of the homes beside it (#1599)
+nowarn() { ! xc_has "tokens/$1 is not the owner directory of any broker.json entry"; }
+warned() { xc_has "tokens/$1 is not the owner directory of any broker.json entry"; }
+all_warned() { for n; do warned "$n" || return 1; done; }
+nocouldnot() { ! grep -q 'could not run' "$tmp/out"; }
+# (a) a sibling with a valid tokens-root, its owner in another letter case than its directory
+pnew; mkh "$dh" '"acme/alpha"'; sibling two '"Beta/x"'; mkdir -p "$dh/tokens/beta" "$dh/tokens/leftover"
+saved_home=$home; home=$dh; run_install; home=$saved_home
+check "sibling owners (a): exits 0" test "$rc" -eq 0
+check "sibling owners (a): no warning for the sibling's owner directory" nowarn beta
+check "sibling owners (a): exactly one warning, the leftover's" test "$(xc_warns)" -eq 1
+check "sibling owners (a): the leftover is named" warned leftover
+# (b) no tokens-root file
+pnew; mkh "$dh" '"acme/alpha"'; mkh "$fh/.config/two" '"Beta/x"'; mkdir -p "$dh/tokens/beta"
+saved_home=$home; home=$dh; run_install; home=$saved_home
+check "sibling owners (b): no tokens-root, the warning is printed" warned beta
+# (c) other tokens-root content
+pnew; mkh "$dh" '"acme/alpha"'; mkh "$fh/.config/two" '"Beta/x"'; printf 'elsewhere\n' >"$fh/.config/two/tokens-root"; mkdir -p "$dh/tokens/beta"
+saved_home=$home; home=$dh; run_install; home=$saved_home
+check "sibling owners (c): other tokens-root content, the warning is printed" warned beta
+# (d) one unreadable sibling, one readable, one with no broker.json
+pnew; mkh "$dh" '"acme/alpha"'
+sibling one '"x/x"'; printf 'not json' >"$fh/.config/one/broker.json"
+sibling two '"gamma/x"'
+mkdir -p "$fh/.config/three"; printf 'default-home\n' >"$fh/.config/three/tokens-root"
+mkdir -p "$dh/tokens/ghost" "$dh/tokens/gamma" "$dh/tokens/nobrk" "$dh/tokens/leftover"
+saved_home=$home; home=$dh; run_install; home=$saved_home
+check "sibling owners (d): exits 0" test "$rc" -eq 0
+check "sibling owners (d): no could-not-run line" nocouldnot
+check "sibling owners (d): exactly three warnings" test "$(xc_warns)" -eq 3
+check "sibling owners (d): the leftover, the unreadable and the no-broker.json sibling's directories are named" all_warned leftover ghost nobrk
+check "sibling owners (d): none for the readable sibling's directory" nowarn gamma
+# (e) a sibling owner equal to a name half of the default home's broker.json
+pnew; mkh "$dh" '"acme/alpha"'; sibling two '"ALPHA/x"'; mkdir -p "$dh/tokens/alpha"
+saved_home=$home; home=$dh; run_install; home=$saved_home
+check "sibling owners (e): a collision with a name half keeps the warning" warned alpha
+# (f) an install from a home that is not the default home
+pnew; mkh "$dh" '"acme/alpha"'; sibling two '"beta/x"'; mkh "$fh/.config/other" '"acme/alpha"'; mkdir -p "$fh/.config/other/tokens/beta"
+saved_home=$home; home=$fh/.config/other; run_install; home=$saved_home
+check "sibling owners (f): not the default home, the warning is printed" warned beta
+# (g) entries that are not two halves each passing the name rule
+pnew; mkh "$dh" '"acme/alpha"'; sibling two '"bare1", "tp/x/y", "ow/-bad"'; mkdir -p "$dh/tokens/bare1" "$dh/tokens/tp" "$dh/tokens/ow"
+saved_home=$home; home=$dh; run_install; home=$saved_home
+check "sibling owners (g): a bare, a three-part and a bad-half entry each keep the warning" all_warned bare1 tp ow
+# (h) an empty HOME
+pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$dh/tokens/leftover"; HOME=; export HOME
+saved_home=$home; home=$dh; run_install; home=$saved_home
+HOME=$fh; export HOME
+check "sibling owners (h): empty HOME, exits 0" test "$rc" -eq 0
+check "sibling owners (h): the leftover is warned about" warned leftover
+check "sibling owners (h): no could-not-run line" nocouldnot
 
 profile_path="$tmp/scratch-profile.ps1"
 HOME=$prof_home; export HOME
