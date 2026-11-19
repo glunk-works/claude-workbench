@@ -33,8 +33,8 @@ FROM ghcr.io/603-identity/devcontainer-base:4.661@sha256:8445c6d574c53fac74b4b6d
 # `claude` goes in /usr/local/bin, root-owned, not the native installer's per-user location:
 # that is writable state, where the session could replace the binary. Pinned by version and
 # sha256, the same two values as scripts/loop/Dockerfile.
-ARG CLAUDE_VERSION=2.1.289
-ARG CLAUDE_SHA256=a186b99e4a9c88366cd49df2f7dad56c61fc306ef0140b19ee64b7c42a8d1348
+ARG CLAUDE_VERSION=2.1.316
+ARG CLAUDE_SHA256=fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824
 
 USER 0
 RUN set -eu; \
