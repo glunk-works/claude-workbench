@@ -33,8 +33,10 @@
 #                -StopTask handling run for real against stubbed Task Scheduler and process cmdlets (#1028), asserting the call log line for line: an
 #                enabled task is disabled, stopped, its process ended and re-enabled in that order; a task disabled before is never re-enabled; a throw
 #                past the disable (Get-FileHash stubbed to throw) still re-enables an enabled task and creates no bin; a throw from the disable itself
-#                stops before the stop and the re-enable; static checks that the
-#                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess, and
+#                stops before the stop and the re-enable; Write-NoSpanWarning warns once, naming the task, for a broker action with an unquoted -File path
+#                (any letter case) and is silent for a quoted span, the poll task's -Command action, an empty string and $null, and the install prints it for an
+#                unquoted action (nothing ended) and stays silent for a missing task (#1029); static checks that the
+#                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess and Write-NoSpanWarning, and
 #                no identity script passes Disable-, Enable-, Start- or Stop-ScheduledTask -Confirm or -WhatIf
 #   guard        register-broker-task.ps1 reads the task registered under -TaskName before it calls the installer, and refuses (also
 #                under -WhatIf) one whose -WowHome names another home or none it can read, unless -ReplaceOtherHome is given (#1594; stubbed
@@ -571,21 +573,34 @@ sfa_run "Stop-FileArgProcess ends one match, never itself" "ok killed=11" "11" "
 sfa_run "Stop-FileArgProcess ends two matches" "ok killed=11,12" "11 12" ""
 sfa_run "Stop-FileArgProcess throws naming a survivor" "threw: still running after 1 s: process id 12" "11 12" "12"
 sfa_run "Stop-FileArgProcess ends a bare and a quoted match" "ok killed=11,12" "11 12" "" "12"
+# Write-NoSpanWarning under strict mode; the warning stream is merged into the output so the assertion reads the text (#1029).
+nsw() { # nsw <label> <expected> <arguments expression>
+  tpcase "$1" "$2" "Set-StrictMode -Version Latest; Write-NoSpanWarning 'wow-t' $3 3>&1 | ForEach-Object { \"[\$_]\" }"
+}
+nsw "no-span warning: an unquoted broker -File path warns, naming the task" "[task wow-t has no quoted -File path in its action, so the broker pwsh it started may still be running; end it by hand]" "'--headless p -File C:\\h\\bin\\broker.ps1 -x'"
+nsw "no-span warning: the same in upper case warns once" "[task wow-t has no quoted -File path in its action, so the broker pwsh it started may still be running; end it by hand]" "'--HEADLESS P -FILE C:\\H\\BIN\\BROKER.PS1 -X'"
+nsw "no-span warning: a quoted broker span is silent" "" "'$con_args'"
+nsw "no-span warning: the poll task's -Command action is silent" "" "'-NoProfile -Command \"& x\"'"
+nsw "no-span warning: an empty string is silent" "" "''"
+nsw "no-span warning: \$null is silent" "" "\$null"
 tpcase "an empty -File \"\" has no span" "NULL" "if (\$null -eq (Get-FileArgSpan '-File \"\" x')) { 'NULL' } else { 'span' }"
 check "register: the repeating trigger is one minute" grep -q 'RepetitionInterval (New-TimeSpan -Minutes 1)' "$reg_ps"
 check "register: no RestartCount" test "$(grep -c 'RestartCount' "$reg_ps")" -eq 0
 check "register: dot-sources task-process.ps1 and calls Stop-FileArgProcess" sh -c 'grep -q "task-process.ps1" "$1" && grep -q "Stop-FileArgProcess" "$1"' sh "$reg_ps"
 check "install: dot-sources task-process.ps1 and calls Stop-FileArgProcess" sh -c 'grep -q "task-process.ps1" "$1" && grep -q "Stop-FileArgProcess" "$1"' sh "$inst_ps"
+check "register: calls Write-NoSpanWarning" grep -q 'Write-NoSpanWarning' "$reg_ps"
+check "install: calls Write-NoSpanWarning" grep -q 'Write-NoSpanWarning' "$inst_ps"
 # The install's task handling, run for real against stubbed Task Scheduler and process cmdlets (#1028): caller-scope functions shadow
-# the cmdlets inside the script, and supply them where pwsh lacks them. SWAP_ENABLED, SWAP_HASHFAIL and SWAP_DISABLEFAIL set per case
+# the cmdlets inside the script, and supply them where pwsh lacks them. SWAP_ENABLED, SWAP_HASHFAIL, SWAP_DISABLEFAIL, SWAP_UNQUOTED and SWAP_NOTASK set per case
 # what the stubs report and throw; every stub that matters appends its cmdlet name to $SWAP_LOG, and no real task or process is touched.
 swap_log="$tmp/swap.log"
 cat >"$tmp/swap-stubs.ps1" <<'PS1'
 $global:procs = [System.Collections.ArrayList]@(11)
 function Get-ScheduledTask { param($TaskName, $ErrorAction)
   Add-Content -LiteralPath $env:SWAP_LOG -Value 'Get-ScheduledTask' -WhatIf:$false
+  if ($env:SWAP_NOTASK -eq '1') { return }
   [pscustomobject]@{ Settings = [pscustomobject]@{ Enabled = ($env:SWAP_ENABLED -eq '1') }
-    Actions = @([pscustomobject]@{ Arguments = '--headless p -File "C:\h\bin\broker.ps1" -x' }) } }
+    Actions = @([pscustomobject]@{ Arguments = $(if ($env:SWAP_UNQUOTED -eq '1') { '--headless p -File C:\h\bin\broker.ps1 -x' } else { '--headless p -File "C:\h\bin\broker.ps1" -x' }) }) } }
 function Disable-ScheduledTask { param($TaskName, $ErrorAction)
   Add-Content -LiteralPath $env:SWAP_LOG -Value 'Disable-ScheduledTask' -WhatIf:$false
   if ($env:SWAP_DISABLEFAIL -eq '1') { throw 'DISABLEBOOM' } }
@@ -601,9 +616,9 @@ function Stop-Process { param($Id, [switch]$Force, $ErrorAction)
   $global:procs.Remove($Id) }
 if ($env:SWAP_HASHFAIL -eq '1') { function Get-FileHash { param($LiteralPath, $Algorithm) throw 'HASHBOOM' } }
 PS1
-swap_run() { # swap_run <task enabled 1|0> <Get-FileHash throws 1|0> <Disable-ScheduledTask throws 1|0>; leaves the exit code in $rc, the output in $tmp/out, the call log in $swap_log
+swap_run() { # swap_run <task enabled 1|0> <Get-FileHash throws 1|0> <Disable-ScheduledTask throws 1|0> [<action -File path unquoted 1|0> [<no task found 1|0>]]; leaves the exit code in $rc, the output in $tmp/out, the call log in $swap_log
   reset; rm -rf "$home/bin" "$home/bin.new" "$home/bin.old"; rm -f "$swap_log"; : >"$swap_log"; rc=0
-  SWAP_LOG="$(wp "$swap_log")" SWAP_ENABLED=$1 SWAP_HASHFAIL=$2 SWAP_DISABLEFAIL=$3 \
+  SWAP_LOG="$(wp "$swap_log")" SWAP_ENABLED=$1 SWAP_HASHFAIL=$2 SWAP_DISABLEFAIL=$3 SWAP_UNQUOTED=${4:-0} SWAP_NOTASK=${5:-0} \
     pwsh -NoProfile -NonInteractive -Command ". '$(wp "$tmp/swap-stubs.ps1")'; & '$(wp "$inst_ps")' -WowHome '$(wp "$home")' -SourceRepo '$(wp "$src")' -ProfilePath '$(wp "$profile_path")' -StopTask 'wow-swap-test-$$'" >"$tmp/out" 2>&1 || rc=$?
 }
 swap_log_is() { # swap_log_is <cmdlet>... : the call log holds exactly these lines, in this order (Add-Content ends a line with CRLF on Windows, so CR is stripped)
@@ -629,6 +644,16 @@ swap_run 1 0 1
 check "install task: a throw from the disable itself stops before the stop and the re-enable" swap_log_is Get-ScheduledTask Disable-ScheduledTask
 check "install task: a throw from the disable itself exits non-zero" test "$rc" -ne 0
 check "install task: a throw from the disable itself creates no bin" test ! -e "$home/bin"
+swap_run 1 0 0 1 0
+check "install task: an unquoted action is disabled, stopped and re-enabled in that order, no process ended" swap_log_is Get-ScheduledTask Disable-ScheduledTask Stop-ScheduledTask Enable-ScheduledTask
+check "install task: an unquoted action prints the warning naming the task" grep -q "WARNING: task wow-swap-test-$$ has no quoted -File path" "$tmp/out"
+check "install task: an unquoted action exits 0" test "$rc" -eq 0
+check "install task: an unquoted action writes bin/MANIFEST" test -f "$home/bin/MANIFEST"
+swap_run 1 0 0 0 1
+check "install task: a missing task is looked up and stopped only" swap_log_is Get-ScheduledTask Stop-ScheduledTask
+check "install task: a missing task prints no warning naming the task" test "$(grep -c "wow-swap-test-$$" "$tmp/out")" -eq 0
+check "install task: a missing task exits 0" test "$rc" -eq 0
+check "install task: a missing task writes bin/MANIFEST" test -f "$home/bin/MANIFEST"
 # Disable-, Enable-, Start- and Stop-ScheduledTask take no -Confirm or -WhatIf (they do not support ShouldProcess); passing one fails the
 # install on the host. Read through the parser, so a continuation, an abbreviation, a splat or a module-qualified call counts and a comment does not.
 cat >"$tmp/noconfirm.ps1" <<'PS1'
