@@ -30,7 +30,7 @@
 #   attach refuses  mismatched/missing/malformed record, another clone, dirty probe, two containers,
 #                   restarting/paused, a failed docker ps, a missing tool
 #   yq minimum      the host yq version check: the pure comparison on stubbed version lines, both launchers refuse a
-#                   stub yq below v4.54.1 or an unreadable one (the lane through an exit-0 stub printing another yq's form) before any docker or git call, and the number is in neither launcher file
+#                   stub yq below v4.54.1 or an unreadable one (the lane through an exit-0 stub printing another yq's form) before any docker or git call, the number is in neither launcher file nor in ci.yml, and the CI preflight step's script on stubbed yqs
 #   -Repo (#1381)   the five-field record (a start of day writes the Reference path; a four-field record still reads and is
 #                   replaced), wow-driver and wow-lane -Repo from the record (start of day, attach, -Issue/-Hash, -Spec,
 #                   -SpecSweep) making the calls the long form makes, and each -Repo refusal before any external call; -EndDay:
@@ -1556,10 +1556,37 @@ check "yq version: wow-lane refuses an exit-0 other-form yq with exit 1" test "$
 check "yq version: wow-lane, other-form yq, with the unparseable message" err_has 'no yq version could be read'
 check "yq version: wow-lane, other-form yq, before any docker or git call" none_called
 
+# the CI preflight step (#1261): its script, extracted with yq, run under pwsh from the repo root with the stub yq ahead of the real one
+ci_yml="$root_dir/.github/workflows/ci.yml"
+step_name='runner yq version check'
+{ printf "\$ErrorActionPreference = 'Stop'\n"; STEP="$step_name" yq -r '.jobs.tests-launchers.steps[] | select(.name == strenv(STEP)) | .run' "$ci_yml"; } >"$tmp/ci-step.ps1"
+ci_step() { # ci_step: the step's script under pwsh, the stub yq first on PATH; rc, out
+  rc=0; (cd "$root_dir" && PATH=$(drv_path) "$pwsh_abs" -NoProfile -NonInteractive -File "$(wp "$tmp/ci-step.ps1")") >"$tmp/out" 2>&1 || rc=$?
+}
+yq_stub "$(yq_line v4.53.6)" 0
+ci_step
+check "yq version: the CI step fails on v4.53.6" test "$rc" -ne 0
+check "yq version: ...naming 4.53.6 and 4.54.1" sh -c "grep -q '4.53.6' '$tmp/out' && grep -q '4.54.1' '$tmp/out'"
+yq_stub 'yq 3.4.1' 0
+ci_step
+check "yq version: the CI step fails on another yq's form" test "$rc" -ne 0
+check "yq version: ...saying no version could be read and naming 4.54.1" sh -c "grep -q 'no yq version could be read' '$tmp/out' && grep -q '4.54.1' '$tmp/out'"
+yq_stub "$(yq_line v4.55.0)" 1
+ci_step
+check "yq version: the CI step fails on a yq that exits 1" test "$rc" -ne 0
+check "yq version: ...saying no version could be read" grep -q 'no yq version could be read' "$tmp/out"
+yq_stub "$(yq_line v4.55.0)" 0
+ci_step
+check "yq version: the CI step passes on v4.55.0" test "$rc" -eq 0
+check "yq version: ...naming 4.55.0 and 4.54.1" sh -c "grep -q '4.55.0' '$tmp/out' && grep -q '4.54.1' '$tmp/out'"
+check "yq version: the CI step comes before the fixtures step" test "$(yq -r '[.jobs.tests-launchers.steps[].name] | join("|")' "$ci_yml" | grep -c '^[^|]*|*runner yq version check|\(.*|\)*host driver launcher fixtures')" -eq 1
+check "yq version: the CI step runs under pwsh" test "$(yq -r '.jobs.tests-launchers.steps[] | select(.name == "runner yq version check") | .shell' "$ci_yml")" = pwsh
+check "yq version: the CI step names the shared file and Test-YqVersion" sh -c "grep -qF 'wow-launch-common.ps1' '$tmp/ci-step.ps1' && grep -qF 'Test-YqVersion' '$tmp/ci-step.ps1'"
+
 # static: the minimum is written once, in the shared code
 check "yq version: 4.54.1 is in wow-launch-common.ps1" grep -qF '4.54.1' "$root_dir/scripts/identity/wow-launch-common.ps1"
-for f in wow-driver.ps1 wow-lane.ps1; do
-  check "yq version: 4.54.1 is not in $f" sh -c "! grep -qF '4.54.1' '$root_dir/scripts/identity/$f'"
+for f in scripts/identity/wow-driver.ps1 scripts/identity/wow-lane.ps1 .github/workflows/ci.yml; do
+  check "yq version: 4.54.1 is not in $f" sh -c "! grep -qF '4.54.1' '$root_dir/$f'"
 done
 }
 
