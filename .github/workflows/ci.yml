@@ -145,6 +145,10 @@ jobs:
   # and the shard job would not expand, leaving `tests-1` and `tests-2` unreported. The cost is
   # that cancelling a run no longer stops a test job that has not started.
   #
+  # `tests-launchers` starts with a runner yq version check (#1261): the launcher fixtures that reach the
+  # launchers' yq check with no stub yq ahead of the real one run it against the image's yq, so a yq below the
+  # launchers' minimum fails there, named, instead of as a launcher refusal. The minimum stays in the shared file.
+  #
   # WOW_TESTS_REQUIRE_TOOLS=1 turns the missing-tool skip of identity-review, identity-launchers
   # and review-verdict into a failure, so CI keeps no second copy of those suites' tool lists
   # (#985, #986). Other suites' skips are named in the job summary instead; the broker suite
@@ -192,6 +196,25 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: runner yq version check
+        shell: pwsh
+        run: |
+          $script:LaunchProg = 'ci'
+          $script:LaunchUsage = ''
+          . ./scripts/identity/wow-launch-common.ps1
+          $text = ''
+          $out = & yq --version 2>&1
+          if ($LASTEXITCODE -eq 0) { $text = ($out | ForEach-Object { "$_" }) -join "`n" }
+          $v = Test-YqVersion $text
+          if ($v.Status -ceq 'ok') {
+            Write-Output "runner yq v$($v.Found), the launchers' minimum is v$($v.Minimum)"
+          } elseif ($v.Status -ceq 'older') {
+            Write-Output "runner yq v$($v.Found) is older than the launchers' minimum v$($v.Minimum): the runner image's yq is below it, so the launcher fixtures are not run"
+            exit 1
+          } else {
+            Write-Output "no yq version could be read from the runner's yq --version; the launchers' minimum is v$($v.Minimum)"
+            exit 1
+          }
       - name: host driver launcher fixtures
         env:
           WOW_TESTS_REQUIRE_TOOLS: "1"
