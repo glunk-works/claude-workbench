@@ -24,7 +24,8 @@
   Run it from a PowerShell 7.2+ prompt on the host, once. The sh it records is resolved now (or
   -Sh), because a task does not search the same PATH an interactive shell does; openssl, curl
   and jq must be on the user's PATH. The task runs pwsh through conhost.exe --headless, so no window opens
-  on a tick. -Unregister removes the task and ends the broker process it started (stopping conhost does not).
+  on a tick. -Unregister removes the task and ends the broker process it started (stopping conhost does not),
+  or warns instead when the task's action names broker.ps1 with no quoted -File path.
   -WhatIf shows what would be registered.
 
   A task already registered under -TaskName for another home is refused, naming both homes, unless
@@ -52,11 +53,12 @@ if ($Unregister) {
     $found = @(Get-ScheduledTask -TaskName $TaskName)
     if ($found.Count -ne 1) { throw "expected one task named $TaskName, found $($found.Count)" }
     . (Join-Path $PSScriptRoot 'task-process.ps1')
-    $span = Get-FileArgSpan (@($found[0].Actions)[0].Arguments)
+    $actionArgs = (@($found[0].Actions)[0].Arguments)
+    $span = Get-FileArgSpan $actionArgs
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
     # After the unregister, so a broker a trigger started in between is ended too.
-    if ($span) { Stop-FileArgProcess $span }
+    if ($span) { Stop-FileArgProcess $span } else { Write-NoSpanWarning $TaskName $actionArgs }
   }
   return
 }

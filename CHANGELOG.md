@@ -33,6 +33,7 @@ the GitHub release notes.
 - `wow-review-poll` skips a PR whose base is not the default branch and `wow-review` refuses one with exit 1, nothing posted; it applies once the host tools are reinstalled (#124).
 - `register-broker-task.ps1` refuses to replace a task registered under the same name for another identity home, naming both homes, unless `-ReplaceOtherHome` is passed; re-registering the same home is unchanged (#1594).
 - `wow-review` now removes stale `wow-review:` tags after the current one exists, keeping every tag a known home's installed `MANIFEST` or an existing container names; it applies once the host tools are reinstalled (#1590).
+- Both broker stop paths (`register-broker-task.ps1 -Unregister` and `install-host-tools.ps1 -StopTask`) now warn, naming the task, when its action names `broker.ps1` but carries no quoted `-File` path they can end the broker by (#1029).
 
 ### Fixed
 
