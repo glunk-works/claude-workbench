@@ -9,6 +9,7 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,6 +35,7 @@ jobs:
   # what a required-checks list would have to carry.
   coupling:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,6 +52,7 @@ jobs:
   # image without either must fail this gate, not silently skip them.
   invariants:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -86,6 +89,7 @@ jobs:
   # `architect-review` gates.
   changed-paths:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       cursor_only: ${{ steps.paths.outputs.cursor_only }}
     steps:
@@ -150,6 +154,7 @@ jobs:
     needs: changed-paths
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -181,6 +186,7 @@ jobs:
     needs: changed-paths
     if: ${{ always() && needs.changed-paths.outputs.cursor_only != 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -196,6 +202,7 @@ jobs:
     needs: changed-paths
     if: ${{ always() && needs.changed-paths.outputs.cursor_only != 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -213,6 +220,7 @@ jobs:
     needs: changed-paths
     if: ${{ always() && needs.changed-paths.outputs.cursor_only != 'true' }}
     runs-on: windows-latest
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -260,6 +268,7 @@ jobs:
   # uploads its findings to the Security tab instead of silently skipping.
   zizmor:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       security-events: write
