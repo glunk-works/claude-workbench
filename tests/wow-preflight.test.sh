@@ -253,6 +253,11 @@ check_ui "rule_types a map" "ruleset approval"
 case "$(detail 'ruleset approval')" in *"could not be read as a list"*) echo "ok - rule_types a map: detail names it" ;; *) echo "FAIL - rule_types a map: detail [$(detail 'ruleset approval')]" >&2; fail=1 ;; esac
 assert_eq "rule_types a map: the parameters row is not a contradicting missing" "check in the UI" "$(state 'approval rule parameters')"
 assert_eq "rule_types a map: the other ruleset stays ok" ok "$(state 'ruleset checks')"
+# the row reads the same whichever position a malformed rule_types holds: before the pull_request entry, or after it
+setup_ok; printf '%s\n' '  - name: extra' '    source: repo' '    rule_types: {a: deletion}' >>"$yml"; run
+assert_eq "a map rule_types listed after the pull_request entry: the parameters row" "check in the UI" "$(state 'approval rule parameters')"
+setup_ok; sed -i 's/rule_types: \[required_status_checks, deletion\]/rule_types: {a: deletion}/' "$yml"; run
+assert_eq "a map rule_types listed before the pull_request entry: the parameters row" "check in the UI" "$(state 'approval rule parameters')"
 setup_ok; sed -i '/^rulesets:/,$d' "$yml"; run
 check_missing "no rulesets key" rulesets "no rulesets key"
 assert_eq "no rulesets key: ruleset-drift.sh is not run" 0 "$(logged rules/branches)"

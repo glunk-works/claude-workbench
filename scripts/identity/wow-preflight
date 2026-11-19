@@ -178,11 +178,11 @@ else
   fi
 fi
 
-# The ruleset rows judge the approval rule's parameters; this row stays only when no entry declares one.
+# The ruleset rows judge the approval rule's parameters; this row stays only when no entry declares one, and reads `check in the UI` when any entry's rule_types is not a list.
 if [ "$(yq 'has("rulesets")' "$yml" 2>/dev/null </dev/null)" != true ]; then
   row 'approval rule parameters' missing 'no rulesets entry declares a pull_request rule'
 else
-  anypr=$(yq -o=json -I=0 '.rulesets' "$yml" 2>/dev/null </dev/null | jq -r 'if type == "array" then any(.[]; .rule_types | if type == "array" then any(. == "pull_request") else error("shape") end) else error("shape") end' 2>/dev/null) || anypr=
+  anypr=$(yq -o=json -I=0 '.rulesets' "$yml" 2>/dev/null </dev/null | jq -r 'if type == "array" and all(.[]; (.rule_types | type) == "array") then any(.[]; .rule_types | any(. == "pull_request")) else error("shape") end' 2>/dev/null) || anypr=
   case "$anypr" in
     false) row 'approval rule parameters' missing 'no rulesets entry declares a pull_request rule' ;;
     true) ;;

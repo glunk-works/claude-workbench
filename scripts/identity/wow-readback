@@ -33,9 +33,10 @@
 #                          (all lists empty, bypass_actors=0, approval=1 exactly when the entry declares
 #                          a pull_request rule); anything else, `missing`, `inconclusive` and the
 #                          not-visible line included, is a fail
-#   by id <ruleset>        found by name in the rulesets list, read by id: created_at or updated_at at or
-#                          after --since is a fail (a deleted and recreated ruleset keeps its name), as is
-#                          a name with no match or more than one
+#   by id <ruleset>        found by name in the rulesets list, among the entries whose source_type is the
+#                          string Repository (an org ruleset of the same name is not counted), read by id:
+#                          created_at or updated_at at or after --since is a fail (a deleted and recreated
+#                          ruleset keeps its name), as is a name with no match or more than one
 #   history <ruleset>      any history entry at or after --since is a fail
 #   tag bypass <ruleset>   for a `target: tag` entry: a bypass_actors list that is non-empty, absent, null
 #                          or not a list is a fail
@@ -289,13 +290,13 @@ if [ -n "$n" ]; then
     if [ "$list_ok" != 1 ]; then
       fail "by id $nm" 'the rulesets list could not be read'
     else
-      cnt=$(jq -r --arg n "$nm" '[.[] | select(.name == $n)] | length' "$T/list.json" 2>/dev/null) || cnt=
+      cnt=$(jq -r --arg n "$nm" '[.[] | select(.source_type == "Repository" and .name == $n)] | length' "$T/list.json" 2>/dev/null) || cnt=
       if [ "$cnt" = 0 ]; then
         fail "by id $nm" 'no ruleset of that name in the rulesets list'
       elif [ "$cnt" != 1 ]; then
         fail "by id $nm" 'more than one ruleset of that name, or the list is unreadable'
       else
-        id=$(jq -r --arg n "$nm" '[.[] | select(.name == $n)][0].id | if type == "number" and . == floor and . >= 0 then tostring else empty end' "$T/list.json" 2>/dev/null) || id=
+        id=$(jq -r --arg n "$nm" '[.[] | select(.source_type == "Repository" and .name == $n)][0].id | if type == "number" and . == floor and . >= 0 then tostring else empty end' "$T/list.json" 2>/dev/null) || id=
         case "$id" in '' | *[!0-9]*) id= ; fail "by id $nm" 'the ruleset id is not a number' ;; esac
         if [ -n "$id" ]; then
           if ! rd "$T/rs.$i.json" "repos/$repo/rulesets/$id"; then
@@ -380,6 +381,7 @@ esac
 # These three judge state at the time of the run, so --since and --until do not apply. The two rules
 # below are the ones plugins/way-of-working/bin/schema-complete.sh holds for the project file's
 # `environments` and `repo_settings` keys, run here through yq's whole-string match and read back as one boolean.
+# tests/wow-readback.test.sh keeps each rule byte-identical to its copy in plugins/way-of-working/bin/schema-complete.sh.
 ENV_RULE='.environments | explode(.) | . as $l
     | ([$l[] | . as $e | (if (($e | tag) != "!!map") then false
         elif (($e | keys | sort | join(",")) != "admins_can_bypass,branch_policy,branches,name,reviewers") then false
@@ -466,8 +468,11 @@ elif [ "$envstate" = invalid ] || [ "$envstate" = unreadable ]; then
 elif [ "$envstate" = none ]; then
   pass environments 'the project file declares none'
 else
-  en=$(jq 'length' "$T/envs.json" 2>/dev/null) || en=0
-  [ "$en" -gt 0 ] || pass environments 'the project file declares none'
+  en=$(jq 'length' "$T/envs.json" 2>/dev/null) || en=
+  case "$en" in
+    0) pass environments 'the project file declares none'; en=0 ;;
+    '' | *[!0-9]* | 0?*) fail environments 'the declared environments could not be counted'; en=0 ;;
+  esac
   i=0
   while [ "$i" -lt "$en" ]; do
     ent=$(jq -c ".[$i]" "$T/envs.json" 2>/dev/null) || ent=
