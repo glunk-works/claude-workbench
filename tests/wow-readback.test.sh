@@ -7,7 +7,8 @@
 # by _) to a canned file under $STUBS, applies the caller's own --jq filter, fails with `(HTTP 404)` on
 # stderr when the file is absent (or with the text of `<name>.rc` when that exists), and logs every call.
 #
-# Permitted toolset: POSIX sh, GNU date, jq and yq (mikefarah v4); the suite skips, loudly, without jq or yq.
+# Permitted toolset: POSIX sh, GNU date, jq and yq (mikefarah v4); the suite skips, loudly, without jq or yq
+# or without GNU `date -d` (the window fixtures use a relative-day expression).
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,6 +19,11 @@ for tool in jq yq; do
     exit 0
   fi
 done
+
+if ! date -u -d "$(date -u +%Y-%m-%d) -30 days" +%Y-%m-%dT00:00:00Z >/dev/null 2>&1; then
+  echo "skip - wow-readback fixtures: no GNU date -d" >&2
+  exit 0
+fi
 
 tmp="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
@@ -69,6 +75,25 @@ for _t in jq yq; do
   chmod 755 "$tmp/crbin/$_t"
 done
 
+# a jq that fails (JQ_MODE=fail) or prints x (JQ_MODE=x) on the environments count, `jq length <...>envs.json`, and is the real jq otherwise
+mkdir -p "$tmp/jqbin"
+cat >"$tmp/jqbin/jq" <<'JQW'
+#!/bin/sh
+last=
+for a in "$@"; do last=$a; done
+if [ "${1:-}" = length ]; then
+  case "$last" in
+    *envs.json)
+      case "${JQ_MODE:-}" in
+        fail) exit 1 ;;
+        x) echo x; exit 0 ;;
+      esac ;;
+  esac
+fi
+exec "$REAL_JQ" "$@"
+JQW
+chmod 755 "$tmp/jqbin/jq"
+
 ep_key() { printf '%s' "$1" | tr '/?=' '___'; }
 put() { printf '%s\n' "$2" >"$STUBS/$(ep_key "$1")"; }
 fail_ep() { printf '%s\n' "${2:-gh: Server Error (HTTP 500)}" >"$STUBS/$(ep_key "$1").rc"; }
@@ -116,7 +141,7 @@ setup_ok() {
   put repos/o/r/environments/rel/deployment-branch-policies '{"total_count":1,"branch_policies":[{"name":"main","type":"branch"}]}'
   put repos/o/r/actions/permissions/workflow '{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}'
   put repos/o/r/rules/branches/main "$rules_ok"
-  put repos/o/r/rulesets '[{"id":1,"name":"checks"},{"id":2,"name":"approval"}]'
+  put repos/o/r/rulesets '[{"id":1,"name":"checks","source_type":"Repository"},{"id":2,"name":"approval","source_type":"Repository"}]'
   put repos/o/r/rulesets/1 "{\"bypass_actors\":[],\"created_at\":\"$BEFORE\",\"updated_at\":\"$BEFORE\"}"
   put repos/o/r/rulesets/2 "{\"bypass_actors\":[],\"created_at\":\"$BEFORE\",\"updated_at\":\"$BEFORE\"}"
   put repos/o/r/rulesets/1/history "[{\"version_id\":1,\"updated_at\":\"$BEFORE\"}]"
@@ -168,10 +193,12 @@ assert_eq "clean: every call carried the token" 0 "$(grep -c bad "$STUBS/tok.log
 assert_eq "clean: the revoke line on stderr" "wow-readback: done; revoke the admin token now: wow-admin o/r --revoke" "$(tail -n 1 "$tmp/err")"
 
 # --- CR-ending tool output ------------------------------------------------------------------
-setup_ok; rm -f "$STUBS/gh.log" "$STUBS/tok.log"; rc=0
+setup_ok; run o/r --since "$SINCE"; cp "$tmp/out" "$tmp/out.plain"
+rm -f "$STUBS/gh.log" "$STUBS/tok.log"; rc=0
 TMPDIR="$tmp/tmpdir" PATH="$tmp/ghbin:$tmp/crbin:$PATH_SAVE" "$tmp/bin/wow-readback" o/r --since "$SINCE" >"$tmp/out" 2>"$tmp/err" </dev/null || rc=$?
 assert_eq "CR-ending tools: exit 0" 0 "$rc"
 assert_eq "CR-ending tools: eleven pass lines" 11 "$(awk -F'\t' '$2 == "pass"' "$tmp/out" | wc -l | tr -d ' ')"
+if cmp -s "$tmp/out.plain" "$tmp/out"; then echo "ok - CR-ending tools: stdout equals the plain run's, byte for byte"; else echo "FAIL - CR-ending tools: stdout differs from the plain run's" >&2; fail=1; fi
 
 # --- ruleset by id and history ----------------------------------------------------------------
 setup_ok; put repos/o/r/rulesets/1 "{\"bypass_actors\":[],\"created_at\":\"$BEFORE\",\"updated_at\":\"$AFTER\"}"; run
@@ -181,11 +208,26 @@ setup_ok; put repos/o/r/rulesets/1 "{\"bypass_actors\":[],\"created_at\":\"$BEFO
 expect "updated after --until still fails" 1 "by id checks" fail
 setup_ok; put repos/o/r/rulesets/2 "{\"bypass_actors\":[],\"created_at\":\"$AFTER\",\"updated_at\":\"$BEFORE\"}"; run
 expect "recreated (created_at after --since)" 1 "by id approval" fail
-setup_ok; put repos/o/r/rulesets '[{"id":2,"name":"approval"}]'; run
+setup_ok; put repos/o/r/rulesets '[{"id":2,"name":"approval","source_type":"Repository"}]'; run
 expect "a declared name with no match" 1 "by id checks" fail
 assert_eq "no match: history fails too" fail "$(result 'history checks')"
-setup_ok; put repos/o/r/rulesets '[{"id":1,"name":"checks"},{"id":3,"name":"checks"},{"id":2,"name":"approval"}]'; run
+setup_ok; put repos/o/r/rulesets '[{"id":1,"name":"checks","source_type":"Repository"},{"id":3,"name":"checks","source_type":"Repository"},{"id":2,"name":"approval","source_type":"Repository"}]'; run
 expect "two matches by name" 1 "by id checks" fail
+ORG9='{"id":9,"name":"checks","source_type":"Organization"}'
+R1='{"id":1,"name":"checks","source_type":"Repository"}'
+R2='{"id":2,"name":"approval","source_type":"Repository"}'
+setup_ok; put repos/o/r/rulesets "[$R1,$ORG9,$R2]"; run
+expect "an org ruleset of the same name listed after the repo one" 0 "by id checks" pass
+assert_eq "an org ruleset listed after: the drift row passes" pass "$(result 'drift checks')"
+setup_ok; put repos/o/r/rulesets "[$ORG9,$R1,$R2]"; run
+expect "an org ruleset of the same name listed before the repo one" 1 "by id checks" pass
+assert_eq "an org ruleset listed before: the drift row still fails (ruleset-drift.sh takes the first name match)" fail "$(result 'drift checks')"
+setup_ok; put repos/o/r/rulesets "[{\"id\":1,\"name\":\"checks\"},$R2]"; run
+expect "a declared name listed with no source_type" 1 "by id checks" fail
+assert_eq "no source_type: the no-ruleset detail" "no ruleset of that name in the rulesets list" "$(detail 'by id checks')"
+setup_ok; put repos/o/r/rulesets '[{"id":1,"name":"checks","source_type":"Organization"},'"$R2"']'; run
+expect "a declared name listed only as an Organization entry" 1 "by id checks" fail
+assert_eq "organization only: the no-ruleset detail" "no ruleset of that name in the rulesets list" "$(detail 'by id checks')"
 setup_ok; put repos/o/r/rulesets/1/history "[{\"updated_at\":\"$AFTER\"}]"; run
 expect "a history entry after --since" 1 "history checks" fail
 setup_ok; put repos/o/r/rulesets/1/history "[{\"updated_at\":\"$BEFORE\"},{\"updated_at\":\"$BEFORE\"}]"; run
@@ -212,7 +254,7 @@ rules_tag='{"id":1,"name":"tags","target":"tag","enforcement":"active","rules":[
 tag_setup() {
   setup_ok; tagyml
   printf '%s' "$YML" >"$STUBS/$(ep_key 'repos/o/r/contents/.ai/project.yml?ref=main')"
-  put repos/o/r/rulesets '[{"id":1,"name":"tags"}]'
+  put repos/o/r/rulesets '[{"id":1,"name":"tags","source_type":"Repository"}]'
   put repos/o/r/rulesets/1/history '[]'
 }
 tag_setup
@@ -351,6 +393,13 @@ setup_ok; put repos/o/r/actions/workflows '[1]'; run
 expect "a workflows page of the wrong shape" 1 "active workflows" fail
 setup_ok; fail_ep repos/o/r; run
 expect "no default branch" 1 "active workflows" fail
+setup_ok; put repos/o/r/actions/workflows '{"total_count":1,"workflows":[{"path":".github/workflows/a\u0001b.yml","state":"active"}]}'; run
+assert_eq "a control byte in a row value: exit 1 (the fallback sets anyfail)" 1 "$rc"
+assert_eq "a control byte in a row value: the unprintable line row fails" fail "$(result 'unprintable line')"
+assert_eq "a control byte in a row value: the detail" "unprintable value" "$(detail 'unprintable line')"
+assert_eq "a control byte in a row value: no active workflows row" "" "$(result 'active workflows')"
+assert_eq "a control byte in a row value: the byte is not in stdout" 0 "$(LC_ALL=C grep -c "$(printf '\001')" "$tmp/out" || true)"
+assert_eq "a control byte in a row value: that row is the only fail" 1 "$(awk -F'\t' '$2 == "fail"' "$tmp/out" | wc -l | tr -d ' ')"
 
 # --- environments -------------------------------------------------------------------------------
 envp() { put repos/o/r/environments/rel "$1"; }
@@ -428,6 +477,7 @@ envone "a string admins_can_bypass" 'environments:
 '
 setup_ok; drop_ep 'repos/o/r/contents/.ai/project.yml?ref=main'; run
 assert_eq "an unreadable project file: environments fails" fail "$(result environments)"
+assert_eq "an unreadable project file: no environment read" 0 "$(grep -c 'repos/o/r/environments' "$STUBS/gh.log" || true)"
 for body in 'none' 'environments: null
 ' 'environments: []
 '; do
@@ -446,6 +496,36 @@ assert_eq "two declared environments: in list order" "environment rel
 environment stage" "$(grep '^environment ' "$tmp/out" | cut -f1)"
 setup_ok; put repos/o/r/environments/other '{"name":"other","can_admins_bypass":true}'; run
 assert_eq "an undeclared environment is not read" 0 "$(grep -c 'environments/other' "$STUBS/gh.log" || true)"
+
+# a failed or non-numeric count of the declared environments is a fail, never "declares none"
+for mode in fail x; do
+  setup_ok; rm -f "$STUBS/gh.log" "$STUBS/tok.log"; rc=0
+  JQ_MODE=$mode TMPDIR="$tmp/tmpdir" PATH="$tmp/jqbin:$tmp/ghbin:$PATH_SAVE" "$tmp/bin/wow-readback" o/r --since "$SINCE" >"$tmp/out" 2>"$tmp/err" </dev/null || rc=$?
+  assert_eq "a count that [$mode]s: exit 1" 1 "$rc"
+  assert_eq "a count that [$mode]s: one environments line" 1 "$(grep -c '^environments	' "$tmp/out" || true)"
+  assert_eq "a count that [$mode]s: it fails" fail "$(result environments)"
+  assert_eq "a count that [$mode]s: the detail" "the declared environments could not be counted" "$(detail environments)"
+  assert_eq "a count that [$mode]s: no environment row" 0 "$(grep -c '^environment ' "$tmp/out" || true)"
+  assert_eq "a count that [$mode]s: no environment read" 0 "$(grep -c 'repos/o/r/environments' "$STUBS/gh.log" || true)"
+done
+# the two rules are held in wow-readback and in schema-complete.sh; they stay byte-identical
+SC=$root_dir/plugins/way-of-working/bin/schema-complete.sh
+rule_rb() { # rule_rb <NAME>: the text after NAME=' through the line ending to_string', without the quotes
+  awk -v n="$1" 'f == 0 && index($0, n "=\x27") == 1 { sub(/^[A-Z_]+=\x27/, ""); f = 1 } f == 1 { print; if ($0 ~ /to_string\x27$/) exit }' "$root_dir/scripts/identity/wow-readback" | sed '$ s/\x27$//'
+}
+rule_sc() { # rule_sc <function> <key>: the yq expression, from .<key> | explode(.) through to_string
+  awk -v fn="$1" -v k="$2" '
+    index($0, fn "() {") == 1 { inf = 1; next }
+    inf == 1 && f == 0 && index($0, "yq eval \x27." k " | explode(.)") { sub(/^.*yq eval \x27/, ""); f = 1 }
+    f == 1 { i = index($0, "\x27 \"$FILE\""); if (i > 0) { print substr($0, 1, i - 1); exit } print }' "$SC"
+}
+for pair in "ENV_RULE check_environments_entries environments" "RS_RULE check_repo_settings_entries repo_settings"; do
+  set -- $pair
+  a=$(rule_rb "$1"); b=$(rule_sc "$2" "$3")
+  assert_eq "$1 is not empty" yes "$([ -n "$a" ] && echo yes || echo no)"
+  assert_eq "$2's expression is not empty" yes "$([ -n "$b" ] && echo yes || echo no)"
+  assert_eq "$1 equals the expression in schema-complete.sh" "$b" "$a"
+done
 
 # --- repo settings ------------------------------------------------------------------------------
 setup_ok; run

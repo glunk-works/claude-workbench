@@ -441,7 +441,7 @@ if [ -n "$wrong_hits" ]; then
 fi
 fi
 
-# --- 9. Every executed hook/bin script is stored executable (#214) -----------------
+# --- 9. Every executed hook, bin script and host command is stored executable (#214, #1492) ---
 if want 9; then
 #
 # `hooks/hooks.json` runs ai-cursor-banner.sh directly, and the skills call every
@@ -449,6 +449,9 @@ if want 9; then
 # records, so a script stored 100644 installs non-executable, and a hook that cannot run
 # fails silently ("the hook didn't run" reads exactly like "nothing to report").
 # ai-cursor-banner.sh was stored 100644 at every tag from v0.1.0 through v0.15.0 (#214).
+# The host commands under scripts/identity (every `wow-*` whose name has no `.`) are run by
+# their path, so they are held to the same mode (#1492); wow-common.sh is sourced and the
+# `.ps1` files run under pwsh, so neither is included.
 # This guards the INDEX mode only; a copy that drops mode bits (`cp` without `-p`, a zip
 # extract) is not cured by it -- the issue's alternative, running the hook through
 # `bash`, would be, and was not taken here.
@@ -461,10 +464,16 @@ if want 9; then
 mode_hits=""
 mode_problem=""
 disk_scripts=0
-for f in "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}"; do
+HOST_CMDS=()
+for f in scripts/identity/wow-*; do
+  [ -e "$f" ] || continue
+  case "${f##*/}" in *.*) continue ;; esac
+  HOST_CMDS+=("$f")
+done
+for f in "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}" "${HOST_CMDS[@]}"; do
   [ -e "$f" ] && disk_scripts=$((disk_scripts + 1))
 done
-if ! ls_out=$(git ls-files -s -- "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}" 2>&1); then
+if ! ls_out=$(git ls-files -s -- "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}" "${HOST_CMDS[@]}" 2>&1); then
   mode_problem="could not read the git index: $ls_out"
 else
   listed=0
@@ -474,18 +483,18 @@ else
     [ "$mode" = "100755" ] || mode_hits+="  $path (mode $mode)"$'\n'
   done <<<"$ls_out"
   if [ "$listed" -ne "$disk_scripts" ]; then
-    mode_problem="$disk_scripts hook/bin script(s) on disk but $listed in the index (untracked?)"
+    mode_problem="$disk_scripts hook/bin/host-command script(s) on disk but $listed in the index (untracked?)"
   fi
 fi
 if [ -n "$mode_hits" ]; then
-  report "a hook or bin script is stored without the executable bit (#214)" \
+  report "a hook, bin script or host command is stored without the executable bit (#214, #1492)" \
     "$mode_hits" \
     "Fix: git update-index --chmod=+x <path> (or git add --chmod=+x for a new file," \
     "or after a rename). A script that cannot execute fails silently; the index mode" \
     "is what an install gets."
 fi
 if [ -n "$mode_problem" ]; then
-  report "the executable-bit check could not be completed (#214)" "  $mode_problem"
+  report "the executable-bit check could not be completed for hook, bin or host-command scripts (#214, #1492)" "  $mode_problem"
 fi
 fi
 
