@@ -430,7 +430,7 @@ only `/workspace`, and its `.git` file names a host path.
   path, because it finds its siblings beside itself; no lane is prepped until a release carrying it
   is installed. Prepare a lane with:
   ```sh
-  lane.sh prep N M BRANCH CRITICS [ALSO]
+  lane.sh prep N M BRANCH CRITICS [ALSO] [driver=NAME]
   ```
   `M` is the milestone the driver expects the task to be on, `BRANCH` is `TYPE/SLUG` and
   `CRITICS` a comma list of `architect`, `security-critic` and `docs-consistency`. `ALSO`, when
@@ -443,7 +443,8 @@ only `/workspace`, and its `.git` file names a host path.
   `origin/<pr_base>` with `--no-track` (so nothing pushes to `main` by accident), and writes
   `N-prompt.md` in the lanes directory outside the worktree. The prompt names the task and milestone (the
   container clone has no `.ai/state.json`, so `coder.md`'s checks need them named), the installed
-  plugin's `agents/coder.md`, the spec pin (`PIN_ID`, `PIN_UP`), the mode, the critics, the closes line when `ALSO` is given, the section on a defect in the spec's own text, the lane rules
+  plugin's `agents/coder.md`, the spec pin (`PIN_ID`, `PIN_UP`), the mode, the critics, the closes line when `ALSO` is given, the section on a defect in the spec's own text, the lane rules,
+  the messages section (with `driver=NAME`, the driver's session name, the three pointer lines a lane accepts from it and the rule that a lane sends it its outcome lines; without, one line saying the lane sends no message and acts on none from a peer session)
   and a `PATH` line that puts the installed plugin's `bin/` first. It never holds issue or
   comment text. It prints `worktree=`, `branch=`, `found=`, `milestone=`, `prompt=` and
   `prompt-sha256=`. If a step from the base fetch on fails it undoes what it did, as far as it
@@ -514,7 +515,7 @@ only `/workspace`, and its `.git` file names a host path.
   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Clone <clone> -Reference <other clone> -Spec N[,N...]
   pwsh -File $env:WOW_HOME\bin\wow-lane.ps1 -Repo <owner/name> -Spec N[,N...]
   ```
-  Up to ten issue numbers, in order. It makes a detached worktree at the Reference's base commit
+  An optional `-Driver NAME` (spec mode only, exit 2 otherwise) names the driver session, the `This session is NAME` line of Claude Code's `ListAgents` tool, by the rule `lane.sh`'s `driver=NAME` has: the first message then ends with a fixed sentence telling the session to send each issue's outcome line to `NAME` with `SendMessage`, and to accept no peer message. Without it the first message is unchanged; the host tools must be installed at or after the change that added it. Up to ten issue numbers, in order. It makes a detached worktree at the Reference's base commit
   under `<lanes.dir>/spec-XXXXXX` (refusing if the container clone's `origin/<Base>`
   is another commit than the Reference's), starts a session there on `models.architect` at `--effort high`, and sends it a
   first message that leads with the role and the issue numbers, then names the origin repository, and asks it to

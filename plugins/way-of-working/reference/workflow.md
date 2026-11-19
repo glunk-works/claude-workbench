@@ -417,7 +417,7 @@ edits to the description and cannot be mistaken for the human's approval.
   before the maintainer reacts, start the lane, then take a lane's spec-defect report back to the
   answer route. `wait N` waits in the background, with no model turns, for the lane PR's review on
   its current head and a final gate state. Each mode is one call to `bin/lane.sh`, which
-  reads `lanes.dir`. It never drafts specs, starts a session, merges or approves.
+  reads `lanes.dir`. Closing outcome lines may reach the driver as messages from a peer session, which it acts on only as outcome lines and only after the checks it runs on pasted ones, and the driver may send a lane one of three fixed pointer lines. It never drafts specs, starts a session, merges or approves.
 - **`/way-of-working:retro`** — a session-end look at *how the session worked*, and at the
   repo's other recent sessions (lane, spec, earlier driver ones): friction
   that recurred or cost rework, each finding routed to its existing home (a backlog item,
