@@ -31,7 +31,7 @@
 #                path, a longer path or an empty line; an empty -File "" is no span;
 #                Stop-FileArgProcess under strict mode with stubbed cmdlets (no match, one, two, a survivor throws); static checks that the
 #                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess, and
-#                the install disables and re-enables the task (#1016), passing neither cmdlet -Confirm or -WhatIf
+#                the install disables and re-enables the task (#1016), and no identity script passes Disable-, Enable-, Start- or Stop-ScheduledTask -Confirm or -WhatIf
 #   guard        register-broker-task.ps1 reads the task registered under -TaskName before it calls the installer, and refuses (also
 #                under -WhatIf) one whose -WowHome names another home or none it can read, unless -ReplaceOtherHome is given (#1594; stubbed
 #                Get-ScheduledTask, skipped, loudly, where [Environment]::SystemDirectory is set): no task, the same home, the same home in
@@ -570,7 +570,7 @@ check "register: no RestartCount" test "$(grep -c 'RestartCount' "$reg_ps")" -eq
 check "register: dot-sources task-process.ps1 and calls Stop-FileArgProcess" sh -c 'grep -q "task-process.ps1" "$1" && grep -q "Stop-FileArgProcess" "$1"' sh "$reg_ps"
 check "install: dot-sources task-process.ps1 and calls Stop-FileArgProcess" sh -c 'grep -q "task-process.ps1" "$1" && grep -q "Stop-FileArgProcess" "$1"' sh "$inst_ps"
 check "install: disables and re-enables the task" sh -c 'grep -q "Disable-ScheduledTask" "$1" && grep -q "Enable-ScheduledTask" "$1"' sh "$inst_ps"
-# Disable-/Enable-ScheduledTask take no -Confirm or -WhatIf (they do not support ShouldProcess); passing one fails the
+# Disable-, Enable-, Start- and Stop-ScheduledTask take no -Confirm or -WhatIf (they do not support ShouldProcess); passing one fails the
 # install on the host. Read through the parser, so a continuation, an abbreviation, a splat or a module-qualified call counts and a comment does not.
 cat >"$tmp/noconfirm.ps1" <<'PS1'
 # A file it cannot read or parse, or no file at all, is exit 2: ParseFile reports those as parse errors, never a throw.
@@ -579,7 +579,7 @@ $bad = foreach ($p in $args) {
   $errs = $null
   $ast = [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$null, [ref]$errs)
   if ($errs) { [Console]::Error.WriteLine("${p}: $($errs[0].Message)"); exit 2 }
-  $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -match '(^|\\)(Dis|En)able-ScheduledTask$' }, $true) |
+  $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -match '(^|\\)((Dis|En)able|Start|Stop)-ScheduledTask$' }, $true) |
     Where-Object { $_.CommandElements | Where-Object {
       ($_ -is [System.Management.Automation.Language.CommandParameterAst] -and
         ('confirm'.StartsWith($_.ParameterName, 'OrdinalIgnoreCase') -or 'whatif'.StartsWith($_.ParameterName, 'OrdinalIgnoreCase') -or $_.ParameterName -in 'cf', 'wi')) -or
@@ -603,15 +603,25 @@ printf '%s\n' '$a = @{ Confirm = $false }' 'Disable-ScheduledTask -TaskName x @a
 printf '%s\n' 'Disable-ScheduledTask -TaskName x -wi' >"$tmp/nc-abbr.ps1"
 printf '%s\n' 'ScheduledTasks\Disable-ScheduledTask -TaskName x -Confirm:$false' >"$tmp/nc-mq-bad.ps1"
 printf '%s\n' 'ScheduledTasks\Enable-ScheduledTask -TaskName x' >"$tmp/nc-mq-ok.ps1"
+printf '%s\n' 'Stop-ScheduledTask -TaskName x -Confirm:$false' >"$tmp/nc-stop-bad.ps1"
+printf '%s\n' 'Start-ScheduledTask -TaskName x -wh' >"$tmp/nc-start-abbr.ps1"
+printf '%s\n' 'ScheduledTasks\Stop-ScheduledTask -TaskName x -Confirm:$false' >"$tmp/nc-mq-stop-bad.ps1"
+printf '%s\n' 'Start-ScheduledTask -TaskName x' 'Stop-ScheduledTask -TaskName x -ErrorAction SilentlyContinue' >"$tmp/nc-ss-ok.ps1"
+printf '%s\n' 'Unregister-ScheduledTask -TaskName x -Confirm:$false' >"$tmp/nc-unreg-ok.ps1"
 check "no-confirm check: a comment and a plain call pass" noconfirm "$(wp "$tmp/nc-ok.ps1")"
 check "no-confirm check: a continued -Confirm fails" noconfirm_fails "$(wp "$tmp/nc-cont.ps1")"
 check "no-confirm check: a splat fails" noconfirm_fails "$(wp "$tmp/nc-splat.ps1")"
 check "no-confirm check: an abbreviated -WhatIf fails" noconfirm_fails "$(wp "$tmp/nc-abbr.ps1")"
 check "no-confirm check: a module-qualified -Confirm fails" noconfirm_fails "$(wp "$tmp/nc-mq-bad.ps1")"
 check "no-confirm check: a module-qualified plain call passes" noconfirm "$(wp "$tmp/nc-mq-ok.ps1")"
+check "no-confirm check: a Stop-ScheduledTask -Confirm fails" noconfirm_fails "$(wp "$tmp/nc-stop-bad.ps1")"
+check "no-confirm check: a Start-ScheduledTask abbreviated -WhatIf fails" noconfirm_fails "$(wp "$tmp/nc-start-abbr.ps1")"
+check "no-confirm check: a module-qualified Stop-ScheduledTask -Confirm fails" noconfirm_fails "$(wp "$tmp/nc-mq-stop-bad.ps1")"
+check "no-confirm check: plain Start- and Stop-ScheduledTask calls pass" noconfirm "$(wp "$tmp/nc-ss-ok.ps1")"
+check "no-confirm check: Unregister-ScheduledTask -Confirm passes (outside the guard)" noconfirm "$(wp "$tmp/nc-unreg-ok.ps1")"
 check "no-confirm check: an unreadable path fails" sh -c '! "$@" 2>/dev/null' sh pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/noconfirm.ps1")" "$(wp "$tmp/nc-missing.ps1")"
 check "no-confirm check: no file fails" sh -c '! "$@" 2>/dev/null' sh pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/noconfirm.ps1")"
-check "identity scripts: no -Confirm or -WhatIf on Disable-/Enable-ScheduledTask" noconfirm_identity
+check "identity scripts: no -Confirm or -WhatIf on Disable-, Enable-, Start- or Stop-ScheduledTask" noconfirm_identity
 
 # --- other-home guard (#1594) -----------------------------------------------------------------
 # A run that passes the guard ends at the conhost lookup, where [Environment]::SystemDirectory is empty off Windows
