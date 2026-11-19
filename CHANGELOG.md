@@ -21,10 +21,11 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-**⚠️ Migration** — no repo changes behaviour on this bump; a consuming repo that wants rule-based critic selection sets `agents.diff_rule: []` (or a list of extra paths) in its `.ai/project.yml`, which takes effect once it merges on the default branch (#1614).
+**⚠️ Migration** — no repo changes behaviour on this bump; a consuming repo that wants rule-based critic selection sets `agents.diff_rule: []` (or a list of extra paths) in its `.ai/project.yml`, which takes effect once it merges on the default branch (#1614). Reinstall the host tools in every home before a driver on a pin carrying the session channel (#1679) hands over `-Driver`, since an older `wow-lane.ps1` refuses the parameter.
 
 ### Added
 
+- A message channel between the driver and the lane and spec sessions it starts: `lane.sh prep` takes `driver=NAME`, `wow-lane.ps1 -Spec` takes `-Driver NAME`, sessions send the driver their closing outcome lines, and the driver may send a lane one of three fixed pointer lines; the maintainer's decisions stay with the maintainer and pasting keeps working (#1679).
 - `install-host-tools.ps1` now writes the `wowd`, `wowl` and `wowend` launcher shortcuts into the host PowerShell profile, in a marked block it alone updates, with an owner-to-home map derived from the identity homes beside the default home; `docs/identity/DEV-CONTAINER.md` documents them (#1595).
 
 ### Changed
