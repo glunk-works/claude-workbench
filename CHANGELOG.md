@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- The review launcher's repeat check now writes only the reviewer App's open issues to the host, and its header states that title matching folds ASCII case only; it applies once the host tools are reinstalled (#1563).
+
 ## [0.39.0] — 2026-11-20
 
 **⚠️ Migration** — no `.ai/project.yml` needs a change on this bump, but a lane prepped with `driver=` now acts on the driver's pointer lines (#1679, below); a consuming repo that wants rule-based critic selection sets `agents.diff_rule: []` (or a list of extra paths) in its `.ai/project.yml`, which takes effect once it merges on the default branch (#1614). Reinstall the host tools in every home before a driver on a pin carrying the session channel (#1679) hands over `-Driver`, since an older `wow-lane.ps1` refuses the parameter.

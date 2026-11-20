@@ -338,6 +338,7 @@ findings_refused "a dot-dot segment" paths "$(pf '["a/../b"]')"
 findings_refused "a dot-dot path" paths "$(pf '[".."]')"
 findings_refused "a space in a path" paths "$(pf '["a b"]')"
 findings_refused "an at sign in a path" paths "$(pf '["a@b"]')"
+findings_refused "a backtick in a path" paths "$(pf '["a`b"]')"
 findings_refused "a token-shaped path" secret "$(pf "[\"ghp_$TOKEN36\"]")"
 findings_refused "a missing key" shape '[{"title":"T","type":"bug"}]'
 findings_refused "a non-string title" shape '[{"title":1,"body":"B","type":"bug"}]'
