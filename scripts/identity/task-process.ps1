@@ -1,4 +1,4 @@
-# Dot-sourced by register-broker-task.ps1 and install-host-tools.ps1 (issue #1016); defines functions, runs nothing.
+# Dot-sourced by register-broker-task.ps1, install-host-tools.ps1 and check-host.ps1 (issue #1016); defines functions, runs nothing.
 # A stopped scheduled task ends conhost, which can leave the pwsh it started running. These find that pwsh by the
 # `-File "..."` argument the task's own action carries, so they match what the task starts and nothing rebuilt from a home.
 # The pwsh's own command line need not carry it verbatim: the Store app-alias pwsh.exe reports one rebuilt with quotes

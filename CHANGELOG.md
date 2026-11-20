@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/identity/check-host.ps1`, run on the host from the install clone, reports one line per check of what the launchers need (`pwsh` 7.2 or newer, `yq` at the launchers' minimum, `gh`, an identity home's installed `bin` and how far behind the base it is, and its broker task registered and enabled) and fixes nothing (#1434).
+
 ## [0.39.0] — 2026-11-20
 
 **⚠️ Migration** — no `.ai/project.yml` needs a change on this bump, but a lane prepped with `driver=` now acts on the driver's pointer lines (#1679, below); a consuming repo that wants rule-based critic selection sets `agents.diff_rule: []` (or a list of extra paths) in its `.ai/project.yml`, which takes effect once it merges on the default branch (#1614). Reinstall the host tools in every home before a driver on a pin carrying the session channel (#1679) hands over `-Driver`, since an older `wow-lane.ps1` refuses the parameter.
