@@ -21,11 +21,13 @@ the GitHub release notes.
 
 ## [Unreleased]
 
-**⚠️ Migration** — no repo changes behaviour on this bump; a consuming repo that wants rule-based critic selection sets `agents.diff_rule: []` (or a list of extra paths) in its `.ai/project.yml`, which takes effect once it merges on the default branch (#1614). Reinstall the host tools in every home before a driver on a pin carrying the session channel (#1679) hands over `-Driver`, since an older `wow-lane.ps1` refuses the parameter.
+## [0.39.0] — 2026-11-20
+
+**⚠️ Migration** — no `.ai/project.yml` needs a change on this bump, but a lane prepped with `driver=` now acts on the driver's pointer lines (#1679, below); a consuming repo that wants rule-based critic selection sets `agents.diff_rule: []` (or a list of extra paths) in its `.ai/project.yml`, which takes effect once it merges on the default branch (#1614). Reinstall the host tools in every home before a driver on a pin carrying the session channel (#1679) hands over `-Driver`, since an older `wow-lane.ps1` refuses the parameter.
 
 ### Added
 
-- A message channel between the driver and the lane and spec sessions it starts: `lane.sh prep` takes `driver=NAME`, `wow-lane.ps1 -Spec` takes `-Driver NAME`, sessions send the driver their closing outcome lines, and the driver may send a lane one of three fixed pointer lines; the maintainer's decisions stay with the maintainer and pasting keeps working (#1679).
+- A message channel between the driver and the lane and spec sessions it starts: `lane.sh prep` takes `driver=NAME`, `wow-lane.ps1 -Spec` takes `-Driver NAME`, sessions send the driver their closing outcome lines, and the driver may send a lane one of three fixed pointer lines; the maintainer's decisions stay with the maintainer and pasting keeps working. A lane acts on those lines from any local session presenting the driver's name, which is not verified, and on `wow-driver: merge-base` it merges the base and pushes through `/way-of-working:ship` (#1679).
 - `install-host-tools.ps1` now writes the `wowd`, `wowl` and `wowend` launcher shortcuts into the host PowerShell profile, in a marked block it alone updates, with an owner-to-home map derived from the identity homes beside the default home; `docs/identity/DEV-CONTAINER.md` documents them (#1595).
 
 ### Changed
