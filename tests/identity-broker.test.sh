@@ -38,6 +38,8 @@
 #                unquoted action (nothing ended) and stays silent for a missing task (#1029); static checks that the
 #                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess and Write-NoSpanWarning, and
 #                no identity script passes Disable-, Enable-, Start- or Stop-ScheduledTask -Confirm or -WhatIf
+#   junction     Test-IsDefaultHome from broker.ps1 and install-host-tools.ps1 (their Resolve-RealPath and Test-IsDefaultHome definitions taken through the parser) is true for a
+#                junction to the default home and for a home reached through a junction in a parent component, and false for another directory (#1598; skipped, loudly, where no junction can be made)
 #   guard        register-broker-task.ps1 reads the task registered under -TaskName before it calls the installer, and refuses (also
 #                under -WhatIf) one whose -WowHome names another home or none it can read, unless -ReplaceOtherHome is given (#1594; stubbed
 #                Get-ScheduledTask, skipped, loudly, where [Environment]::SystemDirectory is set): no task, the same home, the same home in
@@ -275,6 +277,40 @@ else
 fi
 # Whatever happened, take the junctions off without following them before the temp tree is removed.
 for j in "$home/review-sessions/junc-sess" "$home/review-sessions/nest-sess/inner"; do
+  [ ! -e "$j" ] || pwsh -NoProfile -NonInteractive -Command "(Get-Item -LiteralPath '$(wp "$j")' -Force).Delete()" >/dev/null 2>&1 || true
+done
+
+# --- default-home junctions (#1598) ------------------------------------------------------------
+# Resolve-RealPath's junction branch, at function level: both scripts' Resolve-RealPath and Test-IsDefaultHome definitions are
+# taken through the PowerShell parser and run alone. Outside the tokens-root case that skips under MSYS, since a junction needs Windows.
+mkdir -p "$tmp/jd/default" "$tmp/jd/other" "$tmp/jd2"
+if mkjunction "$tmp/jd/jlink" "$tmp/jd/default" && mkjunction "$tmp/jd2/p" "$tmp/jd"; then
+  cat >"$tmp/jfix.ps1" <<'PS'
+param([string]$Script, [string]$Home1, [string]$Home2, [string]$Home3, [string]$Default)
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$null, [ref]$null)
+$defs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Resolve-RealPath', 'Test-IsDefaultHome' }, $true)
+if (@($defs).Count -ne 2) { 'missing'; exit 3 }
+foreach ($d in $defs) { . ([scriptblock]::Create($d.Extent.Text)) }
+# the runner's temp dir comes as an 8.3 short name, which a path through a junction loses; give every input its long form
+if ([Environment]::OSVersion.Platform -eq 'Win32NT') {
+  Add-Type -MemberDefinition '[DllImport("kernel32.dll", CharSet=CharSet.Unicode)] public static extern uint GetLongPathName(string s, System.Text.StringBuilder b, uint n);' -Name Lp -Namespace Wow
+  function Get-LongPath([string]$p) { $b = New-Object System.Text.StringBuilder 1024; if ([Wow.Lp]::GetLongPathName($p, $b, 1024) -gt 0) { $b.ToString() } else { $p } }
+  $Home1 = Get-LongPath $Home1; $Home2 = Get-LongPath $Home2; $Home3 = Get-LongPath $Home3; $Default = Get-LongPath $Default
+}
+"$(Test-IsDefaultHome $Home1 $Default) $(Test-IsDefaultHome $Home2 $Default) $(Test-IsDefaultHome $Home3 $Default)"
+foreach ($x in $Home1, $Home2, $Home3, $Default) { try { "resolved: $x -> $(Resolve-RealPath $x)" } catch { "resolved: $x -> THROW $_" } }
+PS
+  for f in broker.ps1 install-host-tools.ps1; do
+    got=$(pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/jfix.ps1")" -Script "$(wp "$root_dir/scripts/identity/$f")" \
+      -Home1 "$(wp "$tmp/jd/jlink")" -Home2 "$(wp "$tmp/jd2/p/default")" -Home3 "$(wp "$tmp/jd/other")" -Default "$(wp "$tmp/jd/default")" 2>&1) || true
+    first=$(printf '%s\n' "$got" | head -n 1)
+    [ "$first" = "True True False" ] || printf 'junction: %s printed: %s\n' "$f" "$got" >&2
+    check "junction: $f Test-IsDefaultHome is true for a junction to the default home, true through a parent junction, false for another directory" test "$first" = "True True False"
+  done
+else
+  echo "SKIP - a junction cannot be made here; the default-home junction fixtures did not run" >&2
+fi
+for j in "$tmp/jd/jlink" "$tmp/jd2/p"; do
   [ ! -e "$j" ] || pwsh -NoProfile -NonInteractive -Command "(Get-Item -LiteralPath '$(wp "$j")' -Force).Delete()" >/dev/null 2>&1 || true
 done
 

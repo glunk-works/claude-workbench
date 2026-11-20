@@ -108,7 +108,9 @@ resolve_tokens_root() {
   [ -n "${HOME:-}" ] || die "$msg, and HOME is empty, so the default home cannot be found"
   dh=$HOME/.config/glunk-identity
   # the default home itself: equal paths, or equal after every link is followed (cd -P), either ignoring ASCII letter case
-  lc_a=$(printf '%s' "$wow_home" | tr 'A-Z' 'a-z' | sed 's#//*#/#g; :a; s#/\./#/#; ta; s#/\.$##; s#/$##') lc_b=$(printf '%s' "$dh" | tr 'A-Z' 'a-z' | sed 's#//*#/#g; :a; s#/\./#/#; ta; s#/\.$##; s#/$##')
+  lc_a=$(printf '%s' "$wow_home" | tr 'A-Z' 'a-z' | sed -e 's#//*#/#g' -e ':a' -e 's#/\./#/#' -e 'ta' -e 's#/\.$##' -e 's#/$##') lc_b=$(printf '%s' "$dh" | tr 'A-Z' 'a-z' | sed -e 's#//*#/#g' -e ':a' -e 's#/\./#/#' -e 'ta' -e 's#/\.$##' -e 's#/$##')
+  # an empty result is a failed normalisation (a sed that prints nothing), never two equal paths
+  [ -n "$lc_a" ] && [ -n "$lc_b" ] || die "$msg, and a home path could not be normalised"
   rp_a=$(CDPATH= cd -P -- "$wow_home" 2>/dev/null && pwd | tr 'A-Z' 'a-z') || :
   rp_b=$(CDPATH= cd -P -- "$dh" 2>/dev/null && pwd | tr 'A-Z' 'a-z') || :
   if [ "$lc_a" = "$lc_b" ] || { [ -n "$rp_a" ] && [ "$rp_a" = "$rp_b" ]; }; then

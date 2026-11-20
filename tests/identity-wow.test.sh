@@ -47,6 +47,8 @@
 #                    check but still refuses a live legacy token of its own owner and a live admin/ token of another owner, and in the two-home order of the spec leaves each owner's token to its own revoke; default-home,
 #                    default-home LF and CRLF are accepted, two LFs, other content, an empty file, a link, a directory, an
 #                    empty HOME and the file in the default home itself (also through a link, a parent-component link or another letter case, with or without a trailing slash or /./) refuse mint and revoke (exit 1, curl uncalled)
+#                    (#1598) under a sed that refuses ;-joined labels a valid second home still mints and the default-home variants still refuse; under a sed that prints
+#                    nothing for one side's path a valid second home refuses with "could not be normalised" and curl uncalled, for each side
 #   secrecy          neither token nor passphrase reaches stdout, stderr or argv
 #   usage / config   bad arguments exit 2 and missing config exits 1, before curl is called
 #
@@ -1078,6 +1080,56 @@ rm -rf "$fh/.config/glunk-identity"; printf 'default-home\n' >"$fh/.config/GLUNK
 for hv in "$fh/.config/GLUNK-identity/" "$fh/./.config/GLUNK-identity" "$fh/././.config/GLUNK-identity"; do
   mint_in "$hv"; assert_eq "tokens root default home [$hv] mint rc" 1 "$rc"; assert_eq "tokens root default home [$hv] mint curl uncalled" 0 "$(calls)"
 done
+
+
+# sed shims (#1598): each runs the real sed by REAL_SED, captured before the shim exists; removed after its cases
+real_sed=$(command -v sed); REAL_SED=$real_sed; export REAL_SED
+# non-GNU emulation: refuses the ;-joined label forms
+cat >"$tmp/bin/sed" <<'STUB'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in *':a;'* | *'ta;'*) exit 1 ;; esac
+done
+exec "$REAL_SED" "$@"
+STUB
+chmod +x "$tmp/bin/sed"
+newfh; default_home
+shared_home nongnu 'default-home\n'
+mint_in "$h"; assert_eq "tokens root non-GNU sed: a valid second home mints rc" 0 "$rc"
+for how in file link parent slash dot case; do
+  case "$how" in
+    file) hv="$dh" ;;
+    link) hv="$tmp/tr-lnk-ng$trn" ; ln -s "$dh" "$hv" ;;
+    parent) hv="$tmp/tr-parent-ng$trn/.config/glunk-identity"; ln -s "$fh" "$tmp/tr-parent-ng$trn" ;;
+    case) mkdir -p "$fh/.config/GLUNK-identity"; hv="$fh/.config/GLUNK-identity" ;;
+    slash) hv="$dh/" ;;
+    dot) hv="$fh/./.config/glunk-identity" ;;
+  esac
+  if [ "$how" = case ]; then rm -rf "$dh"; cp "$home/apps.json" "$home/admin.enc.pem" "$home/review.pem" "$hv/"; fi
+  printf 'default-home\n' >"$hv/tokens-root"
+  mint_in "$hv"; assert_eq "tokens root non-GNU sed [$how] rc" 1 "$rc"; assert_eq "tokens root non-GNU sed [$how] curl uncalled" 0 "$(calls)"
+  has_msg "tokens root non-GNU sed [$how] message" "the default home itself takes no tokens-root file"
+done
+rm -f "$tmp/bin/sed"
+# one-sided empty output: the shim prints nothing, exit 0, only for the named side's lowercased path
+for side in b a; do
+  newfh; default_home
+  shared_home empty-$side 'default-home\n'
+  if [ "$side" = b ]; then EMPTY_FOR=$(printf '%s' "$dh" | tr 'A-Z' 'a-z'); else EMPTY_FOR=$(printf '%s' "$h" | tr 'A-Z' 'a-z'); fi
+  export EMPTY_FOR
+  cat >"$tmp/bin/sed" <<'STUB'
+#!/bin/sh
+in=$(cat)
+if [ "$in" = "$EMPTY_FOR" ]; then exit 0; fi
+printf '%s\n' "$in" | "$REAL_SED" "$@"
+STUB
+  chmod +x "$tmp/bin/sed"
+  mint_in "$h"; assert_eq "tokens root empty normalisation [lc_$side] rc" 1 "$rc"
+  has_msg "tokens root empty normalisation [lc_$side] message" "could not be normalised"
+  assert_eq "tokens root empty normalisation [lc_$side] curl uncalled" 0 "$(calls)"
+  rm -f "$tmp/bin/sed"
+done
+unset EMPTY_FOR
 
 
 # -- never run from the cwd ---------------------------------------------------------------------
