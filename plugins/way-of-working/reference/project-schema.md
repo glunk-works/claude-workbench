@@ -988,12 +988,16 @@ for a bullet without that exact marker, and `spec-post.sh` stops `bad-shape` on 
 the default branch's committed copy. `bin/schema-complete.sh` validates the key: `null` or a list whose
 every entry is a path of letters, digits, `.`, `_`, `-` and `/`, starting with a letter, digit, `.` or `_`,
 with no empty, `.` or `..` segment and no trailing `/`, else one `invalid append_only` finding.
-Only `spec-shape.sh` acts on it.
+Only `spec-shape.sh` and `merge-union.sh` act on it.
 
 The key adds no skip of its own: skipping still needs the marker. Every bullet for a declared file then
 carries the marker and is skipped by the freshness check, so a repo declares only a file every spec only
 appends to, never a workflow file or a file the loop protects. A `.github` path (`.github` itself or
 anything under `.github/`) is refused, because `spec-fresh.sh` never skips one.
+
+A lane's `merge-base` merge whose only conflict is in one listed file, with every conflict region inside that
+file's first level-2 heading section, is resolved by `merge-union.sh` keeping both sides' lines. Any other
+conflict still aborts the merge.
 
 ### `host_tools`
 
