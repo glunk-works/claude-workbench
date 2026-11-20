@@ -42,7 +42,8 @@
 #                junction to the default home and for a home reached through a junction in a parent component, and false for another directory (#1598; skipped, loudly, where no junction can be made)
 #   guard        register-broker-task.ps1 reads the task registered under -TaskName before it calls the installer, and refuses (also
 #                under -WhatIf) one whose -WowHome names another home or none it can read, unless -ReplaceOtherHome is given (#1594; stubbed
-#                Get-ScheduledTask, skipped, loudly, where [Environment]::SystemDirectory is set): no task, the same home, the same home in
+#                Get-ScheduledTask, skipped, loudly, where [Environment]::SystemDirectory is set, and a failure instead when that holds off Windows
+#                with WOW_TESTS_REQUIRE_TOOLS exactly 1, since a real pwsh reads it empty there: guard_verdict decides run, skip or fail): no task, the same home, the same home in
 #                another letter case with backslashes, a different home, a different home with the switch, no -WowHome, no actions, no Arguments property
 #   no tool on PATH  with PATH holding only an empty directory and no -Sh, register-broker-task, broker
 #                and install-host-tools each reach their own "no POSIX sh found" / "git not found" message,
@@ -69,7 +70,11 @@
 #                a directory, a link, a dangling link and a path under a regular file left alone, the owner-to-home map (default home,
 #                sibling with a valid tokens-root, without, with a refused one, through a link, a broker.json that is not JSON, an owner in
 #                two homes, one owner in two letter cases), an install from a sibling home, no .config folder, a quoted folder name, the
-#                echo of wowd, wowl and wowend, the throws, and -WhatIf writing no profile
+#                echo of wowd, wowl and wowend, the throws, and -WhatIf writing no profile. Under MSYS those fixture-HOME cases (the owner-to-home map,
+#                the sibling homes, the default profile path, the empty HOME, the sibling-owner cross-check) do not run, and a smaller set does,
+#                with -ProfilePath a scratch file and HOME untouched: a first install into a missing directory writes one marker pair with CRLF
+#                throughout and a final CRLF, a second leaves the bytes identical, an LF profile gets the block with LF only and its first lines
+#                unchanged, and dot-sourcing the CRLF file defines wowd, wowl and wowend (the owner map is not asserted)
 #   sibling owners  the default home's cross-check accepts the owner directories named by the broker.json of each home beside it with a valid tokens-root
 #                (#1599; HOME is a fixture, skipped under MSYS like the profile cases): an owner in another letter case, no tokens-root or other
 #                content, a sibling whose broker.json is not JSON or is absent beside a readable one, an owner equal to a name half of the default
@@ -77,12 +82,17 @@
 #   config       a bad repo name (or a trailing dot) or a missing broker.json exits 2 before anything
 #                is minted
 #
-# Permitted toolset: POSIX sh, its standard utilities and pwsh (skipped, loudly, if absent).
+# Permitted toolset: POSIX sh, its standard utilities and pwsh (skipped, loudly, if absent; a failure instead when
+# WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml sets, as tests/identity-launchers.test.sh words it).
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 
 if ! command -v pwsh >/dev/null 2>&1; then
+  if [ "${WOW_TESTS_REQUIRE_TOOLS:-}" = 1 ]; then
+    echo "FAIL - pwsh not on PATH; identity-broker fixtures would not run" >&2
+    exit 1
+  fi
   echo "SKIP - pwsh not on PATH; identity-broker fixtures not run" >&2
   exit 0
 fi
@@ -749,7 +759,23 @@ check "identity scripts: no -Confirm or -WhatIf on Disable-, Enable-, Start- or 
 check "register: reads the existing task before it calls the installer" test \
   "$(grep -n -F "Get-ScheduledTask -TaskName \$TaskName -TaskPath '\\'" "$reg_ps" | head -1 | cut -d: -f1)" -lt \
   "$(grep -n -F "Join-Path \$PSScriptRoot 'install-host-tools.ps1'" "$reg_ps" | head -1 | cut -d: -f1)"
-if [ -n "$(pwsh -NoProfile -NonInteractive -Command '[Environment]::SystemDirectory' </dev/null 2>/dev/null)" ]; then
+# guard_verdict <system directory read> <uname -s> <WOW_TESTS_REQUIRE_TOOLS>: run when the read is empty; otherwise fail when the
+# variable is exactly 1 and the host is not Windows (a real pwsh reads it empty there), else skip.
+guard_verdict() {
+  if [ -z "$1" ]; then echo run; return 0; fi
+  case "$2" in MINGW* | MSYS* | CYGWIN*) echo skip; return 0 ;; esac
+  if [ "$3" = 1 ]; then echo fail; else echo skip; fi
+}
+check "guard verdict: a non-empty read on Linux with the variable 1 fails" test "$(guard_verdict x Linux 1)" = fail
+check "guard verdict: a non-empty read on Linux with the variable unset skips" test "$(guard_verdict x Linux '')" = skip
+check "guard verdict: a non-empty read on Linux with the variable 0 skips" test "$(guard_verdict x Linux 0)" = skip
+check "guard verdict: a non-empty read on MINGW with the variable 1 skips" test "$(guard_verdict x MINGW64_NT-10.0 1)" = skip
+check "guard verdict: an empty read runs whatever the other two are" test "$(guard_verdict '' Linux 1)$(guard_verdict '' MINGW64_NT-10.0 '')$(guard_verdict '' Linux 0)" = runrunrun
+guard_read=$(pwsh -NoProfile -NonInteractive -Command '[Environment]::SystemDirectory' </dev/null 2>/dev/null)
+guard_do=$(guard_verdict "$guard_read" "$(uname -s)" "${WOW_TESTS_REQUIRE_TOOLS:-}")
+if [ "$guard_do" = fail ]; then
+  bad "guard: [Environment]::SystemDirectory is set off Windows; register-broker-task.ps1 guard cases would not run"
+elif [ "$guard_do" = skip ]; then
   echo "SKIP - [Environment]::SystemDirectory is set; register-broker-task.ps1 guard cases not run" >&2
 else
   esc=$(printf '\033')
@@ -1048,15 +1074,7 @@ HOME=$real_home; export HOME
 esac
 
 # --- profile block (#1595) -------------------------------------------------------------------
-case "$(uname -s)" in
-  MINGW* | MSYS* | CYGWIN*) echo "SKIP - profile: pwsh's HOME is the Windows user profile here, not HOME; the profile fixtures did not run" >&2 ;;
-  *)
-prof_home=${HOME:-}
 START='# >>> way-of-working launchers >>>'; END='# <<< way-of-working launchers <<<'
-pnew() { reset; newfh; set_repos '"acme/alpha"'; mkdir -p "$dh"; profile_path="$tmp/prof$trn/dir/profile.ps1"; }
-# mkh <dir> <repos list>: a home holding only a broker.json
-mkh() { mkdir -p "$1"; printf '{"repos": [%s]}\n' "$2" >"$1/broker.json"; }
-sibling() { mkh "$fh/.config/$1" "$2"; printf 'default-home\n' >"$fh/.config/$1/tokens-root"; }
 pl() { grep -c '^profile:' "$tmp/out" || true; }
 pout() { grep -q -F -e "$1" "$tmp/out"; }
 pf_has() { grep -q -F -e "$1" "$profile_path"; }
@@ -1068,6 +1086,44 @@ dotrun() { # dotrun <command text>: dot-source the written profile, then run the
 }
 # the written block holds the three functions and the map
 pbhold() { pf_has 'function wowd {' && pf_has 'function wowl {' && pf_has 'function wowend {' && pf_has '$WowHomes = @{'; }
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*)
+echo "SKIP - profile: pwsh's HOME is the Windows user profile here and cannot be pointed at a fixture; the owner-to-home map, sibling-home, default-profile-path (it would write the real user profile), empty-HOME and sibling-owner fixtures did not run" >&2
+# Windows profile cases (the install prints the path in backslash form, so only the line prefix is matched): -ProfilePath is a scratch file, HOME is never set, the owner map is not asserted.
+wmark() { tr -d '\r' <"$profile_path" | grep -c -F -x -e "$1" || true; }
+ncr() { tr -cd '\r' <"$1" | wc -c | tr -d ' '; }
+nlf() { tr -cd '\n' <"$1" | wc -c | tr -d ' '; }
+reset; set_repos '"acme/alpha"'
+profile_path="$tmp/winprof/dir/profile.ps1"
+run_install
+check "Windows profile new: exits 0" test "$rc" -eq 0
+check "Windows profile new: added line" pout "profile block added in "
+check "Windows profile new: one start and one end marker line" test "$(wmark "$START")" -eq 1 -a "$(wmark "$END")" -eq 1
+check "Windows profile new: every line break is CRLF" test "$(ncr "$profile_path")" -eq "$(nlf "$profile_path")" -a "$(nlf "$profile_path")" -gt 0
+check "Windows profile new: the file ends with one CRLF" test "$(tail -c 2 "$profile_path" | od -An -tx1 | tr -d ' \n')" = 0d0a -a "$(tail -c 4 "$profile_path" | od -An -tx1 | tr -d ' \n')" != 0d0a0d0a
+check "Windows profile new: the three functions and the map" pbhold
+cp "$profile_path" "$tmp/before"
+run_install
+check "Windows profile again: exits 0" test "$rc" -eq 0
+check "Windows profile again: unchanged line" pout "profile block unchanged in "
+check "Windows profile again: byte-identical" pcmp
+check "Windows profile dot-source: wowd, wowl and wowend are defined" test "$(dotrun '(Get-Command wowd, wowl, wowend -CommandType Function).Count')" = 3
+profile_path="$tmp/winprof/lf.ps1"
+printf 'line1\nline2\n' >"$profile_path"
+run_install
+check "Windows profile append to LF: added" pout "profile block added in "
+check "Windows profile append to LF: the block uses LF only" test "$(ncr "$profile_path")" -eq 0
+check "Windows profile append to LF: the first two lines are unchanged" test "$(head -c 12 "$profile_path" | od -An -tx1 | tr -d ' \n')" = 6c696e65310a6c696e65320a
+check "Windows profile append to LF: one marker pair" test "$(wmark "$START")" -eq 1 -a "$(wmark "$END")" -eq 1
+profile_path="$tmp/scratch-profile.ps1"
+;;
+  *)
+echo "SKIP - Windows profile: not Git Bash on Windows; the CRLF profile fixtures did not run" >&2
+prof_home=${HOME:-}
+pnew() { reset; newfh; set_repos '"acme/alpha"'; mkdir -p "$dh"; profile_path="$tmp/prof$trn/dir/profile.ps1"; }
+# mkh <dir> <repos list>: a home holding only a broker.json
+mkh() { mkdir -p "$1"; printf '{"repos": [%s]}\n' "$2" >"$1/broker.json"; }
+sibling() { mkh "$fh/.config/$1" "$2"; printf 'default-home\n' >"$fh/.config/$1/tokens-root"; }
 
 # first write into a directory that does not exist yet
 pnew; mkh "$dh" '"my-org/a", "acme/alpha"'; sibling two '"beta/x"'
