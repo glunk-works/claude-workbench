@@ -148,6 +148,7 @@ jobs:
   # `tests-launchers` starts with a runner yq version check (#1261): the launcher fixtures that reach the
   # launchers' yq check with no stub yq ahead of the real one run it against the image's yq, so a yq below the
   # launchers' minimum fails there, named, instead of as a launcher refusal. The minimum stays in the shared file.
+  # The step reads yq's stdout only, as Assert-YqVersion does, so a warning on stderr cannot fail it (#1691).
   #
   # WOW_TESTS_REQUIRE_TOOLS=1 turns the missing-tool skip of identity-review, identity-launchers,
   # identity-broker and review-verdict into a failure, so CI keeps no second copy of those suites' tool lists
@@ -204,7 +205,7 @@ jobs:
           $script:LaunchUsage = ''
           . ./scripts/identity/wow-launch-common.ps1
           $text = ''
-          $out = & yq --version 2>&1
+          $out = & yq --version 2>$null
           if ($LASTEXITCODE -eq 0) { $text = ($out | ForEach-Object { "$_" }) -join "`n" }
           $v = Test-YqVersion $text
           if ($v.Status -ceq 'ok') {

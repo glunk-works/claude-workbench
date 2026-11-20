@@ -28,6 +28,7 @@ the GitHub release notes.
 ### Fixed
 
 - The review launcher's repeat check now writes only the reviewer App's open issues to the host, and its header states that title matching folds ASCII case only; it applies once the host tools are reinstalled (#1563).
+- The `runner yq version check` step of the `tests-launchers` job now reads only the version yq prints on stdout, as the launchers do, so a warning on stderr no longer fails it (#1691).
 
 ## [0.39.0] — 2026-11-20
 
