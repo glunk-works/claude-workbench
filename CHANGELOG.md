@@ -25,6 +25,10 @@ the GitHub release notes.
 
 - `scripts/identity/check-host.ps1`, run on the host from the install clone, reports one line per check of what the launchers need (`pwsh` 7.2 or newer, `yq` at or above the launchers' minimum, `gh`, an identity home's installed `bin` and how far behind the base it is, and its broker task registered and enabled) and fixes nothing (#1434).
 
+### Changed
+
+- The default `/way-of-working:plan-sprint` pass now runs its findings phase before placement, so one pass unpacks the reviewer App's findings issues, places the combined issues and fold targets it produced, and gives one triage-comment set and one cursor sync; a new `keep as task` destination leaves a findings issue open as the task, a placement guard (`plan-findings.sh held`) keeps any findings issue the phase did not resolve out of the placement table, and `plan-findings.sh list` now exits 3 when no identities map or reviewer App is declared; `findings` stays as the findings-only run (#1705).
+
 ### Fixed
 
 - The review launcher's repeat check now writes only the reviewer App's open issues to the host, and its header states that title matching folds ASCII case only; it applies once the host tools are reinstalled (#1563).

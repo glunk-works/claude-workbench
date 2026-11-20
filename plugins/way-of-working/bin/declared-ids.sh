@@ -18,8 +18,8 @@
 #
 # Each of the five callers holds the output line below to its shape with its own copy of the same parser (the
 # newline case, the `ok ` prefix, the three-field pattern, the dev-id gate), so a change to the output line is a
-# five-way edit (#1105); that is accepted. plan-findings.sh `list` is a further caller outside the five: it checks only the
-# `ok ` prefix and reads the reviewer App's id itself. tests/declared-ids.test.sh checks that the five caller suites feed the
+# five-way edit (#1105); that is accepted. plan-findings.sh `list` is a further caller outside the five: it checks the
+# `ok ` prefix and the `no-map` line, and reads the reviewer App's id itself. tests/declared-ids.test.sh checks that the five caller suites feed the
 # same malformed-line stubs (#1106).
 #
 # Prints exactly one line to stdout and exits 0:

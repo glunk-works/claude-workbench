@@ -108,11 +108,13 @@ assert_eq "list: zero rows is empty output, exit 0" "0:" "$rc:$(cat "$tmp/out")"
 PATH="$fakebin:$PATH" FAKE_FAIL=1 "$script" list o/r "$yml_good" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
 assert_eq "list: a failed gh exits non-zero with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
 
-for c in null norev nullrev bad; do
+for c in null norev nullrev; do
   eval "y=\$yml_$c"
   PATH="$fakebin:$PATH" FAKE_ROWS="$rows" "$script" list o/r "$y" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
-  assert_eq "list: config '$c' exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+  assert_eq "list: config '$c' (no map or no reviewer App) exits 3 with nothing on stdout" "3:" "$rc:$(cat "$tmp/out")"
 done
+PATH="$fakebin:$PATH" FAKE_ROWS="$rows" "$script" list o/r "$yml_bad" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "list: config 'bad' exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
 PATH="$fakebin:$PATH" FAKE_ROWS="$rows" "$script" list o/r "$tmp/missing.yml" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
 assert_eq "list: a missing config exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
 
@@ -290,9 +292,52 @@ printf 'not json {\n' >"$tmp/f4.json"
 assert_eq "filed: a non-empty issue file that is not JSON exits 1" 1 "$(status_of "$script" filed "$tmp/f4.json" 'area/ci' "$tmp/body.txt")"
 assert_eq "filed: a missing body file exits 1" 1 "$(status_of "$script" filed "$tmp/f1.json" 'area/ci' "$tmp/none.txt")"
 
+echo "# held"
+
+hl="$tmp/hl.tsv"
+hk="$tmp/hk.txt"
+printf '42\t2026-11-02T00:00:00Z\tnone\tnone\n7\t2026-11-01T00:00:00Z\t36\tarea/ci\n100\t2026-11-03T00:00:00Z\tnone\tarea/ai\n9\t2026-11-03T00:00:00Z\tnone\tarea/ai\n' >"$hl"
+: >"$hk"
+assert_eq "held: an empty kept file holds every unmilestoned row, a milestoned row never, in ascending order" "9
+42
+100" "$("$script" held "$hl" "$hk")"
+printf '42\n' >"$hk"
+assert_eq "held: a kept number is never printed" "9
+100" "$("$script" held "$hl" "$hk")"
+printf '\n42\n\n9\n' >"$hk"
+assert_eq "held: a blank line in the kept file is ignored" "100" "$("$script" held "$hl" "$hk")"
+printf '7\n' >"$hk"
+assert_eq "held: keeping a milestoned row changes nothing" "9
+42
+100" "$("$script" held "$hl" "$hk")"
+: >"$hl"
+: >"$hk"
+"$script" held "$hl" "$hk" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "held: an empty list file prints nothing, exit 0" "0:" "$rc:$(cat "$tmp/out")"
+
+printf '42\t2026-11-02T00:00:00Z\tnone\tnone\n' >"$hl"
+printf '4x\n' >"$hk"
+"$script" held "$hl" "$hk" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "held: a non-digit kept line exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+: >"$hk"
+printf '4x\t2026-11-02T00:00:00Z\tnone\tnone\n42\t2026-11-02T00:00:00Z\tnone\tnone\n' >"$hl"
+"$script" held "$hl" "$hk" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "held: a list row whose number is not digits-only exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+printf '42\t2026-11-02T00:00:00Z\tnone\n9\t2026-11-02T00:00:00Z\tnone\tnone\n' >"$hl"
+"$script" held "$hl" "$hk" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "held: a list row with other than four fields exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+printf '42\t2026-11-02T00:00:00Z\tnone\tnone\textra\n' >"$hl"
+"$script" held "$hl" "$hk" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "held: a list row with five fields exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+"$script" held "$tmp/none.tsv" "$hk" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "held: a missing list file exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+printf '42\t2026-11-02T00:00:00Z\tnone\tnone\n' >"$hl"
+"$script" held "$hl" "$tmp/none.txt" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "held: a missing kept file exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+
 echo "# argument validation"
 
-for args in "" "bogus" "list o/r" "list o/r y z" "unpack" "unpack a b" "exists" "exists a b" "screen" "covers 1 a" "covers x a b" "covers 01 a b" "label" "label o/r" "label o/r a b" "filed" "filed a" "filed a b" "filed a b c d"; do
+for args in "" "bogus" "list o/r" "list o/r y z" "unpack" "unpack a b" "exists" "exists a b" "screen" "covers 1 a" "covers x a b" "covers 01 a b" "label" "label o/r" "label o/r a b" "filed" "filed a" "filed a b" "filed a b c d" "held" "held a" "held a b c"; do
   # shellcheck disable=SC2086
   "$script" $args >"$tmp/out" 2>/dev/null </dev/null && rc=0 || rc=$?
   assert_eq "usage: '$args' exits 2 with nothing on stdout" "2:" "$rc:$(cat "$tmp/out")"

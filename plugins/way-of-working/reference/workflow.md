@@ -381,10 +381,13 @@ edits to the description and cannot be mistaken for the human's approval.
   edits a build order live through `milestone-desc.sh`, the anchored milestone included,
   after the human confirms the diff. It stages the edit when the live write does not go
   through, and records the old and new order in a triage comment. Grounded triage, not
-  design; any model. Run as `/way-of-working:plan-sprint findings`, the driver unpacks the
+  design; any model. The default pass runs a findings phase first: the driver unpacks the
   reviewer App's grouped review-finding issues into one row per finding and, on confirmation,
-  folds each into an open task, gathers them into combined per-area issues or declines them,
-  closing each source issue with a comment that maps every finding; it drafts no spec.
+  folds, gathers or declines each, closing each source issue with a comment that maps every
+  finding, or keeps the source issue as the task (no comment, no close). The placement then
+  runs over the backlog as that phase left it, combined issues and issues kept as task included, and a findings issue the phase did not resolve is held out of
+  placement. `/way-of-working:plan-sprint findings` is the findings-only run between planning
+  passes. It drafts no spec.
 - **`/way-of-working:spec-task <N>`** — the spec-comment half of the Opus planning role. Under
   an `identities` map it may be run ahead for any task whose `depends_on` is met, since the build
   re-checks the paths the spec lists and refuses a stale one (`WB-D31`); on an `identities: null`
