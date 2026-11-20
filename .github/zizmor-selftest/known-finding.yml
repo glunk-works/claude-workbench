@@ -1,0 +1,15 @@
+# Deliberate zizmor self-test fixture for the `zizmor` job in .github/workflows/ci.yml.
+# This file is never run: it sits outside .github/workflows/, so GitHub never loads it, and
+# the repo-wide gate run does not collect it. It must keep at least one finding (here a
+# template injection), because the job asserts that the gate step's configuration fails on it.
+# The finding's annotation in the self-test step's log is expected on every run.
+name: zizmor self-test fixture
+on: pull_request
+permissions: {}
+jobs:
+  inject:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Echo the pull request title
+        run: echo "${{ github.event.pull_request.title }}"
