@@ -130,6 +130,9 @@ jobs:
   # new tests/X.test.sh needs no edit here (it can move later files to the other shard). Each
   # shard writes the suites that skipped to its job summary (-s).
   #
+  # Each shard's last step writes its run time next to its `timeout-minutes` to the job summary and the log
+  # (#1694), so a re-shard is prompted before a shard is cancelled at the bound.
+  #
   # The two shards are one matrix job: its `name:` gives the check runs `tests-1` and `tests-2`,
   # and `tests-launchers` and `tests-review-launcher` are named by their job ids. These four
   # names are required checks ({ruleset.required_checks}, #989). Adding a required job is merge
@@ -166,6 +169,10 @@ jobs:
       matrix:
         shard: [1, 2]
     steps:
+      - name: Record the start time
+        id: started
+        if: ${{ needs.changed-paths.outputs.cursor_only != 'true' }}
+        run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
       - name: Checkout
         if: ${{ needs.changed-paths.outputs.cursor_only != 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -187,6 +194,17 @@ jobs:
             i=$((i + 1))
           done < <(cd tests && LC_ALL=C ls -1d -- *.test.sh)
           bash scripts/test-all.sh "${args[@]}" -s "$GITHUB_STEP_SUMMARY"
+      - name: Report this shard's run time against its timeout
+        if: ${{ always() && needs.changed-paths.outputs.cursor_only != 'true' }}
+        env:
+          SHARD: ${{ matrix.shard }}
+          STARTED: ${{ steps.started.outputs.at }}
+        run: |
+          bound=$(yq -e '.jobs.tests."timeout-minutes"' .github/workflows/ci.yml 2>/dev/null)
+          elapsed=$(( $(date +%s) - STARTED ))
+          line="tests-$SHARD ran $((elapsed / 60))m $((elapsed % 60))s of its ${bound}m timeout"
+          echo "$line"
+          echo "$line" >> "$GITHUB_STEP_SUMMARY"
 
   tests-launchers:
     needs: changed-paths

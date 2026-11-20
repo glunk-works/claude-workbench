@@ -470,10 +470,10 @@ for f in scripts/identity/wow-*; do
   case "${f##*/}" in *.*) continue ;; esac
   HOST_CMDS+=("$f")
 done
-for f in "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}" "${HOST_CMDS[@]}"; do
+for f in "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}" ${HOST_CMDS[@]+"${HOST_CMDS[@]}"}; do
   [ -e "$f" ] && disk_scripts=$((disk_scripts + 1))
 done
-if ! ls_out=$(git ls-files -s -- "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}" "${HOST_CMDS[@]}" 2>&1); then
+if ! ls_out=$(git ls-files -s -- "${HOOK_SCRIPTS[@]}" "${BIN_SCRIPTS[@]}" ${HOST_CMDS[@]+"${HOST_CMDS[@]}"} 2>&1); then
   mode_problem="could not read the git index: $ls_out"
 else
   listed=0
