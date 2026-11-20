@@ -11,7 +11,7 @@
 # with the case's docker/images fixture (nothing when absent; one stderr line and exit 1 when docker/ls.fail exists),
 # a `ps` whose --format is {{.Image}} with the docker/images-used fixture (nothing when absent; one stderr line and
 # exit 1 when docker/psimage.fail exists), and `rmi` by recording docker-rmi in the events, then exiting 1 with one
-# stderr line when its last argument is a line of docker/rmi.refuse, else printing an Untagged: line and exiting 0. stdin is closed
+# stderr line when its last argument is a line of docker/rmi.refuse, else printing an Untagged: line and exiting 0. The stub gh keeps a copy of what its --jq printed for the backlog's open-issues read (open-issues.out). stdin is closed
 # throughout, to prove nothing prompts.
 #
 # Permitted toolset: POSIX sh and its standard utilities, jq, yq and timeout (skipped, loudly, if absent; a
@@ -139,7 +139,12 @@ if [ -e "$fx.after" ]; then
 fi
 if [ -e "$fx.fail" ]; then echo "HTTP 500" >&2; exit 1; fi
 if [ ! -e "$fx" ]; then echo "HTTP 404 $path" >&2; exit 1; fi
-if [ -n "$jqx" ]; then jq -r "$jqx" <"$fx"; else cat "$fx"; fi
+if [ -n "$jqx" ]; then
+  case $path in
+    repos/*/issues\?state=open*) jq -r "$jqx" <"$fx" >"$S/open-issues.out"; rc=$?; cat "$S/open-issues.out"; exit "$rc" ;;
+  esac
+  jq -r "$jqx" <"$fx"
+else cat "$fx"; fi
 STUB
 
 cat >"$stubs/docker" <<'STUB'
@@ -1547,6 +1552,9 @@ findings_case "a dot segment" findings-paths '[{"title":"t","body":"b","type":"b
 findings_case "a dot-dot segment" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a/../b"]}]'
 findings_case "a space in a path" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a b"]}]'
 findings_case "a backtick in a path" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a`b"]}]'
+findings_case "an empty path" findings-paths '[{"title":"t","body":"b","type":"bug","paths":[""]}]'
+findings_case "a dot-dot path" findings-paths '[{"title":"t","body":"b","type":"bug","paths":[".."]}]'
+findings_case "an at sign in a path" findings-paths '[{"title":"t","body":"b","type":"bug","paths":["a@b"]}]'
 findings_case "a token-shaped path" findings-secret '[{"title":"t","body":"b","type":"bug","paths":["ghp_0123456789abcdefghijklmnopqrstuvwxyzABCD"]}]'
 
 # --- the title ---------------------------------------------------------------------------------
@@ -1603,6 +1611,15 @@ assert_eq "repeat check (match): the linked line is after the items" "" "$(issue
 assert_eq "repeat check (match): the title is built from the rest" "triage findings from r#7: Beta two; Gamma three" "$(issue_f .title)"
 assert_eq "repeat check (match): labels from the rest" '["type/docs"]' "$(issue_f '.labels | tojson')"
 assert_eq "repeat check (match): the pull request and the other author are not named" 0 "$(issue_f .body | grep -c '#52\|#53')"
+assert_eq "repeat check (match): the open-issues read printed only the App's issues" "50,51" "$(jq -r '.number' <"$STUB/open-issues.out" | paste -sd, -)"
+# case folding is ASCII only: a title differing only in a non-ASCII letter's case is filed again,
+# while one differing in an ASCII letter's case is still linked
+new_case; set_yml "$BL"; set_findings '[{"title":"\u00c9tude one","body":"b1","type":"bug"},{"title":"Beta TWO","body":"b2","type":"bug"}]'
+set_open "[$(open_issue 90 4242 "$(fnd_body ' ' "$(printf '\303\251tude one')" 'Paths: none')"), $(open_issue 91 4242 "$(fnd_body ' ' 'beta two' 'Paths: none')")]"
+run o/r 7
+assert_eq "repeat check (non-ASCII case): filed" 1 "$(n_issues)"
+assert_eq "repeat check (non-ASCII case): the ASCII-case match is linked" "- Finding 2: also reported in #91" "$(issue_f .body | grep 'also reported')"
+assert_eq "repeat check (non-ASCII case): the non-ASCII title is still an item" "- [ ] Finding 1" "$(issue_f .body | grep '^- \[ \] Finding')"
 # an old-format body parses: this one has no Paths line
 new_case; set_yml "$BL"; set_findings "$FIND1"
 set_open "[$(open_issue 60 4242 "$(fnd_body ' ' 'T')")]"

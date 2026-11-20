@@ -78,6 +78,7 @@
 #     without it.
 #   - tests/identity-launchers.test.sh needs `pwsh`, `git`, `yq` and `jq`;
 #     tests/identity-broker.test.sh needs `pwsh`.
+#   - tests/check-host.test.sh needs `pwsh` and `git`.
 #   - tests/invariants-files-filter.test.sh needs `jq` (the checker's check 20 does).
 #   - tests/invariants-manifest-agents.test.sh needs `jq` (the checker's check 25 does).
 #   - tests/invariants-manifest-skills.test.sh needs `jq` (the checker's check 27 does).
