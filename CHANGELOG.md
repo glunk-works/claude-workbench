@@ -24,6 +24,7 @@ the GitHub release notes.
 ### Added
 
 - `scripts/identity/check-host.ps1`, run on the host from the install clone, reports one line per check of what the launchers need (`pwsh` 7.2 or newer, `yq` at or above the launchers' minimum, `gh`, an identity home's installed `bin` and how far behind the base it is, and its broker task registered and enabled) and fixes nothing (#1434).
+- A lane told `wow-driver: merge-base` now resolves a merge whose only conflict lies in the first level-2 section of an `append_only` file, by keeping both sides' lines (`merge-union.sh`). The lanes skill now says when the pointer is deferred or aborts, and how the driver treats a lane's PR-opened message (#1711).
 
 ### Changed
 
