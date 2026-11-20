@@ -23,7 +23,7 @@ the GitHub release notes.
 
 ## [0.40.0] — 2026-11-20
 
-**⚠️ Migration** — no `.ai/project.yml` needs a change on this bump, but two behaviours change for a repo that already declares the keys: a lane told `wow-driver: merge-base` now resolves, commits and pushes a merge whose only conflict lies in the first level-2 section of a file listed in `append_only`, keeping both sides' lines (#1711, below); and the default `/way-of-working:plan-sprint` pass now runs the findings phase first wherever the identities map declares a reviewer App (#1705, below). Reinstall the host tools in every home for #1434's `check-host.ps1` and #1563's review-launcher fix.
+**⚠️ Migration** — no `.ai/project.yml` needs a change on this bump, but two behaviours change for a repo that already declares the keys: a lane told `wow-driver: merge-base` now resolves, commits and pushes a merge whose only conflict lies in the first level-2 section of a file listed in `append_only`, keeping both sides' lines (#1711, below); and the default `/way-of-working:plan-sprint` pass now runs the findings phase first wherever the identities map declares a reviewer App (#1705, below). Reinstall the host tools in every home for #1563's review-launcher fix.
 
 ### Added
 
