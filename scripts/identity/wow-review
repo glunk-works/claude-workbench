@@ -97,7 +97,9 @@
 #    holds is filed again only once that issue is closed or under a differently worded title.
 #  - A finding title in an open issue the reviewer App filed (written by an earlier review session,
 #    and editable by anyone who can edit that issue) stops a later finding with the same normalized
-#    title from being filed, so that finding reaches only the review body.
+#    title from being filed, so that finding reaches only the review body. The normalized comparison
+#    lowercases ASCII letters only (jq has no wider case fold), so two titles that differ only in the
+#    case of a non-ASCII letter do not match, and that finding is filed again.
 #  - Timeline events: an owner/repo#N reference or a URL in the review body or in a finding title
 #    still adds a timeline event to that issue or PR.
 #  - What the session can send out. The proxy bounds the host, not the recipient: a session given
@@ -1236,7 +1238,9 @@ EOF
   # (the read token). Text read from them is only compared; only issue numbers reach the new issue.
   case $vid in ''|*[!0-9]*) say "the filing token's viewer id is not digits; nothing filed"; return 0 ;; esac
   TOK=$RTOK
-  gh_api --paginate "repos/$BREPO/issues?state=open&per_page=100" --jq '.[] | select(has("pull_request") | not) | {number: .number, uid: (.user.id | tostring), body: (.body // "")} | tojson' >"$HDIR/open-issues.jsonl" \
+  # Only the reviewer App's own issues are kept, in the read itself, so other authors' issues never reach the host
+  # disk. $vid is checked to be digits above, so splicing it into the filter adds nothing but a number.
+  gh_api --paginate "repos/$BREPO/issues?state=open&per_page=100" --jq '.[] | select(has("pull_request") | not) | select((.user.id | tostring) == "'"$vid"'") | {number: .number, uid: (.user.id | tostring), body: (.body // "")} | tojson' >"$HDIR/open-issues.jsonl" \
     || { TOK=$filing_tok; say "reading the open issues failed; nothing filed"; return 0; }
   TOK=$filing_tok
   jq -c --slurpfile iss "$HDIR/open-issues.jsonl" --arg vid "$vid" '
