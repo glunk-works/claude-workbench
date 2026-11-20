@@ -291,6 +291,12 @@ $ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$
 $defs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Resolve-RealPath', 'Test-IsDefaultHome' }, $true)
 if (@($defs).Count -ne 2) { 'missing'; exit 3 }
 foreach ($d in $defs) { . ([scriptblock]::Create($d.Extent.Text)) }
+# the runner's temp dir comes as an 8.3 short name, which a path through a junction loses; give every input its long form
+if ([Environment]::OSVersion.Platform -eq 'Win32NT') {
+  Add-Type -MemberDefinition '[DllImport("kernel32.dll", CharSet=CharSet.Unicode)] public static extern uint GetLongPathName(string s, System.Text.StringBuilder b, uint n);' -Name Lp -Namespace Wow
+  function Get-LongPath([string]$p) { $b = New-Object System.Text.StringBuilder 1024; if ([Wow.Lp]::GetLongPathName($p, $b, 1024) -gt 0) { $b.ToString() } else { $p } }
+  $Home1 = Get-LongPath $Home1; $Home2 = Get-LongPath $Home2; $Home3 = Get-LongPath $Home3; $Default = Get-LongPath $Default
+}
 "$(Test-IsDefaultHome $Home1 $Default) $(Test-IsDefaultHome $Home2 $Default) $(Test-IsDefaultHome $Home3 $Default)"
 foreach ($x in $Home1, $Home2, $Home3, $Default) { try { "resolved: $x -> $(Resolve-RealPath $x)" } catch { "resolved: $x -> THROW $_" } }
 PS
