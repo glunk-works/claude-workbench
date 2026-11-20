@@ -49,8 +49,9 @@
 # The exit code never changes.
 #
 # Tool notes for some suites (a suite missing a tool it needs reports `skip`, loudly; but
-# tests/identity-review.test.sh, tests/identity-launchers.test.sh and tests/review-verdict.test.sh
-# fail instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml sets):
+# tests/identity-review.test.sh, tests/identity-launchers.test.sh, tests/identity-broker.test.sh and
+# tests/review-verdict.test.sh fail instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml
+# sets; the broker suite's guard-case skip off Windows fails too):
 #   - tests/invariants-only.test.sh needs `yq`, `jq` and `git` for its run-each-id-alone case and
 #     skips that case loudly without them.
 #   - `yq` also: tests/review-base-anchor.test.sh, tests/schema-complete.test.sh,

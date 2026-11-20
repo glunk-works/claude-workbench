@@ -1,7 +1,7 @@
 #!/bin/sh
 # Fixture tests for WOW_TESTS_REQUIRE_TOOLS, the switch that turns a missing-tool skip into a
-# failure in tests/identity-review.test.sh, tests/identity-launchers.test.sh and
-# tests/review-verdict.test.sh (#985, #986, #930). ci.yml sets it to 1.
+# failure in tests/identity-review.test.sh, tests/identity-launchers.test.sh,
+# tests/identity-broker.test.sh and tests/review-verdict.test.sh (#985, #986, #930). ci.yml sets it to 1.
 #
 # Each suite runs under a POSIX shell given by its absolute path, with PATH set to a scratch
 # directory that holds only a link to `dirname` (each suite needs it before its tool check), so
@@ -45,7 +45,7 @@ run_case() {
 }
 
 # suite:first missing tool
-for pair in identity-review.test.sh:jq identity-launchers.test.sh:pwsh review-verdict.test.sh:jq; do
+for pair in identity-review.test.sh:jq identity-launchers.test.sh:pwsh identity-broker.test.sh:pwsh review-verdict.test.sh:jq; do
   suite=${pair%%:*}
   tool=${pair#*:}
 
