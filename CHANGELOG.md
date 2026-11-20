@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/identity/check-host.ps1`, run on the host from the install clone, reports one line per check of what the launchers need (`pwsh` 7.2 or newer, `yq` at or above the launchers' minimum, `gh`, an identity home's installed `bin` and how far behind the base it is, and its broker task registered and enabled) and fixes nothing (#1434).
+
 ### Fixed
 
 - The review launcher's repeat check now writes only the reviewer App's open issues to the host, and its header states that title matching folds ASCII case only; it applies once the host tools are reinstalled (#1563).

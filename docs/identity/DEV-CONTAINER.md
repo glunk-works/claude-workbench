@@ -89,7 +89,14 @@ that serves the host's git credential (see Hazards that remain).
   above or spell the script path in that form. `install-host-tools.ps1` refuses an MSYS-form `WowHome`.
   `yq` must be on PowerShell's `PATH`, v4.54.1 or newer; both launchers refuse an older or unidentifiable `yq`
   before any docker call. The driver launcher also needs `gh` on PowerShell's `PATH`, on both paths, and for a
-  start of day a `gh` login that can read the origin repository. The driver launcher runs the checks below in the safe order, so that order is
+  start of day a `gh` login that can read the origin repository.
+
+  To see what the host lacks, run `pwsh -File scripts/identity/check-host.ps1` from the clone `install-host-tools.ps1` installs from (unlike the
+  launchers, it runs from that clone, not the installed copy), with `-WowHome` naming the home to check in Windows form, once per home. It reports
+  `pwsh`, `yq` and `gh` on PowerShell's `PATH`, whether the home's installed `bin` is on the base and how far behind, and whether the home's broker
+  task is registered and enabled; it never fixes anything.
+
+  The driver launcher runs the checks below in the safe order, so that order is
   the only one it offers.
   - **`-Clone`** is the clone the container opens (an absolute directory, not a link, whose leaf
     follows Docker's volume-name rule and whose whole path holds only letters, digits, space, `.`,
