@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-11-20
+
+**⚠️ Migration** — no `.ai/project.yml` needs a change on this bump, but two behaviours change for a repo that already declares the keys: a lane told `wow-driver: merge-base` now resolves a merge whose only conflict lies in the first level-2 section of a file listed in `append_only`, keeping both sides' lines, commits it, runs the green gate again and, on an open PR, pushes it (#1711, below; a repo that wants no automatic resolution preps its lanes without `driver=`, or sets `append_only: null`, which also turns off the spec-shape marker rule); and the default `/way-of-working:plan-sprint` pass now runs the findings phase first wherever the identities map declares a reviewer App (#1705, below). Reinstall the host tools in every home for #1563's review-launcher fix.
+
 ### Added
 
 - `scripts/identity/check-host.ps1`, run on the host from the install clone, reports one line per check of what the launchers need (`pwsh` 7.2 or newer, `yq` at or above the launchers' minimum, `gh`, an identity home's installed `bin` and how far behind the base it is, and its broker task registered and enabled) and fixes nothing (#1434).
