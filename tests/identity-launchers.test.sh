@@ -1533,8 +1533,10 @@ yq_status "$(yq_line v4.54.1)
 second line"; check "yq version: a second line is unparseable" test "$out" = "unparseable  4.54.1"
 
 # end to end: a stub yq ahead of the real one that only prints and exits
-yq_stub() { # yq_stub <text> <exit code>
-  printf '#!/bin/sh\nprintf "%%s\\n" "%s"\nexit %s\n' "$1" "$2" >"$tmp/yq.body"; mkstub yq "$tmp/yq.body"
+yq_stub() { # yq_stub <text> <exit code> [<stderr text>]
+  printf '#!/bin/sh\nprintf "%%s\\n" "%s"\n' "$1" >"$tmp/yq.body"
+  [ -z "${3:-}" ] || printf 'printf "%%s\\n" "%s" >&2\n' "$3" >>"$tmp/yq.body"
+  printf 'exit %s\n' "$2" >>"$tmp/yq.body"; mkstub yq "$tmp/yq.body"
 }
 yq_stub "$(yq_line v4.53.6)" 0
 reset; echo "$ID1 running" >"$stubdir/ps.vol.1"; write_record "$ID1" "$c2" "$(json_clone)"; run_drv
@@ -1579,6 +1581,14 @@ yq_stub "$(yq_line v4.55.0)" 0
 ci_step
 check "yq version: the CI step passes on v4.55.0" test "$rc" -eq 0
 check "yq version: ...naming 4.55.0 and 4.54.1" sh -c "grep -q '4.55.0' '$tmp/out' && grep -q '4.54.1' '$tmp/out'"
+yq_stub "$(yq_line v4.55.0)" 0 yq-stub-warning
+ci_step
+check "yq version: the CI step passes on v4.55.0 with a line on stderr" test "$rc" -eq 0
+check "yq version: ...naming 4.55.0 and 4.54.1, not the stderr line" sh -c "grep -q '4.55.0' '$tmp/out' && grep -q '4.54.1' '$tmp/out' && ! grep -q 'yq-stub-warning' '$tmp/out'"
+yq_stub "$(yq_line v4.53.6)" 0 yq-stub-warning
+ci_step
+check "yq version: the CI step fails on v4.53.6 with a line on stderr" test "$rc" -ne 0
+check "yq version: ...naming 4.53.6 and 4.54.1" sh -c "grep -q '4.53.6' '$tmp/out' && grep -q '4.54.1' '$tmp/out'"
 check "yq version: the CI step comes before the fixtures step" test "$(yq -r '[.jobs.tests-launchers.steps[].name] | join("|")' "$ci_yml" | grep -c '^[^|]*|*runner yq version check|\(.*|\)*host driver launcher fixtures')" -eq 1
 check "yq version: the CI step runs under pwsh" test "$(yq -r '.jobs.tests-launchers.steps[] | select(.name == "runner yq version check") | .shell' "$ci_yml")" = pwsh
 check "yq version: the CI step names the shared file and Test-YqVersion" sh -c "grep -qF 'wow-launch-common.ps1' '$tmp/ci-step.ps1' && grep -qF 'Test-YqVersion' '$tmp/ci-step.ps1'"
