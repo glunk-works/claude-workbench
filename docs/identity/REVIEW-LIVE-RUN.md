@@ -223,3 +223,13 @@ once no launch of that home is running, list the containers, networks and volume
 label=wow.review.home=<key>`) and remove them by hand.
 
 A pause and a resume of that home's poller (`-Disable`, `-Enable`) pass the same `-TaskName`.
+
+### What a review can read from CI (#1156)
+
+The review container cannot read a job's full log, by design: its proxy allows only github.com
+and api.github.com, the log download leaves them, and the proxy is not to be widened for it. The
+shard jobs (`tests-1`, `tests-2`) each carry one `test-all` notice annotation that lists every
+suite that shard ran with its verdict, read through the check run's annotations endpoint on the
+API. The limit: the annotation is written by the PR head's own runner and suites, so it witnesses
+no more than that shard's own conclusion does, and a check run with no `test-all` notice, or more
+than one, gives no per-suite witness.

@@ -37,6 +37,17 @@
 # every suite when the runner is KILLed, may leave its own children and temp directory behind.
 # The runner waits for each stopped suite, so a suite that traps TERM delays the exit.
 #
+# Under GitHub Actions (the environment variable GITHUB_ACTIONS exactly `true`) the runner prints
+# one more stdout line right after the verdict section, before the first failed-log header: a
+# `::notice title=test-all::` workflow command whose message is the run's verdict lines (without
+# the indented skip lines) and then the count line, joined by newlines. The message is escaped as
+# workflow commands require: `%` as `%25`, carriage return as `%0D`, newline as `%0A`, in that
+# order. Reading a job's full log is out of reach of an App-mode review (its proxy allows only
+# github.com and api.github.com), so this check-run annotation, read on the API, is the per-suite
+# witness. It is one annotation per run, not one per suite, because Actions keeps only a limited
+# number of annotations per step. With the variable unset or any other value, stdout is unchanged.
+# The exit code never changes.
+#
 # Tool notes for some suites (a suite missing a tool it needs reports `skip`, loudly; but
 # tests/identity-review.test.sh, tests/identity-launchers.test.sh and tests/review-verdict.test.sh
 # fail instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml sets):
@@ -284,6 +295,7 @@ pass=0
 fail=0
 skip=0
 skipped=""   # the -s section's body: one block per skipped suite
+verdicts=""  # the verdict lines, newline-joined, for the Actions notice
 i=0
 while [ "$i" -lt "$total" ]; do
   log="$logdir/$i.log"
@@ -298,6 +310,8 @@ while [ "$i" -lt "$total" ]; do
     pass=$((pass + 1))
   fi
   echo "$verdict tests/${names[$i]}"
+  verdicts="$verdicts$verdict tests/${names[$i]}
+"
   if [ "$verdict" = skip ]; then
     grep -E '^(SKIP|skip) - ' "$log" | sed 's/^/  /'
     skipped="$skipped
@@ -310,6 +324,16 @@ $(grep -E '^(SKIP|skip) - ' "$log")
   fi
   i=$((i + 1))
 done
+
+count_line="test-all: $pass pass, $fail fail, $skip skip"
+
+if [ "${GITHUB_ACTIONS-}" = true ]; then
+  msg="$verdicts$count_line"
+  msg="${msg//'%'/'%25'}"
+  msg="${msg//$'\r'/'%0D'}"
+  msg="${msg//$'\n'/'%0A'}"
+  printf '%s\n' "::notice title=test-all::$msg"
+fi
 
 i=0
 while [ "$i" -lt "$total" ]; do
@@ -328,5 +352,5 @@ if [ -n "$summary" ]; then
   fi
 fi
 
-echo "test-all: $pass pass, $fail fail, $skip skip"
+echo "$count_line"
 [ "$fail" -eq 0 ]
