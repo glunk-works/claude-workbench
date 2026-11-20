@@ -31,6 +31,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- The test shards now report their run time against their timeout in each run's job summary and log, and invariants check 9 no longer stops on an empty host-command list on a bash older than 4.4, so the exec-bit test's no-identity case now requires a completed run (#1694).
 - The review launcher's repeat check now writes only the reviewer App's open issues to the host, and its header states that title matching folds ASCII case only; it applies once the host tools are reinstalled (#1563).
 - The `runner yq version check` step of the `tests-launchers` job now reads only the version yq prints on stdout, as the launchers do, so a warning on stderr no longer fails it (#1691).
 
