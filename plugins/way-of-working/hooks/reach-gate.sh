@@ -16,7 +16,9 @@
 #       reached    pass, remembered.
 #       unreached  exit 2 with one stderr line naming the repo: every prompt is refused until the
 #                  token reaches it (a dev container mounting another repo's token directory is
-#                  the usual cause). Not remembered, so the next prompt checks again.
+#                  the usual cause). The line also names the two ways out of an intended mismatch
+#                  (origin naming the token's repository, or a token minted for origin's).
+#                  Not remembered, so the next prompt checks again.
 #       anything else (no gh, git or timeout, no origin, an origin URL not in the three accepted
 #                  forms, a failed, partial or timed-out call, reach exit 2): the prompt passes
 #                  and nothing is remembered.
@@ -131,7 +133,7 @@ verdict=$(printf '%s\n' "$recs" | sh "$here/../bin/gh-identity.sh" reach "$repo"
 case "$verdict" in
   reached) remember; exit 0 ;;
   unreached)
-    echo "reach-gate: the token in use does not reach $repo, so every prompt is refused until it does (a dev container mounting another repo's token directory is the usual cause)." >&2
+    echo "reach-gate: the token in use does not reach $repo, so every prompt is refused until it does (a dev container mounting another repo's token directory is the usual cause: mount the right token directory); if the mismatch is intended, make origin name the repository the token was minted for and keep the other repository under another remote name, or use a token minted for the repository origin names." >&2
     exit 2
     ;;
 esac
