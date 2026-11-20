@@ -296,6 +296,7 @@ PS
   for f in broker.ps1 install-host-tools.ps1; do
     got=$(pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/jfix.ps1")" -Script "$(wp "$root_dir/scripts/identity/$f")" \
       -Home1 "$(wp "$tmp/jd/jlink")" -Home2 "$(wp "$tmp/jd2/p/default")" -Home3 "$(wp "$tmp/jd/other")" -Default "$(wp "$tmp/jd/default")" 2>&1) || true
+    [ "$got" = "True True False" ] || printf 'junction: %s printed: %s\n' "$f" "$got" >&2
     check "junction: $f Test-IsDefaultHome is true for a junction to the default home, true through a parent junction, false for another directory" test "$got" = "True True False"
   done
 else
