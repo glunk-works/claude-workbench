@@ -263,7 +263,11 @@ Do the steps in order. It documents the steps and performs none.
    the owner directory of a second org's home that holds a valid `tokens-root` file and a readable `broker.json` naming that owner but is not beside the default home
    (beside: in the same parent folder, not a link), see *A second org's home*), and
    `broker.log` must show no `config:` line after the edit (a `broker.json` the broker refuses
-   stops every repo's mint, not only the new one).
+   stops every repo's mint, not only the new one). After the reinstall, the first `broker started, installed from commit`
+   line in `broker.log` timestamped after the `installed` time on line 2 of `bin\MANIFEST` names the commit on line 1 of
+   that file (the commit the next paragraph checks), and in the ten minutes after that line `broker.log` shows no run of
+   `another broker holds broker.lock; exiting` lines about 60 seconds apart by their timestamps, which are UTC: one per
+   tick of the task's every-minute trigger means `conhost.exe` returned early and `IgnoreNew` is not suppressing the ticks.
 
    Check the install clone around the reinstall. In that clone (one no container opens, never the driver's
    `-Clone`), with `main` checked out, run `git pull --ff-only` first: a launcher's fetch there moves
