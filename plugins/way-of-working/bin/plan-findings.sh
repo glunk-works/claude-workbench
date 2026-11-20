@@ -1,8 +1,9 @@
 #!/bin/sh
 # The mechanical half of /way-of-working:plan-sprint's `findings` mode: which open issues are the
 # declared reviewer App's grouped review-finding issues, how one issue's body unpacks into findings,
-# whether a cited path still exists, whether a composed text passes the screens, and whether a
-# mapping comment names every finding. The judgment (the table, the destinations, the dialogue) stays
+# whether a cited path still exists, whether a composed text passes the screens, whether a
+# mapping comment names every finding, and which findings issues a planning pass has left
+# unresolved (the placement guard, `held`). The judgment (the table, the destinations, the dialogue) stays
 # in the skill body, as for the rest of plan-sprint; this script only reads, parses and screens.
 #
 # Usage:
@@ -13,12 +14,16 @@
 #   plan-findings.sh covers <N> <rows-file> <comment-file>
 #   plan-findings.sh label <repo> <value>
 #   plan-findings.sh filed <issue.json> <value> <body-file>
+#   plan-findings.sh held <list-file> <kept-file>
 #
 #   list      <project.yml> is the DEFAULT branch's committed copy, already written to a file. The
 #             sibling declared-ids.sh runs on it (as `sh`, found only beside this script) and its line
-#             must start with `ok `; then `.identities.reviewer_app.id` is read with yq. A missing or
-#             null reviewer App, `no-map`, `unreadable`, or a non-zero exit or empty output from
-#             declared-ids.sh exits 1 with a stderr line and nothing on stdout. Fetches every open
+#             must start with `ok `; then `.identities.reviewer_app.id` is read with yq. `no-map`
+#             (no identities map) and a missing or null reviewer App exit 3 with a stderr line and
+#             nothing on stdout: the repo declares no reviewer App, so there are no findings issues
+#             to read. `unreadable`, or a non-zero exit or empty output from declared-ids.sh, a
+#             missing yq or an unreadable project file exits 1 with a stderr line and nothing on
+#             stdout. Fetches every open
 #             issue of <repo> (paginated, to a file by direct redirection, the way plan-gather.sh
 #             fetches), keeps true issues (pull requests dropped) whose author's NUMERIC ID equals
 #             that id (a login is never compared), and prints TSV: number, created_at, milestone
@@ -70,10 +75,19 @@
 #             (`bad-name`). Prints `no-label` when no entry of the issue's labels has a name equal to
 #             <value>, else `body-differs` when the issue's body and <body-file> differ once trailing
 #             newlines are dropped from each, else `ok`.
+#   held      No `gh` call. The placement guard. <list-file> is the `list` subcommand's output (four TSV
+#             fields per row). <kept-file> holds issue numbers one per line, and may be empty; a blank
+#             line in it is ignored. Prints, one per line in ascending number order, the number of each
+#             row whose milestone field is `none` and whose number is not a whole line of <kept-file>.
+#             Empty stdout with exit 0 means nothing is held. Either file not readable, a list row with
+#             other than four TSV fields, a list row whose number is not digits-only, or a non-blank
+#             kept line that is not digits-only exits 1 with a stderr line and nothing on stdout.
 #
 # Exit codes: a wrong argument count, an unknown subcommand or a non-digit <N> prints a usage line on
-# stderr, nothing on stdout, and exits 2. Every other failure exits 1 with a stderr line. The
-# verdict words of screen, covers, label and filed go on stdout with exit 0.
+# stderr, nothing on stdout, and exits 2. `list` exits 3 (stderr line, nothing on stdout) when the repo
+# declares no identities map or no reviewer App. Every other failure exits 1 with a stderr line. The
+# verdict words of screen, covers, label and filed, and the numbers `held` prints, go on stdout with
+# exit 0.
 #
 # Permitted toolset: POSIX sh, awk, grep, sed, sort, tr, mktemp, git (exists only), yq (mikefarah v4;
 # list, unpack and filed), `gh` using only its own embedded --jq (list and label only), and the siblings
@@ -92,6 +106,7 @@ usage() {
   echo "                         plan-findings.sh covers <N> <rows-file> <comment-file>" >&2
   echo "                         plan-findings.sh label <repo> <value>" >&2
   echo "                         plan-findings.sh filed <issue.json> <value> <body-file>" >&2
+  echo "                         plan-findings.sh held <list-file> <kept-file>" >&2
 }
 
 mode="${1:-}"
@@ -100,6 +115,7 @@ case "$mode" in
   unpack | exists | screen) [ "$#" -eq 2 ] || { usage; exit 2; } ;;
   label) [ "$#" -eq 3 ] || { usage; exit 2; } ;;
   covers | filed) [ "$#" -eq 4 ] || { usage; exit 2; } ;;
+  held) [ "$#" -eq 3 ] || { usage; exit 2; } ;;
   *) usage; exit 2 ;;
 esac
 
@@ -146,11 +162,12 @@ if [ "$mode" = list ]; then
   fi
   case "$line" in
     "ok "*) ;;
-    *) echo "plan-findings.sh: list: no identities map is declared (declared-ids.sh did not print ok)" >&2; exit 1 ;;
+    "no-map") echo "plan-findings.sh: list: no identities map is declared" >&2; exit 3 ;;
+    *) echo "plan-findings.sh: list: the identities map is unreadable (declared-ids.sh did not print ok)" >&2; exit 1 ;;
   esac
   rid="$(yq -r 'explode(.) | .identities.reviewer_app | select(tag == "!!map") | .id' "$yml" 2>/dev/null)" || rid=""
   case "$rid" in
-    '' | 0* | *[!0-9]*) echo "plan-findings.sh: list: no reviewer_app is declared" >&2; exit 1 ;;
+    '' | 0* | *[!0-9]*) echo "plan-findings.sh: list: no reviewer_app is declared" >&2; exit 3 ;;
   esac
   # The author's numeric id and the pull-request flag are projected and compared HERE, in awk, so
   # the filter is the script's own shell code and a fixture can exercise it.
@@ -165,6 +182,26 @@ if [ "$mode" = list ]; then
   fi
   awk -F "$tab" -v rid="$rid" 'NF == 6 && $5 == rid && $6 == "false" { print $1 "\t" $2 "\t" $3 "\t" $4 }' "$tmp/rows" >"$tmp/kept"
   sort -t "$tab" -k1,1n "$tmp/kept"
+  exit 0
+fi
+
+# =============================================================================
+if [ "$mode" = held ]; then
+  lf="$2"; kf="$3"
+  [ -f "$lf" ] && [ -r "$lf" ] || { echo "plan-findings.sh: held: list file is not a readable file" >&2; exit 1; }
+  [ -f "$kf" ] && [ -r "$kf" ] || { echo "plan-findings.sh: held: kept file is not a readable file" >&2; exit 1; }
+  # Every check runs before anything is printed, so a failure leaves stdout empty.
+  if ! awk 'NF == 0 { next } /[^0-9]/ { exit 1 }' "$kf" 2>/dev/null; then
+    echo "plan-findings.sh: held: a kept line is not digits-only" >&2
+    exit 1
+  fi
+  if ! awk -F "$tab" 'NF != 4 || $1 !~ /^[0-9]+$/ { exit 1 }' "$lf" 2>/dev/null; then
+    echo "plan-findings.sh: held: a list row does not have four fields or its number is not digits-only" >&2
+    exit 1
+  fi
+  # The kept file is read in BEGIN, so an empty one cannot be mistaken for the list's first lines.
+  awk -F "$tab" -v kf="$kf" 'BEGIN { while ((getline k < kf) > 0) if (k != "") kept[k] = 1 }
+    $3 == "none" && !($1 in kept) { print $1 }' "$lf" | sort -n
   exit 0
 fi
 
