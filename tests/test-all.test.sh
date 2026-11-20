@@ -21,10 +21,15 @@
 # none line, FILE's earlier contents are kept, exit code and stdout match the run without -s, and a
 # missing value, a relative FILE naming an existing file and a FILE that does not exist each exit 2
 # with no suite started.
+# The annotation cases (#1156): with GITHUB_ACTIONS=true the runner prints one `::notice
+# title=test-all::` line after the verdicts and before the first failed-log header, whose message
+# decodes to the verdict lines and the count line; stub names holding %, CR and LF come out as
+# %25, %0D and %0A; unset, `false` and empty print no `::` line; the exit code does not change.
 # Needs bash (the runner is a bash script). Permitted toolset: POSIX sh, plus bash, grep, sed
 # and sleep.
 set -eu
 
+unset GITHUB_ACTIONS   # a CI run sets it; cases that want it set it themselves
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 runner="$root_dir/scripts/test-all.sh"
 
@@ -329,5 +334,55 @@ run "$t1" -s
 assert_eq "-s with no value exits 2" 2 "$rc"
 run "$t1" -h
 assert_has "-h shows -s" "$t1/out" "-s FILE"
+
+# --- the GitHub Actions annotation (#1156) ---
+ta="$tmp/ta"
+make_tree "$ta" 1
+GITHUB_ACTIONS=true; export GITHUB_ACTIONS
+run "$ta"
+unset GITHUB_ACTIONS
+assert_eq "annotation: failing tree exits 1" 1 "$rc"
+assert_eq "annotation: one notice line" 1 "$(grep -c '^::notice title=test-all::' "$ta/out")"
+nl="$(grep -n '^::notice title=test-all::' "$ta/out" | cut -d: -f1)"
+lastv="$(grep -n '^\(pass\|fail\|skip\) tests/' "$ta/out" | tail -n 1 | cut -d: -f1)"
+hdr="$(grep -n '^--- tests/' "$ta/out" | head -n 1 | cut -d: -f1)"
+[ "$nl" -gt "$lastv" ] && [ "$nl" -lt "$hdr" ] && ok "annotation: between verdicts and failed-log header" \
+  || bad "annotation: placement (notice $nl, last verdict $lastv, header $hdr)"
+want="$(grep '^\(pass\|fail\|skip\) tests/' "$ta/out" | sed 's/$/%0A/' | tr -d '\n')$(grep '^test-all: ' "$ta/out")"
+got="$(grep '^::notice title=test-all::' "$ta/out" | sed 's/^::notice title=test-all:://')"
+assert_eq "annotation: message is verdict lines plus count line" "$want" "$got"
+# escaping, on a tree of its own
+tb="$tmp/tb"
+make_tree "$tb" 0
+: >"$tb/tests/pc%d.test.sh"
+: >"$tb/tests/cr$(printf '\rx').test.sh"
+: >"$tb/tests/nl$(printf 'y\nz').test.sh"
+GITHUB_ACTIONS=true; export GITHUB_ACTIONS
+run "$tb"
+unset GITHUB_ACTIONS
+assert_eq "annotation: escaped tree exits 0" 0 "$rc"
+assert_has "annotation: % escaped" "$tb/out" "tests/pc%25d.test.sh"
+assert_has "annotation: CR escaped" "$tb/out" "tests/cr%0Dx.test.sh"
+assert_has "annotation: LF escaped" "$tb/out" "tests/nly%0Az.test.sh"
+# unset, false and empty print no :: line, and the exit code matches
+run "$ta"
+assert_eq "annotation: unset exits as set (failing)" 1 "$rc"
+assert_lacks "annotation: unset prints no ::" "$ta/out" "::"
+for v in false ""; do
+  GITHUB_ACTIONS="$v"; export GITHUB_ACTIONS
+  run "$ta"
+  unset GITHUB_ACTIONS
+  assert_eq "annotation: '$v' exits 1" 1 "$rc"
+  assert_lacks "annotation: '$v' prints no ::" "$ta/out" "::"
+done
+tc="$tmp/tc"
+make_tree "$tc" 0
+run "$tc"
+assert_eq "annotation: unset exits 0 (clean)" 0 "$rc"
+GITHUB_ACTIONS=true; export GITHUB_ACTIONS
+run "$tc"
+unset GITHUB_ACTIONS
+assert_eq "annotation: set exits 0 (clean)" 0 "$rc"
+assert_eq "annotation: clean tree, one notice" 1 "$(grep -c '^::notice title=test-all::' "$tc/out")"
 
 exit "$fail"
