@@ -24,6 +24,7 @@ the GitHub release notes.
 ### Added
 
 - The `zizmor` job in `ci.yml` now runs the gate's configuration against a committed fixture with a known finding and fails unless that run failed, so a `zizmor-action` bump that stops the gate from exiting non-zero on a finding turns the job red on its own PR (#1237).
+- The reach-gate refusal now names the way out of an intended origin and token mismatch (`#1235`).
 
 ## [0.40.0] — 2026-11-20
 

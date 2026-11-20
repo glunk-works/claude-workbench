@@ -101,6 +101,8 @@ run s3
 assert_eq "unreached exits 2 with empty stdout" "2|" "$rc|$out"
 assert_eq "unreached stderr is one line naming the repo" "1|yes" \
   "$(printf '%s\n' "$err" | wc -l | tr -d ' ')|$(case $err in *acme/widgets*) echo yes ;; *) echo no ;; esac)"
+assert_eq "unreached line names both ways out of an intended mismatch, in order, and no way to turn the hook off" "yes" \
+  "$(case $err in *disable* | *settings*) echo no ;; *'mount the right token directory'*'if the mismatch is intended'*remote*'a token minted for'*) echo yes ;; *) echo no ;; esac)"
 RG_TMPDIR="$tmp/shared2"; mkdir -p "$RG_TMPDIR"
 run s3b; c1=$calls
 assert_eq "the first unreached prompt makes a gh call" "yes" \
