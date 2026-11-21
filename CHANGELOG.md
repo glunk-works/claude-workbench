@@ -26,6 +26,10 @@ the GitHub release notes.
 - The `zizmor` job in `ci.yml` now runs the gate's configuration against a committed fixture with a known finding and fails unless that run failed, so a `zizmor-action` bump that stops the gate from exiting non-zero on a finding turns the job red on its own PR (#1237).
 - The reach-gate refusal now names the way out of an intended origin and token mismatch (`#1235`).
 
+### Changed
+
+- The review launcher's findings issue now carries one `type/*` label, the type its filed findings share or else `type/chore`, plus their `area/*` labels; it applies once the host tools are reinstalled (#1303).
+
 ## [0.40.0] — 2026-11-20
 
 **⚠️ Migration** — no `.ai/project.yml` needs a change on this bump, but two behaviours change for a repo that already declares the keys: a lane told `wow-driver: merge-base` now resolves a merge whose only conflict lies in the first level-2 section of a file listed in `append_only`, keeping both sides' lines, commits it, runs the green gate again and, on an open PR, pushes it (#1711, below; a repo that wants no automatic resolution preps its lanes without `driver=`, or sets `append_only: null`, which also turns off the spec-shape marker rule); and the default `/way-of-working:plan-sprint` pass now runs the findings phase first wherever the identities map declares a reviewer App (#1705, below). Reinstall the host tools in every home for #1563's review-launcher fix.
