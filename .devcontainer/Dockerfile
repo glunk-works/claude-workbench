@@ -80,4 +80,14 @@ RUN set -eu; \
     chmod 0755 /opt/microsoft/powershell/7/pwsh; \
     ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh
 RUN [ "$(pwsh -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()')" = "$PWSH_VERSION" ]
+
+# The Claude Code version this image's `claude` must be: the version the FROM image's managed
+# settings allow. The build fails unless the base image's `claude` reports exactly it, so a
+# base-image bump that moves the version cannot slip through. scripts/identity/review/Dockerfile
+# and scripts/loop/Dockerfile carry the same CLAUDE_VERSION, and tests/review-image.test.sh holds
+# all three equal. Dependabot does not track it: bump it by hand in the FROM bump PR. The check
+# runs when this image is built (the start-of-day recreate, or a hand `docker build`), not as a
+# PR check. PATH is pinned so the root-owned copy is the one compared.
+ARG CLAUDE_VERSION=2.1.316
+RUN v=$(PATH=/usr/local/bin:/usr/bin:/bin claude --version) && [ "${v%% *}" = "$CLAUDE_VERSION" ]
 USER 1000:1000

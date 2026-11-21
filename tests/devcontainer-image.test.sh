@@ -1,8 +1,8 @@
 #!/bin/sh
 # Static fixtures for the dev container (#1226, WB-D42): .devcontainer/Dockerfile and
 # .devcontainer/devcontainer.json, which are the 603-Identity/devcontainers dev-App template
-# plus this repo's four per-repo surfaces (the token mount, the FROM, the root-run pwsh extras
-# (#893), and no appPort). Nothing the image sets is checked here: the flavour is reviewed in
+# plus this repo's four per-repo surfaces (the token mount, the FROM, the root-run pwsh and Claude
+# Code version extras (#893, #1676), and no appPort). Nothing the image sets is checked here: the flavour is reviewed in
 # that repo and `verify / verify` compares these two files with its template.
 #
 #   Dockerfile          the template's shape (header of the Dockerfile): one `# syntax=` line, one
@@ -10,8 +10,10 @@
 #                       it, no COPY --from, RUN --mount from= or ONBUILD, ASCII, LF; no instruction
 #                       naming the app user's home directory, no npm or node, nothing masking a
 #                       failure; the instructions between the FROM and the last one, USER 1000:1000,
-#                       are exactly USER 0 and the pinned pwsh block (version and hash ARGs, the
+#                       are exactly USER 0, the pinned pwsh block (version and hash ARGs, the
 #                       ENV line, the install RUN pinned line by line, the version assertion)
+#                       and the Claude Code version assertion (ARG CLAUDE_VERSION and the RUN
+#                       that fails the build unless the base image's claude reports it)
 #   devcontainer.json   read with grep, not jq, after its `//` comment lines are removed (as
 #                       tests/ai-cursor-banner.test.sh does): the owner-qualified token mount, the
 #                       .gitconfig.d source from USERPROFILE only, the -node_modules and -venv
@@ -86,7 +88,9 @@ code=$(cat "$dfcode")
 check "Dockerfile: no instruction names the app user's home directory" test -z "$(printf '%s\n' "$code" | grep -e '/home/app' -e '~/' -e '\$HOME' || true)"
 check "Dockerfile: no instruction names npm or node" test -z "$(printf '%s\n' "$code" | grep -Ewi -e 'npm' -e 'node' -e 'nodejs' || true)"
 
-# --- Dockerfile: the extras are USER 0 and the pinned PowerShell (#893) --------------------
+# --- Dockerfile: the extras are USER 0, the pinned PowerShell (#893) and the Claude Code version check (#1676) ---
+claude_ver=$(arg "$dfcode" CLAUDE_VERSION)
+check "Dockerfile: CLAUDE_VERSION is a plain dotted triple of digits" sh -c 'printf "%s\n" "$1" | grep -Eq "^[0-9]+\.[0-9]+\.[0-9]+\$"' _ "$claude_ver"
 pwsh_ver=$(arg "$dfcode" PWSH_VERSION)
 pwsh_sha=$(arg "$dfcode" PWSH_SHA256)
 check "Dockerfile: PWSH_VERSION is a plain x.y.z, 7.2 or later" sh -c 'printf "%s\n" "$1" | grep -Eq "^([89]|[1-9][0-9]+)\.[0-9]+\.[0-9]+\$|^7\.([2-9]|[1-9][0-9]+)\.[0-9]+\$"' _ "$pwsh_ver"
@@ -110,16 +114,18 @@ chmod -R go-w /opt/microsoft/powershell/7; \
 chmod 0755 /opt/microsoft/powershell/7/pwsh; \
 ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh
 RUN [ "$(pwsh -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()')" = "$PWSH_VERSION" ]
+ARG CLAUDE_VERSION=@
+RUN v=$(PATH=/usr/local/bin:/usr/bin:/bin claude --version) && [ "${v%% *}" = "$CLAUDE_VERSION" ]
 EOT
 # Everything after the FROM line and before the last instruction.
 from_n=$(grep -n '^FROM ' "$dfstrip" | head -1 | cut -d: -f1)
 last_n=$(wc -l <"$dfstrip" | tr -d ' ')
 if [ -n "$from_n" ] && [ "$last_n" -gt "$from_n" ]; then
-  sed -n "$((from_n + 1)),$((last_n - 1))p" "$dfstrip" | sed -e 's/^ARG PWSH_VERSION=.*/ARG PWSH_VERSION=@/' -e 's/^ARG PWSH_SHA256=.*/ARG PWSH_SHA256=@/' >"$got"
+  sed -n "$((from_n + 1)),$((last_n - 1))p" "$dfstrip" | sed -e 's/^ARG PWSH_VERSION=.*/ARG PWSH_VERSION=@/' -e 's/^ARG PWSH_SHA256=.*/ARG PWSH_SHA256=@/' -e 's/^ARG CLAUDE_VERSION=.*/ARG CLAUDE_VERSION=@/' >"$got"
 else
   : >"$got"
 fi
-check "Dockerfile: between the FROM and the last USER are exactly USER 0 and the pinned pwsh block" cmp -s "$got" "$want"
+check "Dockerfile: between the FROM and the last USER are exactly USER 0, the pinned pwsh block and the Claude Code version assertion" cmp -s "$got" "$want"
 
 # --- devcontainer.json -------------------------------------------------------------------
 # Minus its comment lines (first non-blank characters `//`), so a commented-out key counts for nothing.
@@ -164,6 +170,8 @@ if [ -z "${DEVCONTAINER_IMAGE_TEST_INNER:-}" ]; then
   m_extra_instr() { { sed '$d' "$1/Dockerfile"; printf 'RUN echo extra\nUSER 1000:1000\n'; } >"$1/D" && mv "$1/D" "$1/Dockerfile"; }
   m_container_env() { sed 's|^{$|{ "containerEnv": {},|' "$1/devcontainer.json" >"$1/j" && mv "$1/j" "$1/devcontainer.json"; }
   m_extra_mount() { sed 's|^\(  "mounts": \[\)$|\1\n    "source=/h,target=/host,type=bind",|' "$1/devcontainer.json" >"$1/j" && mv "$1/j" "$1/devcontainer.json"; }
+  m_no_claude_run() { grep -v '^RUN v=\$(PATH=' "$1/Dockerfile" >"$1/D" && mv "$1/D" "$1/Dockerfile"; }
+  m_claude_ver() { sed 's|^ARG CLAUDE_VERSION=.*|ARG CLAUDE_VERSION=latest|' "$1/Dockerfile" >"$1/D" && mv "$1/D" "$1/Dockerfile"; }
   m_third_file() { echo x >"$1/dev-token"; }
   refuses "a second FROM" m_second_from
   refuses "a devcontainer-base FROM" m_base_from
@@ -171,6 +179,8 @@ if [ -z "${DEVCONTAINER_IMAGE_TEST_INNER:-}" ]; then
   refuses "an extra instruction among the extras" m_extra_instr
   refuses "a containerEnv key" m_container_env
   refuses "an extra mount" m_extra_mount
+  refuses "the Claude Code version RUN line removed" m_no_claude_run
+  refuses "a non-numeric CLAUDE_VERSION" m_claude_ver
   refuses "a third file in .devcontainer/" m_third_file
   [ "$neg_fail" -eq 0 ] || exit 1
 fi

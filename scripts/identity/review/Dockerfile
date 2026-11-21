@@ -11,8 +11,9 @@
 #         --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
 #         --cert-oidc-issuer https://token.actions.githubusercontent.com \
 #         --source-ref refs/heads/main --deny-self-hosted-runners
-#   - The `claude` pin below is bumped by hand, together with scripts/loop/Dockerfile's: a test
-#     holds the two equal.
+#   - The `claude` pin below is bumped by hand, together with scripts/loop/Dockerfile's and
+#     .devcontainer/Dockerfile's `CLAUDE_VERSION`: a test holds the three versions equal (and the
+#     checksum equal with the loop's).
 #   - The copied dev-token, gh shim, inject.py and proxy.py are reused unedited apart from
 #     dev-token's two rewritten lines, so their own comments still describe the dev container
 #     or the loop. In this image they act as the reviewer App. dev-token and gh live beside
@@ -32,7 +33,8 @@ FROM ghcr.io/603-identity/devcontainer-base:4.661@sha256:8445c6d574c53fac74b4b6d
 
 # `claude` goes in /usr/local/bin, root-owned, not the native installer's per-user location:
 # that is writable state, where the session could replace the binary. Pinned by version and
-# sha256, the same two values as scripts/loop/Dockerfile.
+# sha256: the same two values as scripts/loop/Dockerfile, and the version also equal to
+# .devcontainer/Dockerfile's `CLAUDE_VERSION` (tests/review-image.test.sh holds them equal).
 ARG CLAUDE_VERSION=2.1.316
 ARG CLAUDE_SHA256=fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824
 
