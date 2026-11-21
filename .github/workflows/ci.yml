@@ -298,8 +298,8 @@ jobs:
   # Not a required check yet (WB-D15) -- promoting it to `ruleset.required_checks` is a
   # later human call, once it has a track record.
   #
-  # TWO zizmor-action runs, not one. Verified by reading action.sh at this pin, then
-  # reproducing live (`zizmor . --format=sarif` exits 0 on a real finding; `zizmor .
+  # THREE zizmor-action runs, not one. Verified by reading action.sh when the job was
+  # added (WB-D15), then reproducing live (`zizmor . --format=sarif` exits 0 on a real finding; `zizmor .
   # --format=github` exits 13 on the same finding): `advanced-security: true` (the
   # action's default) passes `--format=sarif` to zizmor, and in THAT format zizmor
   # itself always exits 0, whatever it finds -- SARIF mode is upload-only, it does not
@@ -308,7 +308,16 @@ jobs:
   # actual gate (`advanced-security: false`, `annotations: true`; no `--min-severity` or
   # `--min-confidence` is set, so it fails on any finding that isn't `# zizmor:
   # ignore[...]`-suppressed, the same as `lint`/`coupling`/`invariants` failing on
-  # theirs). The second is upload-only, with `if: !cancelled()` so a red gate still
+  # theirs). The second is the self-test (#1237): the same action at the same pin, with
+  # the gate's `advanced-security` and `annotations`, run against a committed fixture
+  # (.github/zizmor-selftest/known-finding.yml) that carries a known finding, followed by
+  # a step that fails the job unless that run failed. It re-checks the gate's exit-code
+  # path on every run, and Dependabot moves every `zizmor-action` `uses:` line together,
+  # so a bump that breaks that path turns this job red on the bump's own PR. A step's
+  # outcome carries no exit code, so a zizmor crash or a parse error on the fixture also
+  # reads as a failed run; the self-test rules out the no-inputs and online-audit failures
+  # only. The fixture's annotation in the self-test's log is expected on every run. The
+  # third is upload-only, with `if: !cancelled()` so a red gate still
   # uploads its findings to the Security tab instead of silently skipping.
   zizmor:
     runs-on: ubuntu-latest
@@ -326,6 +335,30 @@ jobs:
         with:
           advanced-security: false
           annotations: true
+      - name: Run zizmor (self-test on a known finding)
+        id: selftest
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          advanced-security: false
+          annotations: true
+          online-audits: false
+          fail-on-no-inputs: false
+          inputs: .github/zizmor-selftest/known-finding.yml
+      - name: Gate step fails on a known finding
+        if: ${{ !cancelled() }}
+        env:
+          SELFTEST_OUTCOME: ${{ steps.selftest.outcome }}
+        run: |
+          if [ ! -f .github/zizmor-selftest/known-finding.yml ]; then
+            echo "::error::the zizmor self-test fixture .github/zizmor-selftest/known-finding.yml is missing"
+            exit 1
+          fi
+          if [ "$SELFTEST_OUTCOME" != failure ]; then
+            echo "::error::the zizmor gate configuration did not fail on the known finding (self-test outcome: ${SELFTEST_OUTCOME:-empty}); the action's exit-code path may have changed"
+            exit 1
+          fi
       - name: Run zizmor (upload SARIF)
         if: ${{ !cancelled() }}
         uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
