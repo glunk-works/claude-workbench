@@ -16,7 +16,12 @@
 # `scripts/loop/Dockerfile`'s `ARG BASE_IMAGE` (a templated `FROM`, and there is no
 # `/scripts/loop` entry below) and the two Dockerfiles' (the review image's and the loop's)
 # `CLAUDE_VERSION` / `CLAUDE_SHA256` (a download in a `RUN`, not a `FROM`), which
-# `tests/review-image.test.sh` holds equal. If the
+# `tests/review-image.test.sh` holds equal. So is the dev container's `CLAUDE_VERSION` in
+# `.devcontainer/Dockerfile`: it is bumped by hand in the Dependabot `FROM` bump PR itself when the
+# new base image's `claude` changes, together with the review and loop pins, which the same test
+# holds equal to it. No PR check builds the dev image, so the maintainer builds it on the host
+# before approving, once the new digest's attestation has been checked (`verify / verify` green,
+# or the `gh attestation verify` command in that Dockerfile's header). If the
 # `release.yml` hand-bump is ever missed often enough to matter, the fix is a real manifest for
 # Dependabot to read, not another entry below.
 

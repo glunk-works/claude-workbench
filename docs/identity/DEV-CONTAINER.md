@@ -828,7 +828,8 @@ removes it. The login lives on the volume; the binary does not.
   SHA-256. Auto-update is off through `DISABLE_UPDATES` and `DISABLE_AUTOUPDATER` as image `ENV`
   and through the root-owned `/etc/claude-code/managed-settings.json`, which a settings file cannot
   override, sets both in `env` and pins the version with `requiredMinimumVersion` and
-  `requiredMaximumVersion`; its content comes with the `FROM` digest. The read-only root filesystem
+  `requiredMaximumVersion`; its content comes with the `FROM` digest. The build checks the base
+  image's `claude` against the Dockerfile's `CLAUDE_VERSION` and fails on any other version. The read-only root filesystem
   keeps the binary from being replaced, but not an updater writing a newer copy to `~/.local` on
   the home volume, so those settings are the control. `DISABLE_UPDATES` blocks a manual
   `claude update` as well. After a rebuild,
@@ -837,12 +838,21 @@ removes it. The login lives on the volume; the binary does not.
   variable across managed sources, so server-managed settings, if this account ever receives them,
   override this pin only if they set `DISABLE_AUTOUPDATER` themselves.
 - **How to bump it.** A bump of this container's `claude` comes with a `FROM` bump (a new digest
-  from the flavour's "Build images" run, which `verify / verify` checks). The two Dockerfiles that
-  still carry the pin, `scripts/identity/review/` and `scripts/loop/`, are edited together in
-  `CLAUDE_VERSION` and `CLAUDE_SHA256` (Dependabot does not track them, and
-  `tests/review-image.test.sh` holds them equal). Take the sha256 from that version's release
-  `manifest.json` (the `linux-x64` entry). A `FROM` bump needs the container recreated too; recreate it: after every lane, every spec session and the driver session have exited, `docker stop` it, then
-  run the driver launcher (start of day), then run the live-run check under *Opening it*.
+  from the flavour's "Build images" run, which `verify / verify` checks), and is one PR that
+  changes the `FROM` digest, the three `CLAUDE_VERSION` lines (`.devcontainer/`,
+  `scripts/identity/review/` and `scripts/loop/` Dockerfiles) and the two `CLAUDE_SHA256` values
+  (the review and loop Dockerfiles'). Take the sha256 from that version's release `manifest.json`
+  (the `linux-x64` entry). When Dependabot opens the `FROM` bump, the version edits go into that
+  same PR. Dependabot does not track the pins, and `tests/review-image.test.sh` fails while the
+  three versions differ. The dev container's own check runs only when its image is built, and no PR
+  check builds it (`verify / verify` is not a required check), so before approving any
+  `.devcontainer` `FROM` bump, and only once `verify / verify` is green on the PR head or the
+  `gh attestation verify` command in `.devcontainer/Dockerfile`'s header has passed for the new
+  digest, the maintainer builds the image on the host (`docker build` of `.devcontainer`), which
+  fails while `CLAUDE_VERSION` differs from the new base image's `claude`. A `FROM` bump needs the container recreated too; after it merges, recreate it: after every lane, every spec session and the driver session have exited, `docker stop` it, then
+  run the driver launcher (start of day), then run the live-run check under *Opening it*. Then re-run the
+  review container's managed-settings probes on the new version, per *After a Claude Code bump* in
+  `docs/identity/REVIEW-LIVE-RUN.md`.
 - **Clearing a stopgap install.** A copy from the native installer lives on the home volume, and
   `~/.local/bin` leads `PATH`, so it shadows the image's. Remove `~/.local/bin/claude` and
   `~/.local/share/claude`, then check with `command -v claude` (should print
