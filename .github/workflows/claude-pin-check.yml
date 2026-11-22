@@ -1,0 +1,101 @@
+name: claude-pin-check
+
+# Nothing told the maintainer when the Claude Code version pinned in the three Dockerfiles
+# fell behind the latest release (#1677). Weekly, and on dispatch, this reads the release
+# feed's latest version and the pinned CLAUDE_VERSION and, when the feed is newer, opens one
+# notice issue naming both and the bump procedure, unless an open notice for that latest
+# version by this bot exists. It is read-only on the code: no PR, no branch, no push.
+#
+# Two jobs on two runners, so the token that can write never meets a repo file. `check`
+# holds read access only, checks the repo out and runs scripts/claude-pin-check.sh, whose
+# only effect is the line it prints; a failed download or a script exit other than 0 fails
+# the run before any output is written, so an unreadable feed never reads as current.
+# `file` holds `issues: write`, checks nothing out, runs no repo file, re-checks the two
+# versions it is handed and files the notice.
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: claude-pin-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      state: ${{ steps.check.outputs.state }}
+      pin: ${{ steps.check.outputs.pin }}
+      latest: ${{ steps.check.outputs.latest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare the pin with the latest release
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --max-time 60 --proto '=https' --proto-redir '=https' \
+            --silent --show-error --output "$RUNNER_TEMP/feed.txt" \
+            "https://downloads.claude.ai/claude-code-releases/latest"
+          result="$(bash scripts/claude-pin-check.sh "$RUNNER_TEMP/feed.txt" scripts/identity/review/Dockerfile)"
+          read -r state pin latest <<<"$result"
+          {
+            echo "state=$state"
+            echo "pin=$pin"
+            echo "latest=$latest"
+          } >>"$GITHUB_OUTPUT"
+
+  file:
+    if: needs.check.outputs.state == 'behind' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: File the notice
+        id: file
+        shell: bash
+        env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PIN: ${{ needs.check.outputs.pin }}
+          LATEST: ${{ needs.check.outputs.latest }}
+        run: |
+          set -euo pipefail
+          comp='(0|[1-9][0-9]{0,8})'
+          re="^${comp}\\.${comp}\\.${comp}\$"
+          if ! [[ "$PIN" =~ $re ]] || ! [[ "$LATEST" =~ $re ]]; then
+            echo "claude-pin-check: an output is not a version" >&2
+            exit 1
+          fi
+          prefix='Bump the pinned Claude Code from '
+          # The Actions bot's own open issues only (never a pull request), so another
+          # account's issue cannot suppress the notice. The list is a separate jq filter.
+          gh api --paginate "repos/$REPO/issues?state=open&per_page=100" |
+            jq -r '.[] | select(has("pull_request") | not) | select(.user.login == "github-actions[bot]") | .title' \
+              >"$RUNNER_TEMP/titles.txt"
+          while IFS= read -r title || [ -n "$title" ]; do
+            if [[ "$title" == "$prefix"* && "$title" == *" to $LATEST" ]]; then
+              echo "claude-pin-check: an open notice for $LATEST exists"
+              exit 0
+            fi
+          done <"$RUNNER_TEMP/titles.txt"
+          body="The pinned Claude Code is $PIN and the latest release is $LATEST.
+
+          How to bump it is the *How to bump it* bullet under *The claude binary* in docs/identity/DEV-CONTAINER.md. The bump starts with the devcontainers repo's base image, because the dev container allows exactly one version. Close this issue once the bump merges."
+          gh issue create --repo "$REPO" \
+            --title "$prefix$PIN to $LATEST" \
+            --label area/devcontainer --label type/chore \
+            --body "$body"
