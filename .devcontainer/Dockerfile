@@ -36,7 +36,7 @@
 #     --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
 #     --cert-oidc-issuer https://token.actions.githubusercontent.com \
 #     --source-ref refs/heads/main --deny-self-hosted-runners
-FROM ghcr.io/603-identity/devcontainer-devapp:4.661@sha256:b7a6d96a660b9f929ff0554103e2084af3375e8c78b6366abd6d2613322e23ff
+FROM ghcr.io/603-identity/devcontainer-devapp:4.812@sha256:a036701702814d63418c58ce3dcd0e8926709db5d5b7903336a41d7d4e62594e
 
 # The mount points for the home and dependency volumes in devcontainer.json are
 # pre-created app-owned in the shared images, so there is nothing to add here for them.
