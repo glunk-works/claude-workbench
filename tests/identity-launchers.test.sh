@@ -19,7 +19,7 @@
 #                   .devcontainer subtree), up, re-list, record, docker exec -it, the exec's code; gh and up run
 #                   with the final -WowHome as their working directory
 #   base binding    the launcher started inside the Clone still runs gh and up from -WowHome; a behind compare passes; ahead, diverged, a missing status, another merge-base sha, non-JSON
-#                   output and a failing gh each refuse before up; so do a committed tree without
+#                   output, a JSON array (also the compare answer in a one-element array), a top-level scalar and a failing gh each refuse before up; so do a committed tree without
 #                   .devcontainer/devcontainer.json, a truncated read of either tree, a root tree with no
 #                   .devcontainer entry, and a symlink or submodule entry; the API reason wins over a clone mismatch
 #   refusals        .devcontainer/ mismatch, label-only or Reference containers, bad up results, bad re-list
@@ -549,6 +549,11 @@ gh_start; echo ".merge_base_commit.sha = \"$c1\"" >"$stubdir/ghx.jq.compare"; ru
 gh_start; echo 'del(.merge_base_commit)' >"$stubdir/ghx.jq.compare"; run_drv; gh_refuses 'no merge base' 1
 gh_start; echo 'not json CANARY' >"$stubdir/ghx.raw.compare"; run_drv; gh_refuses 'non-JSON output' 1
 gh_start; echo '[1]' >"$stubdir/ghx.raw.compare"; run_drv; gh_refuses 'a JSON array' 1
+check "base binding (a JSON array): names one JSON object" err_has 'one JSON object'
+gh_start; printf '[{"status":"identical","merge_base_commit":{"sha":"%s","commit":{"tree":{"sha":"%s"}}}}]\n' "$c2" "$t2" >"$stubdir/ghx.raw.compare"; run_drv; gh_refuses 'the compare answer in a one-element array' 1
+check "base binding (the compare answer in a one-element array): names one JSON object" err_has 'one JSON object'
+gh_start; echo '"identical"' >"$stubdir/ghx.raw.compare"; run_drv; gh_refuses 'a top-level scalar' 1
+check "base binding (a top-level scalar): names one JSON object" err_has 'one JSON object'
 gh_start; echo 1 >"$stubdir/ghx.exit"; run_drv; gh_refuses 'a failing gh' 1
 check "base binding (a failing gh): names the exit code" err_has 'exit 1'
 gh_start; echo '.merge_base_commit.commit.tree.sha = "xyz"' >"$stubdir/ghx.jq.compare"; run_drv; gh_refuses 'a malformed root tree sha' 1
