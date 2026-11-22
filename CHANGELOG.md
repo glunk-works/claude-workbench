@@ -32,6 +32,10 @@ the GitHub release notes.
 
 - The review launcher's findings issue now carries one `type/*` label, the type its filed findings share or else `type/chore`, plus their `area/*` labels; it applies once the host tools are reinstalled (#1303).
 
+### Fixed
+
+- The plan-sprint per-issue triage comment rule now names a held findings issue as getting no triage comment, the held guard's re-read and `held` run now come after the placement gather's unmilestoned read so a findings issue filed before that read is held, and `plan-findings.sh` exits 1, not 3, when the yq read of the reviewer App id fails and exits 1 when `held`'s final awk fails.
+
 ## [0.40.0] — 2026-11-20
 
 **⚠️ Migration** — no `.ai/project.yml` needs a change on this bump, but two behaviours change for a repo that already declares the keys: a lane told `wow-driver: merge-base` now resolves a merge whose only conflict lies in the first level-2 section of a file listed in `append_only`, keeping both sides' lines, commits it, runs the green gate again and, on an open PR, pushes it (#1711, below; a repo that wants no automatic resolution preps its lanes without `driver=`, or sets `append_only: null`, which also turns off the spec-shape marker rule); and the default `/way-of-working:plan-sprint` pass now runs the findings phase first wherever the identities map declares a reviewer App (#1705, below). Reinstall the host tools in every home for #1563's review-launcher fix.

@@ -103,8 +103,19 @@ onlane() { (cd "$W" && eval "$1" && G add -A && G commit -q -m l); }
 domerge() { (cd "$W" && G merge -q --no-edit main >/dev/null 2>&1) || :; }
 LIST='append_only: [CL.md]'
 
-# run <desc> <want word> <want rc>: runs the script, checks word and status, and that the worktree and index are unchanged
-snap() { (cd "$W" && { cat CL.md other.md 2>/dev/null || :; G ls-files -u; }) >"$1" 2>/dev/null || :; }
+# run <desc> <want word> <want rc>: runs the script, checks word and status, and that the worktree and index are unchanged.
+# The snapshot holds CL.md, other.md, the unmerged index entries, and every unmerged path's own bytes (or a fixed marker when
+# the path is not a file in the worktree), so a conflicted file other than CL.md is compared too.
+snap() {
+  (cd "$W" && {
+    cat CL.md other.md 2>/dev/null || :
+    G ls-files -u
+    G diff --name-only --diff-filter=U | sort -u | while IFS= read -r up; do
+      printf 'path: %s\n' "$up"
+      if [ -f "$up" ]; then cat "$up"; else echo "<absent>"; fi
+    done
+  }) >"$1" 2>/dev/null || :
+}
 run() {
   desc=$1 want=$2 wrc=$3
   snap "$R/before"
