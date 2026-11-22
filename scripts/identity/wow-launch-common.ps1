@@ -309,8 +309,9 @@ function Get-JsonProp($Object, [string]$Name) {
 function Get-GhJson([string]$Gh, [string]$Path) {
   $r = Invoke-Tool $Gh @('api', '--hostname', 'github.com', $Path)
   if ($r.Code -ne 0) { Stop-Launch "gh api failed (exit $($r.Code))" }
-  try { $o = [Text.Encoding]::UTF8.GetString($r.Out) | ConvertFrom-Json -ErrorAction Stop } catch { Stop-Launch 'gh api did not print JSON' }
-  if ($o -isnot [pscustomobject]) { Stop-Launch 'gh api did not print one JSON object' }
+  try { $o = [Text.Encoding]::UTF8.GetString($r.Out) | ConvertFrom-Json -NoEnumerate -ErrorAction Stop } catch { Stop-Launch 'gh api did not print JSON' }
+  # The full type name: the [pscustomobject] accelerator names PSObject, which any pipeline-wrapped value matches.
+  if ($o -isnot [System.Management.Automation.PSCustomObject]) { Stop-Launch 'gh api did not print one JSON object' }
   $o
 }
 
