@@ -829,13 +829,13 @@ assert_eq "golden: the issue body, a fenced item per finding" \
   
   plain
   \`\`\`\`" "$(jq -r .body <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
-assert_eq "golden: labels kept only where the stub answers (area/x is not there)" '["type/bug","type/docs"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "golden: labels kept only where the stub answers (area/x is not there); differing types file one type/chore" '["type/chore"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
 check "golden: area/x was read as area%2Fx" has "$STUB/gh.calls" 'labels/area%2Fx'
 assert_eq "golden: the filed ledger is the one issue number" "101" "$(cat "$(entry_dir)/filed")"
 check "golden: the outcome is recorded" test "$(cat "$(entry_dir)/outcome")" = "0 reviewed"
 check "golden: no write call used a field flag" test ! -s "$STUB/gh.bad"
 
-# one finding of each type asks for exactly the matching type/* label
+# findings of four different types file one type/chore label and no other type label
 new_case
 set_yml '.backlog.repo = "o/backlog"'
 set_findings '[{"title":"a","body":"b","type":"bug"},{"title":"c","body":"d","type":"feature"},{"title":"e","body":"f","type":"chore"},{"title":"g","body":"h","type":"docs"}]'
@@ -843,7 +843,29 @@ printf '3\n' >"$STUB/wait.sleep"
 run o/r 7
 assert_eq "types: exit 0" 0 "$rc"
 assert_eq "types: one issue" 1 "$(n_issues)"
-assert_eq "types: the four type labels in array order" '["type/bug","type/feature","type/chore","type/docs"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "types: the four differing types file one type/chore label" '["type/chore"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "types: type%2Fchore is the only type%2F label path read" "labels/type%2Fchore" "$(grep -o 'labels/type%2F[a-z]*' "$STUB/gh.calls" | sort -u)"
+
+# findings sharing one type file that type, then their areas once each in first-seen order
+new_case
+set_yml '.backlog.repo = "o/backlog"'
+set_findings '[{"title":"a","body":"b","type":"docs","area":"area/a"},{"title":"c","body":"d","type":"docs","area":"area/b"},{"title":"e","body":"f","type":"docs","area":"area/a"}]'
+for l in a b; do printf '{"name":"area/%s"}\n' "$l" >"$STUB/gh/repos_o_backlog_labels_area%2F$l"; done
+printf '3\n' >"$STUB/wait.sleep"
+run o/r 7
+assert_eq "shared type: exit 0" 0 "$rc"
+assert_eq "shared type: the type first, then the areas once each" '["type/docs","area/a","area/b"]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+
+# differing types and no type/chore on the backlog: no type label, no other type read
+new_case
+set_yml '.backlog.repo = "o/backlog"'
+set_findings '[{"title":"a","body":"b","type":"bug"},{"title":"c","body":"d","type":"docs"}]'
+rm -f "$STUB/gh/repos_o_backlog_labels_type%2Fchore"
+printf '3\n' >"$STUB/wait.sleep"
+run o/r 7
+assert_eq "mixed no chore: exit 0" 0 "$rc"
+assert_eq "mixed no chore: no label filed" '[]' "$(jq -c .labels <"$STUB/inputs/$(grep '|POST||repos/o/backlog/issues|' "$STUB/gh.calls" | head -1 | awk -F'|' '{print $8}')")"
+assert_eq "mixed no chore: no type%2Fbug or type%2Fdocs path read" 0 "$(grep -c 'labels/type%2F\(bug\|docs\)' "$STUB/gh.calls")"
 
 # findings repeating a type or area ask for each label once
 new_case
