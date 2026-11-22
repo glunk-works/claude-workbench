@@ -48,7 +48,8 @@
 # number of annotations per step. With the variable unset or any other value, stdout is unchanged.
 # The exit code never changes.
 #
-# Tool notes for some suites (a suite missing a tool it needs reports `skip`, loudly; but
+# Tool notes for some suites (a suite missing a tool it needs reports `skip`, loudly, unless its
+# own note below says it fails; but
 # tests/identity-review.test.sh, tests/identity-launchers.test.sh, tests/identity-broker.test.sh and
 # tests/review-verdict.test.sh fail instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml
 # sets; the broker suite's guard-case skip off Windows fails too):
@@ -69,8 +70,10 @@
 #     tests/statusline-context.test.sh needs `jq`; tests/compact-handoff.test.sh needs `git`
 #     (and `jq` for its registration cases).
 #   - tests/review-image.test.sh needs `jq` and `yq`.
-#   - tests/ruleset-drift.test.sh needs `jq` and `yq` (and GNU `sed -i`) and skips the whole suite without them.
-#   - tests/wow-preflight.test.sh needs `jq` and `yq` (and GNU `sed -i`) and skips the whole suite without them.
+#   - tests/ruleset-drift.test.sh needs `jq` and `yq` and skips the whole suite without them; it also needs
+#     GNU `sed -i` and fails, rather than skips, without it.
+#   - tests/wow-preflight.test.sh needs `jq` and `yq` and skips the whole suite without them; it also needs
+#     GNU `sed -i` and fails, rather than skips, without it.
 #   - tests/wow-readback.test.sh needs `jq` and `yq` (and GNU `date -d`) and skips the whole suite without them.
 #   - tests/invariants-exec-bit.test.sh needs `git` and skips without it.
 #   - tests/review-verdict.test.sh needs `jq`.
