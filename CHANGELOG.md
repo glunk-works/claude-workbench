@@ -26,6 +26,11 @@ the GitHub release notes.
 - The `zizmor` job in `ci.yml` now runs the gate's configuration against a committed fixture with a known finding and fails unless that run failed, so a `zizmor-action` bump that stops the gate from exiting non-zero on a finding turns the job red on its own PR (#1237).
 - The reach-gate refusal now names the way out of an intended origin and token mismatch (`#1235`).
 - The dev container now declares its Claude Code version (`ARG CLAUDE_VERSION`) and fails its build unless the base image's `claude` reports it, and a test holds it equal to the review and loop images' (#1676).
+- The architect-review skill now says a repo is polled by being listed in `review-poll.json`, not by a per-repo registration (`#1283`).
+
+### Changed
+
+- The review launcher's findings issue now carries one `type/*` label, the type its filed findings share or else `type/chore`, plus their `area/*` labels; it applies once the host tools are reinstalled (#1303).
 
 ## [0.40.0] — 2026-11-20
 

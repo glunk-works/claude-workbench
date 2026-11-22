@@ -1261,10 +1261,11 @@ EOF
     say "every finding is already reported in the open issues $nums; nothing filed"
     return 0
   fi
-  # Labels: the union of the filed findings', in first-seen order,
-  # each kept only where the repository answers a read of the label (the read token).
+  # Labels: one type label (the type every filed finding shares, else type/chore, so the type axis
+  # still filters), then the filed findings' areas, each once in first-seen order. Each is kept only
+  # where the repository answers a read of the label (the read token).
   labels='[]'
-  for lab in $(jq -r --slurpfile m "$HDIR/matches.json" '[to_entries[] | select($m[0][.key] | length == 0) | .value | "type/" + .type, (.area // empty)] | reduce .[] as $l ([]; if index($l) then . else . + [$l] end) | .[]' <"$HDIR/ob-findings" | tr -d '\r'); do
+  for lab in $(jq -r --slurpfile m "$HDIR/matches.json" '[to_entries[] | select($m[0][.key] | length == 0) | .value] as $f | [(if ($f | map(.type) | unique | length) == 1 then "type/" + $f[0].type else "type/chore" end), ($f[] | .area // empty)] | reduce .[] as $l ([]; if index($l) then . else . + [$l] end) | .[]' <"$HDIR/ob-findings" | tr -d '\r'); do
     enc=$(printf '%s' "$lab" | jq -Rr '@uri' | tr -d '\r')
     TOK=$RTOK
     if gh_api "repos/$BREPO/labels/$enc" >/dev/null 2>&1; then labels=$(printf '%s' "$labels" | jq -c --arg l "$lab" '. + [$l]' | tr -d '\r'); fi
