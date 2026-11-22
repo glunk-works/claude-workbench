@@ -1,4 +1,4 @@
-# Shared helpers for wow-admin, wow-preflight, wow-readback, wow-review, wow-review-poll and wow-review-mint (WB-D24, issues #374, #635, #1383, #1414). Sourced, not run.
+# Shared helpers for wow-admin, wow-preflight, wow-readback, wow-review, wow-review-poll, wow-review-mint and wow-publish (WB-D24, issues #374, #635, #1383, #1414, #1681). Sourced, not run.
 #
 # Host layout, under $WOW_HOME (default ~/.config/glunk-identity):
 #   apps.json              {"admin": {app_id, client_id, installation_id, bot_user_id, key},
@@ -55,7 +55,7 @@
 # review-sessions/<id>/ only into a review container, each read-only.
 # claude-credential is never mounted into any container and reaches only the injector's stdin.
 # What these commands write: admin/<owner>/<repo>/ (the home's own) and review-tokens/ directories, a per-repo-name .admin-lock.<name> directory directly under $WOW_HOME
-# (in a home with tokens-root, made in the default home instead) and a transient .unlock.* directory (both removed on exit), admin-token (replaced or removed under the home's admin/<owner>/<repo>/; wow-admin --revoke also removes a legacy one under the tokens root's
+# (in a home with tokens-root, made in the default home instead) and a transient .unlock.* directory and, for wow-publish, a transient private .publish.* directory directly under $WOW_HOME (all removed on exit), admin-token (replaced or removed under the home's admin/<owner>/<repo>/; wow-admin --revoke also removes a legacy one under the tokens root's
 # <owner>/<repo>/, and only a home without tokens-root a leftover tokens/<repo>/admin-token),
 # reviewer-token (default review-tokens/<repo>/, or the path --out names), the session and filing
 # tokens (wow-review-mint --read / --file, written only to the path --out names), and the .mint.* file

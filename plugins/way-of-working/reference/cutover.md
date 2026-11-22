@@ -180,7 +180,7 @@ A dev-App session's ruleset check cannot read bypass actors (only an identity th
 A PR adding, editing or deleting a workflow file is pushed by a code owner or by an App
 holding Workflows write, never the dev App (its registration holds no Workflows permission,
 checked above). It needs the approval of a code owner other than its author and last pusher, so on
-a repo with one code owner the admin App pushes and opens it. No bypass actor is ever added to
+a repo with one code owner the admin App pushes it. No bypass actor is ever added to
 unblock one.
 
 ## The plugin pin the review container requires

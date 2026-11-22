@@ -20,7 +20,9 @@
 #                    curl failure, keeps it and exits 1); each step prints its own line, never the token; no file is an error
 #                    (two failures are both named with their kept paths, a 204-then-200 failure keeps its advice to run again
 #                    beside a later 500, and a file rm cannot remove is kept, named with the remedy and exits 1 while the next token is
-#                    still tried; every closing line carries the wow-admin: prefix and each kept file is on a line of its own)
+#                    still tried; every closing line carries the wow-admin: prefix and a status failure names each file it keeps on a
+#                    line of its own (kept <path>), while a could-not-remove failure names its path mid-line; a curl failure on a later
+#                    token's DELETE or confirming read still prints the failures collected before it, each prefixed)
 #   reviewer         reviewer installation, fixed permissions, written under review-tokens/ and never tokens/, --out or the default path
 #   reviewer shapes  post (default) unchanged and non-strict; --read sends the six reads (--also adds a
 #                    second repo to the same request, either flag order); --file sends issues write;
@@ -709,6 +711,21 @@ assert_eq "revoke 204-200-500 names the legacy kept path on its own line" 1 "$(p
 assert_eq "revoke 204-200-500 names the own kept path on its own line" 1 "$(printf '%s\n' "$out" | grep -Fxc "wow-admin: kept $h/admin/acme/repo1/admin-token" || true)"
 assert_eq "revoke 204-200-500 names the own token's failure" 1 "$(printf '%s\n' "$out" | grep -c "GitHub answered HTTP 500" || true)"
 [ -e "$h/tokens/acme/repo1/admin-token" ] && [ -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke 204-200-500" "a file was removed"
+# a first token's DELETE answering 500, then the second token's curl failing (on the DELETE, then on the confirming read): both failures are printed, each prefixed
+for case_q in "500 CURLFAIL:DELETE" "500 204 CURLFAIL:confirming read"; do
+  qs=${case_q%%:*}; lbl=${case_q#*:}
+  h=$(newhome "fail-500-then-curl-$(printf '%s' "$lbl" | tr -c 'A-Za-z' '-')")
+  put_tok "$h/tokens/acme/repo1/admin-token" "$TOKEN"
+  put_tok "$h/admin/acme/repo1/admin-token" "$TOKEN2"
+  # shellcheck disable=SC2086
+  q $qs; STUB_BODY= revoke_in "$h"
+  rm -f "$tmp/stub/statuses"
+  assert_eq "revoke 500 then a curl failure on the $lbl: rc" 1 "$rc"
+  assert_eq "revoke 500 then a curl failure on the $lbl: the first token's HTTP 500 is printed with the prefix" 1 "$(printf '%s\n' "$out" | grep -c '^wow-admin: GitHub answered HTTP 500' || true)"
+  assert_eq "revoke 500 then a curl failure on the $lbl: the kept line is printed with the prefix" 1 "$(printf '%s\n' "$out" | grep -Fxc "wow-admin: kept $h/tokens/acme/repo1/admin-token" || true)"
+  assert_eq "revoke 500 then a curl failure on the $lbl: the curl failure is printed with the prefix" 1 "$(printf '%s\n' "$out" | grep -c '^wow-admin: curl failed' || true)"
+  [ -e "$h/tokens/acme/repo1/admin-token" ] && [ -e "$h/admin/acme/repo1/admin-token" ] && ok || bad "revoke 500 then a curl failure on the $lbl" "a file was removed"
+done
 # a home path with a space: the kept files stay whole on lines of their own
 h=$(newhome "with space")
 put_tok "$h/tokens/acme/repo1/admin-token"
