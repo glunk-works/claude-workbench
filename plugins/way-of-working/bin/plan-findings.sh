@@ -22,8 +22,8 @@
 #             (no identities map) and a missing or null reviewer App exit 3 with a stderr line and
 #             nothing on stdout: the repo declares no reviewer App, so there are no findings issues
 #             to read. `unreadable`, or a non-zero exit or empty output from declared-ids.sh, a
-#             missing yq or an unreadable project file exits 1 with a stderr line and nothing on
-#             stdout. Fetches every open
+#             missing yq, a failing yq read of the reviewer App id or an unreadable project file exits 1
+#             with a stderr line and nothing on stdout. Fetches every open
 #             issue of <repo> (paginated, to a file by direct redirection, the way plan-gather.sh
 #             fetches), keeps true issues (pull requests dropped) whose author's NUMERIC ID equals
 #             that id (a login is never compared), and prints TSV: number, created_at, milestone
@@ -81,7 +81,7 @@
 #             row whose milestone field is `none` and whose number is not a whole line of <kept-file>.
 #             Empty stdout with exit 0 means nothing is held. Either file not readable, a list row with
 #             other than four TSV fields, a list row whose number is not digits-only, or a non-blank
-#             kept line that is not digits-only exits 1 with a stderr line and nothing on stdout.
+#             kept line that is not digits-only, or a failing final awk, exits 1 with a stderr line and nothing on stdout.
 #
 # Exit codes: a wrong argument count, an unknown subcommand or a non-digit <N> prints a usage line on
 # stderr, nothing on stdout, and exits 2. `list` exits 3 (stderr line, nothing on stdout) when the repo
@@ -165,7 +165,10 @@ if [ "$mode" = list ]; then
     "no-map") echo "plan-findings.sh: list: no identities map is declared" >&2; exit 3 ;;
     *) echo "plan-findings.sh: list: the identities map is unreadable (declared-ids.sh did not print ok)" >&2; exit 1 ;;
   esac
-  rid="$(yq -r 'explode(.) | .identities.reviewer_app | select(tag == "!!map") | .id' "$yml" 2>/dev/null)" || rid=""
+  rid="$(yq -r 'explode(.) | .identities.reviewer_app | select(tag == "!!map") | .id' "$yml" 2>/dev/null)" || {
+    echo "plan-findings.sh: list: yq failed reading the reviewer_app id" >&2
+    exit 1
+  }
   case "$rid" in
     '' | 0* | *[!0-9]*) echo "plan-findings.sh: list: no reviewer_app is declared" >&2; exit 3 ;;
   esac
@@ -200,8 +203,13 @@ if [ "$mode" = held ]; then
     exit 1
   fi
   # The kept file is read in BEGIN, so an empty one cannot be mistaken for the list's first lines.
-  awk -F "$tab" -v kf="$kf" 'BEGIN { while ((getline k < kf) > 0) if (k != "") kept[k] = 1 }
-    $3 == "none" && !($1 in kept) { print $1 }' "$lf" | sort -n
+  # The awk output goes to a file first, so its exit status is not lost behind the sort.
+  if ! awk -F "$tab" -v kf="$kf" 'BEGIN { while ((getline k < kf) > 0) if (k != "") kept[k] = 1 }
+    $3 == "none" && !($1 in kept) { print $1 }' "$lf" >"$tmp/held" 2>/dev/null; then
+    echo "plan-findings.sh: held: the final awk failed" >&2
+    exit 1
+  fi
+  sort -n "$tmp/held"
   exit 0
 fi
 

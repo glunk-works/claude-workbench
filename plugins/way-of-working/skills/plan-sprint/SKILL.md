@@ -110,20 +110,18 @@ If any precondition fails, stop and report why — do not proceed.
 1a. **Findings phase.** Fetch the default branch's committed `.ai/project.yml` as **Gather**
    reads it, then run `plan-findings.sh list {backlog.repo} "<that file>"` into
    `<scratch>/read-findings-before.tsv`. Exit 3 (no identities map, or no reviewer App declared)
-   skips the phase with a one-line note: the pass is placement only, with nothing held. Exit 0
-   with no rows says so in one line, and the pass is placement only. Any other non-zero exit stops
-   the whole pass before **Gather**, reported as a failed read, because without it the guard
-   cannot run. With rows, first create the kept file `<scratch>/kept-sources.txt`, empty, with the
-   file-editing tool, then run **Findings mode**'s Gather, Table, Proposal and Apply sub-steps on
-   the same scratch directory; its per-finding outcomes join the final **Report**. A stop inside
-   Apply (for example `gh-identity.sh pr-actor` not printing `match`) ends the phase's writes, and
-   placement still runs, with every unresolved source held by the guard. After the phase, run
-   `list` again into `<scratch>/read-findings-after.tsv` and run `plan-findings.sh held
-   "<scratch>/read-findings-after.tsv" "<scratch>/kept-sources.txt"`; a non-zero exit from either
-   stops the pass before **Gather**. Neither file is ever a write argument. Only then does
-   **Gather** run, so its unmilestoned read and body fetches see the combined issues just filed
-   and the fold bodies just rewritten. Every issue number `held` printed is **held**: the
-   **Recommend** and **Placement dialogue** steps below keep it out.
+   skips the phase with a one-line note: the pass is placement only, with nothing held. Any other
+   non-zero exit stops the whole pass before **Gather**, reported as a failed read, because without
+   it the guard cannot run. On exit 0, first create the kept file `<scratch>/kept-sources.txt`,
+   empty, with the file-editing tool (whether the rows follow or not, so `held` below has a readable
+   kept file either way). Exit 0 with no rows says so in one line, and the pass is placement only.
+   With rows, run **Findings mode**'s Gather, Table, Proposal and Apply sub-steps on the same
+   scratch directory; its per-finding outcomes join the final **Report**. A stop inside Apply (for
+   example `gh-identity.sh pr-actor` not printing `match`) ends the phase's writes, and placement
+   still runs, with every unresolved source held by the guard. Only then does **Gather** run, so its
+   unmilestoned read and body fetches see the combined issues just filed and the fold bodies just
+   rewritten. The guard's re-read and `held` run come inside **Gather**, right after its
+   unmilestoned read.
 
 2. **Gather** — read-only, via the tested predicate for every *list* read (never a
    hand-rolled list call), plus the per-item body/description fetches below, which are the
@@ -132,7 +130,18 @@ If any precondition fails, stop and report why — do not proceed.
    plan-gather.sh unmilestoned {backlog.repo} >"<scratch>/read-unmilestoned.tsv"
    plan-gather.sh milestones   {backlog.repo}
    ```
-   Both exit non-zero on a failed `gh` call — treat that as a **failed read**, reported as
+   Right after the `unmilestoned` read, and before the author judgment and body fetches, whenever
+   the **Findings phase**'s first `list` exited 0 (with rows or with none; not when it exited 3 and
+   the phase was skipped, where nothing is held), run `list` again into
+   `<scratch>/read-findings-after.tsv` and run `plan-findings.sh held
+   "<scratch>/read-findings-after.tsv" "<scratch>/kept-sources.txt"`; a non-zero exit from either
+   stops the pass before **Recommend**, reported as a failed read. Neither file is ever a write
+   argument. The pair runs after the unmilestoned read so that a findings issue filed before that
+   read is also in the re-read, and so cannot reach placement as an ordinary task. Every issue
+   number `held` printed is **held**: the **Recommend** and **Placement dialogue** steps below keep
+   it out.
+
+   Both reads exit non-zero on a failed `gh` call — treat that as a **failed read**, reported as
    such, never as "no unmilestoned issues" or "no open milestones." The redirected file
    belongs to the read-only `read-` family and is never a write argument. `milestones`' output is
    already sorted due-date-ascending, undated last — **that sort is the report**, not an
@@ -203,7 +212,7 @@ If any precondition fails, stop and report why — do not proceed.
    the bodies and descriptions the **Gather** step fetched, draft one recommendation per
    unmilestoned issue, ascending `#N` — except an issue a resumed pending batch already
    covers, which appears as `pending staged: <placement>` per the **Resume-safety preamble**
-   and gets no recommendation, and except an issue the **Findings phase**'s `held` printed
+   and gets no recommendation, and except an issue the `held` run in **Gather** printed
    (below) — each with:
    - **a recommended placement** — an open milestone (by number + title), a **new milestone**
      (with a proposed title, checked for collisions exactly as the **Placement dialogue**
@@ -871,7 +880,7 @@ If any precondition fails, stop and report why — do not proceed.
 
    **Per-issue triage comment**, posted on every issue this pass placed or deliberately left
    unmilestoned (never on a `pending staged` issue — the run that staged it already
-   commented), **after** the **Sequence confirm** step has finalized every **new** milestone's
+   commented — nor on a held findings issue, which this pass did not resolve and a later pass does), **after** the **Sequence confirm** step has finalized every **new** milestone's
    build-order numbering (never posted from the raw dialogue answers, which are inputs to that
    resolution, not final positions): a **live** call — never staged, and so never subject to
    the staged script's own file-naming split — `gh issue comment <N> --repo {backlog.repo}

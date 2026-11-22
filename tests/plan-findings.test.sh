@@ -129,6 +129,15 @@ printf '#!/bin/sh\nexit 0\n' >"$stubdir/declared-ids.sh"
 PATH="$fakebin:$PATH" FAKE_ROWS="$rows" "$stubdir/plan-findings.sh" list o/r "$yml_good" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
 assert_eq "list: a declared-ids.sh that prints nothing exits 1, nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
 
+# a stub yq that fails only on the reviewer App read (declared-ids.sh still gets the real yq)
+realyq="$(command -v yq)"
+yqbin="$tmp/yqbin"
+mkdir -p "$yqbin"
+printf '#!/bin/sh\nfor a in "$@"; do case "$a" in *reviewer_app*) exit 1 ;; esac; done\nexec "%s" "$@"\n' "$realyq" >"$yqbin/yq"
+chmod +x "$yqbin/yq"
+PATH="$yqbin:$fakebin:$PATH" FAKE_ROWS="$rows" "$script" list o/r "$yml_good" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "list: a failing yq read of the reviewer App id exits 1, nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+
 echo "# unpack"
 
 mkissue() { # mkissue <file> <number> <title> <body-with-\n-escapes>
@@ -334,6 +343,17 @@ assert_eq "held: a missing list file exits 1 with nothing on stdout" "1:" "$rc:$
 printf '42\t2026-11-02T00:00:00Z\tnone\tnone\n' >"$hl"
 "$script" held "$hl" "$tmp/none.txt" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
 assert_eq "held: a missing kept file exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
+
+# a stub awk that fails only on the final program (the only one that uses getline)
+realawk="$(command -v awk)"
+awkbin="$tmp/awkbin"
+mkdir -p "$awkbin"
+printf '#!/bin/sh\nfor a in "$@"; do case "$a" in *getline*) exit 1 ;; esac; done\nexec "%s" "$@"\n' "$realawk" >"$awkbin/awk"
+chmod +x "$awkbin/awk"
+printf '42\t2026-11-02T00:00:00Z\tnone\tnone\n' >"$hl"
+: >"$hk"
+PATH="$awkbin:$PATH" "$script" held "$hl" "$hk" >"$tmp/out" 2>/dev/null && rc=0 || rc=$?
+assert_eq "held: a failing final awk exits 1 with nothing on stdout" "1:" "$rc:$(cat "$tmp/out")"
 
 echo "# argument validation"
 
