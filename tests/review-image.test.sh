@@ -11,11 +11,14 @@
 #   Dockerfile      static checks: the FROM line, the claude pin against both scripts/loop/Dockerfile's and .devcontainer/Dockerfile's, the
 #                   dev-token rewrite, the marker, the ENV lines against the managed file (less the managed-only
 #                   WOW_MANAGED_PROBE, which no Dockerfile or entrypoint line may name), the last USER, and
-#                   the COPY sources against install-host-tools.ps1's bin/review/ destinations
+#                   the COPY sources against install-host-tools.ps1's bin/review/ destinations, and
+#                   the credential-helper unset-all line (it carries exactly `|| [ $? -eq 5 ]`), with a git
+#                   fixture on a temp config file for the exit codes (skipped, loudly, without git)
 #   managed file    parses, and holds exactly the keys the spec names (env: the four variables plus
 #                   WOW_MANAGED_PROBE)
 #
-# Permitted toolset: POSIX sh and its standard utilities, jq and yq (skipped, loudly, if either is absent).
+# Permitted toolset: POSIX sh and its standard utilities, jq and yq (skipped, loudly, if either is absent),
+# and git for the credential-helper fixture (that fixture alone is skipped, loudly, if git is absent).
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -610,6 +613,18 @@ sed -e 's|^dir=/run/wow$|dir=/run/glunk-identity/review|' -e 's|^file=$dir/dev-t
 check "Dockerfile: the rewrite takes on the committed dev-token (dir)" grep -q '^dir=/run/glunk-identity/review$' "$tmp/dev-token.rewritten"
 check "Dockerfile: the rewrite takes on the committed dev-token (file)" grep -q '^file=$dir/session-token$' "$tmp/dev-token.rewritten"
 check "Dockerfile: the rewrite changes exactly those two lines" test "$(diff "$root_dir/scripts/identity/review/dev-token" "$tmp/dev-token.rewritten" | grep -c '^>')" -eq 2
+check "Dockerfile: the system credential-helper unset-all tolerates exit 5 and only exit 5" grep -qF 'git config --system --unset-all credential."https://github.com".helper || [ $? -eq 5 ]; \' "$df"
+if command -v git >/dev/null 2>&1; then
+  gcfg="$tmp/gitcfg"; : >"$gcfg"
+  rc=0; git config --file "$gcfg" --unset-all credential."https://github.com".helper 2>/dev/null || rc=$?
+  assert_eq "credential helper fixture: unset-all of an absent key exits 5" 5 "$rc"
+  rc=0; sh -c 'set -eu; git config --file "$1" --unset-all credential."https://github.com".helper || [ $? -eq 5 ]' sh "$gcfg" 2>/dev/null || rc=$?
+  assert_eq "credential helper fixture: the guarded form exits 0 for an absent key" 0 "$rc"
+  rc=0; sh -c 'set -eu; git config --file "$1" --unset-all nosection || [ $? -eq 5 ]' sh "$gcfg" 2>/dev/null || rc=$?
+  if [ "$rc" -ne 0 ]; then ok "credential helper fixture: the guarded form exits non-zero for a key with no section (exit $rc)"; else bad "credential helper fixture: the guarded form exited 0 for a key with no section"; fi
+else
+  echo "SKIP - git not on PATH; credential-helper unset-all fixture not run" >&2
+fi
 check "Dockerfile: the marker is created, root-owned, 0444" grep -q 'chmod 0444 /etc/way-of-working/review-container' "$df"
 check "Dockerfile: the managed settings are copied root-owned, 0444" grep -qF 'COPY --chown=root:root --chmod=0444 managed-settings.json /etc/claude-code/managed-settings.json' "$df"
 check "Dockerfile: the build requires allowManagedHooksOnly" grep -qF '.allowManagedHooksOnly == true' "$df"

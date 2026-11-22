@@ -45,7 +45,8 @@
 # The session's outcome line, and the failure codes. The launcher posts a failure review whose
 # body is the fixed template with one code:
 #   timed-out, no-outbox, bad-outcome, retry-limit, stopped-<reason>, stopped-other,
-#   no-body, bad-body, header-mismatch, no-head-line, mention, secret, bad-verdict, oversize.
+#   no-body, bad-body, header-mismatch, no-head-line, mention, secret, bad-verdict, oversize,
+#   closing-references-moved.
 # Stop reasons (the outcome line `stopped <N> <sha> <reason>`):
 #   entrypoint's:  entry-env, entry-token, entry-clone, entry-identity, entry-plugin
 #   the session's: head-moved, checks-pending, checks-red, base-override, needs-human
@@ -100,6 +101,13 @@
 #    title from being filed, so that finding reaches only the review body. The normalized comparison
 #    lowercases ASCII letters only (jq has no wider case fold), so two titles that differ only in the
 #    case of a non-ASCII letter do not match, and that finding is filed again.
+#  - The closing-reference check compares two host reads (before the session, and after a `review`
+#    decision), so a change made and reversed between them, a change after the second read, a
+#    change after the post, a change beyond the tenth reference that keeps the total count, and any
+#    change on a run whose first read failed are not caught. Whoever edits the PR's closing
+#    references can force a failed first read on purpose (for example by linking an issue the read
+#    token cannot reach), so the comparison guards against accidental edits, not against that
+#    editor; the code owner's check of the label's #I at merge stays the control.
 #  - Timeline events: an owner/repo#N reference or a URL in the review body or in a finding title
 #    still adds a timeline event to that issue or PR.
 #  - What the session can send out. The proxy bounds the host, not the recipient: a session given
@@ -152,7 +160,7 @@
 #    and a copy of each superseded one into review-host/ beyond the first tokens' hour, the session removed
 #    or not. The run's two networks and two volumes are also left, and no sweep removes them.
 #  - The 600-second margin is shared with the network and sidecar creation of section 7 and the docker
-#    and mint calls between taking the deadline and the start of the wait (each foreground docker
+#    and mint calls and the first closing-reference read between taking the deadline and the start of the wait (each foreground docker
 #    call bounded at 120 seconds, not by the margin), so with docker slow the deadline can pass while
 #    the run is still going. A live run is no longer swept while its lease is fresh: each run touches a
 #    lease file under review-state/.live/ every 60 seconds while its launcher answers `kill -0`, and the
@@ -242,7 +250,7 @@ NET="wow-review-net-$ID" EXT="wow-review-ext-$ID" WORK="wow-review-work-$ID" OUT
 
 LAUNCHER_PID=$$
 MDIR= HDIR= LOG= LOCK= ENTRY= NEWENTRY=0 FREE=0 HAVELOCK=0 DOCKER_USED=0 REFPID= WAITPID= INJPID= HBPID= LEASE=
-CRED= TOK= MINT_ALSO= TAG= pin= TIMEDOUT=0 DL=0 NCOPY=0 INST=
+CRED= TOK= MINT_ALSO= TAG= pin= TIMEDOUT=0 DL=0 NCOPY=0 INST= CRFIRST=0
 
 logl() {
   if [ -n "$LOG" ]; then printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >>"$LOG" 2>/dev/null || :; fi
@@ -466,10 +474,30 @@ case $BTAG in
 esac
 BKIND=$(yq_s '.backlog.kind')
 
-# The identity: GraphQL viewer (the only GraphQL query in this script), fixed, sent with --input.
+# The identity: GraphQL viewer (one of two GraphQL queries in this script, the other being the closing-reference
+# read of sections 9 and 12), fixed, sent with --input.
 jq -n '{query: "{ viewer { login databaseId } }"}' >"$HDIR/viewer.json"
 viewer() { # viewer: print "<login> <id>" for the current $TOK
   gh_api graphql --input "$(hp "$HDIR/viewer.json")" --jq '.data.viewer | [.login, (.databaseId | tostring)] | @tsv' | tr -d '\r'
+}
+# The closing references of the PR, read on the host (sections 9 and 12): one fixed GraphQL query, its variables
+# built by jq (the owner and name as strings, the checked number as a JSON integer), sent with --input.
+jq -n --arg owner "$owner" --arg name "$name" --argjson number "$num" \
+  '{query: "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { closingIssuesReferences(first: 10) { totalCount nodes { number repository { nameWithOwner } } } } } }",
+    variables: {owner: $owner, name: $name, number: $number}}' >"$HDIR/closing-query.json"
+closing_read() { # closing_read <out>: the total count, then one sorted "<number> <owner/name>" line per node; status 1 on any other shape
+  gh_api graphql --input "$(hp "$HDIR/closing-query.json")" >"$HDIR/closing-resp.json" || return 1
+  jq -er '
+    if type != "object" or has("errors") then error("errors") else . end
+    | .data.repository.pullRequest.closingIssuesReferences as $c
+    | if ($c | type) != "object" then error("shape") else . end
+    | if ($c.totalCount | type) != "number" or $c.totalCount != ($c.totalCount | floor) then error("count") else . end
+    | if ($c.nodes | type) != "array" then error("nodes") else . end
+    | if ($c.nodes | all(type == "object" and (.number | type) == "number" and .number == (.number | floor)
+        and ((.repository | type) == "object") and ((.repository.nameWithOwner | type) == "string"))) | not then error("node") else . end
+    | ($c.totalCount | tostring), ($c.nodes | map("\(.number) \(.repository.nameWithOwner)") | sort | .[])
+  ' <"$HDIR/closing-resp.json" >"$1.raw" 2>/dev/null || return 1
+  tr -d '\r' <"$1.raw" >"$1" || return 1
 }
 VW=$(viewer) || fail "the viewer query failed"
 IFS=$tab read -r vlogin vid <<EOF
@@ -775,6 +803,14 @@ jq -e --arg o "$OUTV" '.[0].State.Running == true and .[0].HostConfig.NetworkMod
 keep_copy "m$NCOPY"; NCOPY=$((NCOPY + 1))
 mint_session >/dev/null || fail "the pre-start session-token re-mint failed"
 tc file "$MDIR/session-token" >/dev/null || fail "the re-minted session token failed token-check.sh file"
+# The first closing-reference read, with the re-minted session token, before the session can run. A failed read
+# turns the comparison off for this run; the session starts as it always did.
+TOK=$(tc token "$MDIR/session-token") && [ -n "$TOK" ] || fail "cannot read the re-minted session token"
+if closing_read "$HDIR/closing-1"; then
+  CRFIRST=1
+else
+  say "the closing-reference read before the session failed; the comparison is off for this run"
+fi
 
 refresher() {
   trap 'kill "$SP" 2>/dev/null; exit 0' TERM HUP INT
@@ -1086,6 +1122,15 @@ else
     already) decide_already ;;
     stopped) decide_stopped "$sreason" ;;
   esac
+fi
+# The second closing-reference read, on every review decision and with the fresh read token: when the PR's closing
+# references differ from the first read, the review is not posted and the fixed failure review goes instead.
+if [ "$ACTION" = review ] && [ "$CRFIRST" = 1 ]; then
+  TOK=$RTOK
+  closing_read "$HDIR/closing-2" || fail "cannot re-read the PR's closing references after the session"
+  if ! cmp -s "$HDIR/closing-1" "$HDIR/closing-2"; then
+    ACTION=failure CODE=closing-references-moved
+  fi
 fi
 logl "decision: $ACTION $CODE"
 

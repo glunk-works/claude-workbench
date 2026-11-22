@@ -52,7 +52,8 @@
 # own note below says it fails; but
 # tests/identity-review.test.sh, tests/identity-launchers.test.sh, tests/identity-broker.test.sh and
 # tests/review-verdict.test.sh fail instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml
-# sets; the broker suite's guard-case skip off Windows fails too):
+# sets; the broker suite's guard-case skip off Windows fails too, and so do the review-poll suite's
+# pwsh cases when pwsh is absent):
 #   - tests/invariants-only.test.sh needs `yq`, `jq` and `git` for its run-each-id-alone case and
 #     skips that case loudly without them.
 #   - `yq` also: tests/review-base-anchor.test.sh, tests/schema-complete.test.sh,
@@ -69,7 +70,8 @@
 #   - tests/lane.test.sh and tests/lane-state.test.sh need `git`, `yq` and `jq`;
 #     tests/statusline-context.test.sh needs `jq`; tests/compact-handoff.test.sh needs `git`
 #     (and `jq` for its registration cases).
-#   - tests/review-image.test.sh needs `jq` and `yq`.
+#   - tests/review-image.test.sh needs `jq` and `yq`, and `git` for its credential-helper fixture, which it skips
+#     loudly without it.
 #   - tests/ruleset-drift.test.sh needs `jq` and `yq` and skips the whole suite without them; it also needs
 #     GNU `sed -i` and fails, rather than skips, without it.
 #   - tests/wow-preflight.test.sh needs `jq` and `yq` and skips the whole suite without them; it also needs
