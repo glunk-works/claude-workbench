@@ -23,6 +23,7 @@ the GitHub release notes.
 
 ### Added
 
+- A weekly `claude-pin-check` workflow opens one notice issue when the Claude Code version pinned in the Dockerfiles falls behind the latest release, and none while an open notice for that version exists (#1677).
 - The `zizmor` job in `ci.yml` now runs the gate's configuration against a committed fixture with a known finding and fails unless that run failed, so a `zizmor-action` bump that stops the gate from exiting non-zero on a finding turns the job red on its own PR (#1237).
 - The reach-gate refusal now names the way out of an intended origin and token mismatch (`#1235`).
 - The dev container now declares its Claude Code version (`ARG CLAUDE_VERSION`) and fails its build unless the base image's `claude` reports it, and a test holds it equal to the review and loop images' (#1676).
