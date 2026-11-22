@@ -70,6 +70,7 @@
 #     tests/statusline-context.test.sh needs `jq`; tests/compact-handoff.test.sh needs `git`
 #     (and `jq` for its registration cases).
 #   - tests/review-image.test.sh needs `jq` and `yq`.
+#   - tests/claude-pin-check.test.sh needs `jq` and fails, rather than skips, without it.
 #   - tests/ruleset-drift.test.sh needs `jq` and `yq` and skips the whole suite without them; it also needs
 #     GNU `sed -i` and fails, rather than skips, without it.
 #   - tests/wow-preflight.test.sh needs `jq` and `yq` and skips the whole suite without them; it also needs

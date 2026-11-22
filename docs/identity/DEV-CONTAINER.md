@@ -844,7 +844,7 @@ removes it. The login lives on the volume; the binary does not.
   (the review and loop Dockerfiles'). Take the sha256 from that version's release `manifest.json`
   (the `linux-x64` entry). When Dependabot opens the `FROM` bump, the version edits go into that
   same PR. Dependabot does not track the pins, and `tests/review-image.test.sh` fails while the
-  three versions differ. The dev container's own check runs only when its image is built, and no PR
+  three versions differ. The weekly `claude-pin-check` workflow opens a notice issue when the release feed's latest version is newer than the pin, and opens no second one for the same latest version while one is open. The dev container's own check runs only when its image is built, and no PR
   check builds it (`verify / verify` is not a required check), so before approving any
   `.devcontainer` `FROM` bump, and only once `verify / verify` is green on the PR head or the
   `gh attestation verify` command in `.devcontainer/Dockerfile`'s header has passed for the new
