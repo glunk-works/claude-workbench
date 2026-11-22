@@ -14,7 +14,8 @@ FROM ${BASE_IMAGE}
 # that is writable state, where the session could replace the binary. Pinned by version and
 # sha256 (from the release manifest.json for that version, linux-x64); auto-update is off,
 # since an updater would need the update hosts on the proxy list. The pin follows the version the
-# dev container's managed settings require; the plan's tests ([T]) ran against 2.1.289.
+# dev container's managed settings require, and tests/review-image.test.sh holds it equal to
+# .devcontainer/Dockerfile's `CLAUDE_VERSION`; the plan's tests ([T]) ran against 2.1.289.
 ARG CLAUDE_VERSION=2.1.316
 ARG CLAUDE_SHA256=fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824
 

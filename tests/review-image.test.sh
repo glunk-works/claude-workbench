@@ -8,7 +8,7 @@
 #                   PATH= line becomes the stub directory followed by this test's own PATH); stub dev-token,
 #                   token-check.sh, gh, git and claude record their argv and environment and answer from
 #                   per-fixture files; stdin is closed
-#   Dockerfile      static checks: the FROM line, the claude pin against scripts/loop/Dockerfile's, the
+#   Dockerfile      static checks: the FROM line, the claude pin against both scripts/loop/Dockerfile's and .devcontainer/Dockerfile's, the
 #                   dev-token rewrite, the marker, the ENV lines against the managed file (less the managed-only
 #                   WOW_MANAGED_PROBE, which no Dockerfile or entrypoint line may name), the last USER, and
 #                   the COPY sources against install-host-tools.ps1's bin/review/ destinations
@@ -573,10 +573,33 @@ check "Dockerfile: no # syntax= line" test -z "$(grep -i '^# *syntax=' "$df" || 
 before_from=$(sed -n '1,/^FROM /p' "$df" | grep -c '^ARG ' || true)
 assert_eq "Dockerfile: no ARG before FROM" 0 "$before_from"
 arg() { sed -n "s/^ARG $2=//p" "$1"; }
-for a in CLAUDE_VERSION CLAUDE_SHA256; do
-  v=$(arg "$df" $a); w=$(arg "$root_dir/scripts/loop/Dockerfile" $a)
-  if [ -n "$v" ] && [ "$v" = "$w" ]; then ok "Dockerfile: $a equals scripts/loop/Dockerfile's"; else bad "Dockerfile: $a [$v] differs from the loop's [$w]"; fi
-done
+# pins_equal <review Dockerfile> <loop Dockerfile> <dev container Dockerfile>: prints the first
+# difference and returns a status only. CLAUDE_VERSION must be non-empty and equal in all three;
+# CLAUDE_SHA256 must be non-empty and equal in the review and loop files (the dev container has none).
+pins_equal() {
+  pv=$(arg "$1" CLAUDE_VERSION); pl=$(arg "$2" CLAUDE_VERSION); pd=$(arg "$3" CLAUDE_VERSION)
+  if [ -z "$pv" ] || [ "$pv" != "$pl" ] || [ "$pv" != "$pd" ]; then
+    echo "CLAUDE_VERSION differs or is empty: review [$pv], loop [$pl], dev container [$pd]"; return 1
+  fi
+  ps=$(arg "$1" CLAUDE_SHA256); pt=$(arg "$2" CLAUDE_SHA256)
+  if [ -z "$ps" ] || [ "$ps" != "$pt" ]; then
+    echo "CLAUDE_SHA256 differs or is empty: review [$ps], loop [$pt]"; return 1
+  fi
+  return 0
+}
+loop_df="$root_dir/scripts/loop/Dockerfile"; dev_df="$root_dir/.devcontainer/Dockerfile"
+if out=$(pins_equal "$df" "$loop_df" "$dev_df"); then ok "Dockerfile: CLAUDE_VERSION equals both other Dockerfiles' and CLAUDE_SHA256 the loop's"; else bad "Dockerfile: $out"; fi
+pin_fixture() { # pin_fixture <label> <file: r|l|d> <sed expression>
+  mkdir -p "$tmp/pins"; cp "$df" "$tmp/pins/r"; cp "$loop_df" "$tmp/pins/l"; cp "$dev_df" "$tmp/pins/d"
+  sed "$3" "$tmp/pins/$2" >"$tmp/pins/x" && mv "$tmp/pins/x" "$tmp/pins/$2"
+  if pins_equal "$tmp/pins/r" "$tmp/pins/l" "$tmp/pins/d" >/dev/null; then bad "pins: not refused: $1"; else ok "refused: $1"; fi
+}
+pin_fixture "a changed CLAUDE_VERSION in the review Dockerfile" r 's/^ARG CLAUDE_VERSION=.*/ARG CLAUDE_VERSION=0.0.1/'
+pin_fixture "a changed CLAUDE_VERSION in the loop Dockerfile" l 's/^ARG CLAUDE_VERSION=.*/ARG CLAUDE_VERSION=0.0.1/'
+pin_fixture "a changed CLAUDE_VERSION in the dev container Dockerfile" d 's/^ARG CLAUDE_VERSION=.*/ARG CLAUDE_VERSION=0.0.1/'
+pin_fixture "the dev container's CLAUDE_VERSION line removed" d '/^ARG CLAUDE_VERSION=/d'
+pin_fixture "a changed CLAUDE_SHA256 in the loop Dockerfile" l 's/^ARG CLAUDE_SHA256=.*/ARG CLAUDE_SHA256=0000/'
+pin_fixture "the loop's CLAUDE_SHA256 line removed" l '/^ARG CLAUDE_SHA256=/d'
 check "Dockerfile: the dev-token dir rewrite is present" grep -qF "s|^dir=/run/wow\$|dir=/run/glunk-identity/review|" "$df"
 check "Dockerfile: the dev-token file rewrite is present" grep -qF "s|^file=\$dir/dev-token\$|file=\$dir/session-token|" "$df"
 check "Dockerfile: the grep check for the dir rewrite is present" grep -qF "grep -q '^dir=/run/glunk-identity/review\$' /usr/local/libexec/dev-token" "$df"

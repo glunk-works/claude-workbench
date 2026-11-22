@@ -2,7 +2,8 @@
 
 For #636 (WB-D24 item 7). The launcher (`scripts/identity/wow-review`, #635), the review image
 (#634) and the skill's container mode (#636) were built against stubs. This sheet is the
-maintainer's one-time live run of them. A session cannot start itself in the container,
+maintainer's live run of them, made once at first and again after each Claude Code bump (items 1 to 8,
+per *After a Claude Code bump* below). A session cannot start itself in the container,
 so the maintainer launches it.
 
 Record results in `docs/proposals/IDENTITY-SCRATCH-RESULTS.md` as a new session, in the same
@@ -183,9 +184,27 @@ For each: run it, and record what happened, including the output that shows it.
     reaches shell history. A call still accepted after the revoke is the finding; record how long
     the token lived. Afterwards confirm `review-host/<id>/` is gone, and delete it if it is not.
 
+## After a Claude Code bump (#1676)
+
+The managed-settings probes depend on the Claude Code version, so they are run again whenever the
+version moves (the bump procedure is in `docs/identity/DEV-CONTAINER.md`, *The `claude` binary*).
+Once the bump has merged, the host tools are reinstalled and the review image rebuilt:
+
+1. Disable the poller of every home whose `review-poll.json` lists the scratch repository
+   (`register-review-poll-task.ps1 -Disable`, with that home's `-TaskName`).
+2. Plant the two probes (see *Probes*); after the planting PR merges, open a new small scratch PR.
+3. Run items 1 to 8 on it.
+4. Record the results as a new session in `docs/proposals/IDENTITY-SCRATCH-RESULTS.md`, as above.
+5. Run *Cleanup*, and re-enable those pollers once the cleanup PR merges.
+
+Record of live runs, one line per Claude Code version:
+
+- 2.1.289: 2026-10-20, Session 9.
+- 2.1.316: the live run has not been made yet.
+
 ## Cleanup
 
-After recording, and before the poller is registered, the maintainer removes both probes (the
+After recording, and (on the first run) before the poller is registered, the maintainer removes both probes (the
 root `CLAUDE.md` and `.claude/output-styles/wow-probe.md`) and the `outputStyle` key from the
 scratch default branch.
 
