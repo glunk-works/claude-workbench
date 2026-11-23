@@ -48,6 +48,9 @@ the GitHub release notes.
 - The host install now writes the profile block through the existing file (keeping its mode and hard links), the generated `wowd`/`wowl` usage check matches the launchers' `-Repo` rule, `register-broker-task.ps1 -Unregister` and `install-host-tools.ps1 -StopTask` read a task's first action defensively, and the broker suite's chained profile assertions each carry their own label (#1658).
 - Four CI test follow-ups: the test runner's Actions notice escaping keeps its replacement strings in unquoted variables (bash 4.2 and earlier kept quotes), two annotation cases use `grep -E`, the `tests` job's run-time report step fails naming the key when it cannot read the timeout bound, and the executable-bit suite's silent cases run check 9 once (#1724).
 - The dev container doc now says which `broker.json` of a sibling home the default home's install cross-check reads (one `repos` list, in that letter case), and the matching test case now tests that rule (#1656).
+- Correction to the released v0.39.0 entry for #1604 (a spec session's leftover `claude` is ended by the cleanup): the cleanup applies only once the host tools are reinstalled; the released entry is not edited (#1660).
+- Correction to the released v0.39.0 entry for #1172 (the slash-less guard in the six host tools): running one of those tools by bare name from its own directory (for example `sh wow-admin` there) now exits 2; the released entry is not edited (#1660).
+- The `-Spec` cleanup now keeps the spec worktree and its record, and exits 1, when its process walk cannot read the container's process list, rather than reading that as no claude running; it applies once the host tools are reinstalled (#1660).
 
 ## [0.40.0] — 2026-11-20
 

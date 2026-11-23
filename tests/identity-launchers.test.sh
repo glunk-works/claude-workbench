@@ -47,7 +47,8 @@
 #                   `exec -u app ... /bin/sh -c <script> sh <args>` with the real /bin/sh against a scratch
 #                   lanes directory and a scratch container clone), both happy paths, base-moved and kept
 #                   worktrees, the cleanup's process walk (a fake claude left in the run's leaf is ended, a TERM-ignoring one
-#                   too, one that will not stop keeps the worktree and record, one in another leaf is left running),
+#                   too, one that will not stop keeps the worktree and record, one in another leaf is left running, and a walk that
+#                   reads nothing (the first, or a later one) keeps both and sends no further signal (none at all when the first walk is blind), as the unreadable-walk fixtures show),
 #                   the busy check (a fake running session: an executable named claude whose
 #                   working directory is a spec leaf), the spec record, the -SpecSweep mode (it kills and removes nothing, but fetches in the Reference)
 #                   (the busy-check and sweep fixtures are skipped loudly under MSYS), the shared lanes-directory guard
@@ -166,6 +167,10 @@ case "$1" in
         [ ! -e "$d/it.owner" ] || script='test() { case $1:$2 in -O:"$STUB_LANES") return 1;; esac; command test "$@"; }; '"$script"
         # it.nokill: a kill function that does nothing goes in front, so a process the cleanup signals never ends.
         [ ! -e "$d/it.nokill" ] || script='kill() { :; }; '"$script"
+        # it.noproc: a shell function named ls goes in front, real for anything but /proc; for /proc it prints the real
+        # listing for the first K calls of this one script (K is the number in it.noproc) and nothing after, so a later walk reads empty.
+        rm -f "$d/n.noproc"
+        [ ! -e "$d/it.noproc" ] || script='ls() { case $1 in /proc) pc=$(cat "$STUB_DIR/n.noproc" 2>/dev/null || echo 0); echo $((pc + 1)) >"$STUB_DIR/n.noproc"; if [ "$pc" -lt "$(cat "$STUB_DIR/it.noproc")" ]; then command ls "$@"; fi;; *) command ls "$@";; esac; }; '"$script"
         n=$#
         while [ "$n" -gt 0 ]; do
           a=$1; shift
@@ -1086,9 +1091,10 @@ else
       'n=0; until [ "$(cat "/proc/$(cat "$STUB_DIR/hook-fake.pid")/comm" 2>/dev/null)" = claude ]; do n=$((n+1)); [ "$n" -lt 100 ] || break; sleep 0.1; done' 'done' >"$stubdir/it.hook"
   }
   # hook_fake_end: SIGKILL the hook's process (while it is still running) and wait until it has ended
+  # (a process whose comm does not read claude is never signalled)
   hook_fake_end() {
     hp=$(cat "$stubdir/hook-fake.pid" 2>/dev/null) || return 0
-    proc_ended "$hp" || kill -9 "$hp" 2>/dev/null || :
+    if proc_running "$hp" && [ "$(cat "/proc/$hp/comm" 2>/dev/null)" = claude ]; then kill -9 "$hp" 2>/dev/null || :; fi
     hn=0; until proc_ended "$hp"; do hn=$((hn + 1)); [ "$hn" -lt 50 ] || break; sleep 0.1; done
   }
   mkdir -p "$tmp/fakebin2"
@@ -1186,6 +1192,37 @@ else
   hook_fake_end
   rm -f "$stubdir/it.hook"; for w in "$lanes"/spec-*; do $real_git -C "$crepo" worktree remove --force "$w"; done
   rm -f "$lanes"/record-spec-*
+
+  # a walk the cleanup cannot read keeps the worktree and record and sends no further signal (#1660)
+  unreadable_kept() { # unreadable_kept <label>
+    check "wow-lane cleanup ($1): exits 1" test "$rc" -eq 1
+    check "wow-lane cleanup ($1): the worktree is still there" spec_left
+    check "wow-lane cleanup ($1): the record is still there" record_kept
+    check "wow-lane cleanup ($1): the fake is still running, no SIGKILL was sent" proc_running "$(cat "$stubdir/hook-fake.pid")"
+  }
+  spec_setup; hook_fake "$tmp/fakebin2/claude"; echo 0 >"$stubdir/it.noproc"; run_lane -Spec 7
+  rm -f "$stubdir/it.noproc"
+  unreadable_kept 'the first walk blind'
+  check "wow-lane cleanup (the first walk blind): stderr says the process list could not be read" err_has 'could not read the process list'
+  check "wow-lane cleanup (the first walk blind): stderr says -SpecSweep reads the same list" err_has 'SpecSweep reads the same process list'
+  check "wow-lane cleanup (the first walk blind): stderr lacks the untracked-files reason" sh -c "! grep -q 'may hold untracked files' '$tmp/err'"
+  check "wow-lane cleanup (the first walk blind): stderr lacks the did-not-stop reason" sh -c "! grep -q 'did not stop after SIGTERM' '$tmp/err'"
+  hook_fake_end
+  rm -f "$stubdir/it.hook"; for w in "$lanes"/spec-*; do $real_git -C "$crepo" worktree remove --force "$w"; done
+  rm -f "$lanes"/record-spec-*
+  spec_setup; hook_fake "$tmp/fakebin2/claude"; printf '%s\n' 'echo 1 >"$STUB_DIR/it.noproc"' >>"$stubdir/it.hook"; run_lane -Spec 7
+  rm -f "$stubdir/it.noproc"
+  unreadable_kept 'a later walk blind'
+  check "wow-lane cleanup (a later walk blind): stderr says the process list could not be read" err_has 'could not read the process list'
+  hook_fake_end
+  rm -f "$stubdir/it.hook"; for w in "$lanes"/spec-*; do $real_git -C "$crepo" worktree remove --force "$w"; done
+  rm -f "$lanes"/record-spec-*
+  # hook_fake_end leaves a process whose comm is not claude alone
+  sleep 60 & sl_pid=$!
+  echo "$sl_pid" >"$stubdir/hook-fake.pid"; hook_fake_end
+  check "hook_fake_end: a process that is not a claude is not signalled" proc_running "$sl_pid"
+  kill "$sl_pid" 2>/dev/null || :; wait "$sl_pid" 2>/dev/null || :
+  rm -f "$stubdir/hook-fake.pid"
 
   # -SpecSweep: kills and removes nothing, one non-interactive exec, no session
   spec_setup; mkdir "$lanes/spec-aaa111" "$lanes/spec-bbb222" "$lanes/spec-ddd444" "$lanes/spec-xyz" "$lanes/spec-ABC123" "$lanes/spec-eee55"
