@@ -37,6 +37,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- The check-host suite now fails rather than skips without pwsh or git when `WOW_TESTS_REQUIRE_TOOLS` is exactly 1 and asserts exit 1 for each non-ok line form alone, and the wow-review suite now pins the non-digit viewer-id refusal (#1726).
 - The findings body cap drops from 4000 to 3500 bytes in `wow-review` and `review-outbox.sh`, so a five-finding issue at every cap fits GitHub's 65536-character body limit instead of failing to create (#1312); the host side applies once the host tools are reinstalled, the container side with the reviewed repo's pin bump.
 - `wow-admin --revoke` now prints every failure it collected before a curl-failure exit, each with its prefix, and prints its closing prefix through the program name (`#1681`); it applies once the host tools are reinstalled.
 - The launchers now refuse a `gh api` answer that is not one JSON object, a one-element array holding an object included, instead of reading the object inside it (#1362); it applies once the host tools are reinstalled.
