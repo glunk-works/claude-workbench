@@ -226,6 +226,39 @@ Two limits. The wait reports only to the session that started it, so a driver se
 restarts loses it and starts it again. And any lane PR in a repo whose `pr_base` is not the
 default branch never ends `reviewed`.
 
+## Publishing a file the dev App cannot push
+
+A file the dev App cannot push (in practice one under `.github/workflows/`) is published from the host
+by the admin App, with one host command that mints, PUTs each file, prints the compare and revokes. The
+driver prepares the inputs and the maintainer runs one line; nothing from the change runs on the host.
+
+1. Copy each such file from the lane's worktree into the main clone's `.git/wow-handoff/`.
+2. Write `<N>-manifest.json` beside the copies, `N` the task number: one JSON object with exactly the keys
+   `branch`, `base`, `expect` and `files`, no other.
+   - `branch` and `base` use only letters, digits, `.`, `_`, `-` and `/`, do not start with `-` or `/`, do
+     not end with `/`, hold no `..` and no `//`, and differ from each other.
+   - `expect` is the word `new` (the branch is cut from `base`) or a 40-character lowercase hex commit, the
+     head the existing branch must have (for example an open lane PR's head).
+   - `files` is a non-empty array of objects, each with exactly the keys `src`, `path`, `sha256`, `msg`,
+     optionally `old` and `mode`, and no other. `src` is a bare file name in the handoff directory (letters,
+     digits, `.`, `_`, `-`, not starting with `.` or `-`). `path` is the repository path: it starts with
+     `.github/`, the rest uses only letters, digits, `.`, `_`, `-` and `/`, with no empty, `.` or `..` segment.
+     `sha256` is the SHA-256 of the copy, 64 lowercase hex characters. `msg` is the commit message, one line of
+     1 to 200 characters with no control character. `old` is the 40-character lowercase hex blob sha of the file
+     on the branch being replaced, read from the base for `expect` `new`, else from the `expect` commit; null or
+     absent for a new file. `mode` is `100644` (the default) or `100755`; a new file is created as `100644`, so a
+     new `100755` file is refused. No two entries share a `path`.
+3. Hand the maintainer one line to run in Git Bash on the host, with `WOW_HOME` set to the repository's
+   identity home: `wow-publish <owner/name> <handoff dir as the host sees it> <N>`.
+
+When the run ends, check the branch's commits on GitHub, not the host's printed output. After a failed run
+the maintainer passes back the head it reported; when the branch on GitHub is at that head, rewrite the
+manifest with `expect` set to it, listing only the files not yet published, and hand over the line again;
+otherwise stop and report to the maintainer rather than resuming.
+
+The PR is opened, or already open, as the dev App, with the admin App as the last pusher. A repository whose
+ruleset has the admin App open the PR is outside this procedure.
+
 ## What this skill never does
 
 It never drafts a spec, plans or approves (`/way-of-working:spec-task`,

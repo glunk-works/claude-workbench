@@ -67,7 +67,7 @@
   control is to run this from a clone no container opens; #393's container must open a different
   clone or a volume. "Ancestor of main" also accepts an older merged commit (a downgrade).
 
-  Put $WowHome/bin on Git Bash's PATH to run wow-admin, wow-preflight, wow-readback, wow-review and wow-review-mint from the
+  Put $WowHome/bin on Git Bash's PATH to run wow-admin, wow-publish, wow-preflight, wow-readback, wow-review and wow-review-mint from the
   installed copy (wow-review finds wow-review-mint beside itself). Run on its own it does not stop a running
   broker unless -StopTask is given; a held file then fails the swap cleanly.
 
@@ -125,6 +125,7 @@ $table = @(
   ,@('scripts/identity/wow-common.sh', 'wow-common.sh')
   ,@('scripts/identity/wow-review-mint', 'wow-review-mint')
   ,@('scripts/identity/wow-admin', 'wow-admin')
+  ,@('scripts/identity/wow-publish', 'wow-publish')
   ,@('scripts/identity/wow-preflight', 'wow-preflight')
   ,@('scripts/identity/wow-readback', 'wow-readback')
   ,@('scripts/identity/wow-review', 'wow-review')

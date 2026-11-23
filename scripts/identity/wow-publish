@@ -1,0 +1,336 @@
+#!/bin/sh
+# Host command: publish prepared .github/ files as the admin App, one contents-API PUT per file (WB-D24, #1681).
+#
+#   wow-publish <owner/name> <handoff-dir> <N>
+#
+# A change the dev App cannot push (in practice a file under .github/workflows/) is published from the host by the
+# admin App: snapshot the handoff files, check them against a manifest, mint through wow-admin with exactly
+# contents=write, pull_requests=write and workflows=write, PUT each file, print the compare, and revoke through
+# wow-admin --revoke on every exit after a mint. It runs nothing from the change and reads no issue or PR text.
+# Run it by its path or through PATH (a slash-less $0 exits 2, as for wow-admin), from the installed bin/, where it
+# finds wow-common.sh, wow-admin, token-check.sh and gh-identity.sh beside itself. Toolset: POSIX sh, jq, openssl, gh, plus what
+# wow-admin and token-check.sh need. $WOW_HOME is honoured as wow-admin does; the admin token is always that home's
+# own admin/<owner>/<name>/admin-token, whether or not the home holds a tokens-root file. $WOW_TTY names the
+# terminal the confirmation is read from (default /dev/tty). Exit 0 on success, 1 on any refusal or failure, 2 on
+# bad usage.
+#
+# <N> is a plain decimal task number; the manifest is <handoff-dir>/<N>-manifest.json, found by the tool itself.
+#
+# Manifest: one JSON object with exactly the keys branch, base, expect and files.
+#   branch, base  letters, digits, . _ - and /; not starting with - or /, not ending with /, no .. and no //;
+#                 different from each other. A branch equal to the repository's default branch is refused.
+#   expect        the word new (cut branch from base), or a 40-character lowercase hex commit: the head the
+#                 existing branch must have (for example an open lane PR's head).
+#   files         a non-empty array of objects with exactly the keys src, path, sha256, msg and optionally old and mode:
+#     src         a bare file name in the handoff directory (letters, digits, . _ -; not starting with . or -)
+#     path        the repository path: starts with .github/, the rest letters, digits, . _ - and /, no empty, . or .. segment
+#     sha256      64 lowercase hex characters
+#     msg         the commit message: one line of 1 to 200 characters, no control character
+#     old         the 40-character lowercase hex blob sha of the file on the branch being replaced; null or absent for a new file
+#     mode        the string 100644 (default) or 100755. A new file is always created as 100644, so a 100755 entry
+#                 with no old is refused; on an update the mode is the manifest's claim and is not checked against the branch.
+#   No two entries share a path. A refusal names the failing key by its position (files[2].src) and the rule it
+#   broke, and never prints a value that failed its pattern.
+#
+# Order of work, stopping at the first failure:
+#   1. Snapshot the manifest: a private $WOW_HOME/.publish.XXXXXX directory (umask 077) with a files/ subdirectory; the
+#      manifest is copied in with cp -P and refused unless the copy is a regular file, not a link.
+#   2. Check the manifest copy. Only then copy each src with cp -P into files/, refused unless each copy is a regular file,
+#      not a link. Every later step reads only the snapshot, never the handoff directory again (it sits in a clone a
+#      container can write); the tool's own working files live outside files/.
+#   3. Check each copy's SHA-256 against sha256, and refuse a 100755 entry with no old. No token exists yet, and none
+#      of the refusals in steps 1 to 3 calls wow-admin or gh.
+#   4. Confirm: print the repository, branch, base, expect, the snapshot directory and, per file, one line (path, new or
+#      update, mode, size in bytes, sha256) and one naming the snapshot copy to read, marking every path not ending in .md with "read before publishing", then ask
+#      "publish these files as the admin App? [y/N]" on $WOW_TTY. Anything but y exits 1 with nothing minted.
+#   5. Mint: wow-admin <owner/name> --perms contents=write,pull_requests=write,workflows=write. A non-zero exit stops
+#      with exit 1 and no revoke (no token was written by this run). From a zero exit on, the revoke in step 10 is armed.
+#      Exactly one stdout line must start with "granted: " and equal
+#      "granted: permissions contents=write,metadata=read,pull_requests=write,workflows=write repositories <name>" or the
+#      same without "metadata=read,"; anything else refuses. A signal (INT, TERM, HUP) during the mint is held
+#      until wow-admin returns; the run then revokes only when the token file differs from the one on file before the
+#      mint, so a finished mint is not left live and a token this run did not write is left alone. Limit: SIGKILL leaves
+#      the token: run wow-admin <owner/name> --revoke.
+#   6. Token: with GH_HOST, GH_ENTERPRISE_TOKEN and GITHUB_TOKEN unset and --hostname github.com on every gh call, take the
+#      token through token-check.sh token, read installation/repositories with it and run token-check.sh verify admin on
+#      that read with an empty project file, as wow-readback does. The token is passed only as GH_TOKEN in the environment
+#      of each gh call, with GH_CONFIG_DIR an empty directory inside the snapshot directory; never printed, never on a
+#      command line.
+#   7. Branch: refuse a branch equal to the default branch. For expect new, read the base's head, refuse when the branch
+#      exists (only a 404 on the ref read means absent) and create it at that head with one refs POST. Otherwise read the
+#      branch's head and refuse unless it equals expect. That check is also how a half-published branch resumes: a re-run
+#      whose expect is the head a failed run reported, listing only the files not yet published. The contents API takes no
+#      expected head, so a push between this check and a PUT is caught only after that PUT lands (step 8).
+#   8. Publish: per file in manifest order, one PUT to the contents API with message, branch, content (base64) and, when old
+#      is set, sha. Every body goes over stdin (gh api --input -); the base64 is written to a file in the snapshot
+#      directory and never appears on a command line. A PUT is verified when gh exits 0 and the response's commit has a
+#      40-hex sha and exactly one parent equal to the previous head. A failure stops the run, prints the files verified so
+#      far and the last head this run verified (never a head read again from GitHub), and still revokes. A PUT that
+#      answered but failed the parent check did commit: the output names that file and commit as landed on a branch that
+#      moved under the run.
+#   9. Compare: print the number of commits ahead, each commit's sha and each changed file's name through jq @json,
+#      never a commit message. A failed read exits 1 after the revoke.
+#  10. Revoke: on every exit after a zero mint exit (INT, TERM and HUP included) run wow-admin <owner/name> --revoke once,
+#      show its output and print "revoke: ok" or "revoke: failed (exit <code>)"; a failed revoke makes the exit 1. The
+#      snapshot directory, with its GH_CONFIG_DIR, is removed on every exit.
+# On success the last line before the revoke is "published <count> files onto <branch>; head <sha>".
+set -eu
+set -f
+prog=wow-publish
+case "$0" in
+  */*) here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd) ;;
+  *) echo "$prog: must be run by path or through PATH (a slash-less \$0 cannot locate wow-common.sh)" >&2; exit 2 ;;
+esac
+. "$here/wow-common.sh"
+
+usage() { die "usage: wow-publish <owner/name> <handoff-dir> <N>" 2; }
+[ $# -eq 3 ] || usage
+arg=$1 hand=$2 n=$3
+case "$arg" in */*/* | */ | /*) usage ;; */*) ;; *) usage ;; esac
+owner=${arg%%/*} name=${arg#*/}
+case "$owner" in . | ..) usage ;; esac
+check_repo "$owner"
+case "$owner" in .* | *.) die "the owner half must not begin or end with a dot" 2 ;; esac
+check_repo "$name"
+case "$name" in .* | *.) die "the name half must not begin or end with a dot" 2 ;; esac
+case "$n" in '' | 0* | *[!0-9]*) usage ;; esac
+[ "${#n}" -le 9 ] || usage
+[ -n "$hand" ] || usage
+
+for tool in jq openssl gh; do
+  command -v "$tool" >/dev/null 2>&1 || die "$tool not on PATH"
+done
+[ -d "$wow_home" ] || die "no identity home at $wow_home"
+[ -f "$here/token-check.sh" ] && [ -f "$here/gh-identity.sh" ] && [ -f "$here/wow-admin" ] || die "token-check.sh, gh-identity.sh and wow-admin must sit beside $prog (run the installed copy)"
+[ -d "$hand" ] || die "the handoff directory is not a directory"
+
+T= armed= TOK= minting= sigged= pre=
+cleanup() {
+  rc=$?
+  # a later signal must not cut the revoke or the removal short: ignored signals pass to wow-admin and curl
+  trap '' INT TERM HUP
+  trap - EXIT
+  set +e
+  # a signal that ended the run while wow-admin was minting: a token file that differs from the one on file before the mint is this run's, so revoke it
+  if [ -n "$minting" ] && [ -n "$sigged" ]; then
+    now=$(cksum 2>/dev/null <"$(admin_token_file "$owner" "$name")" || echo absent)
+    [ "$now" = absent ] || [ "$now" = "$pre" ] || armed=1
+  fi
+  [ "$rc" -eq 0 ] || rc=1
+  if [ -n "$armed" ]; then
+    armed=
+    if sh "$here/wow-admin" "$arg" --revoke </dev/null; then
+      echo "revoke: ok"
+    else
+      r=$?
+      echo "revoke: failed (exit $r)"
+      rc=1
+    fi
+  fi
+  [ -z "$T" ] || rm -rf -- "$T" || true
+  exit "$rc"
+}
+trap cleanup EXIT
+trap 'sigged=1; exit 1' INT TERM HUP
+
+# --- 1. snapshot the manifest ------------------------------------------------------------------
+T=$(umask 077 && mktemp -d -- "$wow_home/.publish.XXXXXX") || die "cannot make a private directory under $wow_home"
+(umask 077 && mkdir -- "$T/files" "$T/w" "$T/ghcfg") || die "cannot make the snapshot subdirectories"
+
+# A native jq.exe under Git Bash can end each output line in CR; this wrapper keeps the exit status and drops it.
+jq() { _o=$(mktemp "$T/w/jq.XXXXXX") || return 1; command jq "$@" >"$_o"; _r=$?; tr -d '\r' <"$_o"; rm -f "$_o"; return "$_r"; }
+
+man=$T/manifest.json
+[ -f "$hand/$n-manifest.json" ] && [ ! -L "$hand/$n-manifest.json" ] || die "the manifest $n-manifest.json is absent from the handoff directory or is not a regular file"
+cp -P -- "$hand/$n-manifest.json" "$man" 2>/dev/null || die "cannot copy the manifest"
+[ -f "$man" ] && [ ! -L "$man" ] || die "the manifest copy is not a regular file"
+
+# --- 2. check the manifest ---------------------------------------------------------------------
+jq -e . "$man" >/dev/null 2>&1 || die "manifest: not valid JSON"
+[ "$(jq -s length "$man" 2>/dev/null)" = 1 ] || die "manifest: must hold exactly one JSON document"
+err=$(jq -r '
+  def isstr: type == "string";
+  def refok: isstr and test("\\A[A-Za-z0-9._/-]+\\z") and (test("\\A[-/]") | not) and (test("/\\z") | not)
+             and (contains("..") | not) and (contains("//") | not);
+  def hex($n): isstr and test("\\A[0-9a-f]{\($n)}\\z");
+  def fileerrs($i):
+    .files[$i] as $f
+    | if ($f | type) != "object" then ["files[\($i)]: must be an object"]
+      else
+        ( (["src","path","sha256","msg"] - ($f | keys) | map("files[\($i)]: the key \(.) is missing"))
+        + (if (($f | keys) - ["src","path","sha256","msg","old","mode"]) | length > 0
+             then ["files[\($i)]: has a key other than src, path, sha256, msg, old, mode"] else [] end)
+        + (if ($f | has("src")) and (($f.src | isstr and test("\\A[A-Za-z0-9_][A-Za-z0-9._-]*\\z")) | not)
+             then ["files[\($i)].src: must be a bare file name of letters, digits, . _ - not starting with . or -"] else [] end)
+        + (if ($f | has("path")) and (($f.path | isstr and test("\\A\\.github/[A-Za-z0-9._/-]+\\z") and (split("/") | all(.[]; . != "" and . != "." and . != ".."))) | not)
+             then ["files[\($i)].path: must start with .github/ and use only letters, digits, . _ - and / with no empty, . or .. segment"] else [] end)
+        + (if ($f | has("sha256")) and (($f.sha256 | hex(64)) | not)
+             then ["files[\($i)].sha256: must be 64 lowercase hex characters"] else [] end)
+        + (if ($f | has("msg")) and (($f.msg | isstr and (length >= 1 and length <= 200) and (explode | any(. < 32 or (. >= 127 and . <= 159)) | not)) | not)
+             then ["files[\($i)].msg: must be one line of 1 to 200 characters with no control character"] else [] end)
+        + (if ($f | has("old")) and $f.old != null and (($f.old | hex(40)) | not)
+             then ["files[\($i)].old: must be null or a 40-character lowercase hex sha"] else [] end)
+        + (if ($f | has("mode")) and ($f.mode != "100644" and $f.mode != "100755")
+             then ["files[\($i)].mode: must be 100644 or 100755"] else [] end)
+      ) end;
+  if type != "object" then ["manifest: must be one JSON object"]
+  else
+    ( (["branch","base","expect","files"] - keys | map("manifest: the key \(.) is missing"))
+    + (if (keys - ["branch","base","expect","files"]) | length > 0 then ["manifest: has a key other than branch, base, expect, files"] else [] end)
+    + (if has("branch") and ((.branch | refok) | not) then ["branch: must use only letters, digits, . _ - and /, not start with - or /, not end with /, hold no .. or //"] else [] end)
+    + (if has("base") and ((.base | refok) | not) then ["base: must use only letters, digits, . _ - and /, not start with - or /, not end with /, hold no .. or //"] else [] end)
+    + (if (.branch | isstr) and .branch == .base then ["branch: must differ from base"] else [] end)
+    + (if has("expect") and (.expect != "new") and ((.expect | hex(40)) | not) then ["expect: must be the word new or a 40-character lowercase hex commit"] else [] end)
+    + (if has("files") and ((.files | type) != "array" or (.files | length) == 0) then ["files: must be a non-empty array"] else [] end)
+    + (if (.files | type) == "array" then [range(0; .files | length) as $i | fileerrs($i)[]] else [] end)
+    + (if (.files | type) == "array" and ([.files[] | select(type == "object") | .path | select(isstr)] | (length != (unique | length))) then ["files: two entries share a path"] else [] end)
+    ) end
+  | first // empty' "$man" 2>/dev/null) || die "manifest: could not be checked"
+[ -z "$err" ] || die "manifest: $err"
+
+branch=$(jq -r .branch "$man") base=$(jq -r .base "$man") expect=$(jq -r .expect "$man") count=$(jq -r '.files | length' "$man")
+case "$count" in '' | *[!0-9]*) die "manifest: files could not be counted" ;; esac
+
+i=0
+while [ "$i" -lt "$count" ]; do
+  src=$(jq -r --argjson i "$i" '.files[$i].src' "$man")
+  [ -f "$hand/$src" ] && [ ! -L "$hand/$src" ] || die "files[$i].src: absent from the handoff directory or not a regular file"
+  cp -P -- "$hand/$src" "$T/files/$src" 2>/dev/null || die "files[$i].src: cannot be copied"
+  [ -f "$T/files/$src" ] && [ ! -L "$T/files/$src" ] || die "files[$i].src: the copy is not a regular file"
+  i=$((i + 1))
+done
+
+# --- 3. check the files ------------------------------------------------------------------------
+i=0
+while [ "$i" -lt "$count" ]; do
+  src=$(jq -r --argjson i "$i" '.files[$i].src' "$man")
+  want=$(jq -r --argjson i "$i" '.files[$i].sha256' "$man")
+  openssl dgst -sha256 -r "$T/files/$src" >"$T/w/dg" 2>/dev/null || die "files[$i].sha256: cannot compute the file's SHA-256"
+  got=$(cut -d ' ' -f 1 "$T/w/dg" | tr -d '\r')
+  [ "$got" = "$want" ] || die "files[$i].sha256: does not match the file's SHA-256"
+  mode=$(jq -r --argjson i "$i" '.files[$i].mode // "100644"' "$man")
+  old=$(jq -r --argjson i "$i" '.files[$i].old // empty' "$man")
+  if [ "$mode" = 100755 ] && [ -z "$old" ]; then
+    die "files[$i].mode: a contents PUT creates a new file as 100644, so a new 100755 file is refused"
+  fi
+  i=$((i + 1))
+done
+
+# --- 4. confirm --------------------------------------------------------------------------------
+echo "repository: $arg"
+echo "branch: $branch"
+echo "base: $base"
+echo "expect: $expect"
+echo "snapshot: $T"
+i=0
+while [ "$i" -lt "$count" ]; do
+  src=$(jq -r --argjson i "$i" '.files[$i].src' "$man")
+  path=$(jq -r --argjson i "$i" '.files[$i].path' "$man")
+  sha=$(jq -r --argjson i "$i" '.files[$i].sha256' "$man")
+  mode=$(jq -r --argjson i "$i" '.files[$i].mode // "100644"' "$man")
+  old=$(jq -r --argjson i "$i" '.files[$i].old // empty' "$man")
+  size=$(wc -c <"$T/files/$src" | tr -d ' \r')
+  kind=new; [ -z "$old" ] || kind=update
+  mark=; case "$path" in *.md) ;; *) mark="  read before publishing" ;; esac
+  echo "file: $path $kind $mode $size $sha$mark"
+  echo "  read the snapshot copy: $T/files/$src"
+  i=$((i + 1))
+done
+tty=${WOW_TTY:-/dev/tty}
+[ -r "$tty" ] || die "no terminal to ask for the confirmation on"
+printf 'publish these files as the admin App? [y/N] ' >&2
+ans=
+IFS= read -r ans <"$tty" || ans=
+echo >&2
+[ "$ans" = y ] || die "not confirmed; nothing minted"
+
+# --- 5. mint -----------------------------------------------------------------------------------
+pre=$(cksum 2>/dev/null <"$(admin_token_file "$owner" "$name")" || echo absent)
+minting=1
+out=$(sh "$here/wow-admin" "$arg" --perms contents=write,pull_requests=write,workflows=write </dev/null) || die "wow-admin could not mint the admin token"
+armed=1
+minting=
+out=$(printf '%s\n' "$out" | tr -d '\r')
+printf '%s\n' "$out"
+gcount=$(printf '%s\n' "$out" | grep -c '^granted: ' || true)
+gline=$(printf '%s\n' "$out" | grep '^granted: ' || true)
+g1="granted: permissions contents=write,metadata=read,pull_requests=write,workflows=write repositories $name"
+g2="granted: permissions contents=write,pull_requests=write,workflows=write repositories $name"
+[ "$gcount" = 1 ] && { [ "$gline" = "$g1" ] || [ "$gline" = "$g2" ]; } || die "the granted line is not exactly contents, pull_requests and workflows write on $name; refusing"
+
+# --- 6. the token ------------------------------------------------------------------------------
+unset GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN
+tokfile=$(admin_token_file "$owner" "$name")
+TOK=$(sh "$here/token-check.sh" token "$tokfile" 2>/dev/null) && [ -n "$TOK" ] || die "no usable admin token file after the mint"
+# gha <gh api args...>: one gh api call with the token in the environment of that call only.
+gha() ( GH_TOKEN=$TOK GH_CONFIG_DIR=$T/ghcfg; export GH_TOKEN GH_CONFIG_DIR; exec gh api --hostname github.com "$@" )
+gha --paginate installation/repositories --jq '.repositories[].full_name' >"$T/w/inst" 2>/dev/null </dev/null || die "cannot read the installation's repositories"
+: >"$T/w/none.yml"
+V=$(sh "$here/token-check.sh" verify admin "$arg" "$tokfile" "$T/w/inst" "$T/w/none.yml" 2>/dev/null) && [ "$V" = installation ] || die "the admin token did not verify for $arg"
+
+# rdv <gh api args...>: one read, stdout to a file first so a failed call is never masked by a pipe, then printed without CR.
+rdv() { gha "$@" >"$T/w/rd" 2>/dev/null </dev/null || return 1; tr -d '\r' <"$T/w/rd"; }
+
+# --- 7. the branch -----------------------------------------------------------------------------
+defb=$(rdv "repos/$arg" --jq .default_branch) && [ -n "$defb" ] || die "cannot read the default branch"
+[ "$(printf '%s' "$branch" | tr A-Z a-z)" != "$(printf '%s' "$defb" | tr A-Z a-z)" ] || die "branch: must not be the default branch"
+hex40() { case "$1" in *[!0-9a-f]* | '') return 1 ;; esac; [ "${#1}" -eq 40 ]; }
+head=
+if [ "$expect" = new ]; then
+  bhead=$(rdv "repos/$arg/git/ref/heads/$base" --jq .object.sha) && hex40 "$bhead" || die "cannot read the head of the base $base"
+  if gha "repos/$arg/git/ref/heads/$branch" --jq .object.sha >"$T/w/ex" 2>"$T/w/err" </dev/null; then
+    die "the branch $branch already exists; refusing expect new"
+  fi
+  grep -q 'HTTP 404' "$T/w/err" || die "cannot tell whether the branch $branch exists"
+  jq -n --arg ref "refs/heads/$branch" --arg sha "$bhead" '{ref: $ref, sha: $sha}' >"$T/w/refbody"
+  gha -X POST "repos/$arg/git/refs" --input - >"$T/w/resp" 2>/dev/null <"$T/w/refbody" || die "cannot create the branch $branch"
+  rsha=$(jq -r '.object.sha // empty' "$T/w/resp") && [ "$rsha" = "$bhead" ] || die "the new branch $branch is not at the base's head"
+  head=$bhead
+else
+  cur=$(rdv "repos/$arg/git/ref/heads/$branch" --jq .object.sha) && hex40 "$cur" || die "cannot read the head of the branch $branch"
+  [ "$cur" = "$expect" ] || die "the branch $branch is at $cur, not at the expected head"
+  head=$expect
+fi
+
+# --- 8. publish --------------------------------------------------------------------------------
+published=
+report() {
+  [ -z "$published" ] || printf 'verified so far:%s\n' "$published"
+  echo "last verified head: $head"
+}
+i=0
+while [ "$i" -lt "$count" ]; do
+  src=$(jq -r --argjson i "$i" '.files[$i].src' "$man")
+  path=$(jq -r --argjson i "$i" '.files[$i].path' "$man")
+  msg=$(jq -r --argjson i "$i" '.files[$i].msg' "$man")
+  old=$(jq -r --argjson i "$i" '.files[$i].old // empty' "$man")
+  openssl base64 -A -in "$T/files/$src" >"$T/w/b64" || { report; die "cannot encode $path"; }
+  if [ -n "$old" ]; then
+    jq -n --arg message "$msg" --arg branch "$branch" --rawfile content "$T/w/b64" --arg sha "$old" '{message: $message, branch: $branch, content: $content, sha: $sha}' >"$T/w/body"
+  else
+    jq -n --arg message "$msg" --arg branch "$branch" --rawfile content "$T/w/b64" '{message: $message, branch: $branch, content: $content}' >"$T/w/body"
+  fi || { report; die "cannot build the request for $path"; }
+  gha -X PUT "repos/$arg/contents/$path" --input - >"$T/w/resp" 2>/dev/null <"$T/w/body" || { report; die "the PUT of $path failed; nothing further was written"; }
+  csha=$(jq -r '.commit.sha // empty' "$T/w/resp" 2>/dev/null) || csha=
+  hex40 "$csha" || { report; die "the PUT of $path answered with no usable commit sha"; }
+  np=$(jq -r '.commit.parents | length' "$T/w/resp" 2>/dev/null) || np=
+  p0=$(jq -r '.commit.parents[0].sha // empty' "$T/w/resp" 2>/dev/null) || p0=
+  if [ "$np" != 1 ] || [ "$p0" != "$head" ]; then
+    report
+    die "$path landed as commit $csha on a branch that moved under the run (its parent is not the previous head); stopping"
+  fi
+  head=$csha
+  published="$published $path"
+  i=$((i + 1))
+done
+
+# --- 9. compare --------------------------------------------------------------------------------
+gha "repos/$arg/compare/$base...$branch" >"$T/w/cmp" 2>/dev/null </dev/null || die "cannot read the compare of $base and $branch"
+cmp=$(jq -r '
+  if (.ahead_by | type) != "number" or (.commits | type) != "array" then error("shape") else
+    "ahead by \(.ahead_by) commits",
+    (.commits[] | if (.sha | type) == "string" and (.sha | test("\\A[0-9a-f]{40}\\z")) then "commit \(.sha)" else error("sha") end),
+    ((.files // [])[] | "file \(.filename | @json)")
+  end' "$T/w/cmp") || die "the compare of $base and $branch is not in the expected shape"
+printf '%s\n' "$cmp"
+echo "published $count files onto $branch; head $head"

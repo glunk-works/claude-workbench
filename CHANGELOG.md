@@ -23,6 +23,7 @@ the GitHub release notes.
 
 ### Added
 
+- The `wow-publish` host command publishes prepared `.github/` files as the admin App (mint, one contents-API PUT per file, compare, revoke) from a driver-written manifest (`#1681`); it applies once the host tools are reinstalled, and the lanes skill gains the procedure that writes the manifest.
 - A weekly `claude-pin-check` workflow opens one notice issue when the Claude Code version pinned in the Dockerfiles falls behind the latest release, and none while an open notice for that version exists (#1677).
 - The `zizmor` job in `ci.yml` now runs the gate's configuration against a committed fixture with a known finding and fails unless that run failed, so a `zizmor-action` bump that stops the gate from exiting non-zero on a finding turns the job red on its own PR (#1237).
 - The reach-gate refusal now names the way out of an intended origin and token mismatch (`#1235`).
@@ -35,6 +36,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- `wow-admin --revoke` now prints every failure it collected before a curl-failure exit, each with its prefix, and prints its closing prefix through the program name (`#1681`); it applies once the host tools are reinstalled.
 - The launchers now refuse a `gh api` answer that is not one JSON object, a one-element array holding an object included, instead of reading the object inside it (#1362); it applies once the host tools are reinstalled.
 - The plan-sprint per-issue triage comment rule now names a held findings issue as getting no triage comment, the held guard's re-read and `held` run now come after the placement gather's unmilestoned read so a findings issue filed before that read is held, and `plan-findings.sh` exits 1, not 3, when the yq read of the reviewer App id fails and exits 1 when `held`'s final awk fails.
 
