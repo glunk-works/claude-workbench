@@ -1543,7 +1543,7 @@ findings_case "a non-string title" findings-shape '[{"title":5,"body":"b","type"
 findings_case "six findings" findings-count "$(jq -nc '[range(6) | {title:"t",body:"b",type:"bug"}]')"
 findings_case "an empty title" findings-title '[{"title":"","body":"b","type":"bug"}]'
 findings_case "a long title" findings-title "$(jq -nc '[{title:("x"*121),body:"b",type:"bug"}]')"
-findings_case "a long body" findings-body "$(jq -nc '[{title:"t",body:("x"*4001),type:"bug"}]')"
+findings_case "a long body" findings-body "$(jq -nc '[{title:"t",body:("x"*3501),type:"bug"}]')"
 findings_case "a bad type" findings-type '[{"title":"t","body":"b","type":"task"}]'
 findings_case "a bad area" findings-area '[{"title":"t","body":"b","type":"bug","area":"x/y"}]'
 findings_case "ESC in a body" findings-control '[{"title":"t","body":"a\u001b[31mb","type":"bug"}]'
@@ -1583,6 +1583,14 @@ new_case; set_findings '[{"title":"T","body":"b","type":"bug"},{"title":"U","bod
 run o/r 7
 assert_eq "a failed create files nothing, the exit stays 0" 0 "$rc"
 assert_eq "a failed create: the ledger is empty or absent" "" "$(cat "$(entry_dir)/filed" 2>/dev/null)"
+
+# the worst case at every cap: five findings, a 120-backtick title, a 3500-byte backtick body and five 200-character paths each
+new_case
+set_findings "$(jq -nc '[range(5) as $i | {title:("`"*120), body:("`"*3500), type:"bug", paths:[range(5) as $j | ("p\($i)\($j)" + ("a"*197))]}]')"
+run o/r 7
+assert_eq "worst case: exit 0" 0 "$rc"
+assert_eq "worst case: one issue POST" 1 "$(n_issues)"
+assert_eq "worst case: the issue body is within GitHub's 65536-character limit" 1 "$(issue_f '(.body | length) <= 65536' | sed 's/true/1/;s/false/0/')"
 
 # --- paths ------------------------------------------------------------------------------------
 findings_case "paths not an array" findings-paths '[{"title":"t","body":"b","type":"bug","paths":"a/b"}]'

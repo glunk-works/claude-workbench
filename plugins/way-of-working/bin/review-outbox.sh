@@ -252,7 +252,7 @@ case $cmd in
         and ((has("area") | not) or (.area | type) == "string"))' <"$F" >/dev/null 2>&1 || nf shape
     jq -e 'length <= 5' <"$F" >/dev/null 2>&1 || nf count
     jq -e 'all(.[]; (.title | length) >= 1 and (.title | length) <= 120)' <"$F" >/dev/null 2>&1 || nf title
-    jq -e 'all(.[]; (.body | utf8bytelength) <= 4000)' <"$F" >/dev/null 2>&1 || nf body
+    jq -e 'all(.[]; (.body | utf8bytelength) <= 3500)' <"$F" >/dev/null 2>&1 || nf body
     jq -e 'all(.[]; .type == "bug" or .type == "feature" or .type == "chore" or .type == "docs")' <"$F" >/dev/null 2>&1 || nf type
     jq -e 'all(.[]; (has("area") | not) or (.area | test("\\Aarea/[a-z0-9-]+\\z")))' <"$F" >/dev/null 2>&1 || nf area
     jq -e 'all(.[]; (has("paths") | not) or (.paths | type == "array" and length >= 1 and length <= 5 and all(.[]; type == "string" and length >= 1 and length <= 200 and test("\\A[A-Za-z0-9._][A-Za-z0-9._/-]*\\z") and (split("/") | all(. != "" and . != "." and . != "..")))))' <"$F" >/dev/null 2>&1 || nf paths
