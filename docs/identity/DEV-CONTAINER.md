@@ -402,7 +402,8 @@ In a home with the file the broker checks each entry's owner against the dev ins
 and `wow-admin` makes its per-name lock in the default home, so both homes' runs for one repo name share it, and
 writes the admin token to each home's own `admin/`, never to the shared root. Its other-owner scan of `admin/` runs in every
 home; it skips the scan of the shared root's other owners' legacy copies and the pre-#1340 leftover (a revoke acts, in the home it runs from, on the owner its argument names). The
-default home's install cross-check does not print its line for the owner directory of a home beside the default home (in the same parent folder, not a link) that holds a valid `tokens-root` file and a readable `broker.json` naming that owner, unless that owner equals, ignoring case, the name half of an entry in the default home's `broker.json`, which step 1 forbids.
+default home's install cross-check does not print its line for the owner directory of a home beside the default home (in the same parent folder, not a link) that holds a valid `tokens-root` file and a readable `broker.json` naming that owner (readable here is the install's rule: its `repos`, in that letter case, is a list), unless that owner equals, ignoring case, the name half of an entry in the default home's `broker.json`, which step 1 forbids.
+A `repos` given as a single string, or the key spelled in another letter case such as `Repos`, which the broker accepts and delivers from, is not readable to this check, so the owner directory that file names still draws the warning.
 The default home's own `wow-admin` still scans that shared directory for a same-named repo's legacy copy, and its
 refusal names a revoke, which is then run from the second home.
 
