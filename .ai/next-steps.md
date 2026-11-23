@@ -1,24 +1,25 @@
 # Cursor — claude-workbench
 
-**Now:** **Sprint 24** (cursor id `sprint-24`), status **implementing**, milestone 29 (*Follow-ups: host and script hardening*): no lane building; the dev container and review image bases are at 4.812 on `main`, and the host tools are reinstalled at `4587f1c`.
+**Now:** **Sprint 24** (cursor id `sprint-24`), status **implementing**, milestone 29 (*Follow-ups: host and script hardening*): one lane live, #1661 (PR #1758, in review).
 
-**Just done (2026-11-20 to 2026-11-22, driver session, opus):**
-- Plan-sprint pass on the reviewer App findings: combined issues #1724, #1725, #1726 and #1727 filed and placed on milestone 29, #1704 placed on milestone 33, the source findings issues closed with mapping comments.
-- Merged after the driver's assessment of each review and diff against its spec: #1728 (#1030, `5bd188b`), #1730 (#1235, `8b92560`), #1729 (#1237, `5924ff3`; `ci.yml` published by the admin App), #1732 (#1303, `82f2b7f`), #1734 (#1283, `88407b5`), #1733 (#1676, `6840c93`; the maintainer's host build passed and failed as the spec requires), #1737 (#1297, `d81fd1c`; its spec refreshed onto `5924ff3`). All seven lanes cleaned up.
-- Dependabot bumps merged: #1739 (dev container `devcontainer-devapp` 4.812, `9f1698f`; host build passed, so its `claude` is still 2.1.316) and #1740 (review image `devcontainer-base` 4.812, `4587f1c`; attestation verified and the base's tools checked on the host). Host tools reinstalled from `4587f1c`; `check-host.ps1` all ok.
-- Milestone 29 and 33 descriptions (Build order, Done, Lanes) kept current through `milestone-desc.sh`, each write read back by hash.
+**Just done (2026-11-22 to 2026-11-23, driver session, opus):**
+- Merged after the driver's assessment of each review and diff against its spec: #1744 (#1727, `0153dab`), #1746 (#1362, `5efe5b1`), #1750 (#1677, `3313ef9`; the workflow file published by the admin App), #1748 (#1367, `2fecacb`; its merge of main published by the admin App, review rerun on the host), #1752 (#1681, `e473b6a`; merge of main published by the admin App), #1756 (#1658, `fe43cef`; spec refreshed onto `2fecacb` with no critic round). Each merged lane cleaned up.
+- #1603: the #1575 and #1571 refusals run live on the Windows host and pass (the #1571 run under a scratch `HOME`, so the real default home took no `tokens-root` file); recorded on the issue and closed.
+- Filed #1753: the printed `wow-admin` revoke and mint hints name no identity home, so they fail in a shell whose `WOW_HOME` names another home.
+- Milestone 29 description (Build order markers, Done, Lanes) kept current through `milestone-desc.sh`.
 
-**Next:** Driver work: after the maintainer recreates the dev container on the 4.812 base and runs the live-run check, run `/way-of-working:resume`; then hand over the spec command for #1677 (the next milestone 29 item, now unblocked by #1676) and pick further milestone 29 lanes with `lane.sh groups 29`. Model: opus (architect).
+**Next:** Driver work: run `/way-of-working:plan-sprint findings` to place the reviewer App findings issues filed from the milestone 29 lane PRs and #1753; then, when PR #1758 (#1661) has a review on its current head, run `/way-of-working:pr-checks 1758` and give the merge assessment before the maintainer approves; after it merges run `lane.sh done 1661`, propose the milestone 29 Done and Lanes edit, and hand over the spec command for #1398, the next milestone 29 item. Model: opus (architect).
 
-**HITL Gate: OPEN** — the dev container recreate on the 4.812 base and its live-run check wait on the maintainer; the review image managed-settings probe re-run on Claude Code 2.1.316 (REVIEW-LIVE-RUN.md) is the maintainer's host run; every spec waits on the maintainer's reaction; nothing auto-starts a build here.
+**HITL Gate: OPEN** — the review image managed-settings probe re-run on Claude Code 2.1.316 (REVIEW-LIVE-RUN.md) is the maintainer host run; every spec waits on the maintainer reaction and every lane PR on the maintainer approval; nothing auto-starts a build here.
 
 **Also waiting on the driver or the maintainer:**
 - Every `-Spec` hand-over carries `-Driver NAME`, the name taken from `ListAgents` at that moment; it changes when the container is recreated.
-- Reviewer App findings issues filed from PRs #1729, #1733, #1734, #1739 and #1740 await the next `/way-of-working:plan-sprint` findings pass. #1740's two (no CI check of the review image's base attestation, no CI build of that image) fit #1398 on milestone 29.
+- A `.github/workflows` change, or a lane's merge of main that brings one in, is refused to the dev App: the admin App publishes it from a host pwsh block, run with `WOW_HOME` naming the glunk home (#1753 is the hint fix).
+- The installed host tools in both homes predate `2fecacb`, so `wow-publish` (#1681) is not installed yet; the next `install-host-tools.ps1` run installs it.
+- Reviewer App findings issues filed from PRs #1729, #1733, #1734, #1739, #1740, #1744, #1746, #1748, #1750, #1752, #1756 and #1758, plus #1753, await the next `/way-of-working:plan-sprint` findings pass. #1740's two fit #1398 on milestone 29.
 - The loop image (`scripts/loop/Dockerfile`, `ARG BASE_IMAGE`) is still on `devcontainer-base` 1.6: Dependabot does not track it by design. Offered: an issue for a hand bump.
-- #1681 needs a fresh reaction (its body was edited after the last one). #1727 has no reaction yet. #1366 is the maintainer's admin decision; #1603 is the maintainer's host run.
+- #1366 is the maintainer's admin decision. #1624 needs the maintainer's reaction before its spec.
 - #1694's only unwitnessed Done-when item: check one `tests-1`/`tests-2` job summary for the run-time line.
-- #1362 on milestone 29 needs a confirmed `depends_on` marker. #1624 needs the maintainer's reaction before its spec.
 - devcontainers' `docs/host-steps.md` still describes the old Procedure B; that repo's driver is amending it. devcontainers#556's spec still needs the maintainer's reaction.
 - #1591: each other glunk-works repo switches at its milestone 34 item. Maintainer, on the host: bounty-infra, bedrock-serverless-rag, global-bootstrap and scope-core have a review poller but no `broker.json` entry (milestone 34).
 - Carried from sprint 21 (details in `.ai/archive/sprint-21-next-steps.md`): bounty-infra PRs #193 and #202; #412's cutover; devcontainers follow-ups; #419's private record and the other out-of-repo follow-ups.
