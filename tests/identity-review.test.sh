@@ -12,7 +12,7 @@
 # a `ps` whose --format is {{.Image}} with the docker/images-used fixture (nothing when absent; one stderr line and
 # exit 1 when docker/psimage.fail exists), and `rmi` by recording docker-rmi in the events, then exiting 1 with one
 # stderr line when its last argument is a line of docker/rmi.refuse, else printing an Untagged: line and exiting 0. The stub gh keeps a copy of what its --jq printed for the backlog's open-issues read (open-issues.out). stdin is closed
-# throughout, to prove nothing prompts.
+# throughout, to prove nothing prompts. The stub gh tells its two graphql queries apart by their input: the viewer query answers from gh/graphql and the closing-reference read from gh/closing (with the stub's .after mechanism for a second read that differs).
 #
 # Permitted toolset: POSIX sh and its standard utilities, jq, yq and timeout (skipped, loudly, if absent; a
 # failure instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml sets).
@@ -131,7 +131,12 @@ if [ "$method" = POST ]; then
       printf '{"number": %s}\n' $((100 + n)) >"$S/gh/issue_response"; fx="$S/gh/issue_response" ;;
   esac
 fi
-case $path in graphql) fx="$S/gh/graphql"; echo "gh-graphql" >>"$S/events" ;; esac
+# The two graphql queries are told apart by their input: the closing-reference read answers from gh/closing.
+case $path in
+  graphql)
+    if [ -n "$input" ] && grep -q closingIssuesReferences "$input"; then fx="$S/gh/closing"; echo "gh-closing" >>"$S/events"
+    else fx="$S/gh/graphql"; echo "gh-graphql" >>"$S/events"; fi ;;
+esac
 # A path read more than once may change after its first reads (a head that moves).
 if [ -e "$fx.after" ]; then
   rn=$(( $(cat "$fx.reads" 2>/dev/null || echo 0) + 1 )); echo "$rn" >"$fx.reads"
@@ -421,6 +426,7 @@ EOF
   printf '{"state":"open","head":{"sha":"%s"},"base":{"ref":"main"}}\n' "$SHA" >"$g/repos_o_r_pulls_7"
   printf '{"repositories":[{"full_name":"o/r"},{"full_name":"o/backlog"}]}\n' >"$g/installation_repositories"
   printf '{"data":{"viewer":{"login":"glunk-review[bot]","databaseId":4242}}}\n' >"$g/graphql"
+  set_closing 1 9:o/r
   printf '{"commit_id":"%s","state":"COMMENTED","user":{"login":"glunk-review[bot]","id":4242},"html_url":"https://github.com/o/r/pull/7#pullrequestreview-555","submitted_at":"2026-10-17T16:35:56Z"}\n' "$SHA" >"$g/post_review"
   printf '{"object":{"sha":"%s"}}\n' "$TIP" >"$g/repos_o_r_git_ref_heads_main"
   printf '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci"},{"context":"gate"}]}}]\n' >"$g/repos_o_r_rules_branches_main"
@@ -443,6 +449,13 @@ Looks fine."
   printf 'pass\n' >"$STUB/outbox/verdict"
 }
 
+set_closing() { set_closing_to "$STUB/gh/closing" "$@"; }   # set_closing <totalCount> [<number>:<owner/name>]...: the closing-reference fixture (a case may replace it)
+set_closing_after() { set_closing_to "$STUB/gh/closing.after" "$@"; }   # the same, answered from the second read on (the stub's .after mechanism)
+set_closing_to() { # set_closing_to <file> <totalCount> [<number>:<owner/name>]...
+  cf_=$1; tc_=$2; shift 2
+  printf '%s\n' "$@" | jq -R -s -c --argjson tc "$tc_" '{data: {repository: {pullRequest: {closingIssuesReferences:
+    {totalCount: $tc, nodes: (split("\n") | map(select(. != "") | split(":") | {number: (.[0] | tonumber), repository: {nameWithOwner: .[1]}}))}}}}}' >"$cf_"
+}
 set_outcome() { printf '%s\n' "$1" >"$STUB/outbox/outcome"; }
 set_body() { printf '%s\n' "$1" >"$STUB/outbox/review.md"; }
 set_findings() { printf '%s\n' "$1" >"$STUB/outbox/findings.json"; }
@@ -482,6 +495,12 @@ run() {
   invariants
 }
 
+closing_query_json() { # the one other allowed graphql input: the fixed closing-reference query for the case's owner, name and number
+  jq -n -S -c --arg owner o --arg name "${ALT_REPO:-r}" --argjson number 7 \
+    '{query: "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { closingIssuesReferences(first: 10) { totalCount nodes { number repository { nameWithOwner } } } } } }",
+      variables: {owner: $owner, name: $name, number: $number}}'
+}
+
 # What must hold across every run: the stub gh's write surface, tokens and config; the credential.
 invariants() {
   if [ -f "$STUB/gh.calls" ] && [ -s "$STUB/gh.calls" ]; then
@@ -494,7 +513,8 @@ invariants() {
       { print }' "$STUB/gh.calls")
     [ -z "$badw" ] || bad "a gh write other than the three allowed: $badw"
     for n in $(awk -F'|' '$7 == "graphql" {print $8}' "$STUB/gh.calls"); do
-      [ "$(jq -c . <"$STUB/inputs/$n")" = '{"query":"{ viewer { login databaseId } }"}' ] || bad "a graphql call that is not the fixed viewer query"
+      if [ "$(jq -c . <"$STUB/inputs/$n")" != '{"query":"{ viewer { login databaseId } }"}' ] \
+        && [ "$(jq -S -c . <"$STUB/inputs/$n")" != "$(closing_query_json)" ]; then bad "a graphql call that is neither the fixed viewer query nor the fixed closing-reference query"; fi
     done
     if awk -F'|' '$2 != "ghs_" || $3 != "yes" || $4 != "github.com"' "$STUB/gh.calls" | grep -q .; then
       bad "a gh call without a ghs_ token, an empty GH_CONFIG_DIR or --hostname github.com: $(awk -F'|' '$2 != "ghs_" || $3 != "yes" || $4 != "github.com"' "$STUB/gh.calls" | head -1)"
@@ -1979,6 +1999,88 @@ assert_eq "TERM during the wait: nothing posted" 0 "$(n_posts)"
 :
 }
 
+sec_closing() {
+# --- the closing references: read before the session and again after a review decision (#1367) ----
+CRLINE='the closing-reference read before the session failed; the comparison is off for this run'
+n_closing() { ev_count '^gh-closing$'; }
+new_case; set_closing 2 9:o/r 12:o/r; set_closing_after 2 9:o/r 12:o/r
+run o/r 7
+assert_eq "closing refs unchanged: exit 0" 0 "$rc"
+assert_eq "closing refs unchanged: one review POST" 1 "$(n_posts)"
+assert_eq "closing refs unchanged: two closing-reference queries" 2 "$(n_closing)"
+start_ln=$(ev_line 'docker-start wow-review-session')
+premint_ln=$(head -n "$start_ln" "$STUB/events" | grep -n '^mint-read$' | tail -1 | cut -d: -f1)
+check "closing refs unchanged: the first query is after the pre-start mint-read and before the session starts" \
+  test "$(ev_line '^gh-closing$')" -gt "$premint_ln" -a "$(ev_line '^gh-closing$')" -lt "$start_ln"
+check "closing refs unchanged: the second query is after the session" test "$(ev_last '^gh-closing$')" -gt "$(ev_line docker-wait-done)"
+check "closing refs unchanged: the first-read failure line is not logged" test -z "$(glog | grep -F "$CRLINE" || true)"
+
+new_case; set_closing 2 9:o/r 12:o/r; set_closing_after 2 12:o/r 9:o/r
+run o/r 7
+assert_eq "closing refs in another node order: exit 0" 0 "$rc"
+assert_eq "closing refs in another node order: one review POST" 1 "$(n_posts)"
+
+moved() { # moved <label> <after count> <after refs...>
+  l=$1; shift
+  new_case; set_closing 2 9:o/r 12:o/r; set_closing_after "$@"
+  run o/r 7
+  expect_failure_post "closing refs $l" closing-references-moved
+  assert_eq "closing refs $l: two closing-reference queries" 2 "$(n_closing)"
+  assert_eq "closing refs $l: no issue filed" 0 "$(n_issues)"
+}
+moved "replaced by another number" 2 9:o/r 13:o/r
+moved "with one added" 3 9:o/r 12:o/r 14:o/r
+moved "with one removed" 1 9:o/r
+moved "with the same nodes and another total" 3 9:o/r 12:o/r
+moved "with the same number in another repository" 2 9:o/r 12:o/backlog
+
+# A failed first read turns the comparison off: the review posts, with one query and the fixed log line.
+new_case; set_closing_after 1 77:o/r; : >"$STUB/gh/closing.fail"
+run o/r 7
+assert_eq "first read an HTTP failure: exit 0" 0 "$rc"
+assert_eq "first read an HTTP failure: one review POST" 1 "$(n_posts)"
+assert_eq "first read an HTTP failure: one closing-reference query" 1 "$(n_closing)"
+check "first read an HTTP failure: the fixed line is in the launcher log" test -n "$(glog | grep -F "$CRLINE" || true)"
+new_case; set_closing_after 1 77:o/r; printf '{"errors":[{"message":"x"}],"data":null}\n' >"$STUB/gh/closing"
+run o/r 7
+assert_eq "first read with an errors member: exit 0" 0 "$rc"
+assert_eq "first read with an errors member: one review POST" 1 "$(n_posts)"
+assert_eq "first read with an errors member: one closing-reference query" 1 "$(n_closing)"
+check "first read with an errors member: the fixed line is in the launcher log" test -n "$(glog | grep -F "$CRLINE" || true)"
+
+# A failed second read, or one of another shape, posts nothing and exits 1.
+second_bad() { # second_bad <label> <json>
+  new_case; printf '%s\n' "$2" >"$STUB/gh/closing.after"
+  run o/r 7
+  assert_eq "second read $1: exit 1" 1 "$rc"
+  assert_eq "second read $1: nothing posted" 0 "$(n_posts)"
+  assert_eq "second read $1: two closing-reference queries" 2 "$(n_closing)"
+  check "second read $1: the fail text is in the launcher's stderr" grep -qF "cannot re-read the PR's closing references after the session" "$tmp/err"
+  check "second read $1: both directories and the lock are gone" dirs_gone
+}
+new_case; set_closing_after 1 9:o/r; : >"$STUB/gh/closing.after.fail"
+run o/r 7
+assert_eq "second read an HTTP failure: exit 1" 1 "$rc"
+assert_eq "second read an HTTP failure: nothing posted" 0 "$(n_posts)"
+check "second read an HTTP failure: the fail text is in the launcher's stderr" grep -qF "cannot re-read the PR's closing references after the session" "$tmp/err"
+check "second read an HTTP failure: the fail text is in the launcher log" test -n "$(glog | grep -F "cannot re-read the PR's closing references after the session" || true)"
+node='{"number":9,"repository":{"nameWithOwner":"o/r"}}'
+second_bad "with an errors member" '{"errors":[{"message":"x"}],"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"totalCount":1,"nodes":['"$node"']}}}}}'
+second_bad "with a null pullRequest" '{"data":{"repository":{"pullRequest":null}}}'
+second_bad "with a non-integer total count" '{"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"totalCount":"1","nodes":['"$node"']}}}}}'
+second_bad "with nodes not an array" '{"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"totalCount":1,"nodes":{}}}}}}'
+second_bad "with a null node" '{"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"totalCount":1,"nodes":[null]}}}}}'
+second_bad "with a node number that is not an integer" '{"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"totalCount":1,"nodes":[{"number":"9","repository":{"nameWithOwner":"o/r"}}]}}}}}'
+second_bad "with a non-string owner/name" '{"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"totalCount":1,"nodes":[{"number":9,"repository":{"nameWithOwner":5}}]}}}}}'
+
+# A failure outcome posts its own code and never makes the second read.
+new_case; set_outcome "garbage"; set_closing_after 1 77:o/r
+run o/r 7
+expect_failure_post "closing refs changed with a bad-outcome" bad-outcome
+assert_eq "closing refs changed with a bad-outcome: one closing-reference query" 1 "$(n_closing)"
+:
+}
+
 sec_slashless() {
 # A slash-less $0 could source a wow-common.sh a branch under review planted in the cwd.
 mkdir "$tmp/plant-wow-review"
@@ -1995,7 +2097,7 @@ assert_eq "wow-review slash-less stderr names the tool" "wow-review: must be run
 
 # Run every section at once, each in a subshell with its own scratch directory ($tmp: its case tree, its out
 # and err files, its log scratch files) over the shared stubs; replay each one's output in order.
-sections="args golden stale schema ident mints lock reviewed verdict outcomes post findings gate log preflight cleanup slashless"
+sections="args golden stale schema ident mints lock reviewed verdict outcomes post findings gate log preflight cleanup closing slashless"
 pids=
 # An interrupt stops the section subshells and leaves the scratch tree (the stubs in it) in place: a launcher
 # already in flight ends on its own, within its own timeout, and must not lose its stubs to the real gh and

@@ -7,7 +7,8 @@
 # from per-case fixture files and records every call. stdin is closed throughout, to prove nothing
 # prompts.
 #
-# Permitted toolset: POSIX sh and its standard utilities, jq, yq, timeout and pwsh (each skipped, loudly, if absent).
+# Permitted toolset: POSIX sh and its standard utilities, jq, yq, timeout and pwsh (each skipped, loudly, if absent; pwsh's
+# skip is a failure when WOW_TESTS_REQUIRE_TOOLS is exactly 1).
 set -u
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -545,11 +546,26 @@ check "register-review-poll-task.ps1 builds the action as conhost --headless" ha
 check "register-review-poll-task.ps1 registers conhost as the executable" has "$root_dir/scripts/identity/register-review-poll-task.ps1" 'New-ScheduledTaskAction -Execute $conhost -Argument $conArg'
 check "register-review-poll-task.ps1 writes WOW_HOME with forward slashes" has "$root_dir/scripts/identity/register-review-poll-task.ps1" "WOW_HOME = '\$(\$WowHome.Replace('\\', '/'))'"
 
+# pwsh_verdict <pwsh present: 1|0> <WOW_TESTS_REQUIRE_TOOLS>: run when pwsh is present; otherwise fail when the variable is
+# exactly 1, else skip.
+pwsh_verdict() {
+  if [ "$1" = 1 ]; then echo run; return 0; fi
+  if [ "$2" = 1 ]; then echo fail; else echo skip; fi
+}
+check "pwsh verdict: present runs whatever the variable is" test "$(pwsh_verdict 1 1)$(pwsh_verdict 1 '')$(pwsh_verdict 1 0)" = runrunrun
+check "pwsh verdict: absent with the variable 1 fails" test "$(pwsh_verdict 0 1)" = fail
+check "pwsh verdict: absent with the variable unset skips" test "$(pwsh_verdict 0 '')" = skip
+check "pwsh verdict: absent with the variable 0 skips" test "$(pwsh_verdict 0 0)" = skip
+if command -v pwsh >/dev/null 2>&1; then pwsh_have=1; else pwsh_have=0; fi
+pwsh_do=$(pwsh_verdict "$pwsh_have" "${WOW_TESTS_REQUIRE_TOOLS:-}")
+
 # -Disable and -Enable (#1382): run under -WhatIf with a task name that names no real task
 reg="$root_dir/scripts/identity/register-review-poll-task.ps1"
 check "register-review-poll-task.ps1 disables by task name" has "$reg" 'Disable-ScheduledTask -TaskName $TaskName'
 check "register-review-poll-task.ps1 enables by task name" has "$reg" 'Enable-ScheduledTask -TaskName $TaskName'
-if ! command -v pwsh >/dev/null 2>&1; then
+if [ "$pwsh_do" = fail ]; then
+  bad "pwsh not on PATH with WOW_TESTS_REQUIRE_TOOLS=1; register-review-poll-task.ps1 -Disable/-Enable and guard cases would not run"
+elif [ "$pwsh_do" = skip ]; then
   echo "SKIP - pwsh not on PATH; register-review-poll-task.ps1 -Disable/-Enable and guard cases not run" >&2
 else
   esc=$(printf '\033')
@@ -580,7 +596,9 @@ fi
 check "register-review-poll-task.ps1 reads the existing task before it calls the installer" test \
   "$(grep -n 'Get-ScheduledTask -TaskName \$TaskName' "$reg" | head -1 | cut -d: -f1)" -lt \
   "$(grep -n "Join-Path \$PSScriptRoot 'install-host-tools.ps1'" "$reg" | head -1 | cut -d: -f1)"
-if ! command -v pwsh >/dev/null 2>&1; then
+if [ "$pwsh_do" = fail ]; then
+  bad "pwsh not on PATH with WOW_TESTS_REQUIRE_TOOLS=1; register-review-poll-task.ps1 guard cases would not run"
+elif [ "$pwsh_do" = skip ]; then
   echo "SKIP - pwsh not on PATH; register-review-poll-task.ps1 guard cases not run" >&2
 elif [ -n "$(pwsh -NoProfile -NonInteractive -Command '[Environment]::SystemDirectory' </dev/null 2>/dev/null)" ]; then
   echo "SKIP - [Environment]::SystemDirectory is set; register-review-poll-task.ps1 guard cases not run" >&2

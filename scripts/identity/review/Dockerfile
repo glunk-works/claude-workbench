@@ -59,7 +59,8 @@ COPY --chown=root:root --chmod=0444 managed-settings.json /etc/claude-code/manag
 # Identity: the real gh moves to gh-real and a shim takes its place; git's credential helper
 # for https://github.com becomes the token reader. The
 # reader is this directory's dev-token with its two fixed lines pointed at the review
-# session's token; the grep fails the build unless both rewrites took.
+# session's token; the grep fails the build unless both rewrites took. A base image without
+# the system helper is tolerated (git exits 5 for an absent key); any other failure fails the build.
 COPY --chown=root:root --chmod=0555 dev-token /usr/local/libexec/dev-token
 COPY --chown=root:root --chmod=0555 gh /usr/local/libexec/gh-shim
 RUN set -eu; \
@@ -71,7 +72,7 @@ RUN set -eu; \
     grep -q '^file=$dir/session-token$' /usr/local/libexec/dev-token; \
     mv /usr/local/bin/gh /usr/local/libexec/gh-real; \
     mv /usr/local/libexec/gh-shim /usr/local/bin/gh; \
-    git config --system --unset-all credential."https://github.com".helper; \
+    git config --system --unset-all credential."https://github.com".helper || [ $? -eq 5 ]; \
     git config --system credential."https://github.com".helper ""; \
     git config --system --add credential."https://github.com".helper "!/usr/local/libexec/dev-token git-credential"; \
     git config --system url."https://github.com/".insteadOf "git@github.com:"; \
