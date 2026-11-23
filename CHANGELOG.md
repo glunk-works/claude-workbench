@@ -23,6 +23,7 @@ the GitHub release notes.
 
 ### Added
 
+- A `review-image` workflow builds the App-mode review image on a pull request that touches its build context (no push, no secrets, not a required check), from a context the new `scripts/review-image-context.sh` assembles as the host installer exports it (#1398).
 - The `wow-publish` host command publishes prepared `.github/` files as the admin App (mint, one contents-API PUT per file, compare, revoke) from a driver-written manifest (`#1681`); it applies once the host tools are reinstalled, and the lanes skill gains the procedure that writes the manifest.
 - A weekly `claude-pin-check` workflow opens one notice issue when the Claude Code version pinned in the Dockerfiles falls behind the latest release, and none while an open notice for that version exists (#1677).
 - The `zizmor` job in `ci.yml` now runs the gate's configuration against a committed fixture with a known finding and fails unless that run failed, so a `zizmor-action` bump that stops the gate from exiting non-zero on a finding turns the job red on its own PR (#1237).

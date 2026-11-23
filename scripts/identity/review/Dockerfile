@@ -24,6 +24,8 @@
 #     approval) becomes a root-owned identity check here.
 #   - The root-owned files here protect against uid 1000 only while the launcher (#635) keeps the
 #     dev container's run flags: a read-only root filesystem, --cap-drop=ALL and no-new-privileges.
+#   - A pull request that touches the build context builds this image in the `review-image`
+#     workflow (no push, no secrets). That check is not a required one: it is paths-filtered.
 #   - The image's own /home/app is not empty, so the entrypoint's empty-home check passes
 #     only under #635's tmpfs.
 #

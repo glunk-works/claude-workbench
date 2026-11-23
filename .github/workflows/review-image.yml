@@ -1,0 +1,39 @@
+name: review-image
+
+# Builds the App-mode review image (scripts/identity/review/Dockerfile) when anything in its
+# build context changes, so a base-image bump or a context edit that breaks the build shows on
+# the PR and not at the next host rebuild (#1398). It pushes nothing, logs in to no registry and
+# reads no secret.
+#
+# This check is deliberately not a required one: it is paths-filtered, so it never reports on
+# an unrelated PR, and a required check that never reports would block that PR.
+on:
+  pull_request:
+    paths:
+      - "scripts/identity/review/**"
+      - "scripts/identity/install-host-tools.ps1"
+      - "scripts/review-image-context.sh"
+      - "plugins/way-of-working/bin/token-check.sh"
+      - "plugins/way-of-working/bin/gh-identity.sh"
+      - "scripts/loop/inject.py"
+      - "scripts/loop/proxy.py"
+      - ".github/workflows/review-image.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Assemble the build context
+        run: sh scripts/review-image-context.sh "$RUNNER_TEMP/review-context"
+      - name: Build the image
+        run: docker build --pull --tag review-image:ci "$RUNNER_TEMP/review-context"
