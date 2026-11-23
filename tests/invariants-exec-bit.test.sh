@@ -8,7 +8,7 @@
 # for either is not a finding. The control case has every host command 100755 and fires nothing.
 #
 # The two cases that expect a message assert only that message. The control and no-identity cases, which
-# expect silence, also assert the run's exit is 0: a crash before check 9's messages (an empty host-command
+# expect silence, also assert the run's exit is 0 (the output and the exit status come from one run): a crash before check 9's messages (an empty host-command
 # array on a bash older than 4.4) prints neither of them, so silence alone would pass it.
 #
 # Permitted toolset: POSIX sh and git; the suite skips, loudly, without git.
@@ -60,10 +60,6 @@ run() { # run <dir> -> check 9's stderr on stdout
   ( cd "$1" && bash "$script" --only 9 2>&1 >/dev/null || true )
 }
 
-run_status() { # run_status <dir> -> the run's exit status
-  ( cd "$1" && bash "$script" --only 9 >/dev/null 2>&1 ) && echo 0 || echo $?
-}
-
 assert_fires() { # assert_fires <desc> <dir> <message> [<also>]
   out=$(run "$2")
   if printf '%s\n' "$out" | grep -qF -- "$3" && { [ -z "${4:-}" ] || printf '%s\n' "$out" | grep -qF -- "$4"; }; then
@@ -75,8 +71,8 @@ assert_fires() { # assert_fires <desc> <dir> <message> [<also>]
 }
 
 assert_silent() { # assert_silent <desc> <dir>: neither message, and the run completed (exit 0)
-  out=$(run "$2")
-  status=$(run_status "$2")
+  status=0
+  out=$( cd "$2" && bash "$script" --only 9 2>&1 >/dev/null ) || status=$?
   if printf '%s\n' "$out" | grep -qF -e "$MODE_MSG" -e "$DONE_MSG"; then
     echo "FAIL - $1: check 9 spoke: $out" >&2
     fail=1

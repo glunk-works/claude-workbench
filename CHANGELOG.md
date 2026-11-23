@@ -44,6 +44,7 @@ the GitHub release notes.
 - The review-poll suite's pwsh cases now fail, rather than skip, when pwsh is absent and `WOW_TESTS_REQUIRE_TOOLS` is exactly 1.
 - The review poller now logs `cannot read the default branch` when that read returns only a carriage return, instead of calling the name unacceptable, and the stale-tag cleanup reads a home's MANIFEST only when it is a regular file (#1661).
 - The host install now writes the profile block through the existing file (keeping its mode and hard links), the generated `wowd`/`wowl` usage check matches the launchers' `-Repo` rule, `register-broker-task.ps1 -Unregister` and `install-host-tools.ps1 -StopTask` read a task's first action defensively, and the broker suite's chained profile assertions each carry their own label (#1658).
+- Four CI test follow-ups: the test runner's Actions notice escaping keeps its replacement strings in unquoted variables (bash 4.2 and earlier kept quotes), two annotation cases use `grep -E`, the `tests` job's run-time report step fails naming the key when it cannot read the timeout bound, and the executable-bit suite's silent cases run check 9 once (#1724).
 
 ## [0.40.0] — 2026-11-20
 

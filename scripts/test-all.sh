@@ -60,7 +60,7 @@
 #     tests/milestone-desc.test.sh, tests/spec-issue.test.sh, tests/spec-post.test.sh,
 #     tests/spec-fresh.test.sh and tests/critic-select.test.sh (which also need `git`),
 #     tests/draft-identity.test.sh,
-#     tests/zizmor-selftest.test.sh and
+#     tests/zizmor-selftest.test.sh, tests/ci-report-timeout.test.sh and
 #     tests/invariants-required-checks.test.sh (the checker's check 26 needs it).
 #   - `yq` also, for part of a suite: tests/token-check.test.sh (its actor cases),
 #     tests/gh-identity.test.sh (its classify cases) and tests/app-push.test.sh (its commit_route
@@ -338,9 +338,14 @@ count_line="test-all: $pass pass, $fail fail, $skip skip"
 
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   msg="$verdicts$count_line"
-  msg="${msg//'%'/'%25'}"
-  msg="${msg//$'\r'/'%0D'}"
-  msg="${msg//$'\n'/'%0A'}"
+  # The replacements sit in variables and are expanded unquoted: bash 4.2 and earlier keep quote
+  # characters on the replacement side of a substitution.
+  esc_pct='%25'
+  esc_cr='%0D'
+  esc_lf='%0A'
+  msg="${msg//'%'/$esc_pct}"
+  msg="${msg//$'\r'/$esc_cr}"
+  msg="${msg//$'\n'/$esc_lf}"
   printf '%s\n' "::notice title=test-all::$msg"
 fi
 
