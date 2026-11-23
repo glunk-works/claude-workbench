@@ -131,7 +131,8 @@ jobs:
   # shard writes the suites that skipped to its job summary (-s).
   #
   # Each shard's last step writes its run time next to its `timeout-minutes` to the job summary and the log
-  # (#1694), so a re-shard is prompted before a shard is cancelled at the bound.
+  # (#1694), so a re-shard is prompted before a shard is cancelled at the bound; the step fails,
+  # naming the key, when it cannot read that bound.
   #
   # The two shards are one matrix job: its `name:` gives the check runs `tests-1` and `tests-2`,
   # and `tests-launchers` and `tests-review-launcher` are named by their job ids. These four
@@ -200,7 +201,8 @@ jobs:
           SHARD: ${{ matrix.shard }}
           STARTED: ${{ steps.started.outputs.at }}
         run: |
-          bound=$(yq -e '.jobs.tests."timeout-minutes"' .github/workflows/ci.yml 2>/dev/null)
+          bound=$(yq -e '.jobs.tests."timeout-minutes"' .github/workflows/ci.yml 2>/dev/null) ||
+            { echo "could not read .jobs.tests.\"timeout-minutes\" from .github/workflows/ci.yml" >&2; exit 1; }
           elapsed=$(( $(date +%s) - STARTED ))
           line="tests-$SHARD ran $((elapsed / 60))m $((elapsed % 60))s of its ${bound}m timeout"
           echo "$line"
