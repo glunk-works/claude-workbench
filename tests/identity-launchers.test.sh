@@ -33,10 +33,10 @@
 #                   stub yq below v4.54.1 or an unreadable one (the lane through an exit-0 stub printing another yq's form) before any docker or git call, the number is in neither launcher file nor in ci.yml, and the CI preflight step's script on stubbed yqs
 #   -Repo (#1381)   the five-field record (a start of day writes the Reference path; a four-field record still reads and is
 #                   replaced), wow-driver and wow-lane -Repo from the record (start of day, attach, -Issue/-Hash, -Spec,
-#                   -SpecSweep) making the calls the long form makes, and each -Repo refusal before any external call; -EndDay:
+#                   -SpecSweep) making the calls the long form makes, and each -Repo refusal (a linked or dangling driver directory included) before any external call; -EndDay:
 #                   idle (a docker stop of the recorded id), a dirty relay probe, a running claude in a lane leaf
 #                   (not a spec- one) or a spec leaf, a driver-like claude outside the lanes directory (idle), a missing
-#                   lanes directory, an unsafe one, a failing docker stop, exit 2 combined with another mode (the busy
+#                   lanes directory (idle, or busy with a session left in it), an unsafe one, a failing docker stop, exit 2 combined with another mode (the busy
 #                   fixtures are skipped loudly under MSYS); Get-Help on each launcher in the checkout returns the
 #                   .SYNOPSIS text, not the syntax line (#1386)
 #                   (with no -WowHome, the record is read from the copy's own home)
@@ -1672,6 +1672,18 @@ repo_refuses() { # repo_refuses <label> <message part>
   check "-Repo driver ($1): no external call" none_called
 }
 reset; run_repo_drv -Repo acme/widgets; repo_refuses 'no driver directory' 'no driver record names acme/widgets'
+# a driver directory that is a link refuses as Write-Record does, a dangling one too (#1457)
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; rm -rf "$tmp/drv.real"; mv "$home/driver" "$tmp/drv.real"
+if mklink_dir "$home/driver" "$tmp/drv.real"; then
+  run_repo_drv -Repo acme/widgets; repo_refuses 'a linked driver directory' 'driver/ under WowHome is not a plain directory'
+  rm -rf "$home/driver" 2>/dev/null; rm -f "$home/driver" 2>/dev/null
+else skip "no directory link could be made: the linked driver directory -Repo fixture did not run"; fi
+rm -rf "$tmp/drv.real"
+reset; rm -rf "$home/driver"
+if mklink_dir "$home/driver" "$tmp/drv.nowhere"; then
+  run_repo_drv -Repo acme/widgets; repo_refuses 'a dangling driver link' 'driver/ under WowHome is not a plain directory'
+  rm -rf "$home/driver" 2>/dev/null; rm -f "$home/driver" 2>/dev/null
+else skip "no directory link could be made: the dangling driver link -Repo fixture did not run"; fi
 reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)" other/repo; run_repo_drv -Repo acme/widgets; repo_refuses 'no record names it' 'no driver record names acme/widgets'
 reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; write_record5 "$ID2" "$c2" "$(json_clone)" "$(json_ref)" acme/widgets second
 run_repo_drv -Repo acme/widgets; repo_refuses 'two records' 'more than one driver record'
@@ -1794,6 +1806,15 @@ else
     end_refuses 'a spec session whose leaf was removed under it' 'still running'
     fake_stop
   else bad "the fake running session never read as claude"; fake_stop; fi
+  # the whole lanes directory removed under a lane session: the walk still runs and reads busy (#1457)
+  end_setup; mkdir -p "$lanes/5"
+  if fake_start "$lanes/5"; then
+    rm -rf "$lanes"
+    run_repo_lane -Repo acme/widgets -EndDay
+    end_refuses 'a lane session whose lanes directory was removed under it' 'still running'
+    check "-EndDay (a lane session whose lanes directory was removed under it): the in-container check ran once" app_execs_pinned 1
+    fake_stop
+  else bad "the fake running session never read as claude"; fake_stop; fi
   # the driver session runs in /workspace: it does not count as busy
   end_setup
   if fake_start "$crepo"; then
@@ -1820,6 +1841,9 @@ endday_unreadable() {
   mkdir -p "$tmp/emptybin"; printf '#!/bin/sh\nexit 0\n' >"$tmp/emptybin/ls"; chmod +x "$tmp/emptybin/ls"
   mkdir -p "$tmp/el"; chmod 700 "$tmp/el"
   w=$(PATH="$tmp/emptybin:$PATH" /bin/sh -c "$g$script" sh "$tmp/el")
+  [ "$w" = unreadable ] || return 1
+  # a lanes path that does not exist: the walk still runs, and a walk that sees nothing is unreadable, not idle (#1457)
+  w=$(PATH="$tmp/emptybin:$PATH" /bin/sh -c "$g$script" sh "$tmp/el-missing")
   [ "$w" = unreadable ]
 }
 if [ -n "$msys" ]; then skip "the end-of-day script runs against /proc; the unreadable fixture did not run under MSYS"; else

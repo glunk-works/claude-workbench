@@ -501,11 +501,13 @@ function Assert-RepoArgument([string]$Value) {
 # Find-RecordByRepo <WowHome> <-Repo value>: the clone and Reference paths of the one driver record whose origin is
 # the lowercased -Repo. Every regular file <leaf>.json directly in <WowHome>/driver (a name starting with . is the
 # write's temp file and is skipped) is read with the strict read, and one that does not read refuses naming that
-# file. None matching, more than one, and a match with no reference (an older record) refuse; exit 1.
+# file. A driver path that is a link or reparse point (a dangling one included) refuses first, as Write-Record does, before
+# any enumeration. None matching, more than one, and a match with no reference (an older record) refuse; exit 1.
 function Find-RecordByRepo([string]$WowHome, [string]$Repo) {
   $dir = Join-Path $WowHome 'driver'
   $want = $Repo.ToLowerInvariant()
   $hits = @()
+  if ((Test-Path -LiteralPath $dir) -and (Test-ReparsePoint $dir)) { Stop-Launch 'driver/ under WowHome is not a plain directory' }
   if (Test-Path -LiteralPath $dir -PathType Container) {
     foreach ($e in @([IO.Directory]::EnumerateFileSystemEntries($dir) | Sort-Object)) {
       $name = [IO.Path]::GetFileName($e)
