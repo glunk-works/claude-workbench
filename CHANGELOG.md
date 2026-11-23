@@ -45,6 +45,7 @@ the GitHub release notes.
 - The review poller now logs `cannot read the default branch` when that read returns only a carriage return, instead of calling the name unacceptable, and the stale-tag cleanup reads a home's MANIFEST only when it is a regular file (#1661).
 - The host install now writes the profile block through the existing file (keeping its mode and hard links), the generated `wowd`/`wowl` usage check matches the launchers' `-Repo` rule, `register-broker-task.ps1 -Unregister` and `install-host-tools.ps1 -StopTask` read a task's first action defensively, and the broker suite's chained profile assertions each carry their own label (#1658).
 - Four CI test follow-ups: the test runner's Actions notice escaping keeps its replacement strings in unquoted variables (bash 4.2 and earlier kept quotes), two annotation cases use `grep -E`, the `tests` job's run-time report step fails naming the key when it cannot read the timeout bound, and the executable-bit suite's silent cases run check 9 once (#1724).
+- The dev container doc now says which `broker.json` of a sibling home the default home's install cross-check reads (one `repos` list, in that letter case), and the matching test case now tests that rule (#1656).
 
 ## [0.40.0] — 2026-11-20
 
@@ -61,6 +62,7 @@ the GitHub release notes.
 
 ### Fixed
 
+- `wow-lane.ps1 -EndDay` now runs its `/proc` walk when the lanes directory is missing, so a session left running in a removed lanes directory still refuses the stop, and `-Repo` now refuses a driver directory that is a link or reparse point, as `Write-Record` does (#1457); it applies once the host tools are reinstalled.
 - The test shards now report their run time against their timeout in each run's job summary and log, and invariants check 9 no longer stops on an empty host-command list on a bash older than 4.4, so the exec-bit test's no-identity case now requires a completed run (#1694).
 - The review launcher's repeat check now writes only the reviewer App's open issues to the host, and its header states that title matching folds ASCII case only; it applies once the host tools are reinstalled (#1563).
 - The `runner yq version check` step of the `tests-launchers` job now reads only the version yq prints on stdout, as the launchers do, so a warning on stderr no longer fails it (#1691).

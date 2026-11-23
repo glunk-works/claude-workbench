@@ -77,7 +77,7 @@
 #                unchanged, and dot-sourcing the CRLF file defines wowd, wowl and wowend (the owner map is not asserted)
 #   sibling owners  the default home's cross-check accepts the owner directories named by the broker.json of each home beside it with a valid tokens-root
 #                (#1599; HOME is a fixture, skipped under MSYS like the profile cases): an owner in another letter case, no tokens-root or other
-#                content, a sibling whose broker.json is not JSON or is absent beside a readable one, an owner equal to a name half of the default
+#                content, a sibling whose broker.json gives repos as a single string (a form the broker accepts) or is absent beside a readable one, an owner equal to a name half of the default
 #                home's broker.json, an install from another home, entries that are not two halves passing the name rule, and an empty HOME
 #   config       a bad repo name (or a trailing dot) or a missing broker.json exits 2 before anything
 #                is minted
@@ -1422,9 +1422,9 @@ check "sibling owners (b): no tokens-root, the warning is printed" warned beta
 pnew; mkh "$dh" '"acme/alpha"'; mkh "$fh/.config/two" '"Beta/x"'; printf 'elsewhere\n' >"$fh/.config/two/tokens-root"; mkdir -p "$dh/tokens/beta"
 saved_home=$home; home=$dh; run_install; home=$saved_home
 check "sibling owners (c): other tokens-root content, the warning is printed" warned beta
-# (d) one unreadable sibling, one readable, one with no broker.json
+# (d) one sibling whose owner read is rejected (repos a single string, which the broker accepts), one readable, one with no broker.json
 pnew; mkh "$dh" '"acme/alpha"'
-sibling one '"x/x"'; printf 'not json' >"$fh/.config/one/broker.json"
+sibling one '"x/x"'; printf '{"repos":"ghost/x"}' >"$fh/.config/one/broker.json"
 sibling two '"gamma/x"'
 mkdir -p "$fh/.config/three"; printf 'default-home\n' >"$fh/.config/three/tokens-root"
 mkdir -p "$dh/tokens/ghost" "$dh/tokens/gamma" "$dh/tokens/nobrk" "$dh/tokens/leftover"

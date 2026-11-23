@@ -65,8 +65,8 @@ that serves the host's git credential (see Hazards that remain).
   and runs them through the same checks as given ones. Nothing a container can write supplies them,
   since `driver\` is never mounted. The first start of day for a repository takes `-Clone` and
   `-Reference`; `-Repo` refuses (exit 1, before any docker call) when no record or more than one
-  names the repository, when the match has no `reference` (an older record), or when a file in
-  `driver\` does not read, and exits 2 combined with `-Clone` or `-Reference`.
+  names the repository, when the match has no `reference` (an older record), when a file in
+  `driver\` does not read, or when `driver\` is a link or reparse point, and exits 2 combined with `-Clone` or `-Reference`.
   The path is `$env:WOW_HOME\bin`, or `$HOME\.config\glunk-identity\bin` when `WOW_HOME` is unset.
   Each launcher takes its identity home from the folder it is installed in (the parent of its `bin`), not from `WOW_HOME`; for these two launchers `WOW_HOME` only spells the script path in the commands shown.
   Set `WOW_HOME` once as a user-level environment variable (not only in one shell's profile),
@@ -402,7 +402,8 @@ In a home with the file the broker checks each entry's owner against the dev ins
 and `wow-admin` makes its per-name lock in the default home, so both homes' runs for one repo name share it, and
 writes the admin token to each home's own `admin/`, never to the shared root. Its other-owner scan of `admin/` runs in every
 home; it skips the scan of the shared root's other owners' legacy copies and the pre-#1340 leftover (a revoke acts, in the home it runs from, on the owner its argument names). The
-default home's install cross-check does not print its line for the owner directory of a home beside the default home (in the same parent folder, not a link) that holds a valid `tokens-root` file and a readable `broker.json` naming that owner, unless that owner equals, ignoring case, the name half of an entry in the default home's `broker.json`, which step 1 forbids.
+default home's install cross-check does not print its line for the owner directory of a home beside the default home (in the same parent folder, not a link) that holds a valid `tokens-root` file and a readable `broker.json` naming that owner (readable here is the install's rule: its `repos`, in that letter case, is a list), unless that owner equals, ignoring case, the name half of an entry in the default home's `broker.json`, which step 1 forbids.
+A `repos` given as a single string, or the key spelled in another letter case such as `Repos`, which the broker accepts and delivers from, is not readable to this check, so the owner directory that file names still draws the warning.
 The default home's own `wow-admin` still scans that shared directory for a same-named repo's legacy copy, and its
 refusal names a revoke, which is then run from the second home.
 
@@ -575,7 +576,7 @@ only `/workspace`, and its `.git` file names a host path.
   It runs the same checks as the sweep, the relay probe included, without the model read, then one
   non-interactive `docker exec -u app` asks whether any `claude` process the container user owns has a
   working directory under the lanes directory (a lane's `<lanes.dir>/N` or a spec session's `spec-` leaf,
-  also one whose directory was removed). If one does, it refuses and runs no `docker stop`; if the walk of
+  also one whose directory was removed). The walk also runs when the lanes directory itself was removed, so a session left running in it still refuses the stop. If one does, it refuses and runs no `docker stop`; if the walk of
   `/proc` finds no such process and saw its own process id, it stops the container, prints `stopped <id>` and
   exits 0; any other answer refuses, so a walk that sees nothing never reads as idle. It does nothing else: no handoff check and no cleanup. The
   driver session running in `/workspace` does not count as busy, so the stop also ends that driver session.
