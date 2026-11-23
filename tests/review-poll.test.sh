@@ -274,6 +274,13 @@ assert_eq "one PR into main, one into another branch: exactly one review, for th
 new_case; addpr o r 7 "$SHA1" false success none; : >"$STUB/gh/repos_o_r.fail"; runp
 assert_eq "an unreadable default branch: no review" 0 "$(reviews)"
 check "an unreadable default branch: logged" has "$home/$log" "o/r: cannot read the default branch"
+new_case; addpr o r 7 "$SHA1" false success none; printf '%s\n' '{"default_branch":"\r"}' >"$STUB/gh/repos_o_r"; runp
+assert_eq "a default branch of only a carriage return: no review" 0 "$(reviews)"
+check "a default branch of only a carriage return: logged as unreadable" has "$home/$log" "o/r: cannot read the default branch"
+check "a default branch of only a carriage return: not logged as unacceptable" test -z "$(grep 'not acceptable' "$home/$log")"
+new_case; addpr o r 7 "$SHA1" false success none; printf '%s\n' '{"default_branch":"-main"}' >"$STUB/gh/repos_o_r"; runp
+assert_eq "a refused default branch name: no review" 0 "$(reviews)"
+check "a refused default branch name: logged" has "$home/$log" "o/r: the default branch name is not acceptable"
 new_case; addpr o r 7 "$SHA1" false success none; mkrepo o2 r2; addpr o2 r2 5 "$SHA3" false success none; printf '{"repos": ["o/r", "o2/r2"]}\n' >"$home/review-poll.json"; : >"$STUB/gh/repos_o_r.fail"; runp
 assert_eq "an unreadable default branch in one repo: the other repo still launches" "o2/r2 5" "$(cat "$STUB/review.calls")"
 

@@ -958,6 +958,10 @@ new_case; printf '{"state":"open","head":{"sha":"%s"},"base":{"ref":"a/../b"}}\n
 run o/r 7; assert_eq "PR (base ref with a .. segment): exit 1" 1 "$rc"; no_docker "PR (bad base ref)"
 new_case; printf '{"default_branch":"-main"}\n' >"$STUB/gh/repos_o_r"
 run o/r 7; assert_eq "default branch with a leading dash: exit 1" 1 "$rc"; no_docker "default branch"
+check "default branch with a leading dash: stderr names the refusal" has "$tmp/err" "the default branch name is not acceptable"
+new_case; printf '{"default_branch":"a/../b"}\n' >"$STUB/gh/repos_o_r"
+run o/r 7; assert_eq "default branch with a .. segment: exit 1" 1 "$rc"; no_docker "default branch (.. segment)"
+check "default branch with a .. segment: stderr names the refusal" has "$tmp/err" "the default branch name is not acceptable"
 new_case; rm -f "$STUB/gh/repos_o_r_contents_.ai_project.yml"
 run o/r 7; assert_eq "no project.yml readable: exit 1" 1 "$rc"; no_docker "no project.yml"
 :
@@ -1965,6 +1969,16 @@ assert_eq "HOME empty: both older tags removed" 2 "$(n_rmi)"
 new_case; single_images; run o/r 7
 same "HOME without .config" plain
 assert_eq "HOME without .config: both older tags removed" 2 "$(n_rmi)"
+
+new_case; single_images
+mkdir -p "$hh/.config/fifo/bin"; mkfifo "$hh/.config/fifo/bin/MANIFEST"
+printf '%s\n' wow-review:0123456789ab wow-review:222222222222 >"$STUB/docker/images"
+{ printf 'commit %s\n' "$c2" >"$hh/.config/fifo/bin/MANIFEST"; } >/dev/null 2>&1 &
+fifo_w=$!
+run o/r 7
+kill "$fifo_w" 2>/dev/null; wait "$fifo_w" 2>/dev/null || :
+same "FIFO MANIFEST" plain
+assert_eq "FIFO MANIFEST: the tag its commit names is removed" "docker-rmi wow-review:222222222222" "$(rmis)"
 :
 }
 
