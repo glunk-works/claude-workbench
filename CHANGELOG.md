@@ -42,6 +42,7 @@ the GitHub release notes.
 - The review image's build now tolerates a base image that sets no system credential helper for github.com (the unset exits 5 only then), and any other failure of that unset still fails the build.
 - The review launcher now reads the PR's closing references before the session and again after a `review` decision, and posts the failure review `closing-references-moved` instead of the review when they differ; it posts nothing and exits 1 when the second read fails, and a failed first read turns the comparison off for that run.
 - The review-poll suite's pwsh cases now fail, rather than skip, when pwsh is absent and `WOW_TESTS_REQUIRE_TOOLS` is exactly 1.
+- The host install now writes the profile block through the existing file (keeping its mode and hard links), the generated `wowd`/`wowl` usage check matches the launchers' `-Repo` rule, `register-broker-task.ps1 -Unregister` and `install-host-tools.ps1 -StopTask` read a task's first action defensively, and the broker suite's chained profile assertions each carry their own label (#1658).
 
 ## [0.40.0] — 2026-11-20
 

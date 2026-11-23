@@ -35,7 +35,7 @@
 #                past the disable (Get-FileHash stubbed to throw) still re-enables an enabled task and creates no bin; a throw from the disable itself
 #                stops before the stop and the re-enable; Write-NoSpanWarning warns once, naming the task, for a broker action with an unquoted -File path
 #                (any letter case) and is silent for a quoted span, the poll task's -Command action, an empty string and $null, and the install prints it for an
-#                unquoted action (nothing ended) and stays silent for a missing task (#1029); static checks that the
+#                unquoted action (nothing ended) and stays silent for a missing task (#1029); a task with no actions or an action without an Arguments property completes the install, and register-broker-task.ps1 -Unregister, with no error text, no process ended and no warning (#1658); static checks that the
 #                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess and Write-NoSpanWarning, and
 #                no identity script passes Disable-, Enable-, Start- or Stop-ScheduledTask -Confirm or -WhatIf
 #   junction     Test-IsDefaultHome from broker.ps1 and install-host-tools.ps1 (their Resolve-RealPath and Test-IsDefaultHome definitions taken through the parser) is true for a
@@ -70,7 +70,7 @@
 #                a directory, a link, a dangling link and a path under a regular file left alone, the owner-to-home map (default home,
 #                sibling with a valid tokens-root, without, with a refused one, through a link, a broker.json that is not JSON, an owner in
 #                two homes, one owner in two letter cases), an install from a sibling home, no .config folder, a quoted folder name, the
-#                echo of wowd, wowl and wowend, the throws, and -WhatIf writing no profile. Under MSYS those fixture-HOME cases (the owner-to-home map,
+#                echo of wowd, wowl and wowend (a half with a dot, an underscore and a hyphen included), the throws (a half outside letters, digits and . _ - included, with the usage pattern held byte-equal to Assert-RepoArgument's), a mode-600 profile keeping its mode on an update and an append, a hard-linked profile staying linked and equal, a mode-444 profile left byte-identical with one not-written line (#1658), and -WhatIf writing no profile. Under MSYS those fixture-HOME cases (the owner-to-home map,
 #                the sibling homes, the default profile path, the empty HOME, the sibling-owner cross-check) do not run, and a smaller set does,
 #                with -ProfilePath a scratch file and HOME untouched: a first install into a missing directory writes one marker pair with CRLF
 #                throughout and a final CRLF, a second leaves the bytes identical, an LF profile gets the block with LF only and its first lines
@@ -645,8 +645,11 @@ $global:procs = [System.Collections.ArrayList]@(11)
 function Get-ScheduledTask { param($TaskName, $ErrorAction)
   Add-Content -LiteralPath $env:SWAP_LOG -Value 'Get-ScheduledTask' -WhatIf:$false
   if ($env:SWAP_NOTASK -eq '1') { return }
-  [pscustomobject]@{ Settings = [pscustomobject]@{ Enabled = ($env:SWAP_ENABLED -eq '1') }
-    Actions = @([pscustomobject]@{ Arguments = $(if ($env:SWAP_UNQUOTED -eq '1') { '--headless p -File C:\h\bin\broker.ps1 -x' } else { '--headless p -File "C:\h\bin\broker.ps1" -x' }) }) } }
+  $acts = switch ($env:SWAP_ACTSHAPE) {
+    'none' { @() }
+    'noargs' { @([pscustomobject]@{ Execute = 'x' }) }
+    default { @([pscustomobject]@{ Arguments = $(if ($env:SWAP_UNQUOTED -eq '1') { '--headless p -File C:\h\bin\broker.ps1 -x' } else { '--headless p -File "C:\h\bin\broker.ps1" -x' }) }) } }
+  [pscustomobject]@{ Settings = [pscustomobject]@{ Enabled = ($env:SWAP_ENABLED -eq '1') }; Actions = $acts } }
 function Disable-ScheduledTask { param($TaskName, $ErrorAction)
   Add-Content -LiteralPath $env:SWAP_LOG -Value 'Disable-ScheduledTask' -WhatIf:$false
   if ($env:SWAP_DISABLEFAIL -eq '1') { throw 'DISABLEBOOM' } }
@@ -662,9 +665,9 @@ function Stop-Process { param($Id, [switch]$Force, $ErrorAction)
   $global:procs.Remove($Id) }
 if ($env:SWAP_HASHFAIL -eq '1') { function Get-FileHash { param($LiteralPath, $Algorithm) throw 'HASHBOOM' } }
 PS1
-swap_run() { # swap_run <task enabled 1|0> <Get-FileHash throws 1|0> <Disable-ScheduledTask throws 1|0> [<action -File path unquoted 1|0> [<no task found 1|0>]]; leaves the exit code in $rc, the output in $tmp/out, the call log in $swap_log
+swap_run() { # swap_run <task enabled 1|0> <Get-FileHash throws 1|0> <Disable-ScheduledTask throws 1|0> [<action -File path unquoted 1|0> [<no task found 1|0> [<action shape: none = no actions, noargs = an action without Arguments>]]]]; leaves the exit code in $rc, the output in $tmp/out, the call log in $swap_log
   reset; rm -rf "$home/bin" "$home/bin.new" "$home/bin.old"; rm -f "$swap_log"; : >"$swap_log"; rc=0
-  SWAP_LOG="$(wp "$swap_log")" SWAP_ENABLED=$1 SWAP_HASHFAIL=$2 SWAP_DISABLEFAIL=$3 SWAP_UNQUOTED=${4:-0} SWAP_NOTASK=${5:-0} \
+  SWAP_LOG="$(wp "$swap_log")" SWAP_ENABLED=$1 SWAP_HASHFAIL=$2 SWAP_DISABLEFAIL=$3 SWAP_UNQUOTED=${4:-0} SWAP_NOTASK=${5:-0} SWAP_ACTSHAPE=${6:-} \
     pwsh -NoProfile -NonInteractive -Command ". '$(wp "$tmp/swap-stubs.ps1")'; & '$(wp "$inst_ps")' -WowHome '$(wp "$home")' -SourceRepo '$(wp "$src")' -ProfilePath '$(wp "$profile_path")' -StopTask 'wow-swap-test-$$'" >"$tmp/out" 2>&1 || rc=$?
 }
 swap_log_is() { # swap_log_is <cmdlet>... : the call log holds exactly these lines, in this order (Add-Content ends a line with CRLF on Windows, so CR is stripped)
@@ -700,6 +703,39 @@ check "install task: a missing task is looked up and stopped only" swap_log_is G
 check "install task: a missing task prints no warning naming the task" test "$(grep -c "wow-swap-test-$$" "$tmp/out")" -eq 0
 check "install task: a missing task exits 0" test "$rc" -eq 0
 check "install task: a missing task writes bin/MANIFEST" test -f "$home/bin/MANIFEST"
+# A task with no actions, or whose first action has no Arguments property (a COM-handler action), is read defensively under StrictMode: the
+# install completes, ends no process and prints neither a StrictMode error nor the no-span warning.
+for shape in none noargs; do
+  swap_run 1 0 0 0 0 "$shape"
+  check "install task [$shape]: the lookup, the disable, the stop and the enable only, no process ended" swap_log_is Get-ScheduledTask Disable-ScheduledTask Stop-ScheduledTask Enable-ScheduledTask
+  check "install task [$shape]: exits 0" test "$rc" -eq 0
+  check "install task [$shape]: writes bin/MANIFEST" test -f "$home/bin/MANIFEST"
+  check "install task [$shape]: no StrictMode error text" test "$(grep -c -e 'cannot be found on this object' -e 'outside the bounds' "$tmp/out")" -eq 0
+  check "install task [$shape]: no warning naming the task" test "$(grep -c "wow-swap-test-$$" "$tmp/out")" -eq 0
+done
+# register-broker-task.ps1 -Unregister against the same two task shapes, stubbed Task Scheduler and process cmdlets (the path returns before any other lookup).
+cat >"$tmp/unreg-stubs.ps1" <<'PS1'
+function Get-ScheduledTask { param($TaskName, $ErrorAction)
+  $acts = if ($env:UNREG_SHAPE -eq 'none') { @() } else { @([pscustomobject]@{ Execute = 'x' }) }
+  [pscustomobject]@{ Actions = $acts } }
+function Stop-ScheduledTask { param($TaskName, $ErrorAction)
+  Add-Content -LiteralPath $env:SWAP_LOG -Value 'Stop-ScheduledTask' -WhatIf:$false }
+function Unregister-ScheduledTask { param($TaskName, $Confirm)
+  Add-Content -LiteralPath $env:SWAP_LOG -Value 'Unregister-ScheduledTask' -WhatIf:$false }
+function Get-CimInstance { param($ClassName)
+  [pscustomobject]@{ ProcessId = 11; CommandLine = 'p -File C:\h\bin\broker.ps1 -x' } }
+function Stop-Process { param($Id, [switch]$Force, $ErrorAction)
+  Add-Content -LiteralPath $env:SWAP_LOG -Value 'Stop-Process' -WhatIf:$false }
+PS1
+for shape in none noargs; do
+  rm -f "$swap_log"; : >"$swap_log"; rc=0
+  SWAP_LOG="$(wp "$swap_log")" UNREG_SHAPE=$shape \
+    pwsh -NoProfile -NonInteractive -Command ". '$(wp "$tmp/unreg-stubs.ps1")'; & '$(wp "$reg_ps")' -Unregister -TaskName 'wow-unreg-test-$$'" >"$tmp/out" 2>&1 || rc=$?
+  check "register -Unregister [$shape]: exits 0" test "$rc" -eq 0
+  check "register -Unregister [$shape]: the stop and the unregister only, no process ended" swap_log_is Stop-ScheduledTask Unregister-ScheduledTask
+  check "register -Unregister [$shape]: no StrictMode error text" test "$(grep -c -e 'cannot be found on this object' -e 'outside the bounds' "$tmp/out")" -eq 0
+  check "register -Unregister [$shape]: no warning naming the task" test "$(grep -c "wow-unreg-test-$$" "$tmp/out")" -eq 0
+done
 # Disable-, Enable-, Start- and Stop-ScheduledTask take no -Confirm or -WhatIf (they do not support ShouldProcess); passing one fails the
 # install on the host. Read through the parser, so a continuation, an abbreviation, a splat or a module-qualified call counts and a comment does not.
 cat >"$tmp/noconfirm.ps1" <<'PS1'
@@ -1193,6 +1229,42 @@ for how in bom-crlf invalid-lf; do
   check "profile update [$how]: a third run leaves it byte-identical" pcmp
 done
 
+# the block is written through the existing profile file: its mode and hard links are kept (#1658)
+mode_of() { ls -l "$1" | cut -c1-10; }
+links_of() { ls -l "$1" | awk '{ print $2 }'; }
+pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
+printf 'before\n%s\nold\n%s\nafter\n' "$START" "$END" >"$profile_path"; chmod 600 "$profile_path"
+sibling two '"beta/x"'
+run_install
+check "profile mode 600 update: updated line" pout "profile block updated in $(wp "$profile_path")"
+check "profile mode 600 update: the new owner is in the block" pf_has "'beta' = "
+check "profile mode 600 update: still -rw-------" test "$(mode_of "$profile_path")" = -rw-------
+pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
+printf 'line1\nline2\n' >"$profile_path"; chmod 600 "$profile_path"
+run_install
+check "profile mode 600 append: added line" pout "profile block added in $(wp "$profile_path")"
+check "profile mode 600 append: still -rw-------" test "$(mode_of "$profile_path")" = -rw-------
+pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
+printf 'before\n%s\nold\n%s\nafter\n' "$START" "$END" >"$profile_path"; ln "$profile_path" "$profile_path.link"
+sibling two '"beta/x"'
+run_install
+check "profile hard link update: updated line" pout "profile block updated in $(wp "$profile_path")"
+check "profile hard link update: the link count is still 2" test "$(links_of "$profile_path")" = 2
+check "profile hard link update: the other name holds the same bytes" cmp -s "$profile_path" "$profile_path.link"
+pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
+printf 'before\n%s\nold\n%s\nafter\n' "$START" "$END" >"$profile_path"; chmod 444 "$profile_path"; cp "$profile_path" "$tmp/before"
+sibling two '"beta/x"'
+run_install
+if [ "$(id -u)" = 0 ]; then
+  echo "SKIP - profile mode 444: running as root, which writes a read-only file; the not-written fixture did not run" >&2
+else
+  check "profile mode 444: exits 0" test "$rc" -eq 0
+  check "profile mode 444: exactly one not-written line" test "$(grep -c '^profile: not written (' "$tmp/out" || true)" -eq 1
+  check "profile mode 444: byte-identical" pcmp
+  check "profile mode 444: the mode is unchanged" test "$(mode_of "$profile_path")" = -r--r--r--
+fi
+chmod 644 "$profile_path"
+
 # malformed marker forms and a UTF-16 profile are left untouched
 for form in start-only end-only end-first two-starts utf16le utf16be; do
   pnew; mkh "$dh" '"acme/alpha"'; mkdir -p "$(dirname "$profile_path")"
@@ -1274,21 +1346,26 @@ pnew; rmdir "$dh"; mkdir -p "$dh/tokens"; sibling two '"beta/x", "acme/alpha"'
 saved_home=$home; home=$fh/.config/two
 run_install; home=$saved_home
 check "profile from a sibling: exits 0" test "$rc" -eq 0
-check "profile from a sibling: added, no profile: line" test "$(pl)" -eq 0 && pout "profile block added in $(wp "$profile_path")"
-check "profile from a sibling: the block maps the sibling's owners" pf_has "'beta' = '$(wp "$fh/.config/two")'" && pf_has "'acme' = '$(wp "$fh/.config/two")'"
+check "profile from a sibling: no profile: line" test "$(pl)" -eq 0
+check "profile from a sibling: the added line" pout "profile block added in $(wp "$profile_path")"
+check "profile from a sibling: the block maps the sibling's owner beta" pf_has "'beta' = '$(wp "$fh/.config/two")'"
+check "profile from a sibling: the block maps the sibling's owner acme" pf_has "'acme' = '$(wp "$fh/.config/two")'"
 
 # a fixture HOME with no .config folder, -WowHome outside it with no tokens-root
 pnew; rm -rf "$fh/.config"
 run_install
 check "profile no .config: exits 0" test "$rc" -eq 0
-check "profile no .config: added, no profile: line" test "$(pl)" -eq 0 && pout "profile block added in $(wp "$profile_path")"
-check "profile no .config: the map is empty, nothing was created under HOME" test ! -e "$fh/.config" && pbhold
+check "profile no .config: no profile: line" test "$(pl)" -eq 0
+check "profile no .config: the added line" pout "profile block added in $(wp "$profile_path")"
+check "profile no .config: nothing was created under HOME" test ! -e "$fh/.config"
+check "profile no .config: the three functions and the map are written" pbhold
 
 # an empty HOME
 pnew; HOME=; export HOME
 run_install
 HOME=$fh; export HOME
-check "profile empty HOME: exits 0, one not-written line, no file" test "$rc" -eq 0 -a "$(pl)" -eq 1 -a ! -e "$profile_path" && pout 'profile: not written (HOME is empty'
+check "profile empty HOME: exits 0, one not-written line, no file" test "$rc" -eq 0 -a "$(pl)" -eq 1 -a ! -e "$profile_path"
+check "profile empty HOME: the line says HOME is empty" pout 'profile: not written (HOME is empty'
 
 # a folder name holding an ASCII quote and a U+2019 quote
 pnew; qd="$fh/.config/q'uote’s"; mkh "$qd" '"qq/x"'; printf 'default-home\n' >"$qd/tokens-root"; mkh "$dh" '"acme/alpha"'
@@ -1307,9 +1384,13 @@ check "profile echo: wowl with -Issue and -Hash" test "$(dotrun 'wowl acme/alpha
 check "profile echo: wowend is wowl with -EndDay" test "$(dotrun 'wowend acme/alpha')" = "pwsh -NoProfile -File $b/wow-lane.ps1 -Repo acme/alpha -EndDay"
 check "profile echo: wowend passes further arguments after -EndDay" test "$(dotrun 'wowend acme/alpha -Base dev')" = "pwsh -NoProfile -File $b/wow-lane.ps1 -Repo acme/alpha -EndDay -Base dev"
 check "profile echo: an owner in another letter case is found" test "$(dotrun 'wowd ACME/alpha')" = "pwsh -NoProfile -File $b/wow-driver.ps1 -Repo ACME/alpha"
+check "profile echo: a half holding a dot, an underscore and a hyphen is accepted" test "$(dotrun 'wowd acme/a.b_c-d')" = "pwsh -NoProfile -File $b/wow-driver.ps1 -Repo acme/a.b_c-d"
+tpl_pat=$(sed -n "s/.*-cnotmatch '\(.*\)') { throw 'usage.*/\1/p" "$inst_ps")
+arg_pat=$(sed -n "/^function Assert-RepoArgument/{n;s/.*-cnotmatch '\(.*\)') { Stop-BadArgument.*/\1/p;}" "$root_dir/scripts/identity/wow-launch-common.ps1")
+check "profile throw: the template's usage pattern is Assert-RepoArgument's, byte for byte" test -n "$tpl_pat" -a "$tpl_pat" = "$arg_pat"
 dotrun 'wowd nobody/x' >"$tmp/o1" || true
 check "profile throw: an unknown owner is named" grep -q 'wowd: no identity home for owner nobody' "$tmp/o1"
-for bad in 'wowd' 'wowd acme' 'wowl acme/' 'wowl /alpha' 'wowend a/b/c'; do
+for bad in 'wowd' 'wowd acme' 'wowl acme/' 'wowl /alpha' 'wowend a/b/c' 'wowd acme/al+pha' 'wowl ac~me/x'; do
   dotrun "$bad" >"$tmp/o1" || true
   check "profile throw [$bad]: a usage message" grep -q 'usage: ' "$tmp/o1"
 done
