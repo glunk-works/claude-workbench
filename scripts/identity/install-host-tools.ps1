@@ -58,6 +58,10 @@
        run leaves the profile byte-identical. One output line says what happened (profile block added|updated|unchanged in
        <path>); every other line it prints starts "profile:" and is plain output, not a warning. A failure here is one "profile: not
        written" line and never changes the install's result: bin is already swapped. A new shell picks the block up.
+       The block is written through the existing profile file, so its mode is kept and every hard-linked name of it gets the
+       new bytes; a read-only profile is reported not written. Limit: there is no temp file and rename, so a write that fails
+       or is cut off part way can leave the profile, new or existing, partial, a shell started during the write can read it
+       partial, and a link put at the path between the check and the write is written through.
 
   Honest limit. The checks in step 2 catch accidents (an unreviewed worktree, a checkout about to
   be deleted). They do not narrow the hostile case. If a container can write the source clone, it
@@ -196,7 +200,7 @@ $script:ProfileEnd = '# <<< way-of-working launchers <<<'
 $script:LauncherTemplate = @'
 function @@NAME@@ {
   $r = if ($args.Count -ge 1) { $args[0] }
-  if ($r -isnot [string] -or $r -cnotmatch '\A[^/\s]+/[^/\s]+\z') { throw 'usage: @@NAME@@ <owner/name> [arguments]' }
+  if ($r -isnot [string] -or $r -cnotmatch '\A[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\z') { throw 'usage: @@NAME@@ <owner/name> [arguments]' }
   $o = $r.Split('/')[0]
   if (-not $WowHomes.ContainsKey($o)) { throw "@@NAME@@: no identity home for owner $o in `$WowHomes" }
   $rest = @($args | Select-Object -Skip 1 | ForEach-Object { if ($_ -is [array]) { $_ -join ',' } else { $_ } })
@@ -369,14 +373,8 @@ function Write-ProfileBlock([string]$path) {
       }
       if ([Linq.Enumerable]::SequenceEqual([byte[]]$existing, [byte[]]$out)) { "profile block unchanged in $path"; return }
     }
-    $tmpFile = Join-Path ([IO.Path]::GetDirectoryName($path)) (".wow-profile-$([Guid]::NewGuid().ToString('N')).tmp")
-    try {
-      [IO.File]::WriteAllBytes($tmpFile, $out)
-      [IO.File]::Move($tmpFile, $path, $true)
-    } catch {
-      Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
-      throw
-    }
+    # Written through the existing file (WriteAllBytes truncates it in place), so its mode, owner, ACL and hard links stay.
+    [IO.File]::WriteAllBytes($path, $out)
     "profile block $verb in $path"
   } catch {
     "profile: not written ($($_.Exception.Message))"
@@ -446,7 +444,10 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
       $taskWasEnabled = [bool]$stopFound[0].Settings.Enabled
       . (Join-Path $PSScriptRoot 'task-process.ps1')
       $stopTaskFound = $true
-      $stopArgs = (@($stopFound[0].Actions)[0].Arguments)
+      # StrictMode: no index past an empty list, and .Value only off a property object that exists (a COM-handler action has none).
+      $stopAction = @($stopFound[0].Actions) | Select-Object -First 1
+      $stopArgsProp = if ($stopAction) { $stopAction.PSObject.Properties['Arguments'] } else { $null }
+      $stopArgs = if ($stopArgsProp) { [string]$stopArgsProp.Value } else { '' }
       $stopSpan = Get-FileArgSpan $stopArgs
       $null = Disable-ScheduledTask -TaskName $StopTask
     }

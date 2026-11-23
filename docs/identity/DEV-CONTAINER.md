@@ -688,7 +688,7 @@ Three shortcuts in the host PowerShell profile are the short form of the `-Repo`
 `install-host-tools.ps1` writes and updates them, in the block of `$PROFILE.CurrentUserAllHosts` between the lines
 `# >>> way-of-working launchers >>>` and `# <<< way-of-working launchers <<<`, touching only the text between the markers. A second run
 leaves the profile unchanged, and each run prints one line saying the block was added, updated or unchanged (`-ProfilePath` names another
-profile file). A hand-installed block whose end line is not the install's end marker is reported and left alone until fixed by hand.
+profile file). The block is written through the existing profile file, so the file keeps its mode and every hard-linked name of it gets the new bytes; a read-only profile is reported not written. The limit: a write that fails or is cut off part way can leave the profile partial, so a not-written line can mean a partial file. A first argument the launchers' `-Repo` rule would refuse (owner/name, each half letters, digits, `.`, `_`, `-`) throws the usage line. A hand-installed block whose end line is not the install's end marker is reported and left alone until fixed by hand.
 A new shell picks the block up; an open one dot-sources `$PROFILE.CurrentUserAllHosts` or is reopened.
 
 `$WowHomes` in the block maps each owner to its identity home. The install derives it from the default home and the homes beside it (same
