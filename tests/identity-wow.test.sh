@@ -51,6 +51,8 @@
 #                    empty HOME and the file in the default home itself (also through a link, a parent-component link or another letter case, with or without a trailing slash or /./) refuse mint and revoke (exit 1, curl uncalled)
 #                    (#1598) under a sed that refuses ;-joined labels a valid second home still mints and the default-home variants still refuse; under a sed that prints
 #                    nothing for one side's path a valid second home refuses with "could not be normalised" and curl uncalled, for each side
+#   slash-less $0    a slash-less run from the tool's own directory exits 2 with nothing on stdout, never sources the planted
+#                    wow-common.sh and names the tool on stderr; a run by command name through PATH sources the copy beside the tool
 #   secrecy          neither token nor passphrase reaches stdout, stderr or argv
 #   usage / config   bad arguments exit 2 and missing config exits 1, before curl is called
 #
@@ -1170,6 +1172,21 @@ assert_eq "wow-review-mint slash-less refuses (stdout)" "" "$sl_out"
 assert_eq "wow-review-mint slash-less refuses (rc)" 2 "$sl_rc"
 assert_eq "wow-review-mint slash-less never reached the planted wow-common.sh" no "$([ -e "$tmp/plant-wow-review-mint/marker" ] && echo yes || echo no)"
 assert_eq "wow-review-mint slash-less stderr names the tool" "wow-review-mint: must be run by path or through PATH" "$(head -c 52 "$tmp/plant-wow-review-mint.err")"
+
+# A bare command name found through PATH runs with $0 as the full path, so the copy beside the tool is sourced, never the cwd's.
+for pt in wow-admin wow-review-mint; do
+  mkdir "$tmp/pathbin-$pt" "$tmp/pathcwd-$pt"
+  cp "$root_dir/scripts/identity/$pt" "$tmp/pathbin-$pt/$pt"
+  chmod +x "$tmp/pathbin-$pt/$pt"
+  printf '#!/bin/sh\ntouch "%s/marker"\nexit 0\n' "$tmp/pathbin-$pt" >"$tmp/pathbin-$pt/wow-common.sh"
+  printf '#!/bin/sh\ntouch "%s/marker"\nexit 0\n' "$tmp/pathcwd-$pt" >"$tmp/pathcwd-$pt/wow-common.sh"
+  pr_rc=0
+  (cd "$tmp/pathcwd-$pt" && PATH="$tmp/pathbin-$pt:$PATH" sh -c "$pt" >/dev/null 2>"$tmp/pathcwd-$pt.err") || pr_rc=$?
+  assert_eq "$pt through PATH exits 0" 0 "$pr_rc"
+  assert_eq "$pt through PATH: no must-be-run-by-path refusal" 0 "$(grep -c 'must be run by path' "$tmp/pathcwd-$pt.err" || true)"
+  assert_eq "$pt through PATH sourced the wow-common.sh beside the tool" yes "$([ -e "$tmp/pathbin-$pt/marker" ] && echo yes || echo no)"
+  assert_eq "$pt through PATH never sourced the cwd's wow-common.sh" no "$([ -e "$tmp/pathcwd-$pt/marker" ] && echo yes || echo no)"
+done
 
 HOME=$real_home; export HOME
 
