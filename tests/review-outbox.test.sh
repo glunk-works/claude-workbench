@@ -346,9 +346,9 @@ findings_refused "a non-string area" shape '[{"title":"T","body":"B","type":"bug
 findings_refused "an empty title" title '[{"title":"","body":"B","type":"bug"}]'
 findings_refused "a title of 121 characters" title "[{\"title\":\"$(printf 'a%.0s' $(seq 1 121))\",\"body\":\"B\",\"type\":\"bug\"}]"
 findings_ok "a title of 120 characters" "[{\"title\":\"$(printf 'a%.0s' $(seq 1 120))\",\"body\":\"B\",\"type\":\"bug\"}]"
-findings_ok "a body of 4000 bytes" "[{\"title\":\"T\",\"body\":\"$(printf 'a%.0s' $(seq 1 4000))\",\"type\":\"bug\"}]"
-findings_refused "a body of 4001 bytes" body "[{\"title\":\"T\",\"body\":\"$(printf 'a%.0s' $(seq 1 4001))\",\"type\":\"bug\"}]"
-findings_refused "a body of 2001 two-byte characters" body "[{\"title\":\"T\",\"body\":\"$(printf '\303\251%.0s' $(seq 1 2001))\",\"type\":\"bug\"}]"
+findings_ok "a body of 3500 bytes" "[{\"title\":\"T\",\"body\":\"$(printf 'a%.0s' $(seq 1 3500))\",\"type\":\"bug\"}]"
+findings_refused "a body of 3501 bytes" body "[{\"title\":\"T\",\"body\":\"$(printf 'a%.0s' $(seq 1 3501))\",\"type\":\"bug\"}]"
+findings_refused "a body of 1751 two-byte characters" body "[{\"title\":\"T\",\"body\":\"$(printf '\303\251%.0s' $(seq 1 1751))\",\"type\":\"bug\"}]"
 findings_refused "an unknown type" type '[{"title":"T","body":"B","type":"epic"}]'
 findings_refused "an area with capitals" area '[{"title":"T","body":"B","type":"bug","area":"area/Skills"}]'
 findings_refused "an area without the prefix" area '[{"title":"T","body":"B","type":"bug","area":"skills"}]'
@@ -427,7 +427,7 @@ for rule in \
   "jq -e -s 'length == 1 and (.[0] | type) == \"array\"'" \
   "jq -e 'length <= 5'" \
   "jq -e 'all(.[]; (.title | length) >= 1 and (.title | length) <= 120)'" \
-  "jq -e 'all(.[]; (.body | utf8bytelength) <= 4000)'" \
+  "jq -e 'all(.[]; (.body | utf8bytelength) <= 3500)'" \
   "jq -e 'all(.[]; .type == \"bug\" or .type == \"feature\" or .type == \"chore\" or .type == \"docs\")'" \
   "jq -e 'all(.[]; (has(\"area\") | not) or (.area | test(\"\\\\Aarea/[a-z0-9-]+\\\\z\")))'" \
   "jq -e 'all(.[]; (has(\"paths\") | not) or (.paths | type == \"array\" and length >= 1 and length <= 5 and all(.[]; type == \"string\" and length >= 1 and length <= 200 and test(\"\\\\A[A-Za-z0-9._][A-Za-z0-9._/-]*\\\\z\") and (split(\"/\") | all(. != \"\" and . != \".\" and . != \"..\")))))'" \

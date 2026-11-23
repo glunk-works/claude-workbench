@@ -634,7 +634,7 @@ header, a blank line, the attestation), then:
      the other writes.
   3. The top five non-blocking findings, written with `review-outbox.sh findings <file>`
      whatever `{backlog.kind}` is: a JSON array of up to five objects with the keys `title`
-     (1 to 120 characters, no control character), `body` (at most 4000 bytes) and `type`
+     (1 to 120 characters, no control character), `body` (at most 3500 bytes) and `type`
      (`bug`, `feature`, `chore` or `docs`), and optionally `area` (`area/` and lowercase
      letters, digits or hyphens), and optionally `paths` (the repo-relative files the finding
      concerns: 1 to 5 strings of 1 to 200 characters, starting with a letter, digit, `.` or `_`,
