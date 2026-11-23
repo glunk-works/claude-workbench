@@ -96,6 +96,17 @@ check_repo() {
   esac
 }
 
+# path_is_root_spelling <path>: true for a lone slash, two slashes, slash-dot, slash-dot-slash and the like: a leading slash and
+# every slash-separated component empty or a single dot, the set resolve_tokens_root's normalisation reduces to empty (a case
+# test, never sed, so a sed that prints nothing cannot change the answer). Slash-dot-dot is not one.
+path_is_root_spelling() {
+  case $1 in
+    '' | *[!/.]* | *..*) return 1 ;;
+    /*) return 0 ;;
+  esac
+  return 1
+}
+
 # resolve_tokens_root: sets tokens_root (the directory holding <owner>/<repo>) and tokens_shared (1 when
 # the home's tokens-root file is present, else empty). Dies on any refusal state (#1568).
 tokens_root= tokens_shared=
@@ -109,7 +120,8 @@ resolve_tokens_root() {
   dh=$HOME/.config/glunk-identity
   # the default home itself: equal paths, or equal after every link is followed (cd -P), either ignoring ASCII letter case
   lc_a=$(printf '%s' "$wow_home" | tr 'A-Z' 'a-z' | sed -e 's#//*#/#g' -e ':a' -e 's#/\./#/#' -e 'ta' -e 's#/\.$##' -e 's#/$##') lc_b=$(printf '%s' "$dh" | tr 'A-Z' 'a-z' | sed -e 's#//*#/#g' -e ':a' -e 's#/\./#/#' -e 'ta' -e 's#/\.$##' -e 's#/$##')
-  # an empty result is a failed normalisation (a sed that prints nothing), never two equal paths
+  # an empty result is a root spelling of the home or a failed normalisation (a sed that prints nothing), never two equal paths
+  if [ -z "$lc_a" ] && path_is_root_spelling "$wow_home"; then die "$msg, and a home at the filesystem root takes no tokens-root file"; fi
   [ -n "$lc_a" ] && [ -n "$lc_b" ] || die "$msg, and a home path could not be normalised"
   rp_a=$(CDPATH= cd -P -- "$wow_home" 2>/dev/null && pwd | tr 'A-Z' 'a-z') || :
   rp_b=$(CDPATH= cd -P -- "$dh" 2>/dev/null && pwd | tr 'A-Z' 'a-z') || :

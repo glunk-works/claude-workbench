@@ -163,6 +163,12 @@ if (-not $gitExe) { throw 'git not found on PATH' }
 function Resolve-RealPath([string]$p) {
   # every symbolic link or junction on the path is followed one hop at a time, as cd -P does: the components of a link's target are
   # walked too, and a .. goes to the physical parent of the directory reached so far (#1571)
+  # on Windows every component that exists and is not a link is also given its long form (GetLongPathName), so a path in 8.3 short form
+  # and the same path in long form resolve alike; a failed expansion throws, it never keeps the short form
+  $win = [Environment]::OSVersion.Platform -eq 'Win32NT'
+  if ($win -and -not ('WowRealPath.Native' -as [type])) {
+    Add-Type -Namespace WowRealPath -Name Native -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern uint GetLongPathName(string s, System.Text.StringBuilder b, uint n);'
+  }
   if (-not [IO.Path]::IsPathRooted($p)) { $p = Join-Path (Get-Location).ProviderPath $p }
   $cur = [IO.Path]::GetPathRoot($p)
   $rest = @($p.Substring($cur.Length) -split '[\\/]' | Where-Object { $_ })
@@ -181,6 +187,11 @@ function Resolve-RealPath([string]$p) {
       if ([IO.Path]::IsPathRooted($lt)) { $cur = [IO.Path]::GetPathRoot($lt); $lt = $lt.Substring($cur.Length) }
       else { $cur = [IO.Path]::GetDirectoryName($cur) }
       $rest = @($lt -split '[\\/]' | Where-Object { $_ }) + $rest
+    } elseif ($it -and $win) {
+      $sb = New-Object System.Text.StringBuilder 4096
+      $n = [WowRealPath.Native]::GetLongPathName($cur, $sb, 4096)
+      if ($n -eq 0 -or $n -ge 4096) { throw "cannot expand short name $cur" }
+      $cur = $sb.ToString()
     }
   }
   $cur
