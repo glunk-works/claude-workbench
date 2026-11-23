@@ -344,11 +344,11 @@ unset GITHUB_ACTIONS
 assert_eq "annotation: failing tree exits 1" 1 "$rc"
 assert_eq "annotation: one notice line" 1 "$(grep -c '^::notice title=test-all::' "$ta/out")"
 nl="$(grep -n '^::notice title=test-all::' "$ta/out" | cut -d: -f1)"
-lastv="$(grep -n '^\(pass\|fail\|skip\) tests/' "$ta/out" | tail -n 1 | cut -d: -f1)"
+lastv="$(grep -nE '^(pass|fail|skip) tests/' "$ta/out" | tail -n 1 | cut -d: -f1)"
 hdr="$(grep -n '^--- tests/' "$ta/out" | head -n 1 | cut -d: -f1)"
 [ "$nl" -gt "$lastv" ] && [ "$nl" -lt "$hdr" ] && ok "annotation: between verdicts and failed-log header" \
   || bad "annotation: placement (notice $nl, last verdict $lastv, header $hdr)"
-want="$(grep '^\(pass\|fail\|skip\) tests/' "$ta/out" | sed 's/$/%0A/' | tr -d '\n')$(grep '^test-all: ' "$ta/out")"
+want="$(grep -E '^(pass|fail|skip) tests/' "$ta/out" | sed 's/$/%0A/' | tr -d '\n')$(grep '^test-all: ' "$ta/out")"
 got="$(grep '^::notice title=test-all::' "$ta/out" | sed 's/^::notice title=test-all:://')"
 assert_eq "annotation: message is verdict lines plus count line" "$want" "$got"
 # escaping, on a tree of its own
