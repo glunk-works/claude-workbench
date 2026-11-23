@@ -50,9 +50,9 @@
 #
 # Tool notes for some suites (a suite missing a tool it needs reports `skip`, loudly, unless its
 # own note below says it fails; but
-# tests/identity-review.test.sh, tests/identity-launchers.test.sh, tests/identity-broker.test.sh and
-# tests/review-verdict.test.sh fail instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml
-# sets; the broker suite's guard-case skip off Windows fails too, and so do the review-poll suite's
+# tests/identity-review.test.sh, tests/identity-launchers.test.sh, tests/identity-broker.test.sh,
+# tests/review-verdict.test.sh and tests/check-host.test.sh fail instead when WOW_TESTS_REQUIRE_TOOLS
+# is exactly 1, which ci.yml sets; the broker suite's guard-case skip off Windows fails too, and so do the review-poll suite's
 # pwsh cases when pwsh is absent):
 #   - tests/invariants-only.test.sh needs `yq`, `jq` and `git` for its run-each-id-alone case and
 #     skips that case loudly without them.

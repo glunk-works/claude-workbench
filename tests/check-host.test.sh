@@ -15,17 +15,22 @@
 #   home refusal a home starting with ~ exits 2 with the one message and nothing else; Test-HomeRefused with OnWindows true
 #                refuses a home starting with a slash and accepts a Windows-form home; a second bare home after -WowHome is
 #                refused by parameter binding
-#   exit         0 for all ok lines, 1 for any other
+#   exit         0 for all ok lines, 1 for any other; asserted for every non-ok form, each alone (the only non-ok line)
 #   static       no copy of the yq minimum (read from Test-YqVersion) and no Register-, Unregister-, Enable-, Disable-,
 #                Start- or Stop-ScheduledTask call
 #
-# Permitted toolset: POSIX sh, its standard utilities, pwsh and git (skipped, loudly, if either is absent).
+# Permitted toolset: POSIX sh, its standard utilities, pwsh and git (skipped, loudly, if either is absent; a
+# failure instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml sets).
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 
 for t in pwsh git; do
   if ! command -v "$t" >/dev/null 2>&1; then
+    if [ "${WOW_TESTS_REQUIRE_TOOLS:-}" = 1 ]; then
+      echo "FAIL - $t not on PATH; check-host fixtures would not run" >&2
+      exit 1
+    fi
     echo "SKIP - $t not on PATH; check-host fixtures not run" >&2
     exit 0
   fi
@@ -132,74 +137,74 @@ runc() {
 runt() {
   mode=$1; hn=$2; shift 2
   rc=0
-  TASKS=$mode T_HOME="$(hp "$hn")" PATH="$stubdir:$gitbin" "$pwsh_abs" -NoProfile -NonInteractive -Command \
+  TASKS=$mode T_HOME="$(hp "$hn")" PATH="${CH_PATH:-$stubdir:$gitbin}" "$pwsh_abs" -NoProfile -NonInteractive -Command \
     ". '$(wp "$tmp/tasks.ps1")'; & '$(wp "$script")' -SourceRepo '$(wp "$src")' -WowHome '$(hp "$hn")' $*; exit \$LASTEXITCODE" >"$tmp/out" 2>&1 || rc=$?
 }
 has() { grep -Fxq -- "$1" "$tmp/out"; }
 lines() { wc -l <"$tmp/out" | tr -d ' '; }
+# nonok: how many output lines carry a status word other than ok (the second word of a pwsh, yq or gh line, the third of a
+# bin or task line; a home path with a space would shift the third word, which the scratch homes never hold)
+nonok() { awk '{ w = ($1 == "bin" || $1 == "task") ? $3 : $2; if (w != "ok") n++ } END { print n + 0 }' "$tmp/out"; }
+# only1 <rc 1 expected>: exit 1 and exactly one non-ok line, the form's own
+only1() { test "$rc" -eq 1 && test "$(nonok)" -eq 1; }
 
 # --- tools -------------------------------------------------------------------------------------
 runt '' ok
 check "tools: current pwsh" has "pwsh ok 7.4.1"
 check "tools: current yq" has "yq ok 999.0.0"
 check "tools: gh present" has "gh ok"
-PW_MODE=old runt '' ok; check "tools: old pwsh" has "pwsh old 7.1.0 7.2"
-PW_MODE=garbage runt '' ok; check "tools: unreadable pwsh" has "pwsh unknown"
-PW_MODE=exit1 runt '' ok; check "tools: pwsh exit 1 is unknown" has "pwsh unknown"
-YQ_MODE=old runc -WowHome "$(hp ok)"; check "tools: old yq names the minimum" has "yq old 0.0.1 $yqmin"
-YQ_MODE=garbage runc -WowHome "$(hp ok)"; check "tools: unreadable yq" has "yq unknown"
-YQ_MODE=exit1 runc -WowHome "$(hp ok)"; check "tools: yq exit 1 is unknown" has "yq unknown"
-rm "$stubdir/pwsh" "$stubdir/yq" "$stubdir/gh"
-runt '' ok
-check "tools: pwsh absent" has "pwsh missing"
-check "tools: yq absent" has "yq missing"
-check "tools: gh absent" has "gh missing"
-check "tools: a missing tool makes the exit 1" test "$rc" -eq 1
+PW_MODE=old runt enabled ok; check "tools: old pwsh" has "pwsh old 7.1.0 7.2"; check "tools: old pwsh exits 1 alone" only1
+PW_MODE=garbage runt enabled ok; check "tools: unreadable pwsh" has "pwsh unknown"; check "tools: unreadable pwsh exits 1 alone" only1
+PW_MODE=exit1 runt enabled ok; check "tools: pwsh exit 1 is unknown" has "pwsh unknown"; check "tools: pwsh exit 1 exits 1 alone" only1
+YQ_MODE=old runt enabled ok; check "tools: old yq names the minimum" has "yq old 0.0.1 $yqmin"; check "tools: old yq exits 1 alone" only1
+YQ_MODE=garbage runt enabled ok; check "tools: unreadable yq" has "yq unknown"; check "tools: unreadable yq exits 1 alone" only1
+YQ_MODE=exit1 runt enabled ok; check "tools: yq exit 1 is unknown" has "yq unknown"; check "tools: yq exit 1 exits 1 alone" only1
+# one tool absent at a time: move its stub aside, run, put it back
+for t in pwsh yq gh; do
+  mv "$stubdir/$t" "$tmp/$t.aside"
+  runt enabled ok
+  check "tools: $t absent" has "$t missing"
+  check "tools: $t absent exits 1 alone" only1
+  mv "$tmp/$t.aside" "$stubdir/$t"
+done
 
 # --- bin ---------------------------------------------------------------------------------------
-# The stubs are gone; put current ones back for the remaining cases.
-cat >"$stubdir/pwsh" <<'STUB'
-#!/bin/sh
-echo "PowerShell 7.4.1"
-STUB
-printf '#!/bin/sh\necho "yq (https://github.com/mikefarah/yq/) version v999.0.0"\n' >"$stubdir/yq"
-printf '#!/bin/sh\nexit 0\n' >"$stubdir/gh"
-chmod +x "$stubdir/pwsh" "$stubdir/yq" "$stubdir/gh"
-
 runc -WowHome "$(hp ok)"; check "bin: at the base tip" has "bin $(hp ok) ok $c3"
-runc -WowHome "$(hp behind)"; check "bin: one commit behind" has "bin $(hp behind) behind 1 $c2"
-runc -WowHome "$(hp off)"; check "bin: a commit off the base" has "bin $(hp off) not-on-base $side"
-runc -WowHome "$(hp lacks)"; check "bin: a commit the clone lacks" has "bin $(hp lacks) unknown $lacks"
-runc -WowHome "$(hp bad)"; check "bin: a malformed MANIFEST" has "bin $(hp bad) no-manifest"
-runc -WowHome "$(hp none)"; check "bin: no MANIFEST" has "bin $(hp none) no-manifest"
-runc -WowHome "$(hp nobin)"; check "bin: no bin directory" has "bin $(hp nobin) missing"
-runc -WowHome "$(hp ok)" -Remote nope; check "bin: an unfetchable remote" has "bin $(hp ok) unknown $c3"
-CH_PATH="$stubdir" runc -WowHome "$(hp ok)"; check "bin: no git on PATH" has "bin $(hp ok) unknown $c3"
+# every other form runs through runt with the enabled task, so its bin line is the only non-ok line
+runt enabled behind; check "bin: one commit behind" has "bin $(hp behind) behind 1 $c2"; check "bin: behind exits 1 alone" only1
+runt enabled off; check "bin: a commit off the base" has "bin $(hp off) not-on-base $side"; check "bin: not-on-base exits 1 alone" only1
+runt enabled lacks; check "bin: a commit the clone lacks" has "bin $(hp lacks) unknown $lacks"; check "bin: a commit the clone lacks exits 1 alone" only1
+runt enabled bad; check "bin: a malformed MANIFEST" has "bin $(hp bad) no-manifest"; check "bin: a malformed MANIFEST exits 1 alone" only1
+runt enabled none; check "bin: no MANIFEST" has "bin $(hp none) no-manifest"; check "bin: no MANIFEST exits 1 alone" only1
+runt enabled nobin; check "bin: no bin directory" has "bin $(hp nobin) missing"; check "bin: no bin directory exits 1 alone" only1
+runt enabled ok -Remote nope; check "bin: an unfetchable remote" has "bin $(hp ok) unknown $c3"; check "bin: an unfetchable remote exits 1 alone" only1
+CH_PATH="$stubdir" runt enabled ok; check "bin: no git on PATH" has "bin $(hp ok) unknown $c3"; check "bin: no git on PATH exits 1 alone" only1
 runc -WowHome "$(hp ok)" -Base '-x'; check "bin: a base starting with a dash is refused" test "$rc" -eq 2
 
 # --- task --------------------------------------------------------------------------------------
 runt enabled ok; check "task: enabled" has "task $(hp ok) ok broker-a"
-runt disabled ok; check "task: disabled" has "task $(hp ok) disabled broker-a"
+runt disabled ok; check "task: disabled" has "task $(hp ok) disabled broker-a"; check "task: disabled exits 1 alone" only1
 runt two ok; check "task: two matches, two lines" test "$(grep -c '^task ' "$tmp/out")" -eq 2
-check "task: the second match is disabled" has "task $(hp ok) disabled broker-b"
+check "task: the second match is disabled" has "task $(hp ok) disabled broker-b"; check "task: two matches exit 1 with the disabled one alone" only1
 runt caseslash ok; check "task: letter case and slash direction are ignored" has "task $(hp ok) ok broker-c"
 sep_home="$(hp ok)/"
 rc=0
 TASKS=enabled T_HOME="$(hp ok)" PATH="$stubdir:$gitbin" "$pwsh_abs" -NoProfile -NonInteractive -Command \
   ". '$(wp "$tmp/tasks.ps1")'; & '$(wp "$script")' -SourceRepo '$(wp "$src")' -WowHome '$sep_home'; exit \$LASTEXITCODE" >"$tmp/out" 2>&1 || rc=$?
 check "task: a home with a trailing separator still matches" has "task $sep_home ok broker-a"
-runt other ok; check "task: a review-poll task and another home's broker are none" has "task $(hp ok) none"
-runt noargs ok; check "task: an action with no Arguments is skipped" has "task $(hp ok) none"
-runt noactions ok; check "task: a task with no action is skipped" has "task $(hp ok) none"
-runt throw ok; check "task: a throw is unknown" has "task $(hp ok) unknown"
-runt '' ok; check "task: no cmdlet is unknown" has "task $(hp ok) unknown"
+runt other ok; check "task: a review-poll task and another home's broker are none" has "task $(hp ok) none"; check "task: a review-poll task and another home's broker are none exits 1 alone" only1
+runt noargs ok; check "task: an action with no Arguments is skipped" has "task $(hp ok) none"; check "task: an action with no Arguments is skipped exits 1 alone" only1
+runt noactions ok; check "task: a task with no action is skipped" has "task $(hp ok) none"; check "task: a task with no action is skipped exits 1 alone" only1
+runt throw ok; check "task: a throw is unknown" has "task $(hp ok) unknown"; check "task: a throw is unknown exits 1 alone" only1
+runt '' ok; check "task: no cmdlet is unknown" has "task $(hp ok) unknown"; check "task: no cmdlet exits 1 alone" only1
 
 # --- exit codes --------------------------------------------------------------------------------
 runt enabled ok
 check "exit: every line ok prints nothing but ok lines" test "$(grep -vc ' ok' "$tmp/out")" -eq 0
 check "exit: every line ok exits 0" test "$rc" -eq 0
-runt disabled ok; check "exit: a disabled task exits 1" test "$rc" -eq 1
-runt enabled behind; check "exit: a behind bin exits 1" test "$rc" -eq 1
+check "exit: the non-ok counter reads 0 on the all-ok run" test "$(nonok)" -eq 0
+runt disabled ok; check "exit: a disabled task exits 1" only1
+runt enabled behind; check "exit: a behind bin exits 1" only1
 
 # --- home refusal ------------------------------------------------------------------------------
 runc -WowHome '~/x'

@@ -11,8 +11,8 @@
 # with the case's docker/images fixture (nothing when absent; one stderr line and exit 1 when docker/ls.fail exists),
 # a `ps` whose --format is {{.Image}} with the docker/images-used fixture (nothing when absent; one stderr line and
 # exit 1 when docker/psimage.fail exists), and `rmi` by recording docker-rmi in the events, then exiting 1 with one
-# stderr line when its last argument is a line of docker/rmi.refuse, else printing an Untagged: line and exiting 0. The stub gh keeps a copy of what its --jq printed for the backlog's open-issues read (open-issues.out). stdin is closed
-# throughout, to prove nothing prompts. The stub gh tells its two graphql queries apart by their input: the viewer query answers from gh/graphql and the closing-reference read from gh/closing (with the stub's .after mechanism for a second read that differs).
+# stderr line when its last argument is a line of docker/rmi.refuse, else printing an Untagged: line and exiting 0. stdin is closed
+# throughout, to prove nothing prompts. The stub gh tells its two graphql queries apart by their input: the viewer query answers from gh/graphql and the closing-reference read from gh/closing (with the stub's .after mechanism for a second read that differs). The stub gh keeps a copy of what its --jq printed for the backlog's open-issues read (open-issues.out). One case swaps the installed token-check.sh for a wrapper that answers `app` to one verify the real script refuses.
 #
 # Permitted toolset: POSIX sh and its standard utilities, jq, yq and timeout (skipped, loudly, if absent; a
 # failure instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml sets).
@@ -1694,6 +1694,28 @@ EARLIER=$(printf 'Intro\n\n- [ ] Finding 1\n\n  Paths: none\n\n  ````\n  Real on
 set_open "[$(open_issue 80 4242 "$EARLIER")]"
 run o/r 7
 assert_eq "repeat check (an inner item line): the inner title is not a title" 1 "$(n_issues)"
+# a filing-token viewer id that is not digits files nothing and reads no open issues. The real token-check.sh verify
+# refuses such an id first (gh-identity.sh wants canonical decimal), so this case's installed token-check.sh is a
+# wrapper that answers app to the verify given the non-digit id and runs the real copy, kept beside it, otherwise;
+# the filing token's viewer read is the third of a run, so the graphql fixture's .after answers it.
+new_case; set_yml "$BL"; set_findings "$FIND1"
+mv "$home/bin/token-check.sh" "$home/bin/token-check-real.sh"
+cat >"$home/bin/token-check.sh" <<'WRAP'
+#!/bin/sh
+here=$(cd "$(dirname "$0")" && pwd)
+if [ "${1:-}" = verify ] && [ "${2:-}" = reviewer_app ]; then
+  for last in "$@"; do :; done
+  if [ "$last" = 4242a ]; then echo app; exit 0; fi
+fi
+exec sh "$here/token-check-real.sh" "$@"
+WRAP
+printf '{"data":{"viewer":{"login":"glunk-review[bot]","databaseId":"4242a"}}}\n' >"$STUB/gh/graphql.after"; printf '2\n' >"$STUB/gh/graphql.after.n"
+run o/r 7
+assert_eq "repeat check (a non-digit viewer id): exit 0" 0 "$rc"
+assert_eq "repeat check (a non-digit viewer id): nothing filed" 0 "$(n_issues)"
+assert_eq "repeat check (a non-digit viewer id): no open-issues read" 0 "$(grep -c 'issues?state=open' "$STUB/gh.calls" || true)"
+check "repeat check (a non-digit viewer id): no open-issues copy was written" test ! -e "$STUB/open-issues.out"
+check "repeat check (a non-digit viewer id): said so" grep -qF "the filing token's viewer id is not digits; nothing filed" "$tmp/err"
 # a failed open-issues read files nothing
 new_case; set_yml "$BL"; set_findings "$FIND1"
 : >"$STUB/gh/repos_o_backlog_issues_state_open_per_page_100.fail"
