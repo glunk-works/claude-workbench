@@ -42,7 +42,8 @@
   -Clone and -Reference go through. It works once a start of day with -Clone and -Reference has
   written a record holding the Reference path; the first start of day for a repository takes both
   paths. It refuses when no record, or more than one, names the repository, when the match has no
-  Reference path (an older record), and when any file in driver\ does not read.
+  Reference path (an older record), when any file in driver\ does not read, and when driver\ is a link
+  or reparse point.
 
   Before the fetch, both paths read the Reference's <Remote> repository and the driver record. A start
   of day whose record names this clone and a different origin refuses (a Reference of another
