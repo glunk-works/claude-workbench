@@ -308,9 +308,10 @@ gather_repo() { # gather_repo <owner/name>
   case $GATE in ''|*"$nl"*) logp "$repo: not App-mode gated"; return 0 ;; esac
 
   # The default branch, once per gather: a PR into any other branch is not reviewed here.
-  defbr=$(gh_api "repos/$repo" --jq .default_branch 2>/dev/null) && [ -n "$defbr" ] \
+  defbr=$(gh_api "repos/$repo" --jq .default_branch 2>/dev/null) \
     || { logp "$repo: cannot read the default branch"; return 0; }
   defbr=$(printf '%s' "$defbr" | tr -d '\r')
+  [ -n "$defbr" ] || { logp "$repo: cannot read the default branch"; return 0; }
   ref_ok "$defbr" || { logp "$repo: the default branch name is not acceptable"; return 0; }
 
   # Open PRs, projected: number, draft, head sha, base ref. No title, body or author text.

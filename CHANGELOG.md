@@ -42,6 +42,7 @@ the GitHub release notes.
 - The review image's build now tolerates a base image that sets no system credential helper for github.com (the unset exits 5 only then), and any other failure of that unset still fails the build.
 - The review launcher now reads the PR's closing references before the session and again after a `review` decision, and posts the failure review `closing-references-moved` instead of the review when they differ; it posts nothing and exits 1 when the second read fails, and a failed first read turns the comparison off for that run.
 - The review-poll suite's pwsh cases now fail, rather than skip, when pwsh is absent and `WOW_TESTS_REQUIRE_TOOLS` is exactly 1.
+- The review poller now logs `cannot read the default branch` when that read returns only a carriage return, instead of calling the name unacceptable, and the stale-tag cleanup reads a home's MANIFEST only when it is a regular file (#1661).
 
 ## [0.40.0] — 2026-11-20
 
