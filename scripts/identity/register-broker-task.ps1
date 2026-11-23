@@ -53,7 +53,10 @@ if ($Unregister) {
     $found = @(Get-ScheduledTask -TaskName $TaskName)
     if ($found.Count -ne 1) { throw "expected one task named $TaskName, found $($found.Count)" }
     . (Join-Path $PSScriptRoot 'task-process.ps1')
-    $actionArgs = (@($found[0].Actions)[0].Arguments)
+    # StrictMode: no index past an empty list, and .Value only off a property object that exists (a COM-handler action has none).
+    $firstAct = @($found[0].Actions) | Select-Object -First 1
+    $argsProp = if ($firstAct) { $firstAct.PSObject.Properties['Arguments'] } else { $null }
+    $actionArgs = if ($argsProp) { [string]$argsProp.Value } else { '' }
     $span = Get-FileArgSpan $actionArgs
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
