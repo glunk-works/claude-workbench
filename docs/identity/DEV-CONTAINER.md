@@ -924,4 +924,4 @@ are adopted, unchanged, and are not required checks: making either one required 
 decision for the maintainer, so a red result blocks no merge. The template's
 `architect-review-gate.yml` is not adopted: this repo keeps its own gate workflow of that name
 (#458, `WB-D37`). The attestation command to check the pinned digest by hand is in
-`.devcontainer/Dockerfile`'s header (written for the tofu variant: use the `devcontainer-devapp` name).
+`.devcontainer/Dockerfile`'s header (this repo's copy of the command names `devcontainer-devapp`, the image its `FROM` line uses, where the template's names the tofu variant).

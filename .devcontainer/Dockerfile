@@ -31,7 +31,7 @@
 # to take. It also accepts only an image from a first-attempt `build.yml` run (a re-run's
 # digest fails), which the command below does not check, so a digest that passes it can still
 # fail the PR. For a first look by hand, for the digest on the FROM line:
-#   gh attestation verify oci://ghcr.io/603-identity/devcontainer-devapp-tofu@sha256:<digest> \
+#   gh attestation verify oci://ghcr.io/603-identity/devcontainer-devapp@sha256:<digest> \
 #     --repo 603-Identity/devcontainers \
 #     --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
 #     --cert-oidc-issuer https://token.actions.githubusercontent.com \
