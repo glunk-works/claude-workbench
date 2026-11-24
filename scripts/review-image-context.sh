@@ -7,8 +7,11 @@
 #
 # Usage: sh scripts/review-image-context.sh <dest-dir>
 #
-# Refuses (exit 1, one stderr line, nothing written) on: not exactly one argument; a <dest-dir>
-# that exists and is not empty; a listed source that is not a blob at HEAD.
+# Refuses (exit 1, one stderr line, nothing written) on: not exactly one argument; an empty
+# <dest-dir> argument; a <dest-dir> that exists and is not a directory; a <dest-dir> directory that
+# is not empty; the ps1 unreadable at HEAD; the ps1 at HEAD holding no build-context entries; a listed
+# source that is not a blob at HEAD. Limit: for the ps1-unreadable refusal, other stderr output comes
+# before the script's line.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

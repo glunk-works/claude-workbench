@@ -19,9 +19,9 @@
 #   context script  scripts/review-image-context.sh (#1398): its output against the committed ps1 list, its
 #                   refusals in fake roots, and the review-image workflow's paths filter and permissions
 #
-# Permitted toolset: POSIX sh and its standard utilities, jq, yq and bash (the suite is skipped, loudly, if any is absent),
-# and git for the credential-helper fixture and the context-script fixtures (those alone are skipped, loudly, if
-# git is absent).
+# Permitted toolset: POSIX sh and its standard utilities, jq, yq and bash (the suite is skipped, loudly, if
+# any is absent), and git for the credential-helper fixture, the context-script fixtures and the workflow
+# coverage assertion (those alone are skipped, loudly, if git is absent).
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -660,6 +660,7 @@ check "managed settings: env holds exactly five entries, the four variables each
 # =========================================================================================
 ctxs="$root_dir/scripts/review-image-context.sh"
 ps1_rel='scripts/identity/install-host-tools.ps1'
+wf="$root_dir/.github/workflows/review-image.yml"
 if command -v git >/dev/null 2>&1; then
   gt() { git -C "$root_dir" "$@"; }
   want_names=$(gt cat-file blob "HEAD:$ps1_rel" | sed -n "s/^  ,@('[^']*', 'review\\/\\([^']*\\)')\$/\\1/p" | sort | tr '\n' ' ')
@@ -732,21 +733,49 @@ EOF_PAIRS
     check "context script refusal fixture $n: the first ps1 entry now names [$bad_src]" grep -qF "  ,@('$bad_src', 'review/" "$fr/$ps1_rel"
     refuse "source [$bad_src]" ABSENT "$fr/scripts/review-image-context.sh" "$tmp/refuse-dest"
   done
+
+  # the remaining refusals: an empty destination argument, a destination that is a regular file, the ps1
+  # missing from the fake root's commit, and a committed ps1 with no build-context entries
+  rm -f "$tmp/refuse-dest"
+  refuse "an empty destination argument" ABSENT "$ctxs" ""
+  printf 'keep me\n' >"$tmp/refuse-dest"
+  refuse "a destination that is a regular file" "$(ls -A "$tmp/refuse-dest" | tr '\n' ' ')" "$ctxs" "$tmp/refuse-dest"
+  check "context script refusal, a destination that is a regular file: still a regular file" test -f "$tmp/refuse-dest" -a ! -L "$tmp/refuse-dest"
+  assert_eq "context script refusal, a destination that is a regular file: contents unchanged" "keep me" "$(cat "$tmp/refuse-dest")"
+  rm -f "$tmp/refuse-dest"
+
+  fr="$tmp/fr-nops"
+  mkdir -p "$fr/scripts" && cp "$ctxs" "$fr/scripts/"
+  git -C "$fr" init -q &&
+    git -C "$fr" add -A &&
+    git -C "$fr" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -q -m fixture
+  rc=0; sh "$fr/scripts/review-image-context.sh" "$tmp/refuse-dest" >"$tmp/ctx.out" 2>"$tmp/ctx.err" || rc=$?
+  assert_eq "context script refusal, the ps1 unreadable at HEAD: exit 1" 1 "$rc"
+  check "context script refusal, the ps1 unreadable at HEAD: empty stdout" test ! -s "$tmp/ctx.out"
+  check "context script refusal, the ps1 unreadable at HEAD: the last stderr line is the script's own" sh -c 'tail -n 1 "$1" | grep -q "^review-image-context.sh: "' _ "$tmp/ctx.err"
+  check "context script refusal, the ps1 unreadable at HEAD: destination still absent" test ! -e "$tmp/refuse-dest"
+
+  fr="$tmp/fr-noentries"
+  fake_root "$fr" "/^  ,@('[^']*', 'review\\/[^']*')\$/d"
+  check "context script refusal fixture: the committed ps1 holds no build-context entries" test -z "$(git -C "$fr" cat-file blob "HEAD:$ps1_rel" | sed -n "/^  ,@('[^']*', 'review\\/[^']*')\$/p")"
+  refuse "a ps1 with no build-context entries" ABSENT "$fr/scripts/review-image-context.sh" "$tmp/refuse-dest"
+  # the workflow's paths filter covers every source of the list read at HEAD above
+  if [ -f "$wf" ]; then
+    wf_paths=$(yq -r '.on.pull_request.paths[]' "$wf")
+    covered=1
+    for src in $(printf '%s\n' "$pairs" | cut -d'|' -f1); do
+      printf '%s\n' "$wf_paths" | awk -v s="$src" '
+        $0 == s { f = 1 }
+        substr($0, length($0) - 2) == "/**" && index(s, substr($0, 1, length($0) - 2)) == 1 { f = 1 }
+        END { exit f ? 0 : 1 }' || covered=0
+    done
+    assert_eq "review-image workflow: the paths filter covers every context source" 1 "$covered"
+  fi
 else
-  echo "SKIP - git not on PATH; the review-image-context.sh fixtures did not run" >&2
+  echo "SKIP - git not on PATH; the review-image-context.sh fixtures and the workflow coverage assertion did not run" >&2
 fi
 
-wf="$root_dir/.github/workflows/review-image.yml"
 if [ -f "$wf" ]; then
-  wf_paths=$(yq -r '.on.pull_request.paths[]' "$wf")
-  covered=1
-  for src in $(sed -n "s/^  ,@('\\([^']*\\)', 'review\\/[^']*')\$/\\1/p" "$root_dir/$ps1_rel"); do
-    printf '%s\n' "$wf_paths" | awk -v s="$src" '
-      $0 == s { f = 1 }
-      substr($0, length($0) - 2) == "/**" && index(s, substr($0, 1, length($0) - 2)) == 1 { f = 1 }
-      END { exit f ? 0 : 1 }' || covered=0
-  done
-  assert_eq "review-image workflow: the paths filter covers every context source" 1 "$covered"
   check "review-image workflow: the job's permissions are exactly contents: read" yq -e '.jobs.build.permissions.contents == "read" and (.jobs.build.permissions | length) == 1' "$wf" >/dev/null
   check "review-image workflow: no secrets. reference" test -z "$(grep -F 'secrets.' "$wf" || true)"
   check "review-image workflow: no --push" test -z "$(grep -F -e '--push' "$wf" || true)"
