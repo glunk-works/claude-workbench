@@ -2,14 +2,19 @@
 
 **Now:** **Sprint 24** (cursor id `sprint-24`), status **implementing**, milestone 29 (*Follow-ups: host and script hardening*): every lane item merged; #1366 (the maintainer's admin decision) is the one open issue. No lanes live.
 
-**Just done (2026-11-23, driver session, opus):**
+**Just done (2026-11-24, driver session, opus, `/way-of-working:plan-sprint`):**
+- Findings phase: 11 findings from 7 reviewer App issues (#1761, #1772, #1773, #1775, #1777, #1780, #1781): four folded (two into #1765, one each into #1766 and #1763), six into two new combined issues (#1783 ci, #1784 identity), one declined as covered by #1765; all seven sources mapped and closed. The folds edited #1763, #1765 and #1766, so a maintainer reaction on them must postdate 2026-11-24.
+- Placement: #1762, #1763, #1764, #1765, #1766, #1783, #1784 and #1753 placed in milestone 29 as build-order steps 18 to 25 (#1784 after #1766; #1753 after #1766 and #1784; the rest independent); #223, #334, #409, #1167, #1548 and #1774 left unmilestoned with reasons. Triage comments posted on all fourteen.
+- Milestone 29 description written live twice through `milestone-desc.sh` (both `live ok`, hash-confirmed): the build-order append, then Done gaining #1660, #1726 and #1725 with Lanes `live: none`. That closes the "final description edit" item below.
+
+**Earlier (2026-11-23, driver session, opus):**
 - Findings pass (`/way-of-working:plan-sprint findings`): 25 findings from 14 reviewer App issues went to combined issues #1762 (way-of-working), #1763 (ci), #1764 (devcontainer), #1765 and #1766 (identity), one declined as covered by #1398; the 14 sources were mapped and closed.
 - Merged, each after the driver's assessment of its review and diff against its spec: #1758 (#1661, `b9206fa`), #1768 (#1656, `dc59067`), #1769 (#1457, `7f95da1`), #1771 (#1312, `c3e7ce0`), #1767 (#1724, `0b63275`), #1770 (#1398, `5cacb65`), #1776 (#1660, `57e3557`), #1778 (#1726, `a936383`), #1779 (#1725, `8ac6c8d`). Every lane cleaned up.
 - `wow-publish` used live for the first time: workflow files for #1724, #1398 and #1725 published by the admin App from a driver-written manifest in the dev clone's `.git/wow-handoff/`.
 - #1398's spec escalated and was redrafted on the maintainer's `choice=apply` answer; #1725's spec was refreshed onto `57e3557` with no critic round after #1660 staled it.
 - Milestone 29 description kept current (Build order markers, Done, Lanes) through `milestone-desc.sh`.
 
-**Next:** Driver work: run `/way-of-working:plan-sprint` (the default pass: its findings phase unpacks #1761 and the reviewer App findings issues filed from PRs 1767 to 1779, then placement of #1762 to #1766 and the other unmilestoned issues); then, with the maintainer, pick the next milestone, anchor it with `/way-of-working:handoff`, and run its items as parallel lanes through `/way-of-working:lanes` (`lane.sh groups` to choose them). Model: opus (architect).
+**Next:** Driver work: milestone 29 has eight new items (steps 18 to 25); the maintainer reacts on the issues to spec, then `lane.sh groups 29` chooses the parallel lanes, a `-Spec` session per issue drafts its spec, and `/way-of-working:handoff` anchors the first task once its spec is approved; the lanes run through `/way-of-working:lanes`. Model: opus (architect).
 
 **HITL Gate: OPEN** — the review image managed-settings probe re-run on Claude Code 2.1.316 (REVIEW-LIVE-RUN.md) is the maintainer host run; plan-sprint placements and the next milestone pick are the maintainer decisions; every spec waits on the maintainer reaction and every lane PR on the maintainer approval; nothing auto-starts a build here.
 
