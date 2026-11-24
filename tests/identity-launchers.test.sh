@@ -648,6 +648,7 @@ after_up 'no JSON result' sh -c "echo 'not json' >'$stubdir/up.out'"
 after_up 'empty output' sh -c ": >'$stubdir/up.out'"
 after_up 'a failed up' sh -c "echo 1 >'$stubdir/up.exit'"
 after_up 'a non-success outcome' sh -c "printf '{\"outcome\":\"error\",\"containerId\":\"%s\"}\n' $ID1 >'$stubdir/up.out'"
+after_up 'a one-element array result' sh -c "printf '[{\"outcome\":\"success\",\"containerId\":\"%s\"}]\n' $ID1 >'$stubdir/up.out'"
 after_up 'a short id' sh -c "printf '{\"outcome\":\"success\",\"containerId\":\"abc\"}\n' >'$stubdir/up.out'"
 after_up 'no id' sh -c "printf '{\"outcome\":\"success\"}\n' >'$stubdir/up.out'"
 after_up 'a re-list with another id' sh -c "echo '$ID2 running' >'$stubdir/ps.vol.3'"
@@ -1325,6 +1326,9 @@ rc=0; out=$("$pwsh_abs" -NoProfile -NonInteractive -Command "
   \$other = \$ast.EndBlock.Statements | Where-Object { \$_ -isnot [System.Management.Automation.Language.FunctionDefinitionAst] }
   if (\$ast.BeginBlock -or \$ast.ProcessBlock -or \$other) { 'top-level statement' } else { 'functions only' }" 2>&1) || rc=$?
 check "helper: wow-launch-common.ps1 has functions only" test "$out" = 'functions only'
+# Get-JsonProp returns nothing for an array (the accelerator test returned its Length)
+out=$("$pwsh_abs" -NoProfile -NonInteractive -Command ". '$(wp "$root_dir/scripts/identity/wow-launch-common.ps1")'; Get-JsonProp ('[1,2]' | ConvertFrom-Json -NoEnumerate) 'Length'" 2>&1) || true
+check "helper: Get-JsonProp on a JSON array prints nothing" test -z "$out"
 if mklink_dir "$tmp/clones-link" "$tmp/clones"; then
   out=$("$pwsh_abs" -NoProfile -NonInteractive -Command ". '$(wp "$root_dir/scripts/identity/wow-launch-common.ps1")'; Get-FinalPath '$(wp "$tmp/clones-link/wb-driver")'" 2>&1) || true
   check "helper: Get-FinalPath follows a link in a parent" test "$(norm "$out")" = "$(norm "$(wp "$clone")")"
@@ -1721,6 +1725,8 @@ if mklink_dir "$home/driver" "$tmp/drv.nowhere"; then
   run_repo_drv -Repo acme/widgets; repo_refuses 'a dangling driver link' 'driver/ under WowHome is not a plain directory'
   rm -rf "$home/driver" 2>/dev/null; rm -f "$home/driver" 2>/dev/null
 else skip "no directory link could be made: the dangling driver link -Repo fixture did not run"; fi
+reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; sed 's/^\(.*\)$/[\1]/' "$home/driver/wb-driver.json" >"$tmp/arr.json" && mv "$tmp/arr.json" "$home/driver/wb-driver.json"
+run_repo_drv -Repo acme/widgets; repo_refuses 'a record wrapped in a one-element array' 'the driver record is not a JSON object'
 reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)" other/repo; run_repo_drv -Repo acme/widgets; repo_refuses 'no record names it' 'no driver record names acme/widgets'
 reset; write_record5 "$ID1" "$c2" "$(json_clone)" "$(json_ref)"; write_record5 "$ID2" "$c2" "$(json_clone)" "$(json_ref)" acme/widgets second
 run_repo_drv -Repo acme/widgets; repo_refuses 'two records' 'more than one driver record'

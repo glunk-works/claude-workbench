@@ -253,8 +253,9 @@ function Get-SiblingHomes([string]$dh) {
 # Throws when the file is not JSON or has no single case-sensitive repos list. Shared by the profile map and the step-5 check.
 function Read-HomeOwners([string]$cfg) {
   $mine = [ordered]@{}
-  $j = Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json -ErrorAction Stop
-  $prop = @(if ($j -is [pscustomobject]) { $j.PSObject.Properties | Where-Object { $_.Name -ceq 'repos' } })
+  $j = Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json -NoEnumerate -ErrorAction Stop
+  # The full type name: [pscustomobject] names PSObject, which a top-level array matches.
+  $prop = @(if ($j -is [System.Management.Automation.PSCustomObject]) { $j.PSObject.Properties | Where-Object { $_.Name -ceq 'repos' } })
   if ($prop.Count -ne 1 -or $prop[0].Value -isnot [object[]]) { throw 'no repos list' }
   foreach ($r in $prop[0].Value) {
     if ($r -isnot [string]) { continue }
@@ -384,8 +385,12 @@ function Write-ProfileBlock([string]$path) {
       }
       if ([Linq.Enumerable]::SequenceEqual([byte[]]$existing, [byte[]]$out)) { "profile block unchanged in $path"; return }
     }
-    # Written through the existing file (WriteAllBytes truncates it in place), so its mode, owner, ACL and hard links stay.
-    [IO.File]::WriteAllBytes($path, $out)
+    # Written through the existing file (opened, set to length zero, written), so its mode, owner, ACL, hard links and hidden
+    # attribute stay. WriteAllBytes opens with FileMode.Create, which Windows refuses for an existing hidden file.
+    if ($null -ne $existing) {
+      $fs = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Write)
+      try { $fs.SetLength(0); $fs.Write($out, 0, $out.Length) } finally { $fs.Dispose() }
+    } else { [IO.File]::WriteAllBytes($path, $out) }
     "profile block $verb in $path"
   } catch {
     "profile: not written ($($_.Exception.Message))"
@@ -562,9 +567,9 @@ if ($PSCmdlet.ShouldProcess($bin, "Install $($table.Count) host files from commi
         if (Test-Path -LiteralPath $pollFile -PathType Leaf) {
           $entries = $null
           try {
-            $poll = Get-Content -LiteralPath $pollFile -Raw | ConvertFrom-Json -ErrorAction Stop
-            $prop = @($poll.PSObject.Properties | Where-Object { $_.Name -ceq 'repos' })
-            if ($poll -is [pscustomobject] -and $prop.Count -eq 1 -and $prop[0].Value -is [object[]]) {
+            $poll = Get-Content -LiteralPath $pollFile -Raw | ConvertFrom-Json -NoEnumerate -ErrorAction Stop
+            $prop = @(if ($poll -is [System.Management.Automation.PSCustomObject]) { $poll.PSObject.Properties | Where-Object { $_.Name -ceq 'repos' } })
+            if ($poll -is [System.Management.Automation.PSCustomObject] -and $prop.Count -eq 1 -and $prop[0].Value -is [object[]]) {
               $vals = $prop[0].Value
               if (@($vals | Where-Object { $_ -isnot [string] }).Count -eq 0) { $entries = $vals }
             }

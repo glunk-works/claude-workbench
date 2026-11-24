@@ -437,6 +437,11 @@ reset; echo 'POLLSECRET not json' >"$home/review-poll.json"
 run_install
 check "cross-check: a poll file that is not JSON: one warning, exit 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
 check "cross-check: a poll file that is not JSON: the file content is not echoed" sh -c "! grep -q POLLSECRET '$tmp/out'"
+# the list matches broker.json, so an unwrapped array would give no warning at all
+reset; echo '[{"repos": ["acme/alpha", "acme/beta"]}]' >"$home/review-poll.json"
+run_install
+check "cross-check: a poll file wrapped in a one-element array: the not-readable warning, exit 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
+check "cross-check: a poll file wrapped in a one-element array: names the not-readable line" xc_has "review-poll.json is not readable as a repos list of strings: not compared with broker.json"
 reset; echo '{"repos": ["acme/alpha", 7, "POLLSECRET/x"]}' >"$home/review-poll.json"
 run_install
 check "cross-check: a poll file with a non-string entry: one warning, exit 0" test "$rc" -eq 0 -a "$(xc_warns)" -eq 1
@@ -1211,10 +1216,19 @@ check "Windows profile append to LF: added" pout "profile block added in "
 check "Windows profile append to LF: the block uses LF only" test "$(ncr "$profile_path")" -eq 0
 check "Windows profile append to LF: the first two lines are unchanged" test "$(head -c 12 "$profile_path" | od -An -tx1 | tr -d ' \n')" = 6c696e65310a6c696e65320a
 check "Windows profile append to LF: one marker pair" test "$(wmark "$START")" -eq 1 -a "$(wmark "$END")" -eq 1
+# an existing hidden profile holding one marker pair is updated in place and stays hidden
+profile_path="$tmp/winprof/hidden.ps1"
+printf 'line1\n%s\n# old block\n%s\n' "$START" "$END" >"$profile_path"
+pwsh -NoProfile -NonInteractive -Command "(Get-Item -LiteralPath '$(wp "$profile_path")' -Force).Attributes = [IO.FileAttributes]::Hidden"
+run_install
+check "Windows hidden profile: updated line" pout "profile block updated in "
+check "Windows hidden profile: the file holds the new block" pbhold
+check "Windows hidden profile: the earlier line and one marker pair are kept" test "$(head -n 1 "$profile_path" | tr -d '\r')" = line1 -a "$(wmark "$START")" -eq 1 -a "$(wmark "$END")" -eq 1
+check "Windows hidden profile: still hidden" test "$(pwsh -NoProfile -NonInteractive -Command "[bool]((Get-Item -LiteralPath '$(wp "$profile_path")' -Force).Attributes -band [IO.FileAttributes]::Hidden)" | tr -d '\r')" = True
 profile_path="$tmp/scratch-profile.ps1"
 ;;
   *)
-echo "SKIP - Windows profile: not Git Bash on Windows; the CRLF profile fixtures did not run" >&2
+echo "SKIP - Windows profile: not Git Bash on Windows; the CRLF profile fixtures and the hidden-profile fixture (an existing hidden profile updated in place) did not run" >&2
 prof_home=${HOME:-}
 pnew() { reset; newfh; set_repos '"acme/alpha"'; mkdir -p "$dh"; profile_path="$tmp/prof$trn/dir/profile.ps1"; }
 # mkh <dir> <repos list>: a home holding only a broker.json
@@ -1400,6 +1414,14 @@ check "profile map: ...with its one profile: line" pout "profile: $(wp "$fh/.con
 check "profile map: an owner two homes name is absent" pf_lacks "'dup'"
 check "profile map: ...with its one profile: line naming both homes" pout "owner dup is named by $(wp "$dh") and $(wp "$fh/.config/seven")"
 check "profile map: exactly the two profile: lines" test "$(pl)" -eq 2
+
+# a sibling whose broker.json is a valid repos object wrapped in a one-element array is unreadable, not unwrapped
+pnew; mkh "$dh" '"acme/alpha"'; sibling two '"beta/x"'
+printf '[{"repos": ["beta/x"]}]\n' >"$fh/.config/two/broker.json"
+run_install
+check "profile map: an array-wrapped sibling broker.json: exits 0" test "$rc" -eq 0
+check "profile map: an array-wrapped sibling broker.json contributes nothing" pf_lacks "'beta'"
+check "profile map: ...with its one profile: line" pout "profile: $(wp "$fh/.config/two")/broker.json unreadable, its owners are not mapped"
 
 # an install from a sibling home, the default home holding only tokens/
 pnew; rmdir "$dh"; mkdir -p "$dh/tokens"; sibling two '"beta/x", "acme/alpha"'
