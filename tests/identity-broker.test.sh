@@ -39,11 +39,14 @@
 #                broker trigger repeats every minute with no RestartCount, both stop paths call Stop-FileArgProcess and Write-NoSpanWarning, and
 #                no identity script passes Disable-, Enable-, Start- or Stop-ScheduledTask -Confirm or -WhatIf
 #   junction     Test-IsDefaultHome from broker.ps1 and install-host-tools.ps1 (their Resolve-RealPath and Test-IsDefaultHome definitions taken through the parser) is true for a
-#                junction to the default home and for a home reached through a junction in a parent component, and false for another directory (#1598; skipped, loudly, where no junction can be made)
+#                junction to the default home and for a home reached through a junction in a parent component, and false for another directory, with every input in its long
+#                form and again in its 8.3 short form (#1598, #1698; the Resolve-RealPath definitions expand short names through GetLongPathName; skipped, loudly, where no junction can be made or no
+#                input has a short form, and the tests-windows job fails on those two SKIP lines, whose text the suite checks against that job's grep pattern, and not on the sweep fixtures' line)
 #   guard        register-broker-task.ps1 reads the task registered under -TaskName before it calls the installer, and refuses (also
 #                under -WhatIf) one whose -WowHome names another home or none it can read, unless -ReplaceOtherHome is given (#1594; stubbed
 #                Get-ScheduledTask, skipped, loudly, where [Environment]::SystemDirectory is set, and a failure instead when that holds off Windows
-#                with WOW_TESTS_REQUIRE_TOOLS exactly 1, since a real pwsh reads it empty there: guard_verdict decides run, skip or fail): no task, the same home, the same home in
+#                with WOW_TESTS_REQUIRE_TOOLS exactly 1, since a real pwsh reads it empty there: guard_verdict decides run, skip or fail, and readfail, a failure with its own line,
+#                when the pwsh read itself exits non-zero): no task, the same home, the same home in
 #                another letter case with backslashes, a different home, a different home with the switch, no -WowHome, no actions, no Arguments property
 #   no tool on PATH  with PATH holding only an empty directory and no -Sh, register-broker-task, broker
 #                and install-host-tools each reach their own "no POSIX sh found" / "git not found" message,
@@ -248,6 +251,11 @@ mkjunction() {
   pwsh -NoProfile -NonInteractive -Command "New-Item -ItemType Junction -Path '$(wp "$1")' -Target '$(wp "$2")' | Out-Null" >/dev/null 2>&1 &&
     pwsh -NoProfile -NonInteractive -Command "if ((Get-Item -LiteralPath '$(wp "$1")' -Force).LinkType) { exit 0 } else { exit 1 }" >/dev/null 2>&1
 }
+# The three junction SKIP lines, each held once: the echo and the static checks below read the same text. The tests-windows job in
+# .github/workflows/ci.yml fails on the second and third and not on the first (the sweep fixtures stay out of that gate).
+skip_sweep='SKIP - a junction cannot be made here; the junction sweep fixtures did not run'
+skip_dhome='SKIP - a junction cannot be made here; the default-home junction fixtures did not run'
+skip_short='SKIP - the default-home junction short-form case did not run: no input has a short form that differs from its long form'
 reset
 write_token alpha "$old" "$soon"; write_token beta "$old" "$soon"
 mkdir -p "$home/review-sessions/old-sess" "$home/review-sessions/new-sess" "$home/review-sessions/.bad name"
@@ -283,7 +291,7 @@ if mkjunction "$home/review-sessions/junc-sess" "$tmp/jt" && mkjunction "$home/r
   check "sweep: the left session is logged" grep -q 'nest-sess.*link or junction' "$home/broker.log"
   check "sweep: ...logged once in a pass, not once per repo (the once-per-process cache is not exercised: -Once is one pass)" test "$(grep -c 'nest-sess.*link or junction' "$home/broker.log")" -eq 1
 else
-  echo "SKIP - a junction cannot be made here; the junction sweep fixtures did not run" >&2
+  echo "$skip_sweep" >&2
 fi
 # Whatever happened, take the junctions off without following them before the temp tree is removed.
 for j in "$home/review-sessions/junc-sess" "$home/review-sessions/nest-sess/inner"; do
@@ -296,29 +304,45 @@ done
 mkdir -p "$tmp/jd/default" "$tmp/jd/other" "$tmp/jd2"
 if mkjunction "$tmp/jd/jlink" "$tmp/jd/default" && mkjunction "$tmp/jd2/p" "$tmp/jd"; then
   cat >"$tmp/jfix.ps1" <<'PS'
-param([string]$Script, [string]$Home1, [string]$Home2, [string]$Home3, [string]$Default)
+param([string]$Script, [string]$Home1, [string]$Home2, [string]$Home3, [string]$Default, [string]$Form = 'long')
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$null, [ref]$null)
 $defs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Resolve-RealPath', 'Test-IsDefaultHome' }, $true)
 if (@($defs).Count -ne 2) { 'missing'; exit 3 }
 foreach ($d in $defs) { . ([scriptblock]::Create($d.Extent.Text)) }
-# the runner's temp dir comes as an 8.3 short name, which a path through a junction loses; give every input its long form
+# the runner's temp dir comes as an 8.3 short name, which a path through a junction loses: the long-form case gives every input its
+# long form, the short-form case (-Form short) gives every input its 8.3 short form instead, and prints noshort (exit 4) where no
+# input has a short form that differs from its long form
 if ([Environment]::OSVersion.Platform -eq 'Win32NT') {
   Add-Type -MemberDefinition '[DllImport("kernel32.dll", CharSet=CharSet.Unicode)] public static extern uint GetLongPathName(string s, System.Text.StringBuilder b, uint n);' -Name Lp -Namespace Wow
+  Add-Type -MemberDefinition '[DllImport("kernel32.dll", CharSet=CharSet.Unicode)] public static extern uint GetShortPathName(string s, System.Text.StringBuilder b, uint n);' -Name Sp -Namespace Wow
   function Get-LongPath([string]$p) { $b = New-Object System.Text.StringBuilder 1024; if ([Wow.Lp]::GetLongPathName($p, $b, 1024) -gt 0) { $b.ToString() } else { $p } }
+  function Get-ShortPath([string]$p) { $b = New-Object System.Text.StringBuilder 1024; if ([Wow.Sp]::GetShortPathName($p, $b, 1024) -gt 0) { $b.ToString() } else { $p } }
   $Home1 = Get-LongPath $Home1; $Home2 = Get-LongPath $Home2; $Home3 = Get-LongPath $Home3; $Default = Get-LongPath $Default
+  if ($Form -eq 'short') {
+    $differs = $false
+    $ins = foreach ($x in $Home1, $Home2, $Home3, $Default) { $sx = Get-ShortPath $x; if ($sx -ine $x) { $differs = $true }; $sx }
+    if (-not $differs) { 'noshort'; exit 4 }
+    $Home1, $Home2, $Home3, $Default = $ins
+  }
 }
 "$(Test-IsDefaultHome $Home1 $Default) $(Test-IsDefaultHome $Home2 $Default) $(Test-IsDefaultHome $Home3 $Default)"
 foreach ($x in $Home1, $Home2, $Home3, $Default) { try { "resolved: $x -> $(Resolve-RealPath $x)" } catch { "resolved: $x -> THROW $_" } }
 PS
-  for f in broker.ps1 install-host-tools.ps1; do
-    got=$(pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/jfix.ps1")" -Script "$(wp "$root_dir/scripts/identity/$f")" \
-      -Home1 "$(wp "$tmp/jd/jlink")" -Home2 "$(wp "$tmp/jd2/p/default")" -Home3 "$(wp "$tmp/jd/other")" -Default "$(wp "$tmp/jd/default")" 2>&1) || true
-    first=$(printf '%s\n' "$got" | head -n 1)
-    [ "$first" = "True True False" ] || printf 'junction: %s printed: %s\n' "$f" "$got" >&2
-    check "junction: $f Test-IsDefaultHome is true for a junction to the default home, true through a parent junction, false for another directory" test "$first" = "True True False"
+  noshort=
+  for form in long short; do
+    for f in broker.ps1 install-host-tools.ps1; do
+      got=$(pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/jfix.ps1")" -Script "$(wp "$root_dir/scripts/identity/$f")" -Form "$form" \
+        -Home1 "$(wp "$tmp/jd/jlink")" -Home2 "$(wp "$tmp/jd2/p/default")" -Home3 "$(wp "$tmp/jd/other")" -Default "$(wp "$tmp/jd/default")" 2>&1) || true
+      first=$(printf '%s\n' "$got" | head -n 1)
+      if [ "$form" = short ] && [ "$first" = noshort ]; then noshort=1; continue; fi
+      [ "$first" = "True True False" ] || printf 'junction: %s (%s form) printed: %s\n' "$f" "$form" "$got" >&2
+      check "junction: $f Test-IsDefaultHome is true for a junction to the default home, true through a parent junction, false for another directory ($form-form inputs)" test "$first" = "True True False"
+    done
   done
+  # a short-form case that never ran is a SKIP line the tests-windows grep matches, so that job fails instead of passing
+  [ -z "$noshort" ] || echo "$skip_short" >&2
 else
-  echo "SKIP - a junction cannot be made here; the default-home junction fixtures did not run" >&2
+  echo "$skip_dhome" >&2
 fi
 for j in "$tmp/jd/jlink" "$tmp/jd2/p"; do
   [ ! -e "$j" ] || pwsh -NoProfile -NonInteractive -Command "(Get-Item -LiteralPath '$(wp "$j")' -Force).Delete()" >/dev/null 2>&1 || true
@@ -788,6 +812,32 @@ check "no-confirm check: Unregister-ScheduledTask -Confirm passes (outside the g
 check "no-confirm check: an unreadable path fails" sh -c '! "$@" 2>/dev/null' sh pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/noconfirm.ps1")" "$(wp "$tmp/nc-missing.ps1")"
 check "no-confirm check: no file fails" sh -c '! "$@" 2>/dev/null' sh pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/noconfirm.ps1")"
 check "identity scripts: no -Confirm or -WhatIf on Disable-, Enable-, Start- or Stop-ScheduledTask" noconfirm_identity
+# static, outside the junction branch so every shard runs them: the pattern of the tests-windows broker step's grep (read with sed, the
+# suite has no yq) matches both default-home SKIP lines and not the sweep line
+cat >"$tmp/ci-pat.sed" <<'SED'
+/^  tests-windows:/,/exit "[$]rc"/{
+s/^ *if grep -Eq '\([^']*\)' "[$]out"; then$/\1/p
+}
+SED
+ci_pat=$(sed -n -f "$tmp/ci-pat.sed" "$root_dir/.github/workflows/ci.yml")
+check "tests-windows grep: the broker step holds exactly one single-quoted pattern" test -n "$ci_pat" -a "$(printf '%s\n' "$ci_pat" | wc -l | tr -d ' ')" -eq 1
+check "tests-windows grep: the pattern matches the default-home junction SKIP line" sh -c 'printf "%s\n" "$1" | grep -Eq -- "$2"' _ "$skip_dhome" "$ci_pat"
+check "tests-windows grep: the pattern matches the short-form junction SKIP line" sh -c 'printf "%s\n" "$1" | grep -Eq -- "$2"' _ "$skip_short" "$ci_pat"
+check "tests-windows grep: the pattern does not match the junction sweep SKIP line" sh -c '! printf "%s\n" "$1" | grep -Eq -- "$2"' _ "$skip_sweep" "$ci_pat"
+# static: each Resolve-RealPath definition, taken through the parser as the junction fixture does, expands short names
+cat >"$tmp/rrdef.ps1" <<'PS'
+param([string]$Script)
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$null, [ref]$null)
+$defs = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Resolve-RealPath' }, $true))
+if ($defs.Count -ne 1) { exit 3 }
+$defs[0].Extent.Text
+PS
+for f in broker.ps1 install-host-tools.ps1; do
+  rr_def=$(pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/rrdef.ps1")" -Script "$(wp "$root_dir/scripts/identity/$f")" 2>/dev/null) || rr_def=
+  check "Resolve-RealPath in $f: one definition is found" test -n "$rr_def"
+  check "Resolve-RealPath in $f: it calls GetLongPathName" sh -c 'printf "%s\n" "$1" | grep -q -F "GetLongPathName("' _ "$rr_def"
+  check "Resolve-RealPath in $f: a failed expansion throws cannot expand short name" sh -c 'printf "%s\n" "$1" | grep -q -F "throw \"cannot expand short name"' _ "$rr_def"
+done
 
 # --- other-home guard (#1594) -----------------------------------------------------------------
 # A run that passes the guard ends at the conhost lookup, where [Environment]::SystemDirectory is empty off Windows
@@ -795,21 +845,31 @@ check "identity scripts: no -Confirm or -WhatIf on Disable-, Enable-, Start- or 
 check "register: reads the existing task before it calls the installer" test \
   "$(grep -n -F "Get-ScheduledTask -TaskName \$TaskName -TaskPath '\\'" "$reg_ps" | head -1 | cut -d: -f1)" -lt \
   "$(grep -n -F "Join-Path \$PSScriptRoot 'install-host-tools.ps1'" "$reg_ps" | head -1 | cut -d: -f1)"
-# guard_verdict <system directory read> <uname -s> <WOW_TESTS_REQUIRE_TOOLS>: run when the read is empty; otherwise fail when the
-# variable is exactly 1 and the host is not Windows (a real pwsh reads it empty there), else skip.
+# guard_verdict <system directory read> <uname -s> <WOW_TESTS_REQUIRE_TOOLS> <read's exit status>: readfail when the read's pwsh
+# failed (a non-zero status, before every other rule); run when the read is empty; otherwise fail when the variable is exactly 1
+# and the host is not Windows (a real pwsh reads it empty there), else skip.
 guard_verdict() {
+  if [ "$4" != 0 ]; then echo readfail; return 0; fi
   if [ -z "$1" ]; then echo run; return 0; fi
   case "$2" in MINGW* | MSYS* | CYGWIN*) echo skip; return 0 ;; esac
   if [ "$3" = 1 ]; then echo fail; else echo skip; fi
 }
-check "guard verdict: a non-empty read on Linux with the variable 1 fails" test "$(guard_verdict x Linux 1)" = fail
-check "guard verdict: a non-empty read on Linux with the variable unset skips" test "$(guard_verdict x Linux '')" = skip
-check "guard verdict: a non-empty read on Linux with the variable 0 skips" test "$(guard_verdict x Linux 0)" = skip
-check "guard verdict: a non-empty read on MINGW with the variable 1 skips" test "$(guard_verdict x MINGW64_NT-10.0 1)" = skip
-check "guard verdict: an empty read runs whatever the other two are" test "$(guard_verdict '' Linux 1)$(guard_verdict '' MINGW64_NT-10.0 '')$(guard_verdict '' Linux 0)" = runrunrun
-guard_read=$(pwsh -NoProfile -NonInteractive -Command '[Environment]::SystemDirectory' </dev/null 2>/dev/null)
-guard_do=$(guard_verdict "$guard_read" "$(uname -s)" "${WOW_TESTS_REQUIRE_TOOLS:-}")
-if [ "$guard_do" = fail ]; then
+check "guard verdict: a non-empty read on Linux with the variable 1 fails" test "$(guard_verdict x Linux 1 0)" = fail
+check "guard verdict: a non-empty read on Linux with the variable unset skips" test "$(guard_verdict x Linux '' 0)" = skip
+check "guard verdict: a non-empty read on Linux with the variable 0 skips" test "$(guard_verdict x Linux 0 0)" = skip
+check "guard verdict: a non-empty read on MINGW with the variable 1 skips" test "$(guard_verdict x MINGW64_NT-10.0 1 0)" = skip
+check "guard verdict: an empty read runs whatever the other two are" test "$(guard_verdict '' Linux 1 0)$(guard_verdict '' MINGW64_NT-10.0 '' 0)$(guard_verdict '' Linux 0 0)" = runrunrun
+check "guard verdict: a failed read on Linux is readfail, the variable set or unset" test "$(guard_verdict '' Linux 1 1)$(guard_verdict '' Linux '' 1)$(guard_verdict x Linux 1 127)" = readfailreadfailreadfail
+check "guard verdict: a failed read on MINGW is readfail, the variable set or unset" test "$(guard_verdict '' MINGW64_NT-10.0 1 1)$(guard_verdict '' MINGW64_NT-10.0 '' 1)$(guard_verdict x MSYS_NT-10.0 '' 2)" = readfailreadfailreadfail
+# the read's own status is captured, so a failing pwsh reaches the readfail branch instead of ending the suite under set -e
+guard_status=0
+guard_read=$(pwsh -NoProfile -NonInteractive -Command '[Environment]::SystemDirectory' </dev/null 2>/dev/null) || guard_status=$?
+guard_do=$(guard_verdict "$guard_read" "$(uname -s)" "${WOW_TESTS_REQUIRE_TOOLS:-}" "$guard_status")
+check "guard: the read of SystemDirectory captures its exit status" grep -q '^guard_read=.*|| guard_status=\$?$' "$root_dir/tests/identity-broker.test.sh"
+check "guard: the readfail branch reports through bad" sh -c 'sed -n "/^if \[ \"\$guard_do\" = readfail \]; then\$/{n;p;}" "$1" | grep -q "^  bad "' _ "$root_dir/tests/identity-broker.test.sh"
+if [ "$guard_do" = readfail ]; then
+  bad "guard: reading [Environment]::SystemDirectory failed (pwsh exit $guard_status); the register-broker-task.ps1 guard cases did not run"
+elif [ "$guard_do" = fail ]; then
   bad "guard: [Environment]::SystemDirectory is set off Windows; register-broker-task.ps1 guard cases would not run"
 elif [ "$guard_do" = skip ]; then
   echo "SKIP - [Environment]::SystemDirectory is set; register-broker-task.ps1 guard cases not run" >&2

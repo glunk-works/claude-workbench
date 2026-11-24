@@ -261,7 +261,9 @@ jobs:
   # The broker suite on Windows (#1017), so its `register-broker-task.ps1 -WhatIf` case runs:
   # on Linux it always skips, because the cmdlets it needs exist only on Windows. Not a required
   # check. It fails when the suite's output still carries the skip line for that case. It also
-  # runs the Windows profile cases (CRLF profile fixtures) and fails when they skip.
+  # runs the Windows profile cases (CRLF profile fixtures) and fails when they skip. It also fails when the
+  # default-home junction fixtures skip (the long-form case or the short-form case), but not the junction sweep
+  # fixtures; the broker suite's static check runs the grep pattern below on those three SKIP lines.
   tests-windows:
     needs: changed-paths
     if: ${{ always() && needs.changed-paths.outputs.cursor_only != 'true' }}
@@ -281,8 +283,8 @@ jobs:
           rc=0
           sh tests/identity-broker.test.sh >"$out" 2>&1 || rc=$?
           cat "$out"
-          if grep -Eq '^SKIP - (pwsh|New-ScheduledTaskAction|Windows profile)' "$out"; then
-            echo "the -WhatIf case or the Windows profile cases skipped on the Windows runner" >&2
+          if grep -Eq '^SKIP - (pwsh|New-ScheduledTaskAction|Windows profile|a junction cannot be made here; the default-home|the default-home junction short-form)' "$out"; then
+            echo "the -WhatIf case, the Windows profile cases or the default-home junction cases skipped on the Windows runner" >&2
             exit 1
           fi
           exit "$rc"

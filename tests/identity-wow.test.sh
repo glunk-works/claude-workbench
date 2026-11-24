@@ -50,7 +50,9 @@
 #                    default-home LF and CRLF are accepted, two LFs, other content, an empty file, a link, a directory, an
 #                    empty HOME and the file in the default home itself (also through a link, a parent-component link or another letter case, with or without a trailing slash or /./) refuse mint and revoke (exit 1, curl uncalled)
 #                    (#1598) under a sed that refuses ;-joined labels a valid second home still mints and the default-home variants still refuse; under a sed that prints
-#                    nothing for one side's path a valid second home refuses with "could not be normalised" and curl uncalled, for each side
+#                    nothing for one side's path a valid second home refuses with "could not be normalised" and curl uncalled, for each side; path_is_root_spelling
+#                    (a home at the filesystem root, #1698) is true for a lone slash, two slashes, slash-dot and slash-dot-slash and false for an ordinary home path, the empty
+#                    string, a lone dot and slash-dot-dot, and resolve_tokens_root asks it before the "could not be normalised" refusal and dies with a message naming the root
 #   slash-less $0    a slash-less run from the tool's own directory exits 2 with nothing on stdout, never sources the planted
 #                    wow-common.sh and names the tool on stderr; a run by command name through PATH sources the copy beside the tool
 #   secrecy          neither token nor passphrase reaches stdout, stderr or argv
@@ -1149,6 +1151,21 @@ STUB
   rm -f "$tmp/bin/sed"
 done
 unset EMPTY_FOR
+
+# a home at the filesystem root (#1698): path_is_root_spelling at function level (a real home at / cannot be set up without root
+# rights), then static checks that resolve_tokens_root asks it before the "could not be normalised" refusal and names the real cause
+rs_get() { ( prog=t; . "$root_dir/scripts/identity/wow-common.sh"; if path_is_root_spelling "$1"; then echo true; else echo false; fi ); }
+for rs in / // /. /./; do assert_eq "root spelling [$rs] is true" true "$(rs_get "$rs")"; done
+for rs in /home/x '' . /.. /a/..; do assert_eq "root spelling [$rs] is false" false "$(rs_get "$rs")"; done
+rs_fn=$(sed -n '/^resolve_tokens_root() {/,/^}/p' "$root_dir/scripts/identity/wow-common.sh")
+rs_call=$(printf '%s\n' "$rs_fn" | grep -n 'path_is_root_spelling' | head -1 | cut -d: -f1)
+rs_norm=$(printf '%s\n' "$rs_fn" | grep -n 'could not be normalised' | head -1 | cut -d: -f1)
+if [ -n "$rs_call" ] && [ -n "$rs_norm" ] && [ "$rs_call" -lt "$rs_norm" ]; then ok; else bad "tokens root: resolve_tokens_root asks path_is_root_spelling before the normalisation refusal" "call line '$rs_call', refusal line '$rs_norm'"; fi
+rs_die=$(printf '%s\n' "$rs_fn" | grep 'path_is_root_spelling' | head -1)
+case "$rs_die" in
+  *'die "$msg, and a home at the filesystem root takes no tokens-root file"'*) case "$rs_die" in *'could not be normalised'*) bad "tokens root: the root branch's message" "names a failed normalisation" ;; *) ok ;; esac ;;
+  *) bad "tokens root: the root branch's message" "line is: $rs_die" ;;
+esac
 
 
 # -- never run from the cwd ---------------------------------------------------------------------

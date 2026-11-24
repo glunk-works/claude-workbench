@@ -182,8 +182,8 @@ function Resolve-Tool([string]$Name) {
 # The minimum moves down only after every yq expression the launchers pass has been run on the lower release
 # and works; it moves up when a launcher starts depending on a newer yq feature. A change to $min updates,
 # in the same change: this comment; the yq sentence in the "Opening it" section of docs/identity/DEV-CONTAINER.md;
-# the yq line in the help of scripts/identity/install-host-tools.ps1; the expected values in the yq-minimum
-# section of tests/identity-launchers.test.sh (its header line and the sec_yqver checks); and the yq entry
+# the yq line in the help of scripts/identity/install-host-tools.ps1; the expected values in
+# tests/identity-launchers.test.sh (the "yq minimum" row of its coverage header and the sec_yqver checks); and the yq entry
 # under host_tools in .ai/project.yml (its min and the version in its fix text), kept at or above $min because
 # the local green gate runs the launcher fixtures against the dev container's own yq. Only the test file fails
 # when one of these is missed.
