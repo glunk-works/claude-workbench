@@ -122,10 +122,10 @@ to its printed `base=`: nothing below means anything against the wrong repo or b
    fi
    ```
    Then stop. This session never runs `wow-review` itself (with `--rerun` or without), never
-   mints a token and never posts: `wow-review` starts on the host, by the human's hand or,
-   where this repo is listed in the host's `review-poll.json`, which the host's
-   `wow-review-poll` task reads on a schedule, from the poller, and a session that also reads PR text must not hold the reviewer credential. A
-   failed `jq` or `mv` is reported, never ignored.
+   mints a token and never posts: `wow-review` starts on the host, by the human's hand or from
+   the poller (the host's `wow-review-poll` task, which reads the host's `review-poll.json` on
+   a schedule) where this repo is listed in that file, and a session that also reads PR text
+   must not hold the reviewer credential. A failed `jq` or `mv` is reported, never ignored.
 
 2. **State the integrity precondition, then honor it.** If this context contains
    authoring the diff — you wrote it, then `/clear`ed or `/model`-switched —

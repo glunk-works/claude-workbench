@@ -141,8 +141,8 @@ If any precondition fails, stop and report why — do not proceed.
    number `held` printed is **held**: the **Recommend** and **Placement dialogue** steps below keep
    it out.
 
-   Both reads exit non-zero on a failed `gh` call — treat that as a **failed read**, reported as
-   such, never as "no unmilestoned issues" or "no open milestones." The redirected file
+   The two `plan-gather.sh` reads exit non-zero on a failed `gh` call — treat that as a
+   **failed read**, reported as such, never as "no unmilestoned issues" or "no open milestones." The redirected file
    belongs to the read-only `read-` family and is never a write argument. `milestones`' output is
    already sorted due-date-ascending, undated last — **that sort is the report**, not an
    optional nicety. Two distinct things are both true and do not contradict each other: **the

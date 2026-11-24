@@ -9,7 +9,7 @@
 # A stub `gh` and a git wrapper write a sentinel to stderr; no case's output may carry it. A git wrapper can
 # also fail `add` (FX_ADDFAIL) to force the `failed` word.
 # Needs git, yq and jq; skips, loudly, without any of them.
-# Permitted toolset: POSIX sh, plus git, yq, sed, awk, grep, cmp and tr as the cases need.
+# Permitted toolset: POSIX sh, plus git, yq, sed, awk, grep, cat, cmp and tr as the cases need.
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -110,7 +110,7 @@ snap() {
   (cd "$W" && {
     cat CL.md other.md 2>/dev/null || :
     G ls-files -u
-    G diff --name-only --diff-filter=U | sort -u | while IFS= read -r up; do
+    G diff --name-only --diff-filter=U | while IFS= read -r up; do
       printf 'path: %s\n' "$up"
       if [ -f "$up" ]; then cat "$up"; else echo "<absent>"; fi
     done
