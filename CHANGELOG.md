@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+## [0.41.0] — 2026-11-24
+
+**⚠️ Migration** — no `.ai/project.yml` needs a change on this bump. A home whose host tools were reinstalled after #1312's fix (PR #1771) merged refuses to file a review's findings when any finding's body is over 3500 bytes from a session on an older pin (the review still posts, with the footer `Host: findings not filed (findings-body)`), and a review session on this pin caps each finding's body at 3500 bytes too, so bump the pin in every repo a reinstalled home reviews (#1312, below). Reinstall the host tools in every home for `wow-publish` (#1681) and the host-tool fixes below.
+
 ### Added
 
 - A `review-image` workflow builds the App-mode review image on a pull request that touches its build context (no push, no secrets, not a required check), from a context the new `scripts/review-image-context.sh` assembles as the host installer exports it (#1398).
@@ -42,10 +46,10 @@ the GitHub release notes.
 - The findings body cap drops from 4000 to 3500 bytes in `wow-review` and `review-outbox.sh`, so a five-finding issue at every cap fits GitHub's 65536-character body limit instead of failing to create (#1312); the host side applies once the host tools are reinstalled, the container side with the reviewed repo's pin bump.
 - `wow-admin --revoke` now prints every failure it collected before a curl-failure exit, each with its prefix, and prints its closing prefix through the program name (`#1681`); it applies once the host tools are reinstalled.
 - The launchers now refuse a `gh api` answer that is not one JSON object, a one-element array holding an object included, instead of reading the object inside it (#1362); it applies once the host tools are reinstalled.
-- The plan-sprint per-issue triage comment rule now names a held findings issue as getting no triage comment, the held guard's re-read and `held` run now come after the placement gather's unmilestoned read so a findings issue filed before that read is held, and `plan-findings.sh` exits 1, not 3, when the yq read of the reviewer App id fails and exits 1 when `held`'s final awk fails.
-- The review image's build now tolerates a base image that sets no system credential helper for github.com (the unset exits 5 only then), and any other failure of that unset still fails the build.
-- The review launcher now reads the PR's closing references before the session and again after a `review` decision, and posts the failure review `closing-references-moved` instead of the review when they differ; it posts nothing and exits 1 when the second read fails, and a failed first read turns the comparison off for that run.
-- The review-poll suite's pwsh cases now fail, rather than skip, when pwsh is absent and `WOW_TESTS_REQUIRE_TOOLS` is exactly 1.
+- The plan-sprint per-issue triage comment rule now names a held findings issue as getting no triage comment, the held guard's re-read and `held` run now come after the placement gather's unmilestoned read so a findings issue filed before that read is held, and `plan-findings.sh` exits 1, not 3, when the yq read of the reviewer App id fails and exits 1 when `held`'s final awk fails (#1727).
+- The review image's build now tolerates a base image that sets no system credential helper for github.com (the unset exits 5 only then), and any other failure of that unset still fails the build (#1367).
+- The review launcher now reads the PR's closing references before the session and again after a `review` decision, and posts the failure review `closing-references-moved` instead of the review when they differ; it posts nothing and exits 1 when the second read fails, and a failed first read turns the comparison off for that run (#1367).
+- The review-poll suite's pwsh cases now fail, rather than skip, when pwsh is absent and `WOW_TESTS_REQUIRE_TOOLS` is exactly 1 (#1367).
 - The review poller now logs `cannot read the default branch` when that read returns only a carriage return, instead of calling the name unacceptable, and the stale-tag cleanup reads a home's MANIFEST only when it is a regular file (#1661).
 - The host install now writes the profile block through the existing file (keeping its mode and hard links), the generated `wowd`/`wowl` usage check matches the launchers' `-Repo` rule, `register-broker-task.ps1 -Unregister` and `install-host-tools.ps1 -StopTask` read a task's first action defensively, and the broker suite's chained profile assertions each carry their own label (#1658).
 - Four CI test follow-ups: the test runner's Actions notice escaping keeps its replacement strings in unquoted variables (bash 4.2 and earlier kept quotes), two annotation cases use `grep -E`, the `tests` job's run-time report step fails naming the key when it cannot read the timeout bound, and the executable-bit suite's silent cases run check 9 once (#1724).
@@ -56,7 +60,9 @@ the GitHub release notes.
 - Five identity follow-ups (#1725): the `tests-windows` job now fails when the default-home junction fixtures skip, `resolve_tokens_root` names a home at the filesystem root as the reason it refuses one, the yq update rule names the coverage-header row, a failing pwsh read in the broker suite's other-home guard is reported as a failure instead of ending the suite silently, and `Resolve-RealPath` in `broker.ps1` and `install-host-tools.ps1` expands 8.3 short names so a short-form home cannot pass as a second home through a junction to the default home; the shell tools and scripts apply once the host tools are reinstalled.
 - The identity launchers and the host installer now refuse a top-level JSON array where an object is required (the driver record, the `devcontainer up` result, `Get-JsonProp`, a sibling home's `broker.json` and `review-poll.json` in the installer), testing the full `PSCustomObject` type and parsing with `-NoEnumerate`; the host install now updates an existing hidden profile in place instead of reporting it not written; and a dangling driver link refuses as not a plain directory on every pwsh version (#1766).
 - The architect-review step 1 sentence now names who starts the review (the human or the poller) before the `review-poll.json` listing condition, the plan-sprint Gather paragraph now names its two `plan-gather.sh` reads instead of "both reads", and the merge-union suite's snapshot helper drops a `sort -u` over a list git already prints once and lists `cat` in its toolset line (#1762).
-- The review image context script's header now names all seven of its refusals, `tests/review-image.test.sh` pins each with a fixture and reads the ps1 at HEAD for its workflow coverage assertion, and the exec-bit test's long header line is rewrapped; the script's behaviour does not change.
+- The review image context script's header now names all seven of its refusals, `tests/review-image.test.sh` pins each with a fixture and reads the ps1 at HEAD for its workflow coverage assertion, and the exec-bit test's long header line is rewrapped; the script's behaviour does not change (#1783).
+- `wow-lane.ps1 -EndDay` now runs its `/proc` walk when the lanes directory is missing, so a session left running in a removed lanes directory still refuses the stop, and `-Repo` now refuses a driver directory that is a link or reparse point, as `Write-Record` does (#1457); it applies once the host tools are reinstalled.
+- The `review-image` workflow gains a `verify-base` job that checks the signed provenance of the review image's base digest with the flags of its Dockerfile's hand command (not a required check), and the weekly `claude-pin-check` now closes the bot's older open notices once it files a new one (#1763).
 
 ## [0.40.0] — 2026-11-20
 
@@ -73,7 +79,6 @@ the GitHub release notes.
 
 ### Fixed
 
-- `wow-lane.ps1 -EndDay` now runs its `/proc` walk when the lanes directory is missing, so a session left running in a removed lanes directory still refuses the stop, and `-Repo` now refuses a driver directory that is a link or reparse point, as `Write-Record` does (#1457); it applies once the host tools are reinstalled.
 - The test shards now report their run time against their timeout in each run's job summary and log, and invariants check 9 no longer stops on an empty host-command list on a bash older than 4.4, so the exec-bit test's no-identity case now requires a completed run (#1694).
 - The review launcher's repeat check now writes only the reviewer App's open issues to the host, and its header states that title matching folds ASCII case only; it applies once the host tools are reinstalled (#1563).
 - The `runner yq version check` step of the `tests-launchers` job now reads only the version yq prints on stdout, as the launchers do, so a warning on stderr no longer fails it (#1691).
