@@ -8,8 +8,9 @@
 # for either is not a finding. The control case has every host command 100755 and fires nothing.
 #
 # The two cases that expect a message assert only that message. The control and no-identity cases, which
-# expect silence, also assert the run's exit is 0 (the output and the exit status come from one run): a crash before check 9's messages (an empty host-command
-# array on a bash older than 4.4) prints neither of them, so silence alone would pass it.
+# expect silence, also assert the run's exit is 0 (the output and the exit status come from one run): a
+# crash before check 9's messages (an empty host-command array on a bash older than 4.4) prints neither
+# of them, so silence alone would pass it.
 #
 # Permitted toolset: POSIX sh and git; the suite skips, loudly, without git.
 set -eu

@@ -53,6 +53,7 @@ the GitHub release notes.
 - Correction to the released v0.39.0 entry for #1172 (the slash-less guard in the six host tools): running one of those tools by bare name from its own directory (for example `sh wow-admin` there) now exits 2; the released entry is not edited (#1660).
 - The `-Spec` cleanup now keeps the spec worktree and its record, and exits 1, when its process walk cannot read the container's process list, rather than reading that as no claude running; it applies once the host tools are reinstalled (#1660).
 - Five identity follow-ups (#1725): the `tests-windows` job now fails when the default-home junction fixtures skip, `resolve_tokens_root` names a home at the filesystem root as the reason it refuses one, the yq update rule names the coverage-header row, a failing pwsh read in the broker suite's other-home guard is reported as a failure instead of ending the suite silently, and `Resolve-RealPath` in `broker.ps1` and `install-host-tools.ps1` expands 8.3 short names so a short-form home cannot pass as a second home through a junction to the default home; the shell tools and scripts apply once the host tools are reinstalled.
+- The review image context script's header now names all seven of its refusals, `tests/review-image.test.sh` pins each with a fixture and reads the ps1 at HEAD for its workflow coverage assertion, and the exec-bit test's long header line is rewrapped; the script's behaviour does not change.
 
 ## [0.40.0] — 2026-11-20
 
