@@ -36,8 +36,9 @@ re="^${comp}\\.${comp}\\.${comp}\$"
 [ -f "$feed" ] && [ -r "$feed" ] || die "the feed file is unreadable"
 [ -f "$dockerfile" ] && [ -r "$dockerfile" ] || die "the Dockerfile is unreadable"
 
-# Feed: the whole file, byte for byte (the sentinel keeps trailing newlines).
-content="$(cat -- "$feed"; printf x)" || die "the feed file is unreadable"
+# Feed: the whole file, byte for byte (the sentinel keeps trailing newlines). The printf is chained
+# with && so the guard tests the read's own status, not the printf's.
+content="$(cat -- "$feed" && printf x)" || die "the feed file is unreadable"
 content="${content%x}"
 [ "${#content}" -eq "$(wc -c <"$feed" | tr -d ' ')" ] || die "the feed is not plain text"
 if [ "${content%$'\n'}" != "$content" ]; then

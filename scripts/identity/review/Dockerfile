@@ -4,8 +4,12 @@
 #
 # Maintenance, stated so nobody assumes more than holds:
 #   - Dependabot opens a separate PR for this directory.
-#   - The base image's signed provenance is not verified here, so a digest bump gets human
-#     review only. Check it by hand, for the digest on the FROM line:
+#   - The review-image workflow's `verify-base` job runs the command below on a PR that touches
+#     this directory; it is not a required check. A pull_request run uses the PR's own workflow
+#     files, so its green counts only on a PR that changes nothing under `.github/workflows/` (a
+#     Dependabot base bump changes nothing there), and the maintainer confirms that and the green
+#     on the PR head before approving a base bump. The command stays here for a check off CI,
+#     for the digest on the FROM line:
 #       gh attestation verify oci://ghcr.io/603-identity/devcontainer-base@sha256:<digest> \
 #         --repo 603-Identity/devcontainers \
 #         --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \

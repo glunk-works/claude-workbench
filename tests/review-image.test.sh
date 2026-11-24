@@ -19,7 +19,7 @@
 #   context script  scripts/review-image-context.sh (#1398): its output against the committed ps1 list, its
 #                   refusals in fake roots, and the review-image workflow's paths filter and permissions
 #
-# Permitted toolset: POSIX sh and its standard utilities, jq and yq (skipped, loudly, if either is absent),
+# Permitted toolset: POSIX sh and its standard utilities, jq, yq and bash (the suite is skipped, loudly, if any is absent),
 # and git for the credential-helper fixture and the context-script fixtures (those alone are skipped, loudly, if
 # git is absent).
 set -eu
@@ -27,7 +27,7 @@ set -eu
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 rdir="$root_dir/scripts/identity/review"
 
-for t in jq yq; do
+for t in jq yq bash; do
   if ! command -v "$t" >/dev/null 2>&1; then
     echo "SKIP - $t not on PATH; review-image fixtures not run" >&2
     exit 0
@@ -750,6 +750,84 @@ if [ -f "$wf" ]; then
   check "review-image workflow: the job's permissions are exactly contents: read" yq -e '.jobs.build.permissions.contents == "read" and (.jobs.build.permissions | length) == 1' "$wf" >/dev/null
   check "review-image workflow: no secrets. reference" test -z "$(grep -F 'secrets.' "$wf" || true)"
   check "review-image workflow: no --push" test -z "$(grep -F -e '--push' "$wf" || true)"
+  check "review-image workflow: verify-base's permissions are exactly contents: read and attestations: read" \
+    yq -e '.jobs."verify-base".permissions.contents == "read" and .jobs."verify-base".permissions.attestations == "read" and (.jobs."verify-base".permissions | length) == 2' "$wf" >/dev/null
+  check "review-image workflow: verify-base has a timeout-minutes" yq -e '.jobs."verify-base"."timeout-minutes" > 0' "$wf" >/dev/null
+  check "review-image workflow: verify-base's checkout does not persist credentials" \
+    yq -e '.jobs."verify-base".steps[] | select(.uses | test("^actions/checkout@")) | .with."persist-credentials" == false' "$wf" >/dev/null
+
+  # --- the verify-base job's step (extracted by its id, run under a stub gh) -------------------
+  vb_step="$tmp/verify-base-step.sh"
+  awk '
+    function indent(s) { match(s, /^ */); return RLENGTH }
+    state == 0 && $0 ~ /^ *id: verify-base$/ { state = 1; next }
+    state == 1 && $0 ~ /^ *run: \|$/ { ri = indent($0); state = 2; next }
+    state == 2 {
+      if ($0 ~ /^ *$/) { print ""; next }
+      if (indent($0) <= ri) exit
+      print substr($0, ri + 3)
+    }
+  ' "$wf" >"$vb_step"
+  check "verify-base: the step's run block was extracted" test -s "$vb_step"
+  vb_dir="$tmp/vb-stub"; mkdir -p "$vb_dir"
+  cat >"$vb_dir/gh" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$@" >>"$VB_LOG"
+[ -z "${VB_GH_FAIL:-}" ] || exit 1
+exit 0
+STUB
+  chmod +x "$vb_dir/gh"
+  # vb_run <Dockerfile-source>: a fixture tree with that file as the review Dockerfile; sets vb_rc, vb_out, vb_err
+  vb_run() {
+    vb_tree="$tmp/vb-tree"; rm -rf "$vb_tree"; mkdir -p "$vb_tree/scripts/identity/review"
+    cp "$1" "$vb_tree/scripts/identity/review/Dockerfile"
+    : >"$tmp/vb-log"
+    vb_rc=0
+    ( cd "$vb_tree" && env PATH="$vb_dir:$PATH" VB_LOG="$tmp/vb-log" GH_TOKEN=t $vb_env bash "$vb_step" ) >"$tmp/vb.out" 2>"$tmp/vb.err" || vb_rc=$?
+    vb_out=$(cat "$tmp/vb.out"); vb_err=$(cat "$tmp/vb.err")
+  }
+  vb_env=""
+  vb_from=$(grep '^FROM ' "$rdir/Dockerfile")
+  vb_digest=${vb_from##*@sha256:}
+
+  # the real Dockerfile: one gh call, whose tokens equal the header's hand command with <digest> filled in
+  vb_run "$rdir/Dockerfile"
+  assert_eq "verify-base: the real Dockerfile passes" 0 "$vb_rc"
+  sed -n '/^#       gh attestation verify /,/--deny-self-hosted-runners$/p' "$rdir/Dockerfile" \
+    | sed -e 's/^#//' -e 's/\\$//' -e "s|<digest>|$vb_digest|" | tr -s ' ' '\n' | grep -v '^$' >"$tmp/vb-want"
+  check "verify-base: the header's hand command was found" test -s "$tmp/vb-want"
+  assert_eq "verify-base: the gh call's tokens equal the header command's, token for token" "$(cat "$tmp/vb-want")" "gh
+$(cat "$tmp/vb-log")"
+  assert_eq "verify-base: exactly one gh call" 1 "$(grep -c '^attestation$' "$tmp/vb-log")"
+  assert_eq "verify-base: the call verifies the real FROM digest" 1 "$(grep -cx "oci://ghcr.io/603-identity/devcontainer-base@sha256:$vb_digest" "$tmp/vb-log")"
+
+  # refused FROM lines: the fixed message on stderr, no gh call, nothing echoed
+  good_from='FROM ghcr.io/603-identity/devcontainer-base:4.812@sha256:fce47f5062c10167e73f54f15c014de961c12d7842db5a6542578aab1f483b9b'
+  vb_refuse() { # vb_refuse <label> <file>
+    vb_run "$2"
+    if [ "$vb_rc" != 0 ] && [ ! -s "$tmp/vb-log" ] && [ -z "$vb_out" ] && printf '%s' "$vb_err" | grep -q '^review-image: the Dockerfile must have exactly one FROM line'; then
+      ok "verify-base: $1 fails with the fixed message and no gh call"
+    else bad "verify-base: $1: rc=$vb_rc log=[$(cat "$tmp/vb-log")] err=[$vb_err]"; fi
+  }
+  printf 'RUN true\n' >"$tmp/vb-df"; vb_refuse "no FROM line" "$tmp/vb-df"
+  printf '%s\n%s\n' "$good_from" "$good_from" >"$tmp/vb-df"; vb_refuse "two FROM lines" "$tmp/vb-df"
+  printf '%s\n' "$good_from" | sed 's|devcontainer-base|other-image|' >"$tmp/vb-df"; vb_refuse "another image name" "$tmp/vb-df"
+  printf '%s\n' "$good_from" | sed 's|@sha256:.*||' >"$tmp/vb-df"; vb_refuse "no digest" "$tmp/vb-df"
+  printf '%s\n' "$good_from" | sed 's|.$||' >"$tmp/vb-df"; vb_refuse "a 63-digit digest" "$tmp/vb-df"
+  printf '%sa\n' "$good_from" >"$tmp/vb-df"; vb_refuse "a 65-digit digest" "$tmp/vb-df"
+  printf '%s\n' "$good_from" | sed 's|@sha256:fce|@sha256:FCE|' >"$tmp/vb-df"; vb_refuse "an uppercase digest" "$tmp/vb-df"
+  printf '%s extra\n' "$good_from" >"$tmp/vb-df"; vb_refuse "text after the digest" "$tmp/vb-df"
+
+  # a planted marker on a failing FROM line reaches neither stream
+  printf 'FROM ::warning::x\n' >"$tmp/vb-df"; vb_refuse "a FROM line carrying a marker" "$tmp/vb-df"
+  if printf '%s%s' "$vb_out" "$vb_err" | grep -q '::warning'; then bad "verify-base: the marker was echoed"; else ok "verify-base: a planted marker is in neither stdout nor stderr"; fi
+
+  # a failing gh fails the step
+  vb_env="VB_GH_FAIL=1"; vb_run "$rdir/Dockerfile"
+  if [ "$vb_rc" != 0 ] && [ -s "$tmp/vb-log" ]; then ok "verify-base: a gh that exits non-zero fails the step"; else bad "verify-base: gh failure rc=$vb_rc"; fi
+  vb_env=""
+
+  check "verify-base: no secrets. reference in the job" test -z "$(yq '.jobs."verify-base"' "$wf" | grep -F 'secrets.' || true)"
 else
   bad "review-image workflow: $wf is missing"
 fi

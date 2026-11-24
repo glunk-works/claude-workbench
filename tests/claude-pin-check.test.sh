@@ -36,7 +36,7 @@ printf 'FROM scratch\nARG CLAUDE_VERSION=2.1.316\nRUN true\n' >"$tmp/df"
 run_script() {
   n=$((n + 1))
   rc=0
-  ( cd "$root_dir" && bash "$script" "$@" ) >"$tmp/out.$n" 2>"$tmp/err.$n" || rc=$?
+  ( cd "$root_dir" && PATH="${RUN_SCRIPT_PATH:-$PATH}" bash "$script" "$@" ) >"$tmp/out.$n" 2>"$tmp/err.$n" || rc=$?
   out="$(cat "$tmp/out.$n")"
 }
 
@@ -115,6 +115,14 @@ run_script "$tmp/nope" "$tmp/df"
 run_script "$tmp/feed" "$tmp/nope"
 [ "$rc" = 1 ] && [ -z "$out" ] && ok "a missing Dockerfile fails closed" || bad "missing Dockerfile rc=$rc"
 
+# a read that fails: a stub cat first on PATH, inside run_script's subshell only
+mkdir -p "$tmp/catstub"
+printf '#!/bin/sh\nexit 1\n' >"$tmp/catstub/cat"; chmod +x "$tmp/catstub/cat"
+RUN_SCRIPT_PATH="$tmp/catstub:$PATH" run_script "$tmp/feed" "$tmp/df"
+if [ "$rc" = 1 ] && [ -z "$out" ] && grep -qx 'claude-pin-check: the feed file is unreadable' "$tmp/err.$n"; then
+  ok "a feed read that fails reports the file unreadable"
+else bad "failing cat rc=$rc out=[$out] err=[$(cat "$tmp/err.$n")]"; fi
+
 run_script "$tmp/feed"
 [ "$rc" = 2 ] && [ -z "$out" ] && grep -q '^usage:' "$tmp/err.$n" && ok "one argument exits 2 with a usage line" || bad "one argument rc=$rc"
 run_script "$tmp/feed" "$tmp/df" extra
@@ -176,6 +184,8 @@ if [ "${1:-}" = api ]; then
   [ -z "${STUB_FAIL:-}" ] || exit 1
   cat "$STUB_LIST"
 fi
+if [ "${1:-} ${2:-}" = "issue create" ] && [ -n "${STUB_CREATE_FAIL:-}" ]; then exit 1; fi
+if [ "${1:-} ${2:-}" = "issue close" ] && [ -n "${STUB_CLOSE_FAIL:-}" ]; then exit 1; fi
 exit 0
 STUB
   chmod +x "$stubdir/curl" "$stubdir/gh"
@@ -220,16 +230,18 @@ STUB
 
   # the file block
   PIN=2.1.316; LATEST=2.1.328
-  mklist() { # FILE then "LOGIN|TITLE|pr?" entries
+  mklist() { # FILE then "LOGIN|TITLE|pr?" entries; the issue number is 100 plus the entry's position
     f="$1"; shift
-    printf '[' >"$f"; sep=''
+    printf '[' >"$f"; sep=''; num=100
     for e in "$@"; do
+      num=$((num + 1))
       login="${e%%|*}"; rest="${e#*|}"; title="${rest%%|*}"; pr="${rest#*|}"
       if [ "$pr" = pr ]; then extra=',"pull_request":{}'; else extra=''; fi
-      printf '%s{"title":"%s","user":{"login":"%s"}%s}' "$sep" "$title" "$login" "$extra" >>"$f"; sep=','
+      printf '%s{"number":%s,"title":"%s","user":{"login":"%s"}%s}' "$sep" "$num" "$title" "$login" "$extra" >>"$f"; sep=','
     done
     printf ']\n' >>"$f"
   }
+  closes() { grep -c '^issue close' "$tmp/log" || true; }
   fs() { run_step "$tmp/file-step.sh" "$tmp" PIN="$PIN" LATEST="$LATEST" "$@"; }
   creates() { grep -c '^issue create' "$tmp/log" || true; }
   T='Bump the pinned Claude Code from 2.1.316 to'
@@ -258,10 +270,43 @@ STUB
   mklist "$tmp/l-old" "$bot|$T 2.1.320|x"
   fs STUB_LIST="$tmp/l-old"
   [ "$rc" = 0 ] && [ "$(creates)" = 1 ] && ok "file step: a notice ending in an older version still creates one" || bad "file step: older notice rc=$rc"
+  if [ "$(closes)" = 1 ] && [ "$(grep -n '^issue' "$tmp/log" | sed -n 1p | grep -c 'issue create')" = 1 ] \
+     && grep -qx 'issue close 101 --repo o/r --comment A notice for 2.1.328 has been filed.' "$tmp/log"; then
+    ok "file step: an older bot notice is closed by its number, with the fixed comment, after the create"
+  else bad "file step: older notice close log=[$(cat "$tmp/log")]"; fi
+  if grep '^issue close' "$tmp/log" | grep -q 'Bump the pinned'; then bad "file step: a title appears in the close"; else ok "file step: no issue title appears in the close's arguments"; fi
 
   mklist "$tmp/l-12" "$bot|$T 12.1.328|x"
   fs STUB_LIST="$tmp/l-12"
   [ "$rc" = 0 ] && [ "$(creates)" = 1 ] && ok "file step: a notice ending in 12.1.328 still creates one" || bad "file step: 12.1.328 rc=$rc"
+  [ "$(closes)" = 1 ] && grep -qx 'issue close 101 --repo o/r --comment A notice for 2.1.328 has been filed.' "$tmp/log" && ok "file step: the 12.1.328 notice is closed after the create" || bad "file step: 12.1.328 close log=[$(cat "$tmp/log")]"
+
+  # the matching notice only on a later page: two arrays back to back
+  mklist "$tmp/l-p1" "someone|Unrelated issue|x"
+  mklist "$tmp/l-p2" "$bot|$T 2.1.328|x"
+  cat "$tmp/l-p1" "$tmp/l-p2" >"$tmp/l-pages"
+  fs STUB_LIST="$tmp/l-pages"
+  if [ "$rc" = 0 ] && [ "$(creates)" = 0 ] && [ "$(closes)" = 0 ] && [ "$(cat "$tmp/step.out")" = "claude-pin-check: an open notice for 2.1.328 exists" ]; then
+    ok "file step: a matching notice only on a later page creates and closes nothing"
+  else bad "file step: later page rc=$rc log=[$(cat "$tmp/log")]"; fi
+
+  # not closed: another author, a pull request, a title without the prefix
+  mklist "$tmp/l-noclose" "someone|$T 2.1.320|x" "$bot|$T 2.1.320|pr" "$bot|Something else to 2.1.320|x"
+  fs STUB_LIST="$tmp/l-noclose"
+  [ "$rc" = 0 ] && [ "$(creates)" = 1 ] && [ "$(closes)" = 0 ] && ok "file step: another author's notice, a pull request and a title without the prefix are not closed" || bad "file step: no-close rc=$rc log=[$(cat "$tmp/log")]"
+
+  # a failing create closes nothing; a failing close fails the step after the create
+  fs STUB_LIST="$tmp/l-old" STUB_CREATE_FAIL=1
+  [ "$rc" != 0 ] && [ "$(creates)" = 1 ] && [ "$(closes)" = 0 ] && ok "file step: a failing create closes nothing" || bad "file step: create failure rc=$rc log=[$(cat "$tmp/log")]"
+  fs STUB_LIST="$tmp/l-old" STUB_CLOSE_FAIL=1
+  [ "$rc" != 0 ] && [ "$(creates)" = 1 ] && [ "$(closes)" = 1 ] && ok "file step: a failing close fails the step after the one create" || bad "file step: close failure rc=$rc log=[$(cat "$tmp/log")]"
+
+  # a number that is not a plain decimal fails before any write
+  for badnum in '"x1"' '-5' '1.5'; do
+    printf '[{"number":%s,"title":"%s 2.1.320","user":{"login":"%s"}}]\n' "$badnum" "$T" "$bot" >"$tmp/l-badnum"
+    fs STUB_LIST="$tmp/l-badnum"
+    [ "$rc" != 0 ] && [ "$(creates)" = 0 ] && [ "$(closes)" = 0 ] && ok "file step: an issue number of [$badnum] fails before any create or close" || bad "file step: number [$badnum] rc=$rc log=[$(cat "$tmp/log")]"
+  done
 
   mklist "$tmp/l-prefix" "$bot|Something else to 2.1.328|x"
   fs STUB_LIST="$tmp/l-prefix"
