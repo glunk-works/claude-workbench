@@ -27,13 +27,13 @@ the GitHub release notes.
 - The `wow-publish` host command publishes prepared `.github/` files as the admin App (mint, one contents-API PUT per file, compare, revoke) from a driver-written manifest (`#1681`); it applies once the host tools are reinstalled, and the lanes skill gains the procedure that writes the manifest.
 - A weekly `claude-pin-check` workflow opens one notice issue when the Claude Code version pinned in the Dockerfiles falls behind the latest release, and none while an open notice for that version exists (#1677).
 - The `zizmor` job in `ci.yml` now runs the gate's configuration against a committed fixture with a known finding and fails unless that run failed, so a `zizmor-action` bump that stops the gate from exiting non-zero on a finding turns the job red on its own PR (#1237).
-- The reach-gate refusal now names the way out of an intended origin and token mismatch (`#1235`).
 - The dev container now declares its Claude Code version (`ARG CLAUDE_VERSION`) and fails its build unless the base image's `claude` reports it, and a test holds it equal to the review and loop images' (#1676).
 - The architect-review skill now says a repo is polled by being listed in `review-poll.json`, not by a per-repo registration (`#1283`).
 
 ### Changed
 
 - The review launcher's findings issue now carries one `type/*` label, the type its filed findings share or else `type/chore`, plus their `area/*` labels; it applies once the host tools are reinstalled (#1303).
+- The reach-gate refusal now names the way out of an intended origin and token mismatch (`#1235`).
 
 ### Fixed
 
@@ -53,6 +53,7 @@ the GitHub release notes.
 - Correction to the released v0.39.0 entry for #1172 (the slash-less guard in the six host tools): running one of those tools by bare name from its own directory (for example `sh wow-admin` there) now exits 2; the released entry is not edited (#1660).
 - The `-Spec` cleanup now keeps the spec worktree and its record, and exits 1, when its process walk cannot read the container's process list, rather than reading that as no claude running; it applies once the host tools are reinstalled (#1660).
 - Five identity follow-ups (#1725): the `tests-windows` job now fails when the default-home junction fixtures skip, `resolve_tokens_root` names a home at the filesystem root as the reason it refuses one, the yq update rule names the coverage-header row, a failing pwsh read in the broker suite's other-home guard is reported as a failure instead of ending the suite silently, and `Resolve-RealPath` in `broker.ps1` and `install-host-tools.ps1` expands 8.3 short names so a short-form home cannot pass as a second home through a junction to the default home; the shell tools and scripts apply once the host tools are reinstalled.
+- The architect-review step 1 sentence now names who starts the review (the human or the poller) before the `review-poll.json` listing condition, the plan-sprint Gather paragraph now names its two `plan-gather.sh` reads instead of "both reads", and the merge-union suite's snapshot helper drops a `sort -u` over a list git already prints once and lists `cat` in its toolset line (#1762).
 
 ## [0.40.0] — 2026-11-20
 
