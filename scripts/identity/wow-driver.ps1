@@ -233,8 +233,8 @@ try {
     $lines = @([Text.Encoding]::UTF8.GetString($up.Out).Split("`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     if ($lines.Count -eq 0) { Stop-Launch 'devcontainer up printed no result' }
     $last = $lines[-1]
-    try { $res = $last | ConvertFrom-Json -ErrorAction Stop } catch { Stop-Launch 'devcontainer up printed no JSON result' }
-    if ($res -isnot [pscustomobject] -or -not $res.PSObject.Properties['outcome'] -or -not $res.PSObject.Properties['containerId']) {
+    try { $res = $last | ConvertFrom-Json -NoEnumerate -ErrorAction Stop } catch { Stop-Launch 'devcontainer up printed no JSON result' }
+    if ($res -isnot [System.Management.Automation.PSCustomObject] -or -not $res.PSObject.Properties['outcome'] -or -not $res.PSObject.Properties['containerId']) {
       Stop-Launch 'devcontainer up result lacks outcome or containerId'
     }
     if ($res.outcome -isnot [string] -or $res.outcome -cne 'success') { Stop-Launch 'devcontainer up did not report success' }

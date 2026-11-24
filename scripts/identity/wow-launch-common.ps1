@@ -298,7 +298,8 @@ function Get-BlobId([string]$Path) {
 # Get-JsonProp <object> <name>: a parsed-JSON property, or $null when the value is not an object or lacks it (StrictMode
 # would throw on a missing property, and the launcher refuses in its own words instead).
 function Get-JsonProp($Object, [string]$Name) {
-  if ($Object -isnot [pscustomobject]) { return $null }
+  # The full type name: the [pscustomobject] accelerator names PSObject, which any pipeline-wrapped value (an array included) matches.
+  if ($Object -isnot [System.Management.Automation.PSCustomObject]) { return $null }
   $p = $Object.PSObject.Properties[$Name]
   if ($p) { $p.Value } else { $null }
 }
@@ -444,8 +445,9 @@ function Get-RecordResult([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Record = $null; Error = $null } }
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Test-ReparsePoint $Path)) { return & $bad 'the driver record is not a regular file' }
   if (([IO.FileInfo]::new($Path)).Length -gt 4096) { return & $bad 'the driver record is larger than 4 KiB' }
-  try { $o = [IO.File]::ReadAllText($Path) | ConvertFrom-Json -ErrorAction Stop } catch { return & $bad 'the driver record is not valid JSON' }
-  if ($o -isnot [pscustomobject]) { return & $bad 'the driver record is not a JSON object' }
+  try { $o = [IO.File]::ReadAllText($Path) | ConvertFrom-Json -NoEnumerate -ErrorAction Stop } catch { return & $bad 'the driver record is not valid JSON' }
+  # -NoEnumerate and the full type name, as Get-GhJson: a one-element array is not unwrapped into its element.
+  if ($o -isnot [System.Management.Automation.PSCustomObject]) { return & $bad 'the driver record is not a JSON object' }
   $names = @($o.PSObject.Properties.Name | Sort-Object -CaseSensitive)
   $want3 = $names.Count -eq 3 -and $names[0] -ceq 'clone' -and $names[1] -ceq 'commit' -and $names[2] -ceq 'id'
   $want4 = $names.Count -eq 4 -and $names[0] -ceq 'clone' -and $names[1] -ceq 'commit' -and $names[2] -ceq 'id' -and $names[3] -ceq 'origin'
@@ -507,7 +509,8 @@ function Find-RecordByRepo([string]$WowHome, [string]$Repo) {
   $dir = Join-Path $WowHome 'driver'
   $want = $Repo.ToLowerInvariant()
   $hits = @()
-  if ((Test-Path -LiteralPath $dir) -and (Test-ReparsePoint $dir)) { Stop-Launch 'driver/ under WowHome is not a plain directory' }
+  # Get-Item -Force, as Test-ReparsePoint reads it: Test-Path does not report a dangling link as existing on every pwsh version.
+  if ($null -ne (Get-Item -LiteralPath $dir -Force -ErrorAction Ignore) -and (Test-ReparsePoint $dir)) { Stop-Launch 'driver/ under WowHome is not a plain directory' }
   if (Test-Path -LiteralPath $dir -PathType Container) {
     foreach ($e in @([IO.Directory]::EnumerateFileSystemEntries($dir) | Sort-Object)) {
       $name = [IO.Path]::GetFileName($e)
