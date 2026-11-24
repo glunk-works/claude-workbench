@@ -2,6 +2,9 @@
 # Fixture tests for WOW_TESTS_REQUIRE_TOOLS, the switch that turns a missing-tool skip into a
 # failure in tests/identity-review.test.sh, tests/identity-launchers.test.sh,
 # tests/identity-broker.test.sh, tests/review-verdict.test.sh and tests/check-host.test.sh (#985, #986, #930, #1726). ci.yml sets it to 1.
+# The review-poll suite's pwsh cases also fail under it since #1367; this suite does not run that
+# suite, because its first missing tool under the scratch PATH is not pwsh (that suite's own
+# pwsh-verdict cases pin the behaviour).
 #
 # Each suite runs under a POSIX shell given by its absolute path, with PATH set to a scratch
 # directory that holds only a link to `dirname` (each suite needs it before its tool check), so

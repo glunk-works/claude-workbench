@@ -7,6 +7,10 @@ name: review-image
 #
 # This check is deliberately not a required one: it is paths-filtered, so it never reports on
 # an unrelated PR, and a required check that never reports would block that PR.
+#
+# The second job, `verify-base`, verifies the signed provenance of the base image's digest on the
+# Dockerfile's FROM line on every run, with the flags of the hand command in that Dockerfile's
+# header. It is not a required check either, for the same paths-filter reason as the build.
 on:
   pull_request:
     paths:
@@ -37,3 +41,36 @@ jobs:
         run: sh scripts/review-image-context.sh "$RUNNER_TEMP/review-context"
       - name: Build the image
         run: docker build --pull --tag review-image:ci "$RUNNER_TEMP/review-context"
+
+  verify-base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify the base image's provenance
+        id: verify-base
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          df=scripts/identity/review/Dockerfile
+          msg="review-image: the Dockerfile must have exactly one FROM line, ghcr.io/603-identity/devcontainer-base:TAG@sha256:DIGEST"
+          count="$(grep -c '^FROM ' "$df" || true)"
+          [ "$count" = 1 ] || { echo "$msg" >&2; exit 1; }
+          from="$(grep '^FROM ' "$df")"
+          re='^FROM ghcr\.io/603-identity/devcontainer-base:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$'
+          [[ "$from" =~ $re ]] || { echo "$msg" >&2; exit 1; }
+          digest="${from##*@sha256:}"
+          gh attestation verify "oci://ghcr.io/603-identity/devcontainer-base@sha256:$digest" \
+            --repo 603-Identity/devcontainers \
+            --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --source-ref refs/heads/main --deny-self-hosted-runners

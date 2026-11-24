@@ -94,8 +94,8 @@ updates:
 
   # The review image's base image (#634), a literal tag-and-digest FROM line with no ARG before
   # it. The same shape as the entry above, but a separate PR: they are different images.
-  # The base image's signed provenance is not verified for this directory, so a bump gets human
-  # review only; check the attestation by hand with the command in scripts/identity/review/Dockerfile.
+  # A bump is approved once `verify-base` is green on the PR head and the PR changes nothing under
+  # `.github/workflows/`, else after the hand command in scripts/identity/review/Dockerfile's header passes.
   - package-ecosystem: docker
     directory: /scripts/identity/review
     schedule:

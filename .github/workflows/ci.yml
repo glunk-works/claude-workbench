@@ -155,10 +155,11 @@ jobs:
   # The step reads yq's stdout only, as Assert-YqVersion does, so a warning on stderr cannot fail it (#1691).
   #
   # WOW_TESTS_REQUIRE_TOOLS=1 turns the missing-tool skip of identity-review, identity-launchers,
-  # identity-broker and review-verdict into a failure, so CI keeps no second copy of those suites' tool lists
-  # (#985, #986). Other suites' skips are named in the job summary instead; the broker suite
-  # skips some cases on Linux by design, so a skip verdict is not itself a failure, but its
-  # guard cases fail rather than skip there.
+  # identity-broker, review-verdict and check-host into a failure, so CI keeps no second copy of those suites'
+  # tool lists (#985, #986, #1726); the broker suite's guard-case skip off Windows and the review-poll
+  # suite's pwsh cases (#1367) also fail rather than skip under it. Other suites' remaining skips are
+  # named in the job summary instead; the broker suite skips some cases on Linux by design, so a skip
+  # verdict is not itself a failure.
   tests:
     name: tests-${{ matrix.shard }}
     needs: changed-paths

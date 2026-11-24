@@ -4,7 +4,9 @@ name: claude-pin-check
 # fell behind the latest release (#1677). Weekly, and on dispatch, this reads the release
 # feed's latest version and the pinned CLAUDE_VERSION and, when the feed is newer, opens one
 # notice issue naming both and the bump procedure, unless an open notice for that latest
-# version by this bot exists. It is read-only on the code: no PR, no branch, no push.
+# version by this bot exists. When it files a new notice it closes the bot's older open notices
+# with the same title prefix, so they do not pile up. It is read-only on the code: no PR, no
+# branch, no push.
 #
 # Two jobs on two runners, so the token that can write never meets a repo file. `check`
 # holds read access only, checks the repo out and runs scripts/claude-pin-check.sh, whose
@@ -82,16 +84,28 @@ jobs:
           fi
           prefix='Bump the pinned Claude Code from '
           # The Actions bot's own open issues only (never a pull request), so another
-          # account's issue cannot suppress the notice. The list is a separate jq filter.
+          # account's issue cannot suppress the notice. The list is a separate jq filter,
+          # one line per issue: its number, a tab, its title.
           gh api --paginate "repos/$REPO/issues?state=open&per_page=100" |
-            jq -r '.[] | select(has("pull_request") | not) | select(.user.login == "github-actions[bot]") | .title' \
+            jq -r '.[] | select(has("pull_request") | not) | select(.user.login == "github-actions[bot]") | [.number, .title] | @tsv' \
               >"$RUNNER_TEMP/titles.txt"
-          while IFS= read -r title || [ -n "$title" ]; do
+          nre='^[1-9][0-9]{0,9}$'
+          numbers=()
+          titles=()
+          while IFS=$'\t' read -r num title || [ -n "$num" ]; do
+            if ! [[ "$num" =~ $nre ]]; then
+              echo "claude-pin-check: a listed issue number is not a number" >&2
+              exit 1
+            fi
+            numbers+=("$num")
+            titles+=("$title")
+          done <"$RUNNER_TEMP/titles.txt"
+          for title in "${titles[@]+"${titles[@]}"}"; do
             if [[ "$title" == "$prefix"* && "$title" == *" to $LATEST" ]]; then
               echo "claude-pin-check: an open notice for $LATEST exists"
               exit 0
             fi
-          done <"$RUNNER_TEMP/titles.txt"
+          done
           body="The pinned Claude Code is $PIN and the latest release is $LATEST.
 
           How to bump it is the *How to bump it* bullet under *The claude binary* in docs/identity/DEV-CONTAINER.md. The bump starts with the devcontainers repo's base image, because the dev container allows exactly one version. Close this issue once the bump merges."
@@ -99,3 +113,10 @@ jobs:
             --title "$prefix$PIN to $LATEST" \
             --label area/devcontainer --label type/chore \
             --body "$body"
+          # Only after the create succeeded: close the bot's older notices, whatever version they name.
+          for i in "${!titles[@]}"; do
+            if [[ "${titles[$i]}" == "$prefix"* ]]; then
+              gh issue close "${numbers[$i]}" --repo "$REPO" \
+                --comment "A notice for $LATEST has been filed."
+            fi
+          done
