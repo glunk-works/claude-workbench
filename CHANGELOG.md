@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- The `-Spec` cleanup now sends no SIGTERM or SIGKILL once any process walk is blind (a walk that lists a claude process but not the script's own id included) and leaves its wait loop at once, the launcher suite's "a later walk blind" case now proves the first walk listed the fake, and the broker suite's `Resolve-RealPath` check matches the native `::GetLongPathName(` call instead of text the `Add-Type` definition also holds; it applies once the host tools are reinstalled (#1784).
+
 ## [0.41.0] — 2026-11-24
 
 **⚠️ Migration** — no `.ai/project.yml` needs a change on this bump. A home whose host tools were reinstalled after #1312's fix (PR #1771) merged refuses to file a review's findings when any finding's body is over 3500 bytes from a session on an older pin (the review still posts, with the footer `Host: findings not filed (findings-body)`), and a review session on this pin caps each finding's body at 3500 bytes too, so bump the pin in every repo a reinstalled home reviews (#1312, below). Reinstall the host tools in every home for `wow-publish` (#1681) and the host-tool fixes below.
