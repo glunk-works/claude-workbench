@@ -5,7 +5,7 @@
 **Just done (2026-11-25, driver session, opus, `/way-of-working:plan-sprint`):**
 - Findings phase: 8 findings from 6 reviewer App issues. #1793 (two) and #1799 (two) combined into the new #1809 (area/ci, review image checks and tests); #1790's one finding declined as cosmetic; those three sources mapped and closed. #1792, #1796 and #1806 kept as tasks.
 - Placement: #1809, #1796 and #1797 placed in milestone 29 as build-order steps 26 to 28 (#1809 and #1796 independent, #1797 unconfirmed); #1792 placed in milestone 33 as step 30 (unconfirmed). #1806 left unmilestoned as covered by #1366 (milestone 29 step 5 already makes `verify / verify` required). #1774, #223, #334, #409, #1167 and #1548 stay unmilestoned on their 2026-11-24 reasons (no re-post). Triage comments posted on the five decided issues.
-- Milestone 29 and 33 descriptions written live through `milestone-desc.sh` (both `live ok`, hash-confirmed), build-order appends only. Milestone 29's Lanes line (still `live: #1783`) and Done list (stops at #1766) are stale and wait on a separate edit.
+- Milestone 29 and 33 descriptions written live through `milestone-desc.sh` (both `live ok`, hash-confirmed), build-order appends only; then, on the maintainer's OK, a third live write (`live ok`, hash-confirmed) gave milestone 29 Done `#1783 (PR #1798)` and Lanes `live: none` with the next lanes named.
 - Since the last cursor: #1786, #1787, #1788, #1791 and #1798 merged (#1762, #1764, #1763, #1766, #1783), and way-of-working v0.41.0 released with this repo's pin bumped (#1802, #1803), which closes the "release and pin bump is due" item below.
 
 **Earlier (2026-11-24, driver session, opus, `/way-of-working:plan-sprint`):**
@@ -20,7 +20,7 @@
 - #1398's spec escalated and was redrafted on the maintainer's `choice=apply` answer; #1725's spec was refreshed onto `57e3557` with no critic round after #1660 staled it.
 - Milestone 29 description kept current (Build order markers, Done, Lanes) through `milestone-desc.sh`.
 
-**Next:** Driver work: milestone 29's open items are #1765, #1784, #1753 (steps 21, 24, 25), the new #1809, #1796 and #1797 (steps 26 to 28), and #1366 (the maintainer's admin decision); the maintainer reacts on the issues to spec, then `lane.sh groups 29` chooses the parallel lanes, a `-Spec` session per issue drafts its spec, and `/way-of-working:handoff` anchors the first task once its spec is approved; the lanes run through `/way-of-working:lanes`. Milestone 29's Lanes and Done lines get their own `milestone-desc.sh` edit on the maintainer's OK. Model: opus (architect).
+**Next:** Driver work: milestone 29's open items are #1765, #1784, #1753 (steps 21, 24, 25), the new #1809, #1796 and #1797 (steps 26 to 28), and #1366 (the maintainer's admin decision); the maintainer reacts on the issues to spec, then `lane.sh groups 29` chooses the parallel lanes, a `-Spec` session per issue drafts its spec, and `/way-of-working:handoff` anchors the first task once its spec is approved; the lanes run through `/way-of-working:lanes`. Model: opus (architect).
 
 **HITL Gate: OPEN** — the review image managed-settings probe re-run on Claude Code 2.1.316 (REVIEW-LIVE-RUN.md) is the maintainer host run; plan-sprint placements and the next milestone pick are the maintainer decisions; every spec waits on the maintainer reaction and every lane PR on the maintainer approval; nothing auto-starts a build here.
 
