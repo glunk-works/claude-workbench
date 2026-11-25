@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- A review the `wow-review` launcher posts on a run whose first closing-reference read failed now carries a host line saying the comparison did not run, and `wow-publish` prints the cause and its progress report when a signal stops it after the head is known and handles PIPE like INT, TERM and HUP so the revoke still completes; both apply once the host tools are reinstalled (#1765).
+
 ## [0.41.0] — 2026-11-24
 
 **⚠️ Migration** — no `.ai/project.yml` needs a change on this bump. A home whose host tools were reinstalled after #1312's fix (PR #1771) merged refuses to file a review's findings when any finding's body is over 3500 bytes from a session on an older pin (the review still posts, with the footer `Host: findings not filed (findings-body)`), and a review session on this pin caps each finding's body at 3500 bytes too, so bump the pin in every repo a reinstalled home reviews (#1312, below). Reinstall the host tools in every home for `wow-publish` (#1681) and the host-tool fixes below.

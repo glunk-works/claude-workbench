@@ -4,7 +4,8 @@
 # The launcher runs from a fake installed bin/ (the launcher, wow-common.sh, the plugin's
 # token-check.sh, gh-identity.sh and review-gate-state.sh, a stub wow-review-mint, a MANIFEST).
 # Stub docker, gh and sleep go first on PATH. Each records its argv (gh also its token prefix, its
-# GH_CONFIG_DIR and every --input file) under $STUB, and answers from per-case fixture files. The
+# GH_CONFIG_DIR, every --input file and, in a last field, its token's last three characters, which are the number
+# of the stub mint that wrote it and so tell the session token from the read token) under $STUB, and answers from per-case fixture files. The
 # stub docker answers `run ... outbox-read <kind>` by running the real outbox-read, sed-substituted
 # to a fixture outbox (as tests/review-image.test.sh does), and answers `inspect` from the argv the
 # container was created with, so the launcher's preflight reads what it asked for. It answers `image ls`
@@ -113,7 +114,7 @@ for v in GH_HOST GH_ENTERPRISE_TOKEN GITHUB_TOKEN GITHUB_ENTERPRISE_TOKEN; do
 done
 inp=
 if [ -n "$input" ]; then cp "$input" "$S/inputs/$seq"; inp=$seq; fi
-printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$seq" "$(printf %s "${GH_TOKEN:-}" | cut -c1-4)" "$cfg" "$host" "$method" "$pag" "$path" "$inp" >>"$S/gh.calls"
+printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$seq" "$(printf %s "${GH_TOKEN:-}" | cut -c1-4)" "$cfg" "$host" "$method" "$pag" "$path" "$inp" "$(printf %s "${GH_TOKEN:-}" | tail -c 3)" >>"$S/gh.calls"
 fx="$S/gh/$(printf '%s' "$path" | tr '/?#=&' '_____')"
 if [ "$method" = DELETE ] && [ "$path" = installation/token ]; then
   echo "gh-DELETE" >>"$S/events"
@@ -483,6 +484,7 @@ reset_logs() {
 
 # run <launcher args...>: the launcher from the fake bin, stdin closed, the stubs first on PATH.
 run() {
+  CQ_NUM=${2:-}
   rc=0; reset_logs
   reset_logs
   (
@@ -496,7 +498,7 @@ run() {
 }
 
 closing_query_json() { # the one other allowed graphql input: the fixed closing-reference query for the case's owner, name and number
-  jq -n -S -c --arg owner o --arg name "${ALT_REPO:-r}" --argjson number 7 \
+  jq -n -S -c --arg owner o --arg name "${ALT_REPO:-r}" --argjson number "${CQ_NUM:-0}" \
     '{query: "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { closingIssuesReferences(first: 10) { totalCount nodes { number repository { nameWithOwner } } } } } }",
       variables: {owner: $owner, name: $name, number: $number}}'
 }
@@ -2000,7 +2002,7 @@ new_case; single_images; run o/r 7
 same "HOME without .config" plain
 assert_eq "HOME without .config: both older tags removed" 2 "$(n_rmi)"
 
-new_case; single_images
+new_case
 mkdir -p "$hh/.config/fifo/bin"; mkfifo "$hh/.config/fifo/bin/MANIFEST"
 printf '%s\n' wow-review:0123456789ab wow-review:222222222222 >"$STUB/docker/images"
 { printf 'commit %s\n' "$c2" >"$hh/.config/fifo/bin/MANIFEST"; } >/dev/null 2>&1 &
@@ -2028,6 +2030,7 @@ new_case; : >"$STUB/wait.hang"; reset_logs
 env PATH="$stubs:$orig_path" REAL_SLEEP="$real_sleep" STUB_DIR="$STUB" WOW_HOME="$home" HOME="$hh" WOW_REVIEW_TIMEOUT=120 WOW_REVIEW_REFRESH=1 \
   sh "$home/bin/wow-review" o/r 7 <&- >"$tmp/out" 2>"$tmp/err" &
 bgpid=$!
+CQ_NUM=7
 i=0
 while [ "$i" -lt 200 ] && ! grep -q '^docker-wait ' "$STUB/events" 2>/dev/null; do "$real_sleep" 0.3; i=$((i + 1)); done
 "$real_sleep" 2.5
@@ -2046,6 +2049,11 @@ assert_eq "TERM during the wait: nothing posted" 0 "$(n_posts)"
 sec_closing() {
 # --- the closing references: read before the session and again after a review decision (#1367) ----
 CRLINE='the closing-reference read before the session failed; the comparison is off for this run'
+CRHOST='Host: closing-reference comparison not run (the read before the session failed)'
+host_line_once() { # host_line_once <label>: the posted review carries the host line once, as its last line
+  assert_eq "$1: the host line once" 1 "$(post_body | grep -cF "$CRHOST" || true)"
+  assert_eq "$1: the host line is the last line" "$CRHOST" "$(post_body | tail -n 1)"
+}
 n_closing() { ev_count '^gh-closing$'; }
 new_case; set_closing 2 9:o/r 12:o/r; set_closing_after 2 9:o/r 12:o/r
 run o/r 7
@@ -2058,6 +2066,19 @@ check "closing refs unchanged: the first query is after the pre-start mint-read 
   test "$(ev_line '^gh-closing$')" -gt "$premint_ln" -a "$(ev_line '^gh-closing$')" -lt "$start_ln"
 check "closing refs unchanged: the second query is after the session" test "$(ev_last '^gh-closing$')" -gt "$(ev_line docker-wait-done)"
 check "closing refs unchanged: the first-read failure line is not logged" test -z "$(glog | grep -F "$CRLINE" || true)"
+check "closing refs unchanged: no closing-reference host line in the posted review" test -z "$(post_body | grep -F "$CRHOST" || true)"
+# The two queries carry different tokens: the first the session token the pre-start re-mint wrote, the second the read token.
+# gh.calls field 9 is the last three characters of the call's token, and every stub token ends with its mint's number.
+mint_last() { # mint_last <event line> <file name>: the number of the last mint writing <file name> among the mints before that event line
+  m=$(head -n "$1" "$STUB/events" | grep -c '^mint-')
+  head -n "$m" "$STUB/mint.calls" | grep -- "--out .*/$2\$" | tail -1 | cut -d' ' -f1
+}
+cq_rows=$(awk -F'|' '$7 == "graphql" {print $8 "|" $9}' "$STUB/gh.calls" | while IFS='|' read -r in sfx; do grep -q closingIssuesReferences "$STUB/inputs/$in" && echo "$sfx"; done)
+want1=$(printf '%03d' "$(mint_last "$start_ln" session-token)")
+want2=$(printf '%03d' "$(mint_last "$(ev_last '^gh-closing$')" read-token)")
+assert_eq "closing refs unchanged: the first query carried the session token written before the session" "$want1" "$(printf '%s\n' "$cq_rows" | sed -n 1p)"
+assert_eq "closing refs unchanged: the second query carried the read token" "$want2" "$(printf '%s\n' "$cq_rows" | sed -n 2p)"
+check "closing refs unchanged: the two queries carried different tokens" test "$want1" != "$want2"
 
 new_case; set_closing 2 9:o/r 12:o/r; set_closing_after 2 12:o/r 9:o/r
 run o/r 7
@@ -2085,12 +2106,20 @@ assert_eq "first read an HTTP failure: exit 0" 0 "$rc"
 assert_eq "first read an HTTP failure: one review POST" 1 "$(n_posts)"
 assert_eq "first read an HTTP failure: one closing-reference query" 1 "$(n_closing)"
 check "first read an HTTP failure: the fixed line is in the launcher log" test -n "$(glog | grep -F "$CRLINE" || true)"
+host_line_once "first read an HTTP failure"
 new_case; set_closing_after 1 77:o/r; printf '{"errors":[{"message":"x"}],"data":null}\n' >"$STUB/gh/closing"
 run o/r 7
 assert_eq "first read with an errors member: exit 0" 0 "$rc"
 assert_eq "first read with an errors member: one review POST" 1 "$(n_posts)"
 assert_eq "first read with an errors member: one closing-reference query" 1 "$(n_closing)"
 check "first read with an errors member: the fixed line is in the launcher log" test -n "$(glog | grep -F "$CRLINE" || true)"
+host_line_once "first read with an errors member"
+
+# A failed first read with a failure decision posts the fixed failure review, with no host line.
+new_case; set_outcome "garbage"; : >"$STUB/gh/closing.fail"
+run o/r 7
+expect_failure_post "first read failed with a bad-outcome" bad-outcome
+assert_eq "first read failed with a bad-outcome: no host line" 0 "$(post_body | grep -cF "$CRHOST" || true)"
 
 # A failed second read, or one of another shape, posts nothing and exits 1.
 second_bad() { # second_bad <label> <json>

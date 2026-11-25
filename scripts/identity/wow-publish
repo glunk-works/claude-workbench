@@ -47,7 +47,7 @@
 #      with exit 1 and no revoke (no token was written by this run). From a zero exit on, the revoke in step 10 is armed.
 #      Exactly one stdout line must start with "granted: " and equal
 #      "granted: permissions contents=write,metadata=read,pull_requests=write,workflows=write repositories <name>" or the
-#      same without "metadata=read,"; anything else refuses. A signal (INT, TERM, HUP) during the mint is held
+#      same without "metadata=read,"; anything else refuses. A signal (INT, TERM, HUP, PIPE) during the mint is held
 #      until wow-admin returns; the run then revokes only when the token file differs from the one on file before the
 #      mint, so a finished mint is not left live and a token this run did not write is left alone. Limit: SIGKILL leaves
 #      the token: run wow-admin <owner/name> --revoke.
@@ -67,11 +67,14 @@
 #      40-hex sha and exactly one parent equal to the previous head. A failure stops the run, prints the files verified so
 #      far and the last head this run verified (never a head read again from GitHub), and still revokes. A PUT that
 #      answered but failed the parent check did commit: the output names that file and commit as landed on a branch that
-#      moved under the run.
+#      moved under the run. A signal (INT, TERM, HUP, PIPE) after the head is known prints, on stderr, that the run was
+#      stopped by a signal and that the last verified head may lag a PUT GitHub accepted just before it, then the same
+#      report on stdout; before the head is known it prints neither.
 #   9. Compare: print the number of commits ahead, each commit's sha and each changed file's name through jq @json,
 #      never a commit message. A failed read exits 1 after the revoke.
-#  10. Revoke: on every exit after a zero mint exit (INT, TERM and HUP included) run wow-admin <owner/name> --revoke once,
-#      show its output and print "revoke: ok" or "revoke: failed (exit <code>)"; a failed revoke makes the exit 1. The
+#  10. Revoke: on every exit after a zero mint exit (INT, TERM, HUP and PIPE included) run wow-admin <owner/name> --revoke once,
+#      show its output (written to a file in the snapshot directory first, so a reader that has gone away cannot cut the
+#      revoke short, then printed) and print "revoke: ok" or "revoke: failed (exit <code>)"; a failed revoke makes the exit 1. The
 #      snapshot directory, with its GH_CONFIG_DIR, is removed on every exit.
 # On success the last line before the revoke is "published <count> files onto <branch>; head <sha>".
 set -eu
@@ -104,11 +107,17 @@ done
 [ -f "$here/token-check.sh" ] && [ -f "$here/gh-identity.sh" ] && [ -f "$here/wow-admin" ] || die "token-check.sh, gh-identity.sh and wow-admin must sit beside $prog (run the installed copy)"
 [ -d "$hand" ] || die "the handoff directory is not a directory"
 
-T= armed= TOK= minting= sigged= pre=
+T= armed= TOK= minting= sigged= pre= head= published=
+# report: the files verified so far and the last head this run verified (never a head read again from GitHub)
+report() {
+  [ -z "$published" ] || printf 'verified so far:%s\n' "$published"
+  echo "last verified head: $head"
+}
 cleanup() {
   rc=$?
   # a later signal must not cut the revoke or the removal short: ignored signals pass to wow-admin and curl
-  trap '' INT TERM HUP
+  # (an ignored PIPE also makes wow-admin's write to a gone output reader fail, so its output goes to a file first)
+  trap '' INT TERM HUP PIPE
   trap - EXIT
   set +e
   # a signal that ended the run while wow-admin was minting: a token file that differs from the one on file before the mint is this run's, so revoke it
@@ -119,10 +128,15 @@ cleanup() {
   [ "$rc" -eq 0 ] || rc=1
   if [ -n "$armed" ]; then
     armed=
-    if sh "$here/wow-admin" "$arg" --revoke </dev/null; then
-      echo "revoke: ok"
+    if [ -n "$T" ] && sh "$here/wow-admin" "$arg" --revoke </dev/null >"$T/w/revoke.out"; then
+      r=0
     else
       r=$?
+    fi
+    [ -z "$T" ] || cat "$T/w/revoke.out" 2>/dev/null || true
+    if [ "$r" -eq 0 ]; then
+      echo "revoke: ok"
+    else
       echo "revoke: failed (exit $r)"
       rc=1
     fi
@@ -131,7 +145,20 @@ cleanup() {
   exit "$rc"
 }
 trap cleanup EXIT
-trap 'sigged=1; exit 1' INT TERM HUP
+# the signal path: PIPE is ignored before anything is written, so its own writes to a gone reader cannot re-enter it. A
+# signal can arrive inside a call whose stdout and stderr are redirected to a file or /dev/null (the gha calls), and the
+# handler runs with those redirections, so it writes through descriptors 3 and 4, the run's own stdout and stderr.
+exec 3>&1 4>&2
+onsig() {
+  sigged=1
+  trap '' PIPE
+  if [ -n "$head" ]; then
+    echo "wow-publish: stopped by a signal; the last verified head may lag a PUT GitHub accepted just before it" >&4
+    report >&3
+  fi
+  exit 1
+}
+trap onsig INT TERM HUP PIPE
 
 # --- 1. snapshot the manifest ------------------------------------------------------------------
 T=$(umask 077 && mktemp -d -- "$wow_home/.publish.XXXXXX") || die "cannot make a private directory under $wow_home"
@@ -293,11 +320,6 @@ else
 fi
 
 # --- 8. publish --------------------------------------------------------------------------------
-published=
-report() {
-  [ -z "$published" ] || printf 'verified so far:%s\n' "$published"
-  echo "last verified head: $head"
-}
 i=0
 while [ "$i" -lt "$count" ]; do
   src=$(jq -r --argjson i "$i" '.files[$i].src' "$man")

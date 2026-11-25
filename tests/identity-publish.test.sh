@@ -5,13 +5,14 @@
 # wow-admin, with a throwaway $WOW_HOME, $WOW_TTY pointing at a file and a stub `gh` first on PATH. The stub gh records each
 # call's argv, stdin and whether GH_TOKEN and GH_CONFIG_DIR were set, and answers canned replies by method and path; switches
 # in the environment fail a given call, answer a PUT with a wrong parent or a bad sha, or sleep in a PUT. The stub wow-admin
-# records its arguments, writes a configurable token file on a mint and exits with a configurable status.
+# records its arguments, writes a configurable token file on a mint and exits with a configurable status; its revoke writes one
+# stdout line and then a finish marker file, so a revoke cut short by a failed write is visible.
 #
 # Covered: the happy path on an existing branch and on a new one; every refusal of steps 1 to 4 (manifest keys and patterns,
 # files, hashes, modes, the answer), each with wow-admin and gh uncalled and no refused value in the output; a mint that
 # exits 1 (no revoke, no gh); the granted-line check; every post-mint failure (nothing further written, one revoke, exit 1);
-# the last verified head after a failed PUT; TERM during a PUT and during the mint (a token this run did not write is left alone); a manifest of two documents; a failed revoke; an escaped compare file name; a file over
-# 32 KB (no argv carries it); the token in no output or argv; no .publish.* directory left; a second home with a tokens-root
+# the last verified head after a failed PUT; TERM during a PUT (the stopped-by-a-signal line and the last verified head) and during the mint (neither line; a token this run did not write is left alone); a manifest of two documents; a failed revoke; an escaped compare file name; a file over
+# 32 KB (no argv carries it); an output reader that goes away after the mint (the signal line once, one revoke that finishes); the token in no output or argv; no .publish.* directory left; a second home with a tokens-root
 # file; usage errors (exit 2).
 set -u
 here=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
@@ -38,7 +39,12 @@ cat >"$inst/wow-admin" <<'STUB'
 printf '%s\n' "$*" >>"$STUB_DIR/admin.calls"
 if [ -n "${STUB_MINT_SLEEP:-}" ]; then : >"$STUB_DIR/mint.started"; sleep "$STUB_MINT_SLEEP"; fi
 case " $* " in
-  *" --revoke "*) exit "${STUB_REVOKE_RC:-0}" ;;
+  *" --revoke "*)
+    # one stdout line under set -e, and only then the finish marker: a write to a gone reader that fails stops it before the marker
+    set -e
+    echo "revoking $1"
+    : >"$STUB_DIR/revoke.finished"
+    exit "${STUB_REVOKE_RC:-0}" ;;
 esac
 [ "${STUB_MINT_RC:-0}" = 0 ] || exit "$STUB_MINT_RC"
 repo=${1#*/}; owner=${1%%/*}
@@ -404,6 +410,8 @@ wait "$pid" 2>/dev/null
 assert_eq "TERM during a PUT: one revoke" 1 "$(revokes)"
 assert_eq "TERM during a PUT: no .publish directory left" 0 "$(leftover)"
 assert_eq "TERM during a PUT: no second PUT" 1 "$(nl "$tmp/stub/put.paths")"
+assert_eq "TERM during a PUT: the stopped-by-a-signal line" 1 "$(cnt "$(cat "$tmp/term.out")" '^wow-publish: stopped by a signal; the last verified head may lag')"
+assert_eq "TERM during a PUT: the last verified head is the one before that PUT" 1 "$(cnt "$(cat "$tmp/term.out")" "^last verified head: $HEAD0\$")"
 
 # --- TERM while wow-admin is minting: the token it then writes is revoked
 reset; newhand
@@ -415,7 +423,20 @@ kill -TERM "$pid" 2>/dev/null
 wait "$pid" 2>/dev/null
 assert_eq "TERM during the mint: one revoke" 1 "$(revokes)"
 assert_eq "TERM during the mint: no gh call" 0 "$(nl "$tmp/stub/gh.calls")"
+assert_eq "TERM during the mint: no stopped-by-a-signal line" 0 "$(cnt "$(cat "$tmp/term2.out")" 'stopped by a signal')"
+assert_eq "TERM during the mint: no last verified head line" 0 "$(cnt "$(cat "$tmp/term2.out")" 'last verified head')"
 assert_eq "TERM during the mint: no .publish directory left" 0 "$(leftover)"
+
+# --- an output reader that goes away after the mint: PIPE is handled like TERM, and the revoke still completes
+reset; newhand
+( PATH="$tmp/bin:$PATH" WOW_HOME="$home" WOW_TTY="$tty" STUB_SLEEP=1 sh "$inst/wow-publish" acme/repo1 "$hd" 7 2>"$tmp/pipe.err" ) | { IFS= read -r _l; while [ "${_l#granted: }" = "$_l" ]; do IFS= read -r _l || break; done; exit 0; }
+w=0
+while [ ! -f "$tmp/stub/revoke.finished" ] && [ "$w" -lt 100 ]; do sleep 0.1; w=$((w + 1)); done
+sleep 0.3
+assert_eq "a reader that went away: the stopped-by-a-signal line once on stderr" 1 "$(cnt "$(cat "$tmp/pipe.err")" '^wow-publish: stopped by a signal')"
+assert_eq "a reader that went away: one revoke" 1 "$(revokes)"
+assert_eq "a reader that went away: the revoke finished" 1 "$([ -f "$tmp/stub/revoke.finished" ] && echo 1 || echo 0)"
+assert_eq "a reader that went away: no .publish directory left" 0 "$(leftover)"
 
 # --- TERM during a mint that refuses beside a live token already on file: that token is left alone
 reset; newhand; mkdir -p "$home/admin/acme/repo1"; printf '%s\n%s\n' "$TOKEN" "$EXPIRES" >"$home/admin/acme/repo1/admin-token"

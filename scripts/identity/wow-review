@@ -86,8 +86,11 @@
 # it, so a launcher that has passed its image check and not yet created its first container (one of an
 # unknown home, or of a home whose MANIFEST was replaced after its launcher read it) can lose its tag
 # and fail that run. Third, the list and the removals run while this home holds its launcher lock, so a
-# long removal delays this home's next launch: a launch of this home waits for the lock up to 300 seconds,
-# then exits 75 (busy), as the exit-code list says.
+# long removal delays this home's next launch: a launch of this home waits for the lock up to 300 seconds
+# and exits 75 (busy) only when the lock is still held after that wait, as the exit-code list says.
+# Since #1661 the cleanup reads a known home's MANIFEST only when it is a regular file (the test the `stale_commit`
+# helper makes), so a known home whose MANIFEST is some other file type (a FIFO, a directory) adds nothing to the
+# keep list, and that home's idle tag is removed.
 #
 # Residuals:
 #  - A misleading pass can post. The checks are mechanical, not a judgement of the review's
@@ -108,7 +111,9 @@
 #    change on a run whose first read failed are not caught. Whoever edits the PR's closing
 #    references can force a failed first read on purpose (for example by linking an issue the read
 #    token cannot reach), so the comparison guards against accidental edits, not against that
-#    editor; the code owner's check of the label's #I at merge stays the control.
+#    editor; the code owner's check of the label's #I at merge stays the control. A review posted
+#    on a run whose first read failed carries the host line "Host: closing-reference comparison not
+#    run (the read before the session failed)" after its findings footer; the host log keeps its own line.
 #  - Timeline events: an owner/repo#N reference or a URL in the review body or in a finding title
 #    still adds a timeline event to that issue or PR.
 #  - What the session can send out. The proxy bounds the host, not the recipient: a session given
@@ -1092,8 +1097,8 @@ decide_review() {
   esac
   read_outbox findings
   validate_findings
-  # The final body: the checked body (with the verdict line after its first three lines; the body's own blank line 4 is dropped so one blank line follows it), one blank line, the footer.
-  { sed -n 1,3p "$B"; printf '\nReview verdict: %s\n\n' "$vline"; if [ -z "$(sed -n 4p "$B")" ]; then sed -n '5,$p' "$B"; else sed -n '4,$p' "$B"; fi; if [ "$(tail -c 1 "$B" | od -An -tx1 | tr -d ' \n')" = 0a ]; then printf '\n'; else printf '\n\n'; fi; printf '%s' "$FOOT"; } >"$HDIR/final-body"
+  # The final body: the checked body (with the verdict line after its first three lines; the body's own blank line 4 is dropped so one blank line follows it), one blank line, the footer, and, only when the first closing-reference read failed, one host line after the footer saying the comparison did not run.
+  { sed -n 1,3p "$B"; printf '\nReview verdict: %s\n\n' "$vline"; if [ -z "$(sed -n 4p "$B")" ]; then sed -n '5,$p' "$B"; else sed -n '4,$p' "$B"; fi; if [ "$(tail -c 1 "$B" | od -An -tx1 | tr -d ' \n')" = 0a ]; then printf '\n'; else printf '\n\n'; fi; printf '%s' "$FOOT"; if [ "$CRFIRST" != 1 ]; then printf '\nHost: closing-reference comparison not run (the read before the session failed)'; fi; } >"$HDIR/final-body"
   if [ "$(wc -c <"$HDIR/final-body" | tr -d ' ')" -gt 65536 ]; then CODE=oversize; return; fi
   ACTION=review
 }
