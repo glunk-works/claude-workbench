@@ -840,9 +840,11 @@ PS
 for f in broker.ps1 install-host-tools.ps1; do
   rr_def=$(pwsh -NoProfile -NonInteractive -File "$(wp "$tmp/rrdef.ps1")" -Script "$(wp "$root_dir/scripts/identity/$f")" 2>/dev/null) || rr_def=
   check "Resolve-RealPath in $f: one definition is found" test -n "$rr_def"
-  check "Resolve-RealPath in $f: it calls GetLongPathName" sh -c 'printf "%s\n" "$1" | grep -q -F "GetLongPathName("' _ "$rr_def"
+  check "Resolve-RealPath in $f: it calls GetLongPathName through the native type" sh -c 'printf "%s\n" "$1" | grep -q -F "::GetLongPathName("' _ "$rr_def"
   check "Resolve-RealPath in $f: a failed expansion throws cannot expand short name" sh -c 'printf "%s\n" "$1" | grep -q -F "throw \"cannot expand short name"' _ "$rr_def"
 done
+# the pattern does not match the Add-Type member definition alone, which also holds the bare GetLongPathName( text
+check "Resolve-RealPath: the native-call pattern does not match the Add-Type member definition alone" sh -c '! printf "%s\n" "$1" | grep -q -F "::GetLongPathName("' _ "public static extern uint GetLongPathName(string s, System.Text.StringBuilder b, uint n);"
 
 # --- other-home guard (#1594) -----------------------------------------------------------------
 # A run that passes the guard ends at the conhost lookup, where [Environment]::SystemDirectory is empty off Windows
