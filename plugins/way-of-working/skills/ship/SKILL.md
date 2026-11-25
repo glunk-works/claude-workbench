@@ -299,6 +299,15 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
      written with the Write tool (`git commit -F`), never a heredoc or a double-quoted argument.
    - If commits are signed, a signing *timeout* usually means the host pinentry is waiting
      for input — answer it and re-run the commit; it is not a commit failure.
+   - **Expected red.** After the commit is made and before the *Push the branch* step, in one
+     Bash call, fetch `{pr_base}` into its remote-tracking ref the way this skill already fetches
+     a branch, then run `workflow-gap.sh` with that ref, and print one line: `Expected red: none`
+     for `none`; `Expected red: ` followed by the paths for a `missing` line, with a short clause
+     saying these files are named by the branch's changes and left uncommitted, so CI is
+     expected red until they land on the branch; `Expected red: unread` for `unreadable`, a
+     failed fetch, or any other output. None of these stops ship and none changes what is
+     pushed. A file the dev App cannot push is published from the host after the push; the line
+     keeps the red run from being read as a real failure.
 
 3. **Push the branch** (`git push -u origin <branch>`; in App mode under the `git` route
    `app-push.sh -u origin <branch>`, the pin from the preflight; under the `api` route
@@ -329,6 +338,9 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    state, and the App-mode actor check below reads the PR from `{repo}`). Body: a `## What` / `## Why`
    summary, and the scope (which boundary changed). If `{review.ci_gate}` is set and this
    diff touches none of `{code_paths}`, note that the review gate is exempt for this PR.
+   When the *Expected red* line named paths, the body carries the same `Expected red:` line, each
+   path in backticks, as its own paragraph before any footer and before the spec trailer
+   paragraph that this step places last.
 
    **Read where the squash message comes from, before `gh pr create`** (new-PR path only; the
    existing-PR path makes no PR body write). One read:
@@ -515,7 +527,7 @@ here. The *Open the PR against `{pr_base}`* step also reads `pointers.sprint_pla
    the required checks. **No `gh pr review --approve`, no `git push --force`, and no
    `gh pr merge` beyond the *Arm auto-merge* step's one `--auto` call** — an armed PR merges
    when the rules on `{pr_base}` are met, and the approval they require is a human's. On the
-   new-PR path, also repeat the `Squash message:` line.
+   new-PR path, also repeat the `Squash message:` line. On both the new-PR and the existing-PR path, repeat the `Expected red:` line.
 
 ## Guardrail summary
 
