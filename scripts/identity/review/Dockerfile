@@ -3,7 +3,8 @@
 # session token, read on every call. The host launcher `wow-review` (#635) starts it.
 #
 # Maintenance, stated so nobody assumes more than holds:
-#   - Dependabot opens a separate PR for this directory.
+#   - Dependabot bumps this directory in one grouped PR with `.devcontainer`, and the approval rule
+#     in the next bullet applies to that PR.
 #   - The review-image workflow's `verify-base` job runs the command below on a PR that touches
 #     this directory; it is not a required check. A pull_request run uses the PR's own workflow
 #     files, so its green counts only on a PR that changes nothing under `.github/workflows/` (a
