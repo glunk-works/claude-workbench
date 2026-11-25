@@ -63,9 +63,9 @@ jobs:
           export LC_ALL=C
           df=scripts/identity/review/Dockerfile
           msg="review-image: the Dockerfile must have exactly one FROM line, ghcr.io/603-identity/devcontainer-base:TAG@sha256:DIGEST"
-          count="$(grep -c '^FROM ' "$df" || true)"
+          count="$(grep -Eci '^[[:space:]]*FROM[[:space:]]' "$df" || true)"
           [ "$count" = 1 ] || { echo "$msg" >&2; exit 1; }
-          from="$(grep '^FROM ' "$df")"
+          from="$(grep -Ei '^[[:space:]]*FROM[[:space:]]' "$df")"
           re='^FROM ghcr\.io/603-identity/devcontainer-base:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$'
           [[ "$from" =~ $re ]] || { echo "$msg" >&2; exit 1; }
           digest="${from##*@sha256:}"
