@@ -35,7 +35,7 @@
 #
 # The build context is bin/review/ as scripts/identity/install-host-tools.ps1 exports it:
 # this file plus exactly the files copied below.
-FROM ghcr.io/603-identity/devcontainer-base:4.853@sha256:d91e236914d18a0062baba1fb1c1577dc7e0aa9d3f7a4059050fc5024a8892aa
+FROM ghcr.io/603-identity/devcontainer-base:4.867@sha256:10d4cd90a52b7c6adddf4f6d8a95027af8b4c4f50372569d3cac8cddf7cca046
 
 # `claude` goes in /usr/local/bin, root-owned, not the native installer's per-user location:
 # that is writable state, where the session could replace the binary. Pinned by version and
