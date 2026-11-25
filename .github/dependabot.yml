@@ -74,35 +74,46 @@ updates:
 
     open-pull-requests-limit: 3
 
-  # The dev container's base image, pinned by tag AND digest on the Dockerfile's FROM line.
-  # `verify / verify` runs on a bump and checks the image (first-attempt build, signed
-  # provenance). It is not a required check, so a red result blocks no merge. The `# syntax=`
-  # frontend pin in the same file is not bumped by Dependabot; the template owns it.
+  # The two base images, one entry and one grouped PR: the dev container's (the FROM line of
+  # .devcontainer/Dockerfile) and the review image's (#634; the FROM line of
+  # scripts/identity/review/Dockerfile, a literal tag-and-digest line with no ARG before it).
+  # One entry, because upstream publishes both images in one release and two entries let
+  # Dependabot run between the two pushes and bump one image to the new tag and the other to the
+  # old one (#1804 and #1805 did). Both are pinned by tag AND digest. The `# syntax=` frontend
+  # pin in the dev container's file is not bumped by Dependabot; the template owns it.
+  #
+  # Before approving the grouped PR, both checks apply:
+  #   - the dev container's: `verify / verify` runs on a bump and checks the image (first-attempt
+  #     build, signed provenance). It is not a required check, so a red result blocks no merge.
+  #     The maintainer has it green on the PR head, or has run the attestation command in
+  #     .devcontainer/Dockerfile's header, and then builds the dev image on the host, since no
+  #     PR check builds it.
+  #   - the review image's: `verify-base` green on the PR head of a PR that changes nothing under
+  #     `.github/workflows/`, else the hand command in scripts/identity/review/Dockerfile's
+  #     header passes.
+  # When the two FROM lines' tags differ at the PR head, the release may have been caught
+  # mid-publish (upstream does not guarantee it publishes both images at one tag). The
+  # maintainer checks whether the image at the lower tag has a newer published tag, and does not
+  # approve while it has.
+  #
+  # The cooldown below does not hold for these images: the registry gives Dependabot no
+  # publication date for them (Dependabot says so in the PR body), so a bump can arrive the day
+  # an image is published, and no delay replaces it. The key stays only because the `zizmor`
+  # job's `dependabot-cooldown` audit reports an update entry without one; a clean zizmor
+  # result on this entry does not mean a cooldown holds. What the file relies on is the human
+  # approval and the checks above.
   - package-ecosystem: docker
-    directory: /.devcontainer
+    directories:
+      - /.devcontainer
+      - /scripts/identity/review
     schedule:
       interval: weekly
       day: monday
     cooldown:
       default-days: 7
-    commit-message:
-      prefix: ci
-      include: scope
-    labels:
-      - dependencies
-    open-pull-requests-limit: 3
-
-  # The review image's base image (#634), a literal tag-and-digest FROM line with no ARG before
-  # it. The same shape as the entry above, but a separate PR: they are different images.
-  # A bump is approved once `verify-base` is green on the PR head and the PR changes nothing under
-  # `.github/workflows/`, else after the hand command in scripts/identity/review/Dockerfile's header passes.
-  - package-ecosystem: docker
-    directory: /scripts/identity/review
-    schedule:
-      interval: weekly
-      day: monday
-    cooldown:
-      default-days: 7
+    groups:
+      images:
+        patterns: ["603-identity/devcontainer-*"]
     commit-message:
       prefix: ci
       include: scope

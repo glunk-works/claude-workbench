@@ -26,6 +26,10 @@ the GitHub release notes.
 - A review the `wow-review` launcher posts on a run whose first closing-reference read failed now carries a host line saying the comparison did not run, and `wow-publish` prints the cause and its progress report when a signal stops it after the head is known and handles PIPE like INT, TERM and HUP so the revoke still completes; both apply once the host tools are reinstalled (#1765).
 - The `-Spec` cleanup now sends no SIGTERM or SIGKILL once any process walk is blind (a walk that lists a claude process but not the script's own id included) and leaves its wait loop at once, the launcher suite's "a later walk blind" case now proves the first walk listed the fake, and the broker suite's `Resolve-RealPath` check matches the native `::GetLongPathName(` call instead of text the `Add-Type` definition also holds; it applies once the host tools are reinstalled (#1784).
 
+### Changed
+
+- Dependabot's two docker entries (`/.devcontainer` and `/scripts/identity/review`) are now one entry with one `images` group, so one PR bumps both base images and a release caught mid-publish no longer splits them across two PRs; `.github/dependabot.yml` also says the 7-day docker cooldown does not hold for these GHCR images (the registry gives no publication date) and that no delay replaces it (#1796).
+
 ## [0.41.0] — 2026-11-24
 
 **⚠️ Migration** — no `.ai/project.yml` needs a change on this bump. A home whose host tools were reinstalled after #1312's fix (PR #1771) merged refuses to file a review's findings when any finding's body is over 3500 bytes from a session on an older pin (the review still posts, with the footer `Host: findings not filed (findings-body)`), and a review session on this pin caps each finding's body at 3500 bytes too, so bump the pin in every repo a reinstalled home reviews (#1312, below). Reinstall the host tools in every home for `wow-publish` (#1681) and the host-tool fixes below.
