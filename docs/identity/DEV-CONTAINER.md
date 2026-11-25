@@ -576,9 +576,9 @@ only `/workspace`, and its `.git` file names a host path.
   It runs the same checks as the sweep, the relay probe included, without the model read, then one
   non-interactive `docker exec -u app` asks whether any `claude` process the container user owns has a
   working directory under the lanes directory (a lane's `<lanes.dir>/N` or a spec session's `spec-` leaf,
-  also one whose directory was removed). The walk also runs when the lanes directory itself was removed, so a session left running in it still refuses the stop. If one does, it refuses and runs no `docker stop`; if the walk of
+  also one whose directory was removed). If one does, it refuses and runs no `docker stop`; if the walk of
   `/proc` finds no such process and saw its own process id, it stops the container, prints `stopped <id>` and
-  exits 0; any other answer refuses, so a walk that sees nothing never reads as idle. It does nothing else: no handoff check and no cleanup. The
+  exits 0; any other answer refuses, so a walk that sees nothing never reads as idle. The walk also runs when the lanes directory itself was removed, so a session left running in it still refuses the stop. It does nothing else: no handoff check and no cleanup. The
   driver session running in `/workspace` does not count as busy, so the stop also ends that driver session.
   It is exclusive with `-Issue`, `-Hash`, `-Spec` and `-SpecSweep` (exit 2). A session started between the
   check and the stop is not caught.
@@ -839,21 +839,25 @@ removes it. The login lives on the volume; the binary does not.
   variable across managed sources, so server-managed settings, if this account ever receives them,
   override this pin only if they set `DISABLE_AUTOUPDATER` themselves.
 - **How to bump it.** A bump of this container's `claude` comes with a `FROM` bump (a new digest
-  from the flavour's "Build images" run, which `verify / verify` checks), and is one PR that
-  changes the `FROM` digest, the three `CLAUDE_VERSION` lines (`.devcontainer/`,
-  `scripts/identity/review/` and `scripts/loop/` Dockerfiles) and the two `CLAUDE_SHA256` values
-  (the review and loop Dockerfiles'). Take the sha256 from that version's release `manifest.json`
-  (the `linux-x64` entry). When Dependabot opens the `FROM` bump, the version edits go into that
-  same PR. Dependabot does not track the pins, and `tests/review-image.test.sh` fails while the
-  three versions differ. The weekly `claude-pin-check` workflow opens a notice issue when the release feed's latest version is newer than the pin, and opens no second one for the same latest version while one is open. When it files one for a newer version it also closes its own older open notices. The dev container's own check runs only when its image is built, and no PR
-  check builds it (`verify / verify` is not a required check), so before approving any
-  `.devcontainer` `FROM` bump, and only once `verify / verify` is green on the PR head or the
-  `gh attestation verify` command in `.devcontainer/Dockerfile`'s header has passed for the new
-  digest, the maintainer builds the image on the host (`docker build` of `.devcontainer`), which
-  fails while `CLAUDE_VERSION` differs from the new base image's `claude`. A `FROM` bump needs the container recreated too; after it merges, recreate it: after every lane, every spec session and the driver session have exited, `docker stop` it, then
-  run the driver launcher (start of day), then run the live-run check under *Opening it*. Then re-run the
-  review container's managed-settings probes on the new version, per *After a Claude Code bump* in
-  `docs/identity/REVIEW-LIVE-RUN.md`.
+  from the flavour's "Build images" run, which `verify / verify` checks), and is one PR that changes
+  the `FROM` digest, the three `CLAUDE_VERSION` lines (`.devcontainer/`, `scripts/identity/review/`
+  and `scripts/loop/` Dockerfiles) and the two `CLAUDE_SHA256` values (the review and loop
+  Dockerfiles'). Take the sha256 from that version's release `manifest.json` (the `linux-x64`
+  entry). When Dependabot opens the `FROM` bump, the version edits go into that same PR. Dependabot
+  does not track the pins, and `tests/review-image.test.sh` fails while the three versions differ.
+  The weekly `claude-pin-check` workflow opens a notice issue when the release feed's latest version
+  is newer than the pin, and opens no second one for the same latest version while one is open. When
+  it files one for a newer version it also closes its own older open notices. The dev container's
+  own check runs only when its image is built, and no PR check builds it (`verify / verify` is not a
+  required check), so before approving any `.devcontainer` `FROM` bump, and only once
+  `verify / verify` is green on the PR head or the `gh attestation verify` command in
+  `.devcontainer/Dockerfile`'s header has passed for the new digest, the maintainer builds the image
+  on the host (`docker build` of `.devcontainer`), which fails while `CLAUDE_VERSION` differs from
+  the new base image's `claude`. A `FROM` bump needs the container recreated too; after it merges,
+  recreate it: after every lane, every spec session and the driver session have exited,
+  `docker stop` it, then run the driver launcher (start of day), then run the live-run check under
+  *Opening it*. Then re-run the review container's managed-settings probes on the new version, per
+  *After a Claude Code bump* in `docs/identity/REVIEW-LIVE-RUN.md`.
 - **Clearing a stopgap install.** A copy from the native installer lives on the home volume, and
   `~/.local/bin` leads `PATH`, so it shadows the image's. Remove `~/.local/bin/claude` and
   `~/.local/share/claude`, then check with `command -v claude` (should print
@@ -895,7 +899,9 @@ removes it. The login lives on the volume; the binary does not.
 ## PowerShell
 
 - **Where it comes from.** The image (#893): the `linux-x64` tarball of the version in
-  `PWSH_VERSION` in `.devcontainer/Dockerfile`, this repo's one extra on top of the flavour, its SHA-256 (`PWSH_SHA256`) checked at build time
+  `PWSH_VERSION` in `.devcontainer/Dockerfile` (this repo's two extras on top of the flavour are that tarball and the
+  `CLAUDE_VERSION` build argument with its build-time check that the base image's `claude` reports it), the tarball's
+  SHA-256 (`PWSH_SHA256`) checked at build time
   with `sha256sum -c`, extracted root-owned and without group or other write under `/opt/microsoft/powershell/7` and linked from
   `/usr/local/bin/pwsh`. A build-time assertion fails the build if `pwsh` does not run or reports
   another version. This is what lets `tests/identity-launchers.test.sh` and
