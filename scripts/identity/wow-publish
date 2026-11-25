@@ -69,7 +69,9 @@
 #      answered but failed the parent check did commit: the output names that file and commit as landed on a branch that
 #      moved under the run. A signal (INT, TERM, HUP, PIPE) after the head is known prints, on stderr, that the run was
 #      stopped by a signal and that the last verified head may lag a PUT GitHub accepted just before it, then the same
-#      report on stdout; before the head is known it prints neither.
+#      report on stdout; before the head is known it prints neither. The PIPE handling applies only when PIPE is not
+#      ignored on entry (a shell cannot trap a signal ignored on entry): when it is, a failed write ends the run
+#      without the cause line, and cleanup still runs the revoke.
 #   9. Compare: print the number of commits ahead, each commit's sha and each changed file's name through jq @json,
 #      never a commit message. A failed read exits 1 after the revoke.
 #  10. Revoke: on every exit after a zero mint exit (INT, TERM, HUP and PIPE included) run wow-admin <owner/name> --revoke once,

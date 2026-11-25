@@ -429,11 +429,18 @@ assert_eq "TERM during the mint: no .publish directory left" 0 "$(leftover)"
 
 # --- an output reader that goes away after the mint: PIPE is handled like TERM, and the revoke still completes
 reset; newhand
-( PATH="$tmp/bin:$PATH" WOW_HOME="$home" WOW_TTY="$tty" STUB_SLEEP=1 sh "$inst/wow-publish" acme/repo1 "$hd" 7 2>"$tmp/pipe.err" ) | { IFS= read -r _l; while [ "${_l#granted: }" = "$_l" ]; do IFS= read -r _l || break; done; exit 0; }
+# PIPE must be at its default for wow-publish: a non-interactive sh cannot trap a signal ignored on entry (a CI step may
+# start the suite that way), so the run starts through env --default-signal=PIPE where env has it
+dsp=; if env --default-signal=PIPE true 2>/dev/null; then dsp="env --default-signal=PIPE"; fi
+( PATH="$tmp/bin:$PATH" WOW_HOME="$home" WOW_TTY="$tty" STUB_SLEEP=1 $dsp sh "$inst/wow-publish" acme/repo1 "$hd" 7 2>"$tmp/pipe.err" ) | { IFS= read -r _l; while [ "${_l#granted: }" = "$_l" ]; do IFS= read -r _l || break; done; exit 0; }
 w=0
 while [ ! -f "$tmp/stub/revoke.finished" ] && [ "$w" -lt 100 ]; do sleep 0.1; w=$((w + 1)); done
 sleep 0.3
-assert_eq "a reader that went away: the stopped-by-a-signal line once on stderr" 1 "$(cnt "$(cat "$tmp/pipe.err")" '^wow-publish: stopped by a signal')"
+if [ -z "$dsp" ] && [ $(( 0x$(sed -n 's/^SigIgn:[[:space:]]*//p' /proc/self/status) >> 12 & 1 )) = 1 ]; then
+  echo "SKIP - the stopped-by-a-signal line: PIPE is ignored on entry and env has no --default-signal"
+else
+  assert_eq "a reader that went away: the stopped-by-a-signal line once on stderr" 1 "$(cnt "$(cat "$tmp/pipe.err")" '^wow-publish: stopped by a signal')"
+fi
 assert_eq "a reader that went away: one revoke" 1 "$(revokes)"
 assert_eq "a reader that went away: the revoke finished" 1 "$([ -f "$tmp/stub/revoke.finished" ] && echo 1 || echo 0)"
 assert_eq "a reader that went away: no .publish directory left" 0 "$(leftover)"
