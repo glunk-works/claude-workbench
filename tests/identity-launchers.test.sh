@@ -57,10 +57,14 @@
 #                   templates (the lane, spec and spec-driver ones in wow-lane.ps1, the driver one in wow-driver.ps1)
 #
 #
-# Concurrency (#937): the sections run at once, each in a subshell with its own scratch world
+# Concurrency (#937, #1814): at most LAUNCH_TEST_JOBS sections run at once (default 4; a decimal integer from 1 to 99
+# with no leading zero, else FAIL; a value at or above the section count runs them all at once; the cap is there because
+# native pwsh crashes under that many concurrent start-ups, #1814), each in a subshell with its own scratch world
 # (setup_world: its own tmp, stub directory, clones, WowHome and STUB_* exports), so no case reads state
 # another section wrote. Each section's output goes to files that are replayed in section order; the
 # suite fails if any section reports a FAIL through `check` or exits non-zero.
+# A launcher run through run_with that ends in a native pwsh exit 134 or 139 before any stub or git call is logged is
+# run once more after a `RETRY - ` line on stderr; a second crash fails as before.
 #
 # Permitted toolset: POSIX sh, its standard utilities, pwsh, git, yq and jq (skipped, loudly, if any is absent; a
 # failure instead when WOW_TESTS_REQUIRE_TOOLS is exactly 1, which ci.yml sets).
@@ -78,6 +82,15 @@ for t in pwsh git yq jq; do
     exit 0
   fi
 done
+
+# LAUNCH_TEST_JOBS: how many sections run at once (#1814), a decimal integer from 1 to 99 with no leading zero.
+check_jobs() { # check_jobs <value>: exits 1 with a FAIL line on any other value
+  case "$1" in
+    [1-9]|[1-9][0-9]) ;;
+    *) echo "FAIL - LAUNCH_TEST_JOBS must be a decimal integer from 1 to 99 with no leading zero" >&2; exit 1 ;;
+  esac
+}
+if [ "${LAUNCH_TEST_JOBS+set}" = set ]; then check_jobs "$LAUNCH_TEST_JOBS"; jobs=$LAUNCH_TEST_JOBS; else jobs=4; fi
 
 tmp_root="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$tmp_root"' EXIT
@@ -293,7 +306,8 @@ if [ -n "$msys" ]; then CF=$(printf '%s' "$C" | tr / '\\'); else CF=$C; fi
 PATH_BASE=$PATH
 drv_path() { printf '%s' "$stubdir:$PATH_BASE"; }
 # run_drv [args...]: the default arguments are overridden by later duplicates, so cases pass full sets with run_with.
-run_with() { # run_with <script> <args...>
+# launch_once <script> <args...>: one pwsh run of the launcher, its trace2 log projected into git.log (sets rc).
+launch_once() {
   s=$1; shift; rc=0
   rm -f "$tmp/git.trace"
   if [ -n "$msys" ]; then tr2=$(wp "$tmp/git.trace"); else tr2=; fi
@@ -301,6 +315,18 @@ run_with() { # run_with <script> <args...>
   # Top-level git processes only (a child's sid holds a /), as "git <argv>" like the stub's line.
   [ ! -e "$tmp/git.trace" ] || jq -r 'select(.event == "start" and (.sid | contains("/") | not)) | "git " + (.argv[1:] | join(" "))' \
     "$tmp/git.trace" | tr -d '\r' >>"$stubdir/git.log"
+}
+# log_sizes: the byte sizes of the stub call log and the git log (a missing file reads as 0).
+log_sizes() { for _f in calls.log git.log; do if [ -e "$stubdir/$_f" ]; then wc -c <"$stubdir/$_f" | tr -d ' '; else echo 0; fi; done | tr '\n' ' '; }
+# run_with <script> <args...>: a launcher run that ends in a native pwsh exit (134 abort, 139 segfault) with no stub or
+# git call logged (a crash at start-up, #1814) is run once more, after a RETRY line on stderr; a second crash fails as before.
+run_with() {
+  _sz=$(log_sizes)
+  launch_once "$@"
+  if { [ "$rc" -eq 134 ] || [ "$rc" -eq 139 ]; } && [ "$(log_sizes)" = "$_sz" ]; then
+    echo "RETRY - native pwsh exit $rc running $(basename "$1"); running it once more (#1814)" >&2
+    launch_once "$@"
+  fi
   [ -z "${LAUNCH_TEST_VERBOSE:-}" ] || echo "# rc=$rc: $(tail -n 1 "$tmp/err" | head -c 300)" >&2
 }
 run_drv() { run_with "$home/bin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" -WowHome "$(wp "$home")" "$@"; }
@@ -1347,6 +1373,50 @@ if mklink_dir "$tmp/clones-link" "$tmp/clones"; then
   check "helper: Get-FinalPath follows a link in a parent" test "$(norm "$out")" = "$(norm "$(wp "$clone")")"
 else skip "a directory link cannot be made here; the Get-FinalPath link fixture did not run"; fi
 
+# --- LAUNCH_TEST_JOBS: the accepted values (#1814) ----------------------------------------------------
+jobs_refused() { ( check_jobs "$1" ) >"$tmp/jo" 2>"$tmp/je"; _r=$?; [ "$_r" -eq 1 ] && grep -q '^FAIL - LAUNCH_TEST_JOBS' "$tmp/je"; }
+jobs_accepted() { ( check_jobs "$1" ) >/dev/null 2>&1; }
+for v in '' 0 01 100 x; do check "LAUNCH_TEST_JOBS: '$v' is refused with a FAIL line and exit 1" jobs_refused "$v"; done
+for v in 1 99; do check "LAUNCH_TEST_JOBS: $v is accepted" jobs_accepted "$v"; done
+
+# --- the RETRY line: a native pwsh exit at start-up, before any stub or git call (#1814) ----------------
+# pwsh_abs is swapped for a scratch shell stub for one run_with call: PWSTUB_FIRST is the exit of its first call
+# (the real pwsh when empty), PWSTUB_REST the exit of its later calls (the real pwsh when empty), PWSTUB_LOG a
+# log to append a line to before it exits.
+real_pwsh=$pwsh_abs; mkdir -p "$tmp/pws"
+cat >"$tmp/pws/pwsh" <<'PWS'
+#!/bin/sh
+d=$(dirname "$0"); n=$(cat "$d/n" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" >"$d/n"
+if [ "$n" -eq 1 ]; then x=${PWSTUB_FIRST:-}; else x=${PWSTUB_REST:-}; fi
+[ -z "${PWSTUB_LOG:-}" ] || echo "stub line" >>"$PWSTUB_LOG"
+[ -n "$x" ] || exec "$PWSTUB_REAL" "$@"
+exit "$x"
+PWS
+chmod +x "$tmp/pws/pwsh"
+PWSTUB_REAL=$real_pwsh; export PWSTUB_REAL
+stub_run() { # stub_run <first> <rest> <log>: one launcher run through the stub; stderr to $tmp/retry.err, calls to $tmp/pws/n
+  rm -f "$tmp/pws/n" "$tmp/retry.err"; reset
+  PWSTUB_FIRST=$1 PWSTUB_REST=$2 PWSTUB_LOG=$3; export PWSTUB_FIRST PWSTUB_REST PWSTUB_LOG
+  pwsh_abs="$tmp/pws/pwsh"
+  run_with "$tmp/nonbin/sbin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")" 2>"$tmp/retry.err"
+  pwsh_abs=$real_pwsh; PWSTUB_LOG=; export PWSTUB_LOG
+}
+retries() { grep -c '^RETRY - ' "$tmp/retry.err" || :; }
+reset; run_with "$tmp/nonbin/sbin/wow-driver.ps1" -Clone "$(wp "$clone")" -Reference "$(wp "$ref")"; normal_rc=$rc
+stub_run 134 '' ''
+check "retry: a start-up exit 134 then the real pwsh gives the launcher's normal result" test "$rc" -eq "$normal_rc"
+check "retry: ...with exactly one RETRY line, naming 134" sh -c "test \"\$(grep -c '^RETRY - ' '$tmp/retry.err')\" -eq 1 && grep -q '^RETRY - .*134' '$tmp/retry.err'"
+check "retry: ...and the stub ran twice" test "$(cat "$tmp/pws/n")" -eq 2
+stub_run 139 139 ''
+check "retry: two start-up exits of 139 leave rc 139" test "$rc" -eq 139
+check "retry: ...with exactly one RETRY line, naming 139" sh -c "test \"\$(grep -c '^RETRY - ' '$tmp/retry.err')\" -eq 1 && grep -q '^RETRY - .*139' '$tmp/retry.err'"
+check "retry: ...and the stub ran exactly twice" test "$(cat "$tmp/pws/n")" -eq 2
+stub_run 134 134 "$stubdir/calls.log"
+check "retry: a 134 after a logged stub call is not retried" test "$rc" -eq 134 -a "$(retries)" -eq 0 -a "$(cat "$tmp/pws/n")" -eq 1
+stub_run 134 134 "$stubdir/git.log"
+check "retry: a 134 after a logged git call is not retried" test "$rc" -eq 134 -a "$(retries)" -eq 0 -a "$(cat "$tmp/pws/n")" -eq 1
+stub_run 1 1 ''
+check "retry: an exit 1 with no logged call is not retried" test "$rc" -eq 1 -a "$(retries)" -eq 0 -a "$(cat "$tmp/pws/n")" -eq 1
   :
 }
 
@@ -1925,20 +1995,32 @@ check "neither launcher says \"Any repository of the org works\"" no_bare_any_re
   :
 }
 
-# Run every section at once; replay each one's output in order.
+# Run the sections at most $jobs at once (an in-order window: when the cap is reached, wait for the oldest
+# running one before starting the next); replay each one's output in order.
 sections="notinst badargs start startb attach lanea laneb lanec laned misc msys origin yqver repo"
 pids=
 # An interrupt stops the section subshells and removes the scratch tree (a signal skips the EXIT trap);
 # a pwsh run already in flight ends on its own, as test-all.sh's header allows.
 stop_sections() { kill $pids 2>/dev/null || :; rm -rf "$tmp_root" || :; exit "$1"; }
 trap 'stop_sections 129' HUP; trap 'stop_sections 130' INT; trap 'stop_sections 143' TERM
+started=0; reaped=0
 for n in $sections; do
+  if [ $((started - reaped)) -ge "$jobs" ]; then
+    # reap the oldest section not yet waited on: its status is kept for the replay, never waited for twice
+    for m in $sections; do
+      eval "w=\${pid_$m:-}; d=\${src_$m:-}"
+      [ -n "$w" ] && [ -z "$d" ] || continue
+      src=0; wait "$w" || src=$?
+      eval "src_$m=\$src"; reaped=$((reaped + 1)); break
+    done
+  fi
   ( setup_world "$n"; "sec_$n"; [ "$fail" -eq 0 ] ) >"$tmp_root/$n.out" 2>"$tmp_root/$n.err" &
-  eval "pid_$n=$!"; pids="$pids $!"
+  eval "pid_$n=$!"; pids="$pids $!"; started=$((started + 1))
 done
 all_ok=1
 for n in $sections; do
-  eval "p=\$pid_$n"; src=0; wait "$p" || src=$?
+  eval "p=\$pid_$n; src=\${src_$n:-}"
+  [ -n "$src" ] || { src=0; wait "$p" || src=$?; }
   cat "$tmp_root/$n.out"; cat "$tmp_root/$n.err" >&2
   [ "$src" -eq 0 ] || { echo "FAIL - section $n exited $src" >&2; all_ok=0; }
 done

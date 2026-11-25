@@ -6,9 +6,10 @@
 # passes; fail.test.sh prints a sentinel and exits 1; skipa.test.sh prints `SKIP - stub` on
 # stderr and exits 0; skipb.test.sh prints `skip - stub` on stdout and exits 0; and
 # identity-review.test.sh is an ordinary stub (marker, sleep, done file). The held-out case adds
-# ai-cursor-banner.test.sh and loop-critic.test.sh stubs that fail if any other stub's marker
+# ai-cursor-banner.test.sh, loop-critic.test.sh and identity-launchers.test.sh stubs that fail if any other stub's marker
 # exists when they start or just before they end (ai-cursor-banner also fails unless
-# identity-review has finished, and loop-critic unless ai-cursor-banner has). The TERM case's slow
+# identity-review has finished, and loop-critic unless ai-cursor-banner has; the launchers stub checks markers only,
+# since the -x sub-case leaves loop-critic out). The TERM case's slow
 # stub traps TERM, writes a marker and exits. The parallel case's two stubs each wait up to about
 # 5 s for the other's marker, so a serialised -j 2 pool fails; the overlap case does the same with
 # an identity-review stub and a pool stub, so a run that starts identity-review after the pool
@@ -218,7 +219,7 @@ for n in pass skipa identity-review; do
   echo "touch \"$t6/state/$n.marker\"; sleep 1; rm -f \"$t6/state/$n.marker\"; touch \"$t6/state/$n.done\"" \
     >"$t6/tests/$n.test.sh"
 done
-for n in ai-cursor-banner loop-critic; do
+for n in ai-cursor-banner loop-critic identity-launchers; do
   {
     [ "$n" = ai-cursor-banner ] &&
       echo "[ -f \"$t6/state/identity-review.done\" ] || { echo \"identity-review not done\"; exit 1; }"
@@ -235,14 +236,15 @@ assert_eq "held-out tree exits 0" 0 "$rc"
 assert_eq "held-out: identity-review verdict is first" "tests/identity-review.test.sh" \
   "$(grep -E '^(pass|fail|skip) ' "$t6/out" | head -n 1 | sed 's/^[a-z]* //')"
 assert_eq "held-out verdicts end in list order" \
-  "tests/ai-cursor-banner.test.sh tests/loop-critic.test.sh" \
-  "$(grep -E '^(pass|fail|skip) ' "$t6/out" | tail -n 2 | sed 's/^[a-z]* //' | tr '\n' ' ' | sed 's/ $//')"
-assert_has "held-out: summary" "$t6/out" "test-all: 5 pass, 0 fail, 0 skip"
+  "tests/ai-cursor-banner.test.sh tests/loop-critic.test.sh tests/identity-launchers.test.sh" \
+  "$(grep -E '^(pass|fail|skip) ' "$t6/out" | tail -n 3 | sed 's/^[a-z]* //' | tr '\n' ' ' | sed 's/ $//')"
+assert_has "held-out: summary" "$t6/out" "test-all: 6 pass, 0 fail, 0 skip"
 run "$t6" -x loop-critic.test.sh
 assert_eq "-x held-out file exits 0" 0 "$rc"
 assert_lacks "-x held-out file: verdict line gone" "$t6/out" "tests/loop-critic.test.sh"
 assert_has "-x held-out file: ai-cursor-banner runs" "$t6/out" "pass tests/ai-cursor-banner.test.sh"
-assert_has "-x held-out file: summary" "$t6/out" "test-all: 4 pass, 0 fail, 0 skip"
+assert_has "-x held-out file: identity-launchers runs" "$t6/out" "pass tests/identity-launchers.test.sh"
+assert_has "-x held-out file: summary" "$t6/out" "test-all: 5 pass, 0 fail, 0 skip"
 
 # --- -x leaves a file out ---
 t7="$tmp/t7"

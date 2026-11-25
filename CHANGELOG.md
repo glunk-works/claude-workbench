@@ -25,6 +25,7 @@ the GitHub release notes.
 
 - A review the `wow-review` launcher posts on a run whose first closing-reference read failed now carries a host line saying the comparison did not run, and `wow-publish` prints the cause and its progress report when a signal stops it after the head is known and handles PIPE like INT, TERM and HUP so the revoke still completes; both apply once the host tools are reinstalled (#1765).
 - The `-Spec` cleanup now sends no SIGTERM or SIGKILL once any process walk is blind (a walk that lists a claude process but not the script's own id included) and leaves its wait loop at once, the launcher suite's "a later walk blind" case now proves the first walk listed the fake, and the broker suite's `Resolve-RealPath` check matches the native `::GetLongPathName(` call instead of text the `Add-Type` definition also holds; it applies once the host tools are reinstalled (#1784).
+- The launcher suite now runs at most 4 sections at once (`LAUNCH_TEST_JOBS`), retries a launcher run once on a native pwsh exit 134 or 139 at start-up, before any stub or git call, with a `RETRY - ` line, and `test-all.sh` runs it alone after the pool (#1814).
 
 ## [0.41.0] — 2026-11-24
 

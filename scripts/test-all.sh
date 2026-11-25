@@ -19,12 +19,14 @@
 # The files are found by a glob (sorted), so a new tests/X.test.sh is picked up with no list to
 # edit; every matching file runs, tracked or not. Each runs as `sh tests/NAME` from the repo
 # root with stdout and stderr together in one log under a mktemp -d directory.
-# tests/identity-review.test.sh is the longest suite (its own header's Runtime note: about 26 s
+# tests/identity-review.test.sh is the longest suite in the pool (its own header's Runtime note: about 26 s
 # alone in the dev container), so it is the first suite started, with the pool, and takes one of
-# the -j slots. Two suites are held out of the pool and started one at a time after the pool,
+# the -j slots. Three suites are held out of the pool and started one at a time after the pool,
 # identity-review included, has drained, in this order, each with nothing else running:
 # tests/ai-cursor-banner.test.sh and tests/loop-critic.test.sh assert wall-clock upper bounds
-# that a loaded pool can trip. A held-out file the glob does not find is skipped. No glob match
+# that a loaded pool can trip, then tests/identity-launchers.test.sh, whose many concurrent pwsh
+# start-ups crash natively under load (#1814; CI already runs it in its own job). A held-out file the glob does not find
+# is skipped. No glob match
 # prints `no tests found` and exits 1.
 #
 # Verdicts: a non-zero exit is `fail`; exit 0 with a log line beginning `SKIP - ` or `skip - `
@@ -194,8 +196,8 @@ for x in ${xs[@]+"${xs[@]}"}; do
   fi
 done
 
-held=(ai-cursor-banner.test.sh loop-critic.test.sh)
-first=identity-review.test.sh   # the longest suite: started first so it overlaps the rest of the pool
+held=(ai-cursor-banner.test.sh loop-critic.test.sh identity-launchers.test.sh)
+first=identity-review.test.sh   # the longest suite in the pool: started first so it overlaps the rest of the pool
 names=()
 if [ -f "tests/$first" ] && ! is_excluded "$first"; then
   names+=("$first")
