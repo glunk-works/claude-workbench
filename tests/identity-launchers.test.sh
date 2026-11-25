@@ -48,7 +48,7 @@
 #                   lanes directory and a scratch container clone), both happy paths, base-moved and kept
 #                   worktrees, the cleanup's process walk (a fake claude left in the run's leaf is ended, a TERM-ignoring one
 #                   too, one that will not stop keeps the worktree and record, one in another leaf is left running, and a walk that
-#                   reads nothing (the first, or a later one) keeps both and sends no further signal (none at all when the first walk is blind), as the unreadable-walk fixtures show),
+#                   reads nothing (the first, or a later one) keeps both and sends no further signal (none at all when the first walk is blind, and likewise a walk that lists a claude process but not the script's own id), as the unreadable-walk fixtures show),
 #                   the busy check (a fake running session: an executable named claude whose
 #                   working directory is a spec leaf), the spec record, the -SpecSweep mode (it kills and removes nothing, but fetches in the Reference)
 #                   (the busy-check and sweep fixtures are skipped loudly under MSYS), the shared lanes-directory guard
@@ -171,6 +171,9 @@ case "$1" in
         # listing for the first K calls of this one script (K is the number in it.noproc) and nothing after, so a later walk reads empty.
         rm -f "$d/n.noproc"
         [ ! -e "$d/it.noproc" ] || script='ls() { case $1 in /proc) pc=$(cat "$STUB_DIR/n.noproc" 2>/dev/null || echo 0); echo $((pc + 1)) >"$STUB_DIR/n.noproc"; if [ "$pc" -lt "$(cat "$STUB_DIR/it.noproc")" ]; then command ls "$@"; fi;; *) command ls "$@";; esac; }; '"$script"
+        # it.partial: the same kind of ls function, but its /proc listing is the real one minus the script's own process id
+        # (real for any other argument), so a walk lists a claude process and not the script itself; it counts its /proc walks in n.noproc too.
+        [ ! -e "$d/it.partial" ] || script='ls() { case $1 in /proc) pc=$(cat "$STUB_DIR/n.noproc" 2>/dev/null || echo 0); echo $((pc + 1)) >"$STUB_DIR/n.noproc"; command ls "$@" | while read -r e; do case $e in $$) :;; *) echo "$e";; esac; done;; *) command ls "$@";; esac; }; '"$script"
         n=$#
         while [ "$n" -gt 0 ]; do
           a=$1; shift
@@ -1214,7 +1217,17 @@ else
   spec_setup; hook_fake "$tmp/fakebin2/claude"; printf '%s\n' 'echo 1 >"$STUB_DIR/it.noproc"' >>"$stubdir/it.hook"; run_lane -Spec 7
   rm -f "$stubdir/it.noproc"
   unreadable_kept 'a later walk blind'
+  check "wow-lane cleanup (a later walk blind): the walk counter reads at least 2, so the first walk listed the fake" sh -c '[ "$(cat "$1/n.noproc")" -ge 2 ]' _ "$stubdir"
   check "wow-lane cleanup (a later walk blind): stderr says the process list could not be read" err_has 'could not read the process list'
+  hook_fake_end
+  rm -f "$stubdir/it.hook"; for w in "$lanes"/spec-*; do $real_git -C "$crepo" worktree remove --force "$w"; done
+  rm -f "$lanes"/record-spec-*
+  # a walk that lists the fake claude but not the script's own process id is blind too: no SIGTERM is sent, and the wait loop leaves after one walk (#1784)
+  spec_setup; hook_fake "$tmp/fakebin/claude"; : >"$stubdir/it.partial"; run_lane -Spec 7
+  rm -f "$stubdir/it.partial"
+  unreadable_kept 'a partial listing'
+  check "wow-lane cleanup (a partial listing): stderr says the process list could not be read" err_has 'could not read the process list'
+  check "wow-lane cleanup (a partial listing): at most 3 walks, so the wait loop did not wait out its seconds" sh -c '[ "$(cat "$1/n.noproc")" -le 3 ]' _ "$stubdir"
   hook_fake_end
   rm -f "$stubdir/it.hook"; for w in "$lanes"/spec-*; do $real_git -C "$crepo" worktree remove --force "$w"; done
   rm -f "$lanes"/record-spec-*
