@@ -21,6 +21,10 @@ the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- `/way-of-working:ship` now prints an `Expected red:` line, and carries it into a new PR's body, naming the workflow files the branch's changes name but the branch's author left uncommitted (`workflow-gap.sh`) (#1815).
+
 ### Fixed
 
 - A review the `wow-review` launcher posts on a run whose first closing-reference read failed now carries a host line saying the comparison did not run, and `wow-publish` prints the cause and its progress report when a signal stops it after the head is known and handles PIPE like INT, TERM and HUP so the revoke still completes; both apply once the host tools are reinstalled (#1765).

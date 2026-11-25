@@ -43,4 +43,23 @@ assert_eq "the denied-arm outcome line is spelled out" yes "$denied"
 assert_eq "the single arm call stays single" 1 \
   "$(grep -cF -- 'gh pr merge <N> --repo {repo} --auto' "$ship" | tr -d ' ')"
 
+assert_eq "ship names workflow-gap.sh" yes "$(grep -qF -- 'workflow-gap.sh' "$ship" && echo yes || echo no)"
+assert_eq "ship carries Expected red: none" yes "$(grep -qF -- 'Expected red: none' "$ship" && echo yes || echo no)"
+assert_eq "ship carries Expected red: unread" yes "$(grep -qF -- 'Expected red: unread' "$ship" && echo yes || echo no)"
+
+gap_at=$(first_line 'workflow-gap.sh')
+push_at=$(first_line '^3\. \*\*Push the branch')
+ordered=no
+if [ -n "$gap_at" ] && [ -n "$commit_at" ] && [ -n "$push_at" ] &&
+   [ "$commit_at" -lt "$gap_at" ] && [ "$gap_at" -lt "$push_at" ]; then ordered=yes; fi
+assert_eq "workflow-gap.sh is named between the commit step and the Push the branch step" yes "$ordered"
+
+open_at=$(first_line '^5\. \*\*Open the PR against')
+title_at=$(first_line '^6\. \*\*Verify the PR head')
+red_at=$(grep -n -F -- 'the body carries the same `Expected red:` line' "$ship" | head -n 1 | cut -d: -f1)
+ordered=no
+if [ -n "$open_at" ] && [ -n "$title_at" ] && [ -n "$red_at" ] &&
+   [ "$open_at" -lt "$red_at" ] && [ "$red_at" -lt "$title_at" ]; then ordered=yes; fi
+assert_eq "the Open the PR step names the Expected red: paragraph" yes "$ordered"
+
 exit "$fail"
