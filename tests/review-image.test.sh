@@ -19,15 +19,16 @@
 #   context script  scripts/review-image-context.sh (#1398): its output against the committed ps1 list, its
 #                   refusals in fake roots, and the review-image workflow's paths filter and permissions
 #
-# Permitted toolset: POSIX sh and its standard utilities, jq, yq and bash (the suite is skipped, loudly, if
-# any is absent), and git for the credential-helper fixture, the context-script fixtures and the workflow
+# Permitted toolset: POSIX sh and its standard utilities, jq and yq (the suite is skipped, loudly, if
+# either is absent), bash for the verify-base step fixtures (those alone are skipped, loudly, if bash is
+# absent), and git for the credential-helper fixture, the context-script fixtures and the workflow
 # coverage assertion (those alone are skipped, loudly, if git is absent).
 set -eu
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 rdir="$root_dir/scripts/identity/review"
 
-for t in jq yq bash; do
+for t in jq yq; do
   if ! command -v "$t" >/dev/null 2>&1; then
     echo "SKIP - $t not on PATH; review-image fixtures not run" >&2
     exit 0
@@ -574,7 +575,13 @@ case $first_instr in *:FROM\ *) ok "Dockerfile: FROM is the first instruction (n
 from=$(grep '^FROM ' "$df")
 case $from in *'$'*|*' AS '*|*--platform*) bad "Dockerfile: the FROM line is not literal: $from" ;; *) ok "Dockerfile: the FROM line is literal" ;; esac
 printf '%s\n' "$from" | grep -Eq '^FROM [a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$' && ok "Dockerfile: the FROM line is tag-and-digest pinned" || bad "Dockerfile: FROM is not tag-and-digest pinned: $from"
-check "Dockerfile: exactly one FROM" test "$(grep -c '^FROM ' "$df")" -eq 1
+# from_count <file>: FROM instructions as the workflow's verify-base step counts them (any case, leading whitespace)
+from_count() { grep -Eci '^[[:space:]]*FROM[[:space:]]' "$1" || true; }
+check "Dockerfile: exactly one FROM" test "$(from_count "$df")" -eq 1
+{ cat "$df"; printf 'from scratch\n'; } >"$tmp/df-lower"
+assert_eq "Dockerfile: a lowercase second FROM is counted" 2 "$(from_count "$tmp/df-lower")"
+{ cat "$df"; printf '  FROM scratch\n'; } >"$tmp/df-indent"
+assert_eq "Dockerfile: an indented second FROM is counted" 2 "$(from_count "$tmp/df-indent")"
 check "Dockerfile: no # syntax= line" test -z "$(grep -i '^# *syntax=' "$df" || true)"
 before_from=$(sed -n '1,/^FROM /p' "$df" | grep -c '^ARG ' || true)
 assert_eq "Dockerfile: no ARG before FROM" 0 "$before_from"
@@ -714,6 +721,8 @@ EOF_PAIRS
     check "context script refusal, $rl: empty stdout" test ! -s "$tmp/ctx.out"
     if [ "$want" = ABSENT ]; then
       check "context script refusal, $rl: destination still absent" test ! -e "$tmp/refuse-dest"
+    elif [ "$want" = FILE ]; then
+      : # the still-a-regular-file and contents checks follow the call
     else
       assert_eq "context script refusal, $rl: destination unchanged" "$want" "$(ls -A "$tmp/refuse-dest" | tr '\n' ' ')"
     fi
@@ -739,9 +748,10 @@ EOF_PAIRS
   rm -f "$tmp/refuse-dest"
   refuse "an empty destination argument" ABSENT "$ctxs" ""
   printf 'keep me\n' >"$tmp/refuse-dest"
-  refuse "a destination that is a regular file" "$(ls -A "$tmp/refuse-dest" | tr '\n' ' ')" "$ctxs" "$tmp/refuse-dest"
+  refuse "a destination that is a regular file" FILE "$ctxs" "$tmp/refuse-dest"
   check "context script refusal, a destination that is a regular file: still a regular file" test -f "$tmp/refuse-dest" -a ! -L "$tmp/refuse-dest"
   assert_eq "context script refusal, a destination that is a regular file: contents unchanged" "keep me" "$(cat "$tmp/refuse-dest")"
+  assert_eq "context script refusal, a destination that is a regular file: the refusal line" "review-image-context.sh: destination exists and is not a directory" "$(cat "$tmp/ctx.err")"
   rm -f "$tmp/refuse-dest"
 
   fr="$tmp/fr-nops"
@@ -752,7 +762,7 @@ EOF_PAIRS
   rc=0; sh "$fr/scripts/review-image-context.sh" "$tmp/refuse-dest" >"$tmp/ctx.out" 2>"$tmp/ctx.err" || rc=$?
   assert_eq "context script refusal, the ps1 unreadable at HEAD: exit 1" 1 "$rc"
   check "context script refusal, the ps1 unreadable at HEAD: empty stdout" test ! -s "$tmp/ctx.out"
-  check "context script refusal, the ps1 unreadable at HEAD: the last stderr line is the script's own" sh -c 'tail -n 1 "$1" | grep -q "^review-image-context.sh: "' _ "$tmp/ctx.err"
+  assert_eq "context script refusal, the ps1 unreadable at HEAD: the last stderr line" "review-image-context.sh: cannot read scripts/identity/install-host-tools.ps1 at HEAD" "$(tail -n 1 "$tmp/ctx.err")"
   check "context script refusal, the ps1 unreadable at HEAD: destination still absent" test ! -e "$tmp/refuse-dest"
 
   fr="$tmp/fr-noentries"
@@ -798,63 +808,71 @@ if [ -f "$wf" ]; then
     }
   ' "$wf" >"$vb_step"
   check "verify-base: the step's run block was extracted" test -s "$vb_step"
-  vb_dir="$tmp/vb-stub"; mkdir -p "$vb_dir"
-  cat >"$vb_dir/gh" <<'STUB'
+  if command -v bash >/dev/null 2>&1; then
+    vb_dir="$tmp/vb-stub"; mkdir -p "$vb_dir"
+    cat >"$vb_dir/gh" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$@" >>"$VB_LOG"
 [ -z "${VB_GH_FAIL:-}" ] || exit 1
 exit 0
 STUB
-  chmod +x "$vb_dir/gh"
-  # vb_run <Dockerfile-source>: a fixture tree with that file as the review Dockerfile; sets vb_rc, vb_out, vb_err
-  vb_run() {
-    vb_tree="$tmp/vb-tree"; rm -rf "$vb_tree"; mkdir -p "$vb_tree/scripts/identity/review"
-    cp "$1" "$vb_tree/scripts/identity/review/Dockerfile"
-    : >"$tmp/vb-log"
-    vb_rc=0
-    ( cd "$vb_tree" && env PATH="$vb_dir:$PATH" VB_LOG="$tmp/vb-log" GH_TOKEN=t $vb_env bash "$vb_step" ) >"$tmp/vb.out" 2>"$tmp/vb.err" || vb_rc=$?
-    vb_out=$(cat "$tmp/vb.out"); vb_err=$(cat "$tmp/vb.err")
-  }
-  vb_env=""
-  vb_from=$(grep '^FROM ' "$rdir/Dockerfile")
-  vb_digest=${vb_from##*@sha256:}
+    chmod +x "$vb_dir/gh"
+    # vb_run <Dockerfile-source>: a fixture tree with that file as the review Dockerfile; sets vb_rc, vb_out, vb_err
+    vb_run() {
+      vb_tree="$tmp/vb-tree"; rm -rf "$vb_tree"; mkdir -p "$vb_tree/scripts/identity/review"
+      cp "$1" "$vb_tree/scripts/identity/review/Dockerfile"
+      : >"$tmp/vb-log"
+      vb_rc=0
+      ( cd "$vb_tree" && env PATH="$vb_dir:$PATH" VB_LOG="$tmp/vb-log" GH_TOKEN=t $vb_env bash "$vb_step" ) >"$tmp/vb.out" 2>"$tmp/vb.err" || vb_rc=$?
+      vb_out=$(cat "$tmp/vb.out"); vb_err=$(cat "$tmp/vb.err")
+    }
+    vb_env=""
+    vb_from=$(grep '^FROM ' "$rdir/Dockerfile")
+    vb_digest=${vb_from##*@sha256:}
 
-  # the real Dockerfile: one gh call, whose tokens equal the header's hand command with <digest> filled in
-  vb_run "$rdir/Dockerfile"
-  assert_eq "verify-base: the real Dockerfile passes" 0 "$vb_rc"
-  sed -n '/^#       gh attestation verify /,/--deny-self-hosted-runners$/p' "$rdir/Dockerfile" \
-    | sed -e 's/^#//' -e 's/\\$//' -e "s|<digest>|$vb_digest|" | tr -s ' ' '\n' | grep -v '^$' >"$tmp/vb-want"
-  check "verify-base: the header's hand command was found" test -s "$tmp/vb-want"
-  assert_eq "verify-base: the gh call's tokens equal the header command's, token for token" "$(cat "$tmp/vb-want")" "gh
+    # the real Dockerfile: one gh call, whose tokens equal the header's hand command with <digest> filled in
+    vb_run "$rdir/Dockerfile"
+    assert_eq "verify-base: the real Dockerfile passes" 0 "$vb_rc"
+    sed -n '/^#       gh attestation verify /,/--deny-self-hosted-runners$/p' "$rdir/Dockerfile" \
+      | sed -e 's/^#//' -e 's/\\$//' -e "s|<digest>|$vb_digest|" | tr -s ' ' '\n' | grep -v '^$' >"$tmp/vb-want"
+    check "verify-base: the header's hand command was found" test -s "$tmp/vb-want"
+    assert_eq "verify-base: the gh call's tokens equal the header command's, token for token" "$(cat "$tmp/vb-want")" "gh
 $(cat "$tmp/vb-log")"
-  assert_eq "verify-base: exactly one gh call" 1 "$(grep -c '^attestation$' "$tmp/vb-log")"
-  assert_eq "verify-base: the call verifies the real FROM digest" 1 "$(grep -cx "oci://ghcr.io/603-identity/devcontainer-base@sha256:$vb_digest" "$tmp/vb-log")"
+    assert_eq "verify-base: exactly one gh call" 1 "$(grep -c '^attestation$' "$tmp/vb-log")"
+    assert_eq "verify-base: the call verifies the real FROM digest" 1 "$(grep -cx "oci://ghcr.io/603-identity/devcontainer-base@sha256:$vb_digest" "$tmp/vb-log")"
 
-  # refused FROM lines: the fixed message on stderr, no gh call, nothing echoed
-  good_from='FROM ghcr.io/603-identity/devcontainer-base:4.812@sha256:fce47f5062c10167e73f54f15c014de961c12d7842db5a6542578aab1f483b9b'
-  vb_refuse() { # vb_refuse <label> <file>
-    vb_run "$2"
-    if [ "$vb_rc" != 0 ] && [ ! -s "$tmp/vb-log" ] && [ -z "$vb_out" ] && printf '%s' "$vb_err" | grep -q '^review-image: the Dockerfile must have exactly one FROM line'; then
-      ok "verify-base: $1 fails with the fixed message and no gh call"
-    else bad "verify-base: $1: rc=$vb_rc log=[$(cat "$tmp/vb-log")] err=[$vb_err]"; fi
-  }
-  printf 'RUN true\n' >"$tmp/vb-df"; vb_refuse "no FROM line" "$tmp/vb-df"
-  printf '%s\n%s\n' "$good_from" "$good_from" >"$tmp/vb-df"; vb_refuse "two FROM lines" "$tmp/vb-df"
-  printf '%s\n' "$good_from" | sed 's|devcontainer-base|other-image|' >"$tmp/vb-df"; vb_refuse "another image name" "$tmp/vb-df"
-  printf '%s\n' "$good_from" | sed 's|@sha256:.*||' >"$tmp/vb-df"; vb_refuse "no digest" "$tmp/vb-df"
-  printf '%s\n' "$good_from" | sed 's|.$||' >"$tmp/vb-df"; vb_refuse "a 63-digit digest" "$tmp/vb-df"
-  printf '%sa\n' "$good_from" >"$tmp/vb-df"; vb_refuse "a 65-digit digest" "$tmp/vb-df"
-  printf '%s\n' "$good_from" | sed 's|@sha256:fce|@sha256:FCE|' >"$tmp/vb-df"; vb_refuse "an uppercase digest" "$tmp/vb-df"
-  printf '%s extra\n' "$good_from" >"$tmp/vb-df"; vb_refuse "text after the digest" "$tmp/vb-df"
+    # refused FROM lines: the fixed message on stderr, no gh call, nothing echoed
+    good_from='FROM ghcr.io/603-identity/devcontainer-base:4.812@sha256:fce47f5062c10167e73f54f15c014de961c12d7842db5a6542578aab1f483b9b'
+    vb_refuse() { # vb_refuse <label> <file>
+      vb_run "$2"
+      if [ "$vb_rc" != 0 ] && [ ! -s "$tmp/vb-log" ] && [ -z "$vb_out" ] && printf '%s' "$vb_err" | grep -q '^review-image: the Dockerfile must have exactly one FROM line'; then
+        ok "verify-base: $1 fails with the fixed message and no gh call"
+      else bad "verify-base: $1: rc=$vb_rc log=[$(cat "$tmp/vb-log")] err=[$vb_err]"; fi
+    }
+    printf 'RUN true\n' >"$tmp/vb-df"; vb_refuse "no FROM line" "$tmp/vb-df"
+    printf '%s\n%s\n' "$good_from" "$good_from" >"$tmp/vb-df"; vb_refuse "two FROM lines" "$tmp/vb-df"
+    printf '%s\n' "$good_from" | sed 's|devcontainer-base|other-image|' >"$tmp/vb-df"; vb_refuse "another image name" "$tmp/vb-df"
+    printf '%s\n' "$good_from" | sed 's|@sha256:.*||' >"$tmp/vb-df"; vb_refuse "no digest" "$tmp/vb-df"
+    printf '%s\n' "$good_from" | sed 's|.$||' >"$tmp/vb-df"; vb_refuse "a 63-digit digest" "$tmp/vb-df"
+    printf '%sa\n' "$good_from" >"$tmp/vb-df"; vb_refuse "a 65-digit digest" "$tmp/vb-df"
+    printf '%s\n' "$good_from" | sed 's|@sha256:fce|@sha256:FCE|' >"$tmp/vb-df"; vb_refuse "an uppercase digest" "$tmp/vb-df"
+    printf '%s extra\n' "$good_from" >"$tmp/vb-df"; vb_refuse "text after the digest" "$tmp/vb-df"
+    printf '%s\n%s\n' "$good_from" "$(printf '%s' "$good_from" | sed 's/^FROM/from/')" >"$tmp/vb-df"; vb_refuse "a lowercase second stage" "$tmp/vb-df"
+    printf '%s\n  %s\n' "$good_from" "$good_from" >"$tmp/vb-df"; vb_refuse "an indented second stage" "$tmp/vb-df"
+    printf '%s\n' "$good_from" | sed 's/^FROM/from/' >"$tmp/vb-df"; vb_refuse "a single lowercase FROM line" "$tmp/vb-df"
+    printf '  %s\n' "$good_from" >"$tmp/vb-df"; vb_refuse "a single indented FROM line" "$tmp/vb-df"
 
-  # a planted marker on a failing FROM line reaches neither stream
-  printf 'FROM ::warning::x\n' >"$tmp/vb-df"; vb_refuse "a FROM line carrying a marker" "$tmp/vb-df"
-  if printf '%s%s' "$vb_out" "$vb_err" | grep -q '::warning'; then bad "verify-base: the marker was echoed"; else ok "verify-base: a planted marker is in neither stdout nor stderr"; fi
+    # a planted marker on a failing FROM line reaches neither stream
+    printf 'FROM ::warning::x\n' >"$tmp/vb-df"; vb_refuse "a FROM line carrying a marker" "$tmp/vb-df"
+    if printf '%s%s' "$vb_out" "$vb_err" | grep -q '::warning'; then bad "verify-base: the marker was echoed"; else ok "verify-base: a planted marker is in neither stdout nor stderr"; fi
 
-  # a failing gh fails the step
-  vb_env="VB_GH_FAIL=1"; vb_run "$rdir/Dockerfile"
-  if [ "$vb_rc" != 0 ] && [ -s "$tmp/vb-log" ]; then ok "verify-base: a gh that exits non-zero fails the step"; else bad "verify-base: gh failure rc=$vb_rc"; fi
-  vb_env=""
+    # a failing gh fails the step
+    vb_env="VB_GH_FAIL=1"; vb_run "$rdir/Dockerfile"
+    if [ "$vb_rc" != 0 ] && [ -s "$tmp/vb-log" ]; then ok "verify-base: a gh that exits non-zero fails the step"; else bad "verify-base: gh failure rc=$vb_rc"; fi
+    vb_env=""
+  else
+    echo "SKIP - bash not on PATH; review-image verify-base step fixtures not run" >&2
+  fi
 
   check "verify-base: no secrets. reference in the job" test -z "$(yq '.jobs."verify-base"' "$wf" | grep -F 'secrets.' || true)"
 else
